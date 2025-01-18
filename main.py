@@ -346,9 +346,9 @@ def main():
     print("Press 1-6 to change modes, 'q' to quit")
 
     scale_notes = get_scale_notes(key)
-    active_notes = {}  # Maps input note to generated note
-    prev_input_note = None  # Track previous input note for contrary motion
-    prev_output_note = None  # Track previous output note for contrary motion
+    active_notes = {}  # Maps input note to list of generated notes
+    prev_input_notes = {}  # Track previous input notes for each voice
+    prev_output_notes = {}  # Track previous output notes for each voice
     
     # Set up command queue and keyboard input thread
     command_queue = queue.Queue()
@@ -364,8 +364,8 @@ def main():
                 if command == 'change_mode':
                     mode = value
                     # Reset motion tracking when changing modes
-                    prev_input_note = None
-                    prev_output_note = None
+                    prev_input_notes = {}
+                    prev_output_notes = {}
                     print(f"\nChanged to mode {mode}")
                 elif command == 'quit':
                     raise KeyboardInterrupt
@@ -381,53 +381,67 @@ def main():
                 # Always send original note to first output
                 output_ports_list[0].send(msg)
 
-                # Generate harmony note based on mode
+                # Generate harmony notes based on mode
                 if mode == 1:
                     # Forward as-is to all outputs
                     for port in output_ports_list[1:]:
                         port.send(msg)
                 else:
-                    # Generate harmony note
+                    # Generate harmony notes
                     if msg.type == 'note_on' and msg.velocity > 0:
-                        if mode == 2:
-                            harmony_note = find_nearest_diatonic_third(msg.note, key)
-                        elif mode == 3:
-                            harmony_note = find_random_diatonic_below(msg.note, key)
-                        elif mode == 4:
-                            harmony_note = find_random_diatonic_below_no_seconds(msg.note, key)
-                        elif mode == 5:
-                            harmony_note = find_contrary_diatonic_below_no_seconds(
-                                msg.note, key, prev_input_note, prev_output_note)
-                        else:  # mode 6
-                            harmony_note = find_strict_counterpoint_below(
-                                msg.note, key, prev_input_note, prev_output_note)
+                        # Initialize list of harmony notes for this input
+                        harmony_notes = []
                         
-                        active_notes[msg.note] = harmony_note
-                        harmony_msg = msg.copy(note=int(harmony_note))
-                        # harmony_msg.velocity = scale_velocity(msg.velocity)
+                        # Generate first harmony from the input note
+                        prev_in = prev_input_notes.get(1)
+                        prev_out = prev_output_notes.get(1)
+                        source_note = msg.note
                         
-                        # Send to all harmony outputs
-                        for port in output_ports_list[1:]:
-                            port.send(harmony_msg)
+                        # Generate each harmony voice
+                        for voice in range(len(output_ports_list) - 1):
+                            if mode == 2:
+                                harmony_note = find_nearest_diatonic_third(source_note, key)
+                            elif mode == 3:
+                                harmony_note = find_random_diatonic_below(source_note, key)
+                            elif mode == 4:
+                                harmony_note = find_random_diatonic_below_no_seconds(source_note, key)
+                            elif mode == 5:
+                                harmony_note = find_contrary_diatonic_below_no_seconds(
+                                    source_note, key, prev_in, prev_out)
+                            else:  # mode 6
+                                harmony_note = find_strict_counterpoint_below(
+                                    source_note, key, prev_in, prev_out)
                             
-                        if mode in [5, 6]:
-                            prev_input_note = msg.note
-                            prev_output_note = harmony_note
+                            harmony_notes.append(harmony_note)
+                            harmony_msg = msg.copy(note=int(harmony_note))
+                            output_ports_list[voice + 1].send(harmony_msg)
+                            
+                            # Update tracking for next voice
+                            if mode in [5, 6]:
+                                prev_input_notes[voice + 1] = source_note
+                                prev_output_notes[voice + 1] = harmony_note
+                            
+                            # Next harmony will be generated from this one
+                            source_note = harmony_note
+                            prev_in = prev_input_notes.get(voice + 1)
+                            prev_out = prev_output_notes.get(voice + 1)
+                        
+                        active_notes[msg.note] = harmony_notes
                     else:
                         if msg.note in active_notes:
-                            harmony_msg = msg.copy(note=int(active_notes[msg.note]))
-                            # if msg.type == 'note_on':
-                                # harmony_msg.velocity = scale_velocity(msg.velocity)
-                            
-                            # Send to all harmony outputs
-                            for port in output_ports_list[1:]:
-                                port.send(harmony_msg)
+                            harmony_notes = active_notes[msg.note]
+                            for voice, harmony_note in enumerate(harmony_notes):
+                                harmony_msg = msg.copy(note=int(harmony_note))
+                                output_ports_list[voice + 1].send(harmony_msg)
                                 
                             if msg.type == 'note_off' or msg.velocity == 0:
                                 del active_notes[msg.note]
-                                if msg.note == prev_input_note:
-                                    prev_input_note = None
-                                    prev_output_note = None
+                                if msg.note in prev_input_notes.values():
+                                    # Clear motion tracking for all affected voices
+                                    for voice in range(len(output_ports_list) - 1):
+                                        if prev_input_notes.get(voice + 1) == msg.note:
+                                            prev_input_notes[voice + 1] = None
+                                            prev_output_notes[voice + 1] = None
             else:
                 # Forward all other MIDI messages to all outputs
                 for port in output_ports_list:
@@ -436,10 +450,11 @@ def main():
     except KeyboardInterrupt:
         # Make sure to turn off any active notes before exiting
         if mode != 1:
-            for input_note, generated_note in active_notes.items():
-                off_msg = mido.Message('note_off', note=int(generated_note), velocity=0)
-                for port in output_ports_list[1:]:
-                    port.send(off_msg)
+            for input_note, generated_notes in active_notes.items():
+                for harmony_note in generated_notes:
+                    off_msg = mido.Message('note_off', note=int(harmony_note), velocity=0)
+                    for port in output_ports_list[1:]:
+                        port.send(off_msg)
         
         print("\nExiting...")
         input_port.close()
