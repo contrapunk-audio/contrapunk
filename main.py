@@ -5,6 +5,7 @@ import termios
 import tty
 import threading
 import queue
+import argparse
 
 def list_and_choose_midi_ports():
     """List all available MIDI ports and let user choose."""
@@ -61,6 +62,31 @@ def find_nearest_diatonic_third(note, key):
         third_note -= 12
     
     return int(third_note)
+
+def find_nearest_diatonic_fourth(note, key):
+    """Find the nearest diatonic fourth below the note in the given key"""
+    scale_notes = get_scale_notes(key)
+    base_note = note % 12
+    
+    # Find the nearest scale note for the input
+    if base_note not in scale_notes:
+        distances = [(abs(base_note - scale_note), scale_note) for scale_note in scale_notes]
+        base_note = min(distances, key=lambda x: x[0])[1]
+    
+    # Find the note three scale degrees below
+    base_index = scale_notes.index(base_note)
+    fourth_index = (base_index - 3) % 7  # Three scale degrees below
+    fourth_note = scale_notes[fourth_index]
+    
+    # Adjust octave to be below the input note
+    current_octave = note // 12
+    fourth_note = fourth_note + (current_octave * 12)
+    
+    # If the fourth is still above or equal to the input note, move it down an octave
+    if fourth_note >= note:
+        fourth_note -= 12
+    
+    return int(fourth_note)
 
 def find_random_diatonic_below(note, key):
     """Find a random diatonic note below the input note, within an octave range"""
@@ -285,6 +311,17 @@ def keyboard_input_thread(command_queue):
                 break
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Contrapunk - A MIDI counterpoint generator')
+    parser.add_argument('--ui', action='store_true', help='Use graphical user interface instead of CLI')
+    args = parser.parse_args()
+
+    if args.ui:
+        from contrapunk_ui import run_ui
+        run_ui()
+        return
+
+    # Rest of the CLI code
     # Get available ports
     available_ports = mido.get_input_names()
     output_ports = mido.get_output_names()
@@ -329,11 +366,12 @@ def main():
     print("\nSelect mode:")
     print("1: Forward MIDI as-is")
     print("2: Add diatonic thirds")
-    print("3: Add random diatonic intervals")
-    print("4: Add random diatonic intervals (no seconds)")
-    print("5: Add contrary motion with random intervals (no seconds)")
-    print("6: Add strict counterpoint rules")
-    print("\nYou can change modes during runtime using number keys 1-6")
+    print("3: Add diatonic fourths")
+    print("4: Add random diatonic intervals")
+    print("5: Add random diatonic intervals (no seconds)")
+    print("6: Add contrary motion with random intervals (no seconds)")
+    print("7: Add strict counterpoint rules")
+    print("\nYou can change modes during runtime using number keys 1-7")
     print("Press 'q' to quit")
     mode = int(input("Enter mode number: "))
 
@@ -343,7 +381,7 @@ def main():
         print(f"Output {i+1}: {output_ports[port_num]}")
     print("\nListening for MIDI messages...")
     print("Current mode:", mode)
-    print("Press 1-6 to change modes, 'q' to quit")
+    print("Press 1-7 to change modes, 'q' to quit")
 
     scale_notes = get_scale_notes(key)
     active_notes = {}  # Maps input note to list of generated notes
@@ -402,13 +440,15 @@ def main():
                             if mode == 2:
                                 harmony_note = find_nearest_diatonic_third(source_note, key)
                             elif mode == 3:
-                                harmony_note = find_random_diatonic_below(source_note, key)
+                                harmony_note = find_nearest_diatonic_fourth(source_note, key)
                             elif mode == 4:
-                                harmony_note = find_random_diatonic_below_no_seconds(source_note, key)
+                                harmony_note = find_random_diatonic_below(source_note, key)
                             elif mode == 5:
+                                harmony_note = find_random_diatonic_below_no_seconds(source_note, key)
+                            elif mode == 6:
                                 harmony_note = find_contrary_diatonic_below_no_seconds(
                                     source_note, key, prev_in, prev_out)
-                            else:  # mode 6
+                            else:  # mode 7
                                 harmony_note = find_strict_counterpoint_below(
                                     source_note, key, prev_in, prev_out)
                             
