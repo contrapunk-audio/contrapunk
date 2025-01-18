@@ -1,4 +1,5 @@
 import mido
+import random
 
 def list_and_choose_midi_ports():
     """List all available MIDI ports and let user choose."""
@@ -25,18 +26,6 @@ def list_and_choose_midi_ports():
         print(f"Error choosing ports: {e}")
         return None, None, None
 
-def handle_message(msg, outport1, outport2):
-    # Print raw MIDI data for debugging
-    print(f"Received MIDI message: type={msg.type}, ", end='')
-    if hasattr(msg, 'control'):
-        print(f"control={msg.control}, value={msg.value}")
-    else:
-        print(f"data={msg}")
-    
-    # Forward messages immediately with no delay
-    outport1.send(msg.copy(time=0))
-    outport2.send(msg.copy(time=0))
-
 def get_scale_notes(key):
     """Returns the notes in the major scale for the given key"""
     major_scale_steps = [0, 2, 4, 5, 7, 9, 11]
@@ -44,7 +33,7 @@ def get_scale_notes(key):
     return scale_notes
 
 def find_nearest_diatonic_third(note, key):
-    """Find the nearest diatonic third above the note in the given key"""
+    """Find the nearest diatonic third below the note in the given key"""
     scale_notes = get_scale_notes(key)
     base_note = note % 12
     
@@ -53,87 +42,46 @@ def find_nearest_diatonic_third(note, key):
         distances = [(abs(base_note - scale_note), scale_note) for scale_note in scale_notes]
         base_note = min(distances, key=lambda x: x[0])[1]
     
-    # Find the note two scale degrees above
+    # Find the note two scale degrees below
     base_index = scale_notes.index(base_note)
-    third_index = (base_index + 2) % 7
+    third_index = (base_index - 2) % 7  # Changed from +2 to -2 to go down
     third_note = scale_notes[third_index]
     
-    # Adjust octave
-    while third_note <= base_note:
-        third_note += 12
+    # Adjust octave to be below the input note
+    current_octave = note // 12
+    third_note = third_note + (current_octave * 12)
     
-    return int(third_note + (note // 12) * 12)
+    # If the third is still above or equal to the input note, move it down an octave
+    if third_note >= note:
+        third_note -= 12
+    
+    return int(third_note)
 
-def get_counterpoint_motion(prev_base, prev_counter, new_base, scale_notes):
-    """Determine best counterpoint motion following basic rules:
-    - Prefer contrary motion
-    - Avoid parallel fifths and octaves
-    - Stay within scale
-    - Prefer consonant intervals (thirds, sixths, perfect fifths/octaves)
-    - Avoid unison except at start/end
-    """
-    consonant_intervals = [3, 4, 7, 8, 9]  # Minor third to sixth, perfect fifth
-    base_direction = 1 if new_base > prev_base else -1
+def find_random_diatonic_below(note, key):
+    """Find a random diatonic note below the input note, within an octave range"""
+    scale_notes = get_scale_notes(key)
+    base_note = note % 12
     
-    # Get all possible scale notes within reasonable range
+    # Find the nearest scale note for the input
+    if base_note not in scale_notes:
+        distances = [(abs(base_note - scale_note), scale_note) for scale_note in scale_notes]
+        base_note = min(distances, key=lambda x: x[0])[1]
+    
+    # Get all possible scale notes within one octave below
     possible_notes = []
-    for octave in [-1, 0, 1]:
-        for note in scale_notes:
-            possible_notes.append(note + (12 * octave))
+    current_octave = note // 12
     
-    # Filter to notes within reasonable range of new base note
-    possible_notes = [n for n in possible_notes if -12 <= (n - new_base) <= 12]
+    # Add notes from current octave and one octave below
+    for octave in [current_octave - 1, current_octave]:
+        for scale_note in scale_notes:
+            note_value = scale_note + (12 * octave)
+            if note_value < note:  # Only include notes below input
+                possible_notes.append(note_value)
     
-    # Remove the input note from possibilities (avoid unison)
-    possible_notes = [n for n in possible_notes if (n % 12) != (new_base % 12)]
-    
-    # Score each possible note
-    best_score = -float('inf')
-    best_note = None
-    
-    for note in possible_notes:
-        score = 0
-        interval = abs(note - new_base) % 12
+    if not possible_notes:  # If no notes found, take one octave below input
+        return note - 12
         
-        # Prefer contrary motion
-        if (note - prev_counter) * base_direction < 0:
-            score += 3
-            
-        # Avoid parallel fifths/octaves
-        prev_interval = abs(prev_counter - prev_base) % 12
-        if interval in [7, 0] and interval == prev_interval:
-            score -= 10
-            
-        # Prefer consonant intervals
-        if interval in consonant_intervals:
-            score += 2
-            
-        # Prefer thirds and sixths over fifths and octaves
-        if interval in [3, 4, 8, 9]:  # thirds and sixths
-            score += 1
-            
-        # Prefer smaller leaps
-        leap_size = abs(note - prev_counter)
-        if leap_size <= 2:
-            score += 2
-        elif leap_size <= 4:
-            score += 1
-        elif leap_size >= 8:
-            score -= 2
-            
-        if score > best_score:
-            best_score = score
-            best_note = note
-            
-    # If no good options found, default to a third above
-    if best_note is None:
-        base_scale_pos = scale_notes.index(new_base % 12)
-        third_scale_pos = (base_scale_pos + 2) % len(scale_notes)
-        best_note = scale_notes[third_scale_pos]
-        while best_note <= new_base:
-            best_note += 12
-            
-    return int(best_note)
+    return random.choice(possible_notes)
 
 def main():
     # Get available ports
@@ -167,7 +115,7 @@ def main():
     print("\nSelect mode:")
     print("1: Forward MIDI as-is")
     print("2: Add diatonic thirds")
-    print("3: Generate counterpoint")
+    print("3: Add random diatonic intervals")
     mode = int(input("Enter mode number: "))
 
     # Open output ports
@@ -179,9 +127,10 @@ def main():
     print(f"Output 2: {output_ports[output2_num]}")
     print("\nListening for MIDI messages... Press Ctrl+C to exit.")
 
-    prev_base_note = None
-    prev_counter_note = None
     scale_notes = get_scale_notes(key) if mode in [2, 3] else None
+    
+    # Dictionary to track active notes for mode 3
+    active_notes = {}  # Maps input note to generated note
 
     try:
         for msg in input_port:
@@ -197,30 +146,33 @@ def main():
                     third_note = find_nearest_diatonic_third(msg.note, key)
                     third_msg = msg.copy(note=int(third_note))
                     output_port2.send(third_msg)
-                else:  # Counterpoint mode
-                    if prev_base_note is None:
-                        # For first note, use a third or fifth above
-                        counter_note = find_nearest_diatonic_third(msg.note, key)
+                elif mode == 3:
+                    # Handle random diatonic intervals with proper note tracking
+                    if msg.type == 'note_on' and msg.velocity > 0:
+                        # Generate new random note for note-on
+                        random_note = find_random_diatonic_below(msg.note, key)
+                        active_notes[msg.note] = random_note
+                        random_msg = msg.copy(note=int(random_note))
+                        output_port2.send(random_msg)
                     else:
-                        counter_note = get_counterpoint_motion(
-                            prev_base_note, 
-                            prev_counter_note, 
-                            msg.note, 
-                            scale_notes
-                        )
-                    
-                    counter_msg = msg.copy(note=int(counter_note))
-                    output_port2.send(counter_msg)
-                    
-                    if msg.type == 'note_on':
-                        prev_base_note = msg.note
-                        prev_counter_note = int(counter_note)
+                        # For note-off or zero velocity note-on, use the stored note
+                        if msg.note in active_notes:
+                            random_msg = msg.copy(note=int(active_notes[msg.note]))
+                            output_port2.send(random_msg)
+                            if msg.type == 'note_off' or msg.velocity == 0:
+                                del active_notes[msg.note]  # Clean up note tracking
             else:
                 # Forward all other MIDI messages to both outputs
                 output_port1.send(msg)
                 output_port2.send(msg)
 
     except KeyboardInterrupt:
+        # Make sure to turn off any active notes before exiting
+        if mode == 3:
+            for input_note, generated_note in active_notes.items():
+                off_msg = mido.Message('note_off', note=int(generated_note), velocity=0)
+                output_port2.send(off_msg)
+        
         print("\nExiting...")
         input_port.close()
         output_port1.close()
