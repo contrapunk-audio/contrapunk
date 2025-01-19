@@ -32,3 +32,18 @@ The strict counterpoint mode follows these rules:
 5. Uses step motion after leaps
 6. Maintains limited range between voices
 
+# Ideas
+
+- start the notes after some time like you are playing a chord naturally
+- notes one to four start at different points in time
+- make the tracks to follow different rhythms
+- counter melodies are always in different rhythms
+- separate configurable drum tracks  
+- Global tempo
+- Dedicated rhythm track annotation
+- Uniqueness factor for each track
+- Plugin hosting support (VST, AU etc.)
+- Plugin build (to use inside DAW)
+- Style annotations
+- MIDI file input
+- Guitar to MIDI using Pitch Detection
