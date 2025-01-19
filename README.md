@@ -47,3 +47,5 @@ The strict counterpoint mode follows these rules:
 - Style annotations
 - MIDI file input
 - Guitar to MIDI using Pitch Detection
+- WebRTC support
+
