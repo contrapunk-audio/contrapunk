@@ -48,4 +48,13 @@ The strict counterpoint mode follows these rules:
 - MIDI file input
 - Guitar to MIDI using Pitch Detection
 - WebRTC support
-
+- Candombe rhythm support, swing support for rhythm
+- Is the user playing classical music or jazz music
+- How good of a musician is the user 
+- Short window music classification for the above
+- Tonic identification
+- Melodic motif discovery
+- Onset detection and prediction
+- Meter inference
+- Indian art music: a computational perspective 
+- WIMAGA Workshop April 7 2025
