@@ -3,6 +3,7 @@ from tkinter import ttk
 import mido
 import threading
 import queue
+from audio_to_midi import AudioToMidi
 
 class ContrapunkUI:
     def __init__(self, root):
@@ -10,49 +11,60 @@ class ContrapunkUI:
         self.root.title("Contrapunk")
         self.root.geometry("600x800")
         
-        # MIDI state
+        # MIDI and Audio state
         self.input_port = None
+        self.audio_converter = None
         self.output_ports = []
         self.command_queue = queue.Queue()
         self.current_mode = tk.StringVar(value="1")
         self.key = tk.StringVar(value="0")
+        self.input_type = tk.StringVar(value="midi")  # "midi" or "audio"
         
         # Create the main frame
         main_frame = ttk.Frame(root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Input port selection
-        ttk.Label(main_frame, text="MIDI Input Port:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.input_ports_var = tk.StringVar()
-        self.input_ports_combo = ttk.Combobox(main_frame, textvariable=self.input_ports_var)
-        self.input_ports_combo['values'] = mido.get_input_names()
-        self.input_ports_combo.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        # Input type selection
+        ttk.Label(main_frame, text="Input Type:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        input_type_frame = ttk.Frame(main_frame)
+        input_type_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        ttk.Radiobutton(input_type_frame, text="MIDI Input", variable=self.input_type, 
+                       value="midi", command=self.update_input_options).grid(row=0, column=0, padx=5)
+        ttk.Radiobutton(input_type_frame, text="Audio Input", variable=self.input_type,
+                       value="audio", command=self.update_input_options).grid(row=0, column=1, padx=5)
+        
+        # Input device selection
+        self.input_label = ttk.Label(main_frame, text="MIDI Input Port:")
+        self.input_label.grid(row=2, column=0, sticky=tk.W, pady=5)
+        self.input_device_var = tk.StringVar()
+        self.input_device_combo = ttk.Combobox(main_frame, textvariable=self.input_device_var)
+        self.input_device_combo.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
         
         # Number of outputs
-        ttk.Label(main_frame, text="Number of Outputs:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(main_frame, text="Number of Outputs:").grid(row=4, column=0, sticky=tk.W, pady=5)
         self.num_outputs_var = tk.StringVar(value="2")
         num_outputs_spin = ttk.Spinbox(main_frame, from_=2, to=8, textvariable=self.num_outputs_var)
-        num_outputs_spin.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
+        num_outputs_spin.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=5)
         
         # Output ports frame
         self.outputs_frame = ttk.LabelFrame(main_frame, text="Output Ports", padding="5")
-        self.outputs_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=10)
+        self.outputs_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=10)
         self.output_combos = []
         self.update_output_ports()
         
         # Key selection
-        ttk.Label(main_frame, text="Key:").grid(row=5, column=0, sticky=tk.W, pady=5)
+        ttk.Label(main_frame, text="Key:").grid(row=7, column=0, sticky=tk.W, pady=5)
         key_frame = ttk.Frame(main_frame)
-        key_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=5)
+        key_frame.grid(row=8, column=0, sticky=(tk.W, tk.E), pady=5)
         
         keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
         for i, key_name in enumerate(keys):
             ttk.Radiobutton(key_frame, text=key_name, variable=self.key, value=str(i)).grid(row=i//6, column=i%6, padx=5)
         
         # Mode selection
-        ttk.Label(main_frame, text="Mode:").grid(row=7, column=0, sticky=tk.W, pady=5)
+        ttk.Label(main_frame, text="Mode:").grid(row=9, column=0, sticky=tk.W, pady=5)
         modes_frame = ttk.LabelFrame(main_frame, text="Modes", padding="5")
-        modes_frame.grid(row=8, column=0, sticky=(tk.W, tk.E), pady=5)
+        modes_frame.grid(row=10, column=0, sticky=(tk.W, tk.E), pady=5)
         
         modes = [
             "1: Forward MIDI as-is",
@@ -71,19 +83,34 @@ class ContrapunkUI:
         # Status display
         self.status_var = tk.StringVar(value="Ready")
         status_label = ttk.Label(main_frame, textvariable=self.status_var)
-        status_label.grid(row=9, column=0, sticky=(tk.W, tk.E), pady=10)
+        status_label.grid(row=11, column=0, sticky=(tk.W, tk.E), pady=10)
         
         # Control buttons
         buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.grid(row=10, column=0, sticky=(tk.W, tk.E), pady=10)
+        buttons_frame.grid(row=12, column=0, sticky=(tk.W, tk.E), pady=10)
         
-        ttk.Button(buttons_frame, text="Start", command=self.start_midi).grid(row=0, column=0, padx=5)
-        ttk.Button(buttons_frame, text="Stop", command=self.stop_midi).grid(row=0, column=1, padx=5)
+        ttk.Button(buttons_frame, text="Start", command=self.start_processing).grid(row=0, column=0, padx=5)
+        ttk.Button(buttons_frame, text="Stop", command=self.stop_processing).grid(row=0, column=1, padx=5)
         
         # Bind num_outputs change
         self.num_outputs_var.trace('w', lambda *args: self.update_output_ports())
         
+        # Initialize input options
+        self.update_input_options()
         self.running = False
+    
+    def update_input_options(self):
+        """Update input device options based on selected input type."""
+        if self.input_type.get() == "midi":
+            self.input_label.config(text="MIDI Input Port:")
+            self.input_device_combo['values'] = mido.get_input_names()
+        else:
+            self.input_label.config(text="Audio Input Device:")
+            audio_devices = AudioToMidi.list_audio_devices()
+            self.input_device_combo['values'] = [f"{i}: {name}" for i, name, _ in audio_devices]
+        
+        if self.input_device_combo['values']:
+            self.input_device_combo.set(self.input_device_combo['values'][0])
     
     def update_output_ports(self):
         # Clear existing output combos
@@ -109,21 +136,27 @@ class ContrapunkUI:
                 combo.set(output_ports[0])
             self.output_combos.append(combo)
     
-    def start_midi(self):
+    def start_processing(self):
         if self.running:
             return
         
         try:
-            # Open input port
-            input_port_name = self.input_ports_var.get()
-            self.input_port = mido.open_input(input_port_name)
-            
             # Open output ports
             self.output_ports = []
             for combo in self.output_combos:
                 port_name = combo.get()
                 port = mido.open_output(port_name)
                 self.output_ports.append(port)
+            
+            # Set up input based on type
+            if self.input_type.get() == "midi":
+                input_port_name = self.input_device_var.get()
+                self.input_port = mido.open_input(input_port_name)
+            else:
+                device_str = self.input_device_var.get()
+                device_id = int(device_str.split(":")[0])
+                self.audio_converter = AudioToMidi(device_id=device_id)
+                self.audio_converter.start()
             
             # Start MIDI processing
             self.running = True
@@ -139,13 +172,15 @@ class ContrapunkUI:
         except Exception as e:
             self.status_var.set(f"Error: {str(e)}")
     
-    def stop_midi(self):
+    def stop_processing(self):
         if not self.running:
             return
         
         self.running = False
         if self.input_port:
             self.input_port.close()
+        if self.audio_converter:
+            self.audio_converter.stop()
         for port in self.output_ports:
             port.close()
         
@@ -170,7 +205,13 @@ class ContrapunkUI:
         prev_output_notes = {}  # Track previous output notes for each voice
         
         while self.running:
-            msg = self.input_port.poll()
+            # Get MIDI message from either MIDI input or audio converter
+            msg = None
+            if self.input_type.get() == "midi":
+                msg = self.input_port.poll()
+            else:
+                msg = self.audio_converter.get_midi_message()
+            
             if msg is None:
                 continue
             

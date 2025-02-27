@@ -6,31 +6,240 @@ import tty
 import threading
 import queue
 import argparse
+import curses
+from audio_to_midi import AudioToMidi
+import sounddevice as sd
+import numpy as np
+import time
+
+def list_and_choose_input_type():
+    """Let user choose between MIDI and audio input."""
+    print("\nSelect input type:")
+    print("1: MIDI Input")
+    print("2: Audio Input")
+    
+    while True:
+        try:
+            choice = int(input("\nEnter choice (1 or 2): "))
+            if choice in [1, 2]:
+                return "midi" if choice == 1 else "audio"
+        except ValueError:
+            pass
+        print("Please enter 1 for MIDI or 2 for Audio input.")
 
 def list_and_choose_midi_ports():
     """List all available MIDI ports and let user choose."""
     input_ports = mido.get_input_names()
-    output_ports = mido.get_output_names()
     
     print("\nAvailable MIDI Input Ports:")
     for i, port in enumerate(input_ports):
         print(f"{i}: {port}")
     
+    try:
+        input_choice = int(input("\nChoose input port number: "))
+        return input_ports[input_choice]
+    except (ValueError, IndexError) as e:
+        print(f"Error choosing port: {e}")
+        return None
+
+def monitor_audio_levels(stdscr, device_id, num_channels, sample_rate):
+    """Monitor audio levels using curses for display."""
+    # Set up colors
+    curses.start_color()
+    curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+    curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
+    
+    # Hide the cursor
+    curses.curs_set(0)
+    
+    # Get device info for channel names
+    device_info = sd.query_devices(device_id)
+    print(f"Device info: {device_info}")  # Debug info
+    
+    # Get actual number of input channels from device
+    actual_channels = min(device_info['max_input_channels'], num_channels)
+    if actual_channels == 0:
+        raise ValueError(f"No input channels available on device {device_id}")
+    
+    # Clear screen
+    stdscr.clear()
+    
+    # Create the header
+    stdscr.addstr(0, 0, "Raw Audio Input Monitor (Press 'q' to stop)")
+    stdscr.addstr(1, 0, f"Device: {device_info['name']}")
+    stdscr.addstr(2, 0, f"Sample Rate: {sample_rate}Hz, Buffer Size: 512, Channels: {actual_channels}")
+    stdscr.addstr(3, 0, "Raw Input Values:")
+    
+    # Initialize buffers for displaying raw values
+    raw_buffers = [[] for _ in range(actual_channels)]
+    max_buffer_size = 100  # Keep last 100 samples for display
+    
+    def audio_callback(indata, frames, time, status):
+        if status:
+            stdscr.addstr(actual_channels + 8, 0, f"Status: {status}")
+            stdscr.refresh()
+            return
+        
+        try:
+            # Get raw input data for each channel
+            for i in range(actual_channels):
+                # Get raw data for this channel
+                raw_data = indata[:, i]
+                
+                # Store last few raw values
+                raw_buffers[i].extend(raw_data)
+                if len(raw_buffers[i]) > max_buffer_size:
+                    raw_buffers[i] = raw_buffers[i][-max_buffer_size:]
+                
+                # Clear the line
+                stdscr.addstr(i + 5, 0, " " * 120)
+                
+                # Show channel info
+                channel_info = f"Channel {i}: "
+                stdscr.addstr(i + 5, 0, channel_info)
+                
+                # Show raw values as a simple oscilloscope
+                raw_min = min(raw_buffers[i])
+                raw_max = max(raw_buffers[i])
+                raw_current = raw_data[-1]
+                
+                # Display raw values
+                value_info = f"Current: {raw_current:+.6f} Min: {raw_min:+.6f} Max: {raw_max:+.6f}"
+                stdscr.addstr(i + 5, len(channel_info), value_info)
+                
+                # Show a simple visualization
+                meter_pos = 60
+                meter_width = 50
+                level = int((raw_current - raw_min) / (raw_max - raw_min + 1e-10) * meter_width) if raw_max > raw_min else 0
+                
+                for j in range(meter_width):
+                    if j < level:
+                        color = curses.color_pair(1)
+                        stdscr.addstr(i + 5, meter_pos + j, "█", color)
+                    else:
+                        stdscr.addstr(i + 5, meter_pos + j, "─")
+            
+            # Add debug info
+            stdscr.addstr(actual_channels + 6, 0, f"Buffer size: {frames} samples")
+            stdscr.addstr(actual_channels + 7, 0, f"Raw buffer stats - Shape: {indata.shape}, Type: {indata.dtype}")
+            stdscr.addstr(actual_channels + 8, 0, f"Raw data range - Min: {np.min(indata):.6f}, Max: {np.max(indata):.6f}")
+            
+            # Refresh the screen
+            stdscr.refresh()
+            
+        except Exception as e:
+            # Add error display at the bottom of the screen
+            stdscr.addstr(actual_channels + 11, 0, f"Error: {str(e)}")
+            stdscr.refresh()
+    
+    # Start the audio stream
+    try:
+        with sd.InputStream(
+            device=device_id,
+            channels=actual_channels,
+            callback=audio_callback,
+            blocksize=512,
+            samplerate=48000,
+            dtype=np.float32
+        ):
+            stdscr.addstr(actual_channels + 12, 0, "Stream started successfully")
+            stdscr.refresh()
+            
+            # Main event loop
+            while True:
+                c = stdscr.getch()
+                if c == ord('q'):
+                    break
+                time.sleep(0.01)
+    except Exception as e:
+        stdscr.addstr(actual_channels + 13, 0, f"Stream error: {str(e)}")
+        stdscr.refresh()
+        time.sleep(2)
+
+def list_and_choose_audio_devices():
+    """List all available audio input devices and let user choose."""
+    audio_devices = AudioToMidi.list_audio_devices()
+    
+    print("\nAvailable Audio Input Devices:")
+    for i, name, channels in audio_devices:
+        print(f"{i}: {name} ({channels} channels)")
+    
+    while True:
+        try:
+            print("\nWould you like to monitor input levels before choosing? (y/n)")
+            monitor = input().lower().strip()
+            if monitor == 'y':
+                print("\nStarting audio monitor...")
+                
+                try:
+                    input_choice = int(input("\nEnter device number to monitor: "))
+                    # Find device info
+                    device_info = None
+                    for i, name, channels in audio_devices:
+                        if i == input_choice:
+                            device_info = sd.query_devices(i)
+                            break
+                    
+                    if device_info is None:
+                        print("Invalid device number")
+                        continue
+                    
+                    # Start the curses-based monitor
+                    curses.wrapper(
+                        monitor_audio_levels,
+                        input_choice,
+                        device_info['max_input_channels'],
+                        int(device_info['default_samplerate'])
+                    )
+                    
+                except Exception as e:
+                    print(f"Error during monitoring: {e}")
+                
+                print("\nDone monitoring.")
+            
+            print("\nChoose audio device number:")
+            input_choice = int(input())
+            # Verify the choice is valid
+            for i, _, _ in audio_devices:
+                if i == input_choice:
+                    print("\nWhich channel would you like to use? (0 for first channel, 1 for second, etc.)")
+                    channel = int(input())
+                    # Store the selected channel in the AudioToMidi instance
+                    return input_choice, channel
+            raise ValueError("Invalid device number")
+        except ValueError as e:
+            print(f"Error: {e}")
+            print("Please try again.")
+        except KeyboardInterrupt:
+            print("\nMonitoring stopped.")
+            continue
+    return None, 0
+
+def list_and_choose_output_ports(num_outputs):
+    """List all available MIDI output ports and let user choose multiple."""
+    output_ports = mido.get_output_names()
+    
     print("\nAvailable MIDI Output Ports:")
     for i, port in enumerate(output_ports):
         print(f"{i}: {port}")
     
-    try:
-        input_choice = int(input("\nChoose input port number: "))
-        output1_choice = int(input("Choose first output port number: "))
-        output2_choice = int(input("Choose second output port number: "))
-        
-        return (input_ports[input_choice], 
-                output_ports[output1_choice],
-                output_ports[output2_choice])
-    except (ValueError, IndexError) as e:
-        print(f"Error choosing ports: {e}")
-        return None, None, None
+    chosen_ports = []
+    for i in range(num_outputs):
+        while True:
+            try:
+                if i == 0:
+                    port_num = int(input(f"\nSelect output port {i+1} (melody): "))
+                else:
+                    port_num = int(input(f"Select output port {i+1} (harmony): "))
+                if 0 <= port_num < len(output_ports):
+                    chosen_ports.append(output_ports[port_num])
+                    break
+                print("Invalid port number. Please try again.")
+            except ValueError:
+                print("Please enter a valid number.")
+    
+    return chosen_ports
 
 def get_scale_notes(key):
     """Returns the notes in the major scale for the given key"""
@@ -321,46 +530,47 @@ def main():
         run_ui()
         return
 
-    # Rest of the CLI code
-    # Get available ports
-    available_ports = mido.get_input_names()
-    output_ports = mido.get_output_names()
+    # Choose input type (MIDI or Audio)
+    input_type = list_and_choose_input_type()
     
-    print("\nAvailable MIDI input ports:")
-    for i, port in enumerate(available_ports):
-        print(f"{i}: {port}")
-
-    # Select input port
-    port_num = int(input("\nSelect input port number: "))
-    input_port = mido.open_input(available_ports[port_num])
+    # Set up input based on type
+    input_source = None
+    if input_type == "midi":
+        input_port_name = list_and_choose_midi_ports()
+        if input_port_name is None:
+            print("Failed to select MIDI input port.")
+            return
+        input_source = mido.open_input(input_port_name)
+    else:  # audio
+        device_id, channel = list_and_choose_audio_devices()
+        if device_id is None:
+            print("Failed to select audio input device.")
+            return
+        input_source = AudioToMidi(device_id=device_id, input_channel=channel)
+        input_source.start()
 
     # Select number of outputs
     print("\nHow many outputs do you want? (minimum 2)")
-    num_outputs = max(2, int(input("Enter number of outputs: ")))
+    try:
+        num_outputs = max(2, int(input("Enter number of outputs: ")))
+    except ValueError:
+        print("Invalid input. Using default of 2 outputs.")
+        num_outputs = 2
 
     # Select output ports
-    print("\nAvailable MIDI output ports:")
-    for i, port in enumerate(output_ports):
-        print(f"{i}: {port}")
-    
-    output_nums = []
-    output_ports_list = []
-    
-    print("\nSelect output port numbers:")
-    for i in range(num_outputs):
-        if i == 0:
-            port_num = int(input(f"Select output port {i+1} (melody): "))
-        else:
-            port_num = int(input(f"Select output port {i+1} (harmony): "))
-        output_nums.append(port_num)
-        output_ports_list.append(mido.open_output(output_ports[port_num]))
+    output_ports = list_and_choose_output_ports(num_outputs)
+    output_ports_list = [mido.open_output(port) for port in output_ports]
 
     # Select key
     key_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     print("\nSelect key:")
     for i, key in enumerate(key_names):
         print(f"{i}: {key}")
-    key = int(input("Enter key number: "))
+    try:
+        key = int(input("Enter key number: "))
+    except ValueError:
+        print("Invalid input. Using C major (key 0).")
+        key = 0
 
     # Select initial mode
     print("\nSelect mode:")
@@ -373,13 +583,20 @@ def main():
     print("7: Add strict counterpoint rules")
     print("\nYou can change modes during runtime using number keys 1-7")
     print("Press 'q' to quit")
-    mode = int(input("Enter mode number: "))
+    try:
+        mode = int(input("Enter mode number: "))
+    except ValueError:
+        print("Invalid input. Using mode 1.")
+        mode = 1
 
-    print(f"\nInput: {available_ports[port_num]}")
+    if input_type == "midi":
+        print(f"\nInput: {input_port_name}")
+    else:
+        print(f"\nInput: Audio Device {device_id}")
     print("Outputs:")
-    for i, port_num in enumerate(output_nums):
-        print(f"Output {i+1}: {output_ports[port_num]}")
-    print("\nListening for MIDI messages...")
+    for i, port in enumerate(output_ports):
+        print(f"Output {i+1}: {port}")
+    print("\nListening for input...")
     print("Current mode:", mode)
     print("Press 1-7 to change modes, 'q' to quit")
 
@@ -410,11 +627,17 @@ def main():
             except queue.Empty:
                 pass
 
-            # Handle MIDI messages
-            msg = input_port.poll()
+            # Get MIDI message from either MIDI input or audio converter
+            msg = None
+            if input_type == "midi":
+                msg = input_source.poll()
+            else:
+                msg = input_source.get_midi_message()
+
             if msg is None:
                 continue
 
+            # Rest of the MIDI processing remains the same
             if msg.type == 'note_on' or msg.type == 'note_off':
                 # Always send original note to first output
                 output_ports_list[0].send(msg)
@@ -473,7 +696,7 @@ def main():
                             for voice, harmony_note in enumerate(harmony_notes):
                                 harmony_msg = msg.copy(note=int(harmony_note))
                                 output_ports_list[voice + 1].send(harmony_msg)
-                                
+                            
                             if msg.type == 'note_off' or msg.velocity == 0:
                                 del active_notes[msg.note]
                                 if msg.note in prev_input_notes.values():
@@ -497,7 +720,10 @@ def main():
                         port.send(off_msg)
         
         print("\nExiting...")
-        input_port.close()
+        if input_type == "midi":
+            input_source.close()
+        else:
+            input_source.stop()
         for port in output_ports_list:
             port.close()
 

@@ -2,13 +2,28 @@
 
 ## Description
 
-This is a program that generates counterpoint for a given melody.
+This is a program that generates counterpoint for a given melody. It supports both MIDI input devices and audio input from your audio interface, converting monophonic audio (like from a guitar or voice) into MIDI data.
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Usage
 
 ```bash
 python main.py
 ```
+
+When the application starts:
+1. Choose your input type (MIDI or Audio)
+2. Select your input device:
+   - For MIDI: Choose your MIDI input device
+   - For Audio: Choose your audio interface input
+3. Configure your MIDI output devices for melody and harmony
+4. Select a key and mode
+5. Start playing!
 
 ## Modes
 
@@ -21,6 +36,15 @@ python main.py
 
 The modes can be changed in real-time while playing using number keys 1-6.
 Press 'q' to quit.
+
+## Audio Input Settings
+
+When using audio input:
+- Sample Rate: 44100 Hz
+- Buffer Size: 1024 samples
+- Note Detection Threshold: 0.8 (adjustable)
+- Silence Threshold: 0.1 (adjustable)
+- Pitch Range: C2 to C7
 
 ## Counterpoint Rules (Mode 6)
 
