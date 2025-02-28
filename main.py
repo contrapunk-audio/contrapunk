@@ -63,6 +63,7 @@ class ContrapunkTUI:
         self.max_y, self.max_x = stdscr.getmaxyx()
         self.status_message = ""
         self.title = ""
+        self.active_notes = {}  # Dictionary to track active notes and their harmonies
         
     def setup_colors(self):
         """Initialize color pairs."""
@@ -259,7 +260,7 @@ class ContrapunkTUI:
                 "",
                 "Active Notes:",
                 *[f"Note {note}: {', '.join(map(str, harmonies))}" 
-                  for note, harmonies in active_notes.items()],
+                  for note, harmonies in self.active_notes.items()],
                 "",
                 "Press 1-7 to change modes",
                 "Press 'k' to change key",
@@ -372,7 +373,7 @@ def print_menu(title, options, show_numbers=True):
             print(option)
     print()
 
-def generate_melody(key, length=16, tempo=60, progression='I-IV-V-I', rhythm_pattern=[1.0, 1.0, 1.0, 1.0]):
+def generate_melody(key, length=16, tempo=120, progression='I-IV-V-I', rhythm_pattern=[1.0, 1.0, 1.0, 1.0]):
     """Generate a melodic sequence in the given key following a chord progression and rhythm pattern."""
     scale = get_scale_notes(key)
     melody = []
@@ -456,32 +457,22 @@ def generate_harmony(melody, key, voice_number=1, harmony_mode=7):
         
     return harmony
 
-def play_generated_music(output_ports, command_queue, key=0, tempo=120, progression='I-IV-V-I', rhythm_pattern=[1.0, 1.0, 1.0, 1.0], harmony_modes=None):
+def play_generated_music(output_ports, command_queue, tui, key=0, tempo=120, progression='I-IV-V-I', rhythm_pattern=[1.0, 1.0, 1.0, 1.0], harmony_modes=None):
     """Play generated music through multiple MIDI output ports following a chord progression."""
     try:
         # Open all output ports
         with contextlib.ExitStack() as stack:
             ports = [stack.enter_context(mido.open_output(port)) for port in output_ports]
             
-            clear_terminal()
-            print_menu("Music Generation Controls", [
-                "Press 'q' to stop",
-                "Press 'n' for new melody",
-                "Press 'k' to change key",
-                f"Current key: {NOTES[key]}",
-                f"Current progression: {progression}",
-                "Playing..."
-            ], show_numbers=False)
-            
             while True:
                 # Generate melody and harmonies
-                print_status("\rGenerating new melody...", clear=True)
+                tui.draw_status("Generating new melody...")
                 melody = generate_melody(key, length=16, tempo=tempo, progression=progression, rhythm_pattern=rhythm_pattern)
                 harmonies = [
                     generate_harmony(melody, key, voice_number=i+1, harmony_mode=harmony_modes[i] if harmony_modes else 7)
                     for i in range(len(output_ports)-1)
                 ]
-                print_status("\rPlaying...", clear=True)
+                tui.draw_status("Playing...")
                 
                 # Play all parts simultaneously
                 for step in range(len(melody)):
@@ -491,42 +482,86 @@ def play_generated_music(output_ports, command_queue, key=0, tempo=120, progress
                         if cmd == 'q':
                             return
                         elif cmd == 'n':
-                            print_status("\rGenerating new melody...", clear=True)
+                            tui.draw_status("Generating new melody...")
                             break
                         elif cmd == 'k':
                             key = (key + 1) % 12
-                            print_status(f"\rChanged key to: {NOTES[key]}", clear=True)
+                            tui.draw_status(f"Changed key to: {NOTES[key]}")
                             break
                     
                     # Get the note data for this step
                     m_note, duration, m_vel = melody[step]
                     
-                    # Send melody note
-                    ports[0].send(mido.Message('note_on', note=m_note, velocity=m_vel))
+                    # Track all active notes for proper cleanup
+                    active_notes = []
                     
-                    # Send harmony notes
+                    # Send melody note to first port (if available)
+                    if ports and len(ports) > 0:
+                        try:
+                            msg = mido.Message('note_on', note=m_note, velocity=m_vel)
+                            ports[0].send(msg)
+                            active_notes.append((0, m_note))  # Track (port_index, note)
+                            
+                            # Update TUI display for melody note
+                            if m_note not in tui.active_notes:
+                                tui.active_notes[m_note] = []
+                            tui.active_notes[m_note].append('melody')
+                            
+                        except Exception as e:
+                            tui.show_error(f"Error sending melody note: {str(e)}")
+                            continue
+                    
+                    # Send harmony notes to additional ports
                     for voice, harmony in enumerate(harmonies):
-                        h_note, _, h_vel = harmony[step]
-                        ports[voice + 1].send(mido.Message('note_on', note=h_note, velocity=h_vel))
+                        if voice + 1 < len(ports):  # Check if port exists
+                            try:
+                                h_note, _, h_vel = harmony[step]
+                                msg = mido.Message('note_on', note=h_note, velocity=h_vel)
+                                ports[voice + 1].send(msg)
+                                active_notes.append((voice + 1, h_note))
+                                
+                                # Update TUI display for harmony note
+                                if h_note not in tui.active_notes:
+                                    tui.active_notes[h_note] = []
+                                tui.active_notes[h_note].append(f'harmony{voice+1}')
+                                
+                            except Exception as e:
+                                tui.show_error(f"Error sending harmony note to voice {voice + 1}: {str(e)}")
+                                continue
                     
                     # Wait for note duration
                     time.sleep(duration * 60 / tempo)
                     
-                    # Send note-off messages
-                    ports[0].send(mido.Message('note_off', note=m_note, velocity=0))
-                    for voice, harmony in enumerate(harmonies):
-                        h_note, _, _ = harmony[step]
-                        ports[voice + 1].send(mido.Message('note_off', note=h_note, velocity=0))
+                    # Send note-off messages for all active notes
+                    for port_idx, note in active_notes:
+                        try:
+                            if port_idx < len(ports):
+                                msg = mido.Message('note_off', note=note, velocity=0)
+                                ports[port_idx].send(msg)
+                                
+                                # Update TUI display
+                                if note in tui.active_notes:
+                                    del tui.active_notes[note]
+                                    
+                        except Exception as e:
+                            tui.show_error(f"Error sending note-off to port {port_idx}: {str(e)}")
+                            continue
+                    
+                    # Update the TUI display
+                    tui.update_screen()
                     
     except KeyboardInterrupt:
-        print_status("\nPlayback interrupted by user.", clear=True)
+        tui.draw_status("Playback interrupted by user.")
     except Exception as e:
-        print_status(f"\nError during playback: {e}", clear=True)
+        tui.show_error(f"Error during playback: {str(e)}")
     finally:
-        print_status("\nStopping playback and closing ports...", clear=True)
+        tui.draw_status("Stopping playback and closing ports...")
         # Ensure all ports are closed properly
         for port in ports:
-            port.close()
+            try:
+                port.close()
+            except Exception as e:
+                tui.show_error(f"Error closing port: {str(e)}")
 
 def list_and_choose_input_type():
     """Let user choose between MIDI, audio input, generated music, or mode-based processing."""
@@ -1318,6 +1353,7 @@ def curses_main(stdscr):
         # Start music generation
         command_queue = queue.Queue()
         stop_event = threading.Event()
+        tempo = 120  # Set default tempo
         
         # Start keyboard input thread
         keyboard_thread = threading.Thread(
@@ -1327,18 +1363,118 @@ def curses_main(stdscr):
         )
         keyboard_thread.start()
         
-        # Run music player interface
-        while True:
-            cmd = tui.run_music_player(key, progression, harmony_modes)
-            if cmd == 'q':
-                break
-            elif cmd == 'n':
-                continue
-            elif cmd == 'k':
-                key = (key + 1) % 12
+        # Run music player interface with actual playback
+        try:
+            with contextlib.ExitStack() as stack:
+                ports = [stack.enter_context(mido.open_output(port)) for port in output_ports]
                 
-        stop_event.set()
-        
+                while True:
+                    # Generate and play music
+                    try:
+                        melody = generate_melody(key, length=16, tempo=tempo, progression=progression, rhythm_pattern=rhythm_pattern)
+                        harmonies = [
+                            generate_harmony(melody, key, voice_number=i+1, harmony_mode=harmony_modes[i])
+                            for i in range(len(output_ports)-1)
+                        ]
+                        
+                        # Play all parts simultaneously
+                        for step in range(len(melody)):
+                            # Check for user input
+                            if not command_queue.empty():
+                                cmd = command_queue.get()
+                                if cmd == 'q':
+                                    return
+                                elif cmd == 'n':
+                                    break
+                                elif cmd == 'k':
+                                    key = (key + 1) % 12
+                                    break
+                            
+                            # Get the note data for this step
+                            m_note, duration, m_vel = melody[step]
+                            
+                            # Track all active notes for proper cleanup
+                            active_notes = []
+                            
+                            # Send melody note to first port (if available)
+                            if ports and len(ports) > 0:
+                                try:
+                                    msg = mido.Message('note_on', note=m_note, velocity=m_vel)
+                                    ports[0].send(msg)
+                                    active_notes.append((0, m_note))  # Track (port_index, note)
+                                    
+                                    # Update TUI display for melody note
+                                    if m_note not in tui.active_notes:
+                                        tui.active_notes[m_note] = []
+                                    tui.active_notes[m_note].append('melody')
+                                    
+                                except Exception as e:
+                                    tui.show_error(f"Error sending melody note: {str(e)}")
+                                    continue
+                            
+                            # Send harmony notes to additional ports
+                            for voice, harmony in enumerate(harmonies):
+                                if voice + 1 < len(ports):  # Check if port exists
+                                    try:
+                                        h_note, _, h_vel = harmony[step]
+                                        msg = mido.Message('note_on', note=h_note, velocity=h_vel)
+                                        ports[voice + 1].send(msg)
+                                        active_notes.append((voice + 1, h_note))
+                                        
+                                        # Update TUI display for harmony note
+                                        if h_note not in tui.active_notes:
+                                            tui.active_notes[h_note] = []
+                                        tui.active_notes[h_note].append(f'harmony{voice+1}')
+                                        
+                                    except Exception as e:
+                                        tui.show_error(f"Error sending harmony note to voice {voice + 1}: {str(e)}")
+                                        continue
+                            
+                            # Wait for note duration
+                            time.sleep(duration * 60 / tempo)
+                            
+                            # Send note-off messages for all active notes
+                            for port_idx, note in active_notes:
+                                try:
+                                    if port_idx < len(ports):
+                                        msg = mido.Message('note_off', note=note, velocity=0)
+                                        ports[port_idx].send(msg)
+                                        
+                                        # Update TUI display
+                                        if note in tui.active_notes:
+                                            del tui.active_notes[note]
+                                            
+                                except Exception as e:
+                                    tui.show_error(f"Error sending note-off to port {port_idx}: {str(e)}")
+                                    continue
+                            
+                            # Update the TUI display
+                            tui.update_screen()
+                            
+                    except Exception as e:
+                        tui.show_error(f"Generation error: {str(e)}")
+                        continue
+        except Exception as e:
+            tui.show_error(f"Port error: {str(e)}")
+        finally:
+            # Clean shutdown
+            try:
+                # Send all notes off on all channels for all ports
+                if 'ports' in locals():
+                    for port in ports:
+                        try:
+                            for channel in range(16):  # MIDI has 16 channels
+                                for note in range(128):  # MIDI has 128 possible notes
+                                    port.send(mido.Message('note_off', note=note, velocity=0, channel=channel))
+                        except Exception:
+                            continue  # Skip if port is already closed
+            except Exception:
+                pass  # Ignore cleanup errors
+            
+            stop_event.set()
+            if 'keyboard_thread' in locals() and keyboard_thread.is_alive():
+                keyboard_thread.join(timeout=1.0)
+            
     else:  # Mode-based MIDI Processing
         # Select input port
         available_ports = mido.get_input_names()
@@ -1402,7 +1538,105 @@ def curses_main(stdscr):
         with mido.open_input(input_port) as inport:
             output_ports_list = [mido.open_output(port) for port in output_ports]
             try:
+                # Initialize tracking variables
+                prev_input_notes = {}  # Track previous input notes for each voice
+                prev_output_notes = {}  # Track previous output notes for each voice
+                
                 while True:
+                    # Process MIDI messages
+                    msg = inport.poll()
+                    if msg:
+                        try:
+                            # Always forward original message to first output
+                            if len(output_ports_list) > 0:
+                                output_ports_list[0].send(msg)
+                            
+                            if msg.type in ['note_on', 'note_off']:
+                                # Update active notes in TUI
+                                if msg.type == 'note_on' and msg.velocity > 0:
+                                    # Generate harmony notes based on mode
+                                    harmony_notes = []
+                                    source_note = msg.note
+                                    
+                                    # Generate harmony for each additional output port
+                                    for voice in range(len(output_ports_list) - 1):
+                                        prev_in = prev_input_notes.get(voice + 1)
+                                        prev_out = prev_output_notes.get(voice + 1)
+                                        
+                                        # Generate harmony based on mode
+                                        if mode == 1:
+                                            harmony_note = source_note  # Forward as-is
+                                            harmony_msg = msg.copy()  # Forward exact message
+                                        else:
+                                            # Generate harmony for other modes
+                                            if mode == 2:
+                                                harmony_note = find_nearest_diatonic_third(source_note, key)
+                                            elif mode == 3:
+                                                harmony_note = find_nearest_diatonic_fourth(source_note, key)
+                                            elif mode == 4:
+                                                harmony_note = find_random_diatonic_below(source_note, key)
+                                            elif mode == 5:
+                                                harmony_note = find_random_diatonic_below_no_seconds(source_note, key)
+                                            elif mode == 6:
+                                                harmony_note = find_contrary_diatonic_below_no_seconds(
+                                                    source_note, key, prev_in, prev_out)
+                                            else:  # mode 7
+                                                harmony_note = find_strict_counterpoint_below(
+                                                    source_note, key, prev_in, prev_out)
+                                            harmony_msg = msg.copy(note=int(harmony_note))
+                                        
+                                        # Send harmony note
+                                        if voice + 1 < len(output_ports_list):
+                                            try:
+                                                output_ports_list[voice + 1].send(harmony_msg)
+                                                harmony_notes.append(harmony_note)
+                                                
+                                                # Update tracking for next voice
+                                                if mode in [5, 6, 7]:  # Modes that need motion tracking
+                                                    prev_input_notes[voice + 1] = source_note
+                                                    prev_output_notes[voice + 1] = harmony_note
+                                                
+                                                # Next harmony will be generated from this one
+                                                source_note = harmony_note
+                                            except Exception as e:
+                                                print(f"Error sending harmony note: {e}")
+                                                continue
+                                    
+                                    # Store active notes for display
+                                    tui.active_notes[msg.note] = harmony_notes
+                                    
+                                elif msg.type == 'note_off' or msg.velocity == 0:
+                                    # Send note-off to all harmony notes
+                                    if msg.note in tui.active_notes:
+                                        harmony_notes = tui.active_notes[msg.note]
+                                        for voice, harmony_note in enumerate(harmony_notes):
+                                            if voice + 1 < len(output_ports_list):
+                                                try:
+                                                    harmony_msg = msg.copy(note=int(harmony_note))
+                                                    output_ports_list[voice + 1].send(harmony_msg)
+                                                except Exception as e:
+                                                    print(f"Error sending note-off: {e}")
+                                                    continue
+                                        del tui.active_notes[msg.note]
+                                        
+                                        # Clear motion tracking for this note
+                                        for voice in range(len(output_ports_list) - 1):
+                                            if prev_input_notes.get(voice + 1) == msg.note:
+                                                prev_input_notes[voice + 1] = None
+                                                prev_output_notes[voice + 1] = None
+                            else:
+                                # Forward all other MIDI messages to all outputs
+                                for port in output_ports_list[1:]:
+                                    try:
+                                        port.send(msg)
+                                    except Exception as e:
+                                        print(f"Error forwarding MIDI message: {e}")
+                                        continue
+                        except Exception as e:
+                            print(f"Error processing MIDI message: {e}")
+                            continue
+                    
+                    # Update UI and check for commands
                     cmd, value = tui.run_mode_based_processor(key, mode, command_queue)
                     if cmd == 'q':
                         break
@@ -1410,7 +1644,21 @@ def curses_main(stdscr):
                         key = (key + 1) % 12
                     elif cmd == 'm':
                         mode = value
+                        # Clear tracking when changing modes
+                        prev_input_notes.clear()
+                        prev_output_notes.clear()
+                        tui.active_notes.clear()
             finally:
+                # Send all notes off
+                for port in output_ports_list:
+                    try:
+                        for channel in range(16):
+                            for note in range(128):
+                                port.send(mido.Message('note_off', note=note, velocity=0, channel=channel))
+                    except:
+                        continue
+                # Clear state
+                tui.active_notes.clear()
                 for port in output_ports_list:
                     port.close()
                 stop_event.set()
