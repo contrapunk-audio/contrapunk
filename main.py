@@ -1306,6 +1306,11 @@ def curses_main(stdscr):
             return
         key = key_choice
         
+        # Select tempo
+        tempo = tui.show_value_input("Enter tempo (BPM)", min_val=10, max_val=300)
+        if tempo is None:
+            return
+        
         # Number of outputs
         num_ports = tui.show_value_input("Enter number of output ports", min_val=2, max_val=8)
         if num_ports is None:
@@ -1353,7 +1358,6 @@ def curses_main(stdscr):
         # Start music generation
         command_queue = queue.Queue()
         stop_event = threading.Event()
-        tempo = 120  # Set default tempo
         
         # Start keyboard input thread
         keyboard_thread = threading.Thread(
