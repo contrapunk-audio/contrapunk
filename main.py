@@ -11,21 +11,546 @@ from audio_to_midi import AudioToMidi
 import sounddevice as sd
 import numpy as np
 import time
+import contextlib
+import select
+import os
+
+# Musical constants
+NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+BASE_NOTE = 60  # Middle C
+
+# Define chord progressions
+CHORD_PROGRESSIONS = {
+    'I-IV-V-I': [(0, 'major'), (5, 'major'), (7, 'major'), (0, 'major')],
+    'ii-V-I': [(2, 'minor'), (7, 'major'), (0, 'major')],
+    'I-vi-ii-V': [(0, 'major'), (9, 'minor'), (2, 'minor'), (7, 'major')],
+    # J-Pop Progressions
+    'Royal Road (I-V-vi-iii-IV-I-IV-V)': [(0, 'major'), (7, 'major'), (9, 'minor'), (4, 'minor'), (5, 'major'), (0, 'major'), (5, 'major'), (7, 'major')],
+    'Marusa (I-vi-IV-V)': [(0, 'major'), (9, 'minor'), (5, 'major'), (7, 'major')],
+    # Additional Progressions
+    "Pachelbel's Canon (I-V-vi-iii-IV-I-IV-V)": [(0, 'major'), (7, 'major'), (9, 'minor'), (4, 'minor'), (5, 'major'), (0, 'major'), (5, 'major'), (7, 'major')],
+    'Axis of Awesome (I-V-vi-IV)': [(0, 'major'), (7, 'major'), (9, 'minor'), (5, 'major')],
+    "50s Progression (I-vi-IV-V)": [(0, 'major'), (9, 'minor'), (5, 'major'), (7, 'major')],
+    'Pop Punk Progression (I-V-vi-IV)': [(0, 'major'), (7, 'major'), (9, 'minor'), (5, 'major')],
+    'Jazz Progression (ii-V-I)': [(2, 'minor'), (7, 'major'), (0, 'major')],
+    'Sakura (I-IV-V-vi)': [(0, 'major'), (5, 'major'), (7, 'major'), (9, 'minor')],
+    'Ballad (vi-IV-I-V)': [(9, 'minor'), (5, 'major'), (0, 'major'), (7, 'major')],
+    'Nostalgia (IV-V-iii-vi)': [(5, 'major'), (7, 'major'), (4, 'minor'), (9, 'minor')],
+    'Adventure (I-V-vi-iii-IV-I-IV-V)': [(0, 'major'), (7, 'major'), (9, 'minor'), (4, 'minor'), (5, 'major'), (0, 'major'), (5, 'major'), (7, 'major')],
+    'Dream (I-vi-ii-IV)': [(0, 'major'), (9, 'minor'), (2, 'minor'), (5, 'major')],
+}
+
+# Define popular rhythm patterns
+RHYTHM_PATTERNS = {
+    'Simple 4/4 (Four Quarter Notes)': [1.0, 1.0, 1.0, 1.0],
+    'March (Steady Half Notes)': [0.5, 0.5, 0.5, 0.5],
+    'Waltz (3/4 Time)': [0.75, 0.25, 0.75, 0.25],
+    'Swing Jazz': [0.5, 0.25, 0.25, 0.5],
+    'Latin Groove': [0.5, 0.5, 0.25, 0.25, 0.5],
+    'Syncopated Pop': [0.25, 0.5, 0.25, 0.5],
+    'Classical Dotted': [0.75, 0.25, 1.0],
+    'Folk Ballad': [1.0, 0.5, 0.5],
+    'Rock Backbeat': [0.5, 0.25, 0.5, 0.25]
+}
+
+class ContrapunkTUI:
+    """Text User Interface for Contrapunk using curses."""
+    def __init__(self, stdscr):
+        self.stdscr = stdscr
+        self.setup_colors()
+        self.current_menu = []
+        self.selected_index = 0
+        self.max_y, self.max_x = stdscr.getmaxyx()
+        self.status_message = ""
+        self.title = ""
+        
+    def setup_colors(self):
+        """Initialize color pairs."""
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Selected item
+        curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK)   # Title
+        curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK) # Status
+        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)    # Error
+        curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Normal text
+        curses.init_pair(6, curses.COLOR_MAGENTA, curses.COLOR_BLACK) # Audio levels
+        
+    def draw_title(self):
+        """Draw the title at the top of the screen."""
+        title = f" {self.title} "
+        x = max(0, (self.max_x - len(title)) // 2)
+        self.stdscr.attron(curses.color_pair(2) | curses.A_BOLD)
+        self.stdscr.addstr(0, x, title)
+        self.stdscr.attroff(curses.color_pair(2) | curses.A_BOLD)
+        self.stdscr.hline(1, 0, curses.ACS_HLINE, self.max_x)
+        
+    def draw_status(self):
+        """Draw the status message at the bottom of the screen."""
+        self.stdscr.hline(self.max_y-2, 0, curses.ACS_HLINE, self.max_x)
+        self.stdscr.attron(curses.color_pair(3))
+        self.stdscr.addstr(self.max_y-1, 0, self.status_message[:self.max_x-1])
+        self.stdscr.attroff(curses.color_pair(3))
+        
+    def draw_menu(self):
+        """Draw the current menu items."""
+        start_y = 3
+        for i, item in enumerate(self.current_menu):
+            if i >= self.max_y - 4:  # Leave space for title and status
+                break
+                
+            # Highlight selected item
+            if i == self.selected_index:
+                self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+                
+            # Center the menu item
+            item_str = f" {item} "
+            x = max(0, (self.max_x - len(item_str)) // 2)
+            self.stdscr.addstr(start_y + i, x, item_str)
+            
+            if i == self.selected_index:
+                self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
+                
+    def update_screen(self):
+        """Update the entire screen."""
+        self.stdscr.clear()
+        self.draw_title()
+        self.draw_menu()
+        self.draw_status()
+        self.stdscr.refresh()
+        
+    def show_menu(self, title, items, status="Use ↑↓ to select, Enter to confirm"):
+        """Show a menu and return the selected index."""
+        self.title = title
+        self.current_menu = items
+        self.status_message = status
+        self.selected_index = 0
+        
+        while True:
+            self.update_screen()
+            key = self.stdscr.getch()
+            
+            if key == curses.KEY_UP and self.selected_index > 0:
+                self.selected_index -= 1
+            elif key == curses.KEY_DOWN and self.selected_index < len(items) - 1:
+                self.selected_index += 1
+            elif key == ord('\n'):  # Enter key
+                return self.selected_index
+            elif key == ord('q'):
+                return -1
+                
+    def show_value_input(self, prompt, min_val=None, max_val=None):
+        """Show an input prompt for numeric values."""
+        self.status_message = prompt
+        value = ""
+        while True:
+            self.update_screen()
+            
+            # Show current input
+            x = max(0, (self.max_x - len(prompt) - len(value) - 3) // 2)
+            self.stdscr.addstr(self.max_y // 2, x, f"{prompt}: {value}")
+            
+            key = self.stdscr.getch()
+            if key == ord('\n') and value:  # Enter key
+                try:
+                    val = int(value)
+                    if (min_val is None or val >= min_val) and (max_val is None or val <= max_val):
+                        return val
+                    else:
+                        self.show_error(f"Value must be between {min_val} and {max_val}")
+                except ValueError:
+                    self.show_error("Please enter a valid number")
+            elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
+                value = value[:-1]
+            elif 48 <= key <= 57:  # Numbers 0-9
+                value += chr(key)
+            elif key == ord('q'):
+                return None
+                
+    def show_error(self, message, delay=1):
+        """Show an error message briefly."""
+        self.stdscr.attron(curses.color_pair(4) | curses.A_BOLD)
+        x = max(0, (self.max_x - len(message)) // 2)
+        self.stdscr.addstr(self.max_y // 2 + 2, x, message)
+        self.stdscr.attroff(curses.color_pair(4) | curses.A_BOLD)
+        self.stdscr.refresh()
+        curses.napms(delay * 1000)
+        
+    def run_audio_monitor(self, device_id, num_channels, sample_rate):
+        """Run the audio level monitor interface."""
+        self.title = "Audio Monitor"
+        self.status_message = "Press 'q' to stop monitoring"
+        
+        # Initialize audio buffers
+        raw_buffers = [[] for _ in range(num_channels)]
+        max_buffer_size = 100
+        
+        def audio_callback(indata, frames, time, status):
+            if status:
+                self.show_error(f"Status: {status}")
+                return
+                
+            try:
+                for i in range(num_channels):
+                    raw_data = indata[:, i]
+                    raw_buffers[i].extend(raw_data)
+                    if len(raw_buffers[i]) > max_buffer_size:
+                        raw_buffers[i] = raw_buffers[i][-max_buffer_size:]
+                    
+                    # Clear line
+                    self.stdscr.addstr(i + 5, 0, " " * self.max_x)
+                    
+                    # Show channel info
+                    raw_min = min(raw_buffers[i])
+                    raw_max = max(raw_buffers[i])
+                    raw_current = raw_data[-1]
+                    
+                    info = f"Channel {i}: {raw_current:+.3f} [{raw_min:+.3f} to {raw_max:+.3f}]"
+                    self.stdscr.addstr(i + 5, 2, info)
+                    
+                    # Draw level meter
+                    meter_width = self.max_x - len(info) - 6
+                    level = int((raw_current - raw_min) / (raw_max - raw_min + 1e-10) * meter_width)
+                    
+                    self.stdscr.attron(curses.color_pair(6))
+                    self.stdscr.addstr(i + 5, len(info) + 4, "█" * level + "░" * (meter_width - level))
+                    self.stdscr.attroff(curses.color_pair(6))
+                
+                self.stdscr.refresh()
+                
+            except Exception as e:
+                self.show_error(f"Error: {e}")
+        
+        try:
+            with sd.InputStream(
+                device=device_id,
+                channels=num_channels,
+                callback=audio_callback,
+                blocksize=512,
+                samplerate=sample_rate,
+                dtype=np.float32
+            ):
+                while True:
+                    key = self.stdscr.getch()
+                    if key == ord('q'):
+                        break
+                    time.sleep(0.01)
+        except Exception as e:
+            self.show_error(f"Stream error: {e}")
+            time.sleep(2)
+            
+    def run_mode_based_processor(self, key, mode, command_queue):
+        """Run the mode-based MIDI processor interface."""
+        self.title = "Mode-based MIDI Processor"
+        self.status_message = "Press 1-7 to change modes, 'q' to quit"
+        
+        mode_names = [
+            "Forward MIDI as-is",
+            "Add diatonic thirds",
+            "Add diatonic fourths",
+            "Add random diatonic intervals",
+            "Add random diatonic intervals (no seconds)",
+            "Add contrary motion",
+            "Strict counterpoint"
+        ]
+        
+        while True:
+            self.current_menu = [
+                f"Current Key: {NOTES[key]}",
+                f"Current Mode: {mode_names[mode-1]}",
+                "",
+                "Active Notes:",
+                *[f"Note {note}: {', '.join(map(str, harmonies))}" 
+                  for note, harmonies in active_notes.items()],
+                "",
+                "Press 1-7 to change modes",
+                "Press 'k' to change key",
+                "Press 'q' to quit"
+            ]
+            
+            self.update_screen()
+            
+            if not command_queue.empty():
+                cmd = command_queue.get()
+                if cmd.isdigit() and 1 <= int(cmd) <= 7:
+                    return ('m', int(cmd))
+                elif cmd == 'k':
+                    return ('k', None)
+                elif cmd == 'q':
+                    return ('q', None)
+            
+            time.sleep(0.1)
+            
+    def run_midi_processor(self, input_port, output_ports):
+        """Run the MIDI processor interface."""
+        self.title = "MIDI Processor"
+        self.status_message = "Press 'q' to quit"
+        
+        while True:
+            # Process MIDI messages
+            msg = input_port.poll()
+            if msg:
+                # Display MIDI activity
+                if msg.type in ['note_on', 'note_off']:
+                    self.current_menu = [
+                        f"Input Port: {input_port}",
+                        f"Output Ports: {', '.join(output_ports)}",
+                        "",
+                        f"Last Message: {msg.type} note={msg.note} velocity={msg.velocity}"
+                    ]
+                else:
+                    self.current_menu = [
+                        f"Input Port: {input_port}",
+                        f"Output Ports: {', '.join(output_ports)}",
+                        "",
+                        f"Last Message: {msg.type}"
+                    ]
+                self.update_screen()
+            
+            # Check for quit
+            if self.stdscr.getch() == ord('q'):
+                break
+                
+    def run_music_player(self, key, progression, harmony_modes):
+        """Show the music player interface."""
+        self.title = "Music Player"
+        self.status_message = "Press 'q' to quit, 'n' for new melody, 'k' to change key"
+        
+        mode_names = [
+            "Forward",
+            "Thirds",
+            "Fourths",
+            "Random",
+            "No Seconds",
+            "Contrary",
+            "Counterpoint"
+        ]
+        
+        while True:
+            self.current_menu = [
+                f"Current Key: {NOTES[key]}",
+                f"Current Progression: {progression}",
+                "Harmony Modes:",
+                *[f"Voice {i+1}: {mode_names[mode-1]}" 
+                  for i, mode in enumerate(harmony_modes)],
+                "",
+                "Playing..."
+            ]
+            
+            self.update_screen()
+            key = self.stdscr.getch()
+            
+            if key == ord('q'):
+                return 'q'
+            elif key == ord('n'):
+                return 'n'
+            elif key == ord('k'):
+                return 'k'
+
+def clear_terminal():
+    """Clear the terminal screen in a cross-platform way."""
+    if sys.platform.startswith('win'):
+        os.system('cls')
+    else:
+        os.system('clear')
+
+def print_status(message, clear=False):
+    """Print status messages in a consistent way.
+    If clear is True, clear the line before printing."""
+    if clear:
+        # Move cursor to beginning of line and clear line
+        sys.stdout.write('\r\033[K')
+    sys.stdout.write(message)
+    sys.stdout.flush()
+
+def print_menu(title, options, show_numbers=True):
+    """Print a menu with options in a consistent format."""
+    print(f"\n{title}")
+    print("=" * len(title))
+    for i, option in enumerate(options):
+        if show_numbers:
+            print(f"{i+1}: {option}")
+        else:
+            print(option)
+    print()
+
+def generate_melody(key, length=16, tempo=60, progression='I-IV-V-I', rhythm_pattern=[1.0, 1.0, 1.0, 1.0]):
+    """Generate a melodic sequence in the given key following a chord progression and rhythm pattern."""
+    scale = get_scale_notes(key)
+    melody = []
+    current_note = random.choice(scale) + BASE_NOTE
+    
+    # Get the chord progression
+    chords = CHORD_PROGRESSIONS[progression]
+    
+    for i in range(length):
+        # Use the selected rhythm pattern for each measure
+        rhythm_index = 0
+        
+        # Determine the current chord
+        chord_root, chord_type = chords[i % len(chords)]
+        chord_notes = get_chord_notes(chord_root, chord_type, key)
+        
+        # Determine the next note movement
+        step = random.choice([-2, -1, 0, 1, 2])  # Allow steps within a reasonable range
+        scale_pos = scale.index(current_note % 12)
+        new_scale_pos = (scale_pos + step) % len(scale)
+        new_note = chord_notes[new_scale_pos % len(chord_notes)] + BASE_NOTE + ((current_note - BASE_NOTE) // 12) * 12
+        
+        # Adjust octave if necessary
+        if new_note < BASE_NOTE:
+            new_note += 12
+        elif new_note > BASE_NOTE + 24:
+            new_note -= 12
+            
+        # Create note event with duration from rhythm pattern
+        duration = rhythm_pattern[rhythm_index % len(rhythm_pattern)]
+        rhythm_index += 1
+        velocity = random.randint(64, 96)  # Varying velocity for dynamics
+        melody.append((new_note, duration, velocity))
+        current_note = new_note
+        
+    return melody
+
+def generate_harmony(melody, key, voice_number=1, harmony_mode=7):
+    """Generate harmony for a given melody using selected harmony mode.
+    harmony_mode options:
+    1: Forward melody as-is
+    2: Add diatonic thirds
+    3: Add diatonic fourths
+    4: Add random diatonic intervals
+    5: Add random diatonic intervals (no seconds)
+    6: Add contrary motion with random intervals (no seconds)
+    7: Add strict counterpoint rules (default)
+    """
+    harmony = []
+    prev_melody = None
+    prev_harmony = None
+    
+    for note, duration, velocity in melody:
+        # Generate harmony based on selected mode
+        if harmony_mode == 1:
+            # Forward melody as-is
+            harmony_note = note
+        elif harmony_mode == 2:
+            harmony_note = find_nearest_diatonic_third(note, key)
+        elif harmony_mode == 3:
+            harmony_note = find_nearest_diatonic_fourth(note, key)
+        elif harmony_mode == 4:
+            harmony_note = find_random_diatonic_below(note, key)
+        elif harmony_mode == 5:
+            harmony_note = find_random_diatonic_below_no_seconds(note, key)
+        elif harmony_mode == 6:
+            harmony_note = find_contrary_diatonic_below_no_seconds(note, key, prev_melody, prev_harmony)
+        else:  # mode 7 - strict counterpoint
+            # Different voice numbers get different preferred intervals
+            if voice_number == 1:
+                harmony_note = find_strict_counterpoint_below(note, key, prev_melody, prev_harmony)
+            elif voice_number == 2:
+                harmony_note = find_strict_counterpoint_below(note, key, prev_melody, prev_harmony)
+            else:
+                harmony_note = find_strict_counterpoint_below(note, key, prev_melody, prev_harmony)
+        
+        # Reduce velocity more for each subsequent voice
+        harmony.append((harmony_note, duration, velocity - (5 * voice_number)))
+        prev_melody = note
+        prev_harmony = harmony_note
+        
+    return harmony
+
+def play_generated_music(output_ports, command_queue, key=0, tempo=120, progression='I-IV-V-I', rhythm_pattern=[1.0, 1.0, 1.0, 1.0], harmony_modes=None):
+    """Play generated music through multiple MIDI output ports following a chord progression."""
+    try:
+        # Open all output ports
+        with contextlib.ExitStack() as stack:
+            ports = [stack.enter_context(mido.open_output(port)) for port in output_ports]
+            
+            clear_terminal()
+            print_menu("Music Generation Controls", [
+                "Press 'q' to stop",
+                "Press 'n' for new melody",
+                "Press 'k' to change key",
+                f"Current key: {NOTES[key]}",
+                f"Current progression: {progression}",
+                "Playing..."
+            ], show_numbers=False)
+            
+            while True:
+                # Generate melody and harmonies
+                print_status("\rGenerating new melody...", clear=True)
+                melody = generate_melody(key, length=16, tempo=tempo, progression=progression, rhythm_pattern=rhythm_pattern)
+                harmonies = [
+                    generate_harmony(melody, key, voice_number=i+1, harmony_mode=harmony_modes[i] if harmony_modes else 7)
+                    for i in range(len(output_ports)-1)
+                ]
+                print_status("\rPlaying...", clear=True)
+                
+                # Play all parts simultaneously
+                for step in range(len(melody)):
+                    # Check for user input
+                    if not command_queue.empty():
+                        cmd = command_queue.get()
+                        if cmd == 'q':
+                            return
+                        elif cmd == 'n':
+                            print_status("\rGenerating new melody...", clear=True)
+                            break
+                        elif cmd == 'k':
+                            key = (key + 1) % 12
+                            print_status(f"\rChanged key to: {NOTES[key]}", clear=True)
+                            break
+                    
+                    # Get the note data for this step
+                    m_note, duration, m_vel = melody[step]
+                    
+                    # Send melody note
+                    ports[0].send(mido.Message('note_on', note=m_note, velocity=m_vel))
+                    
+                    # Send harmony notes
+                    for voice, harmony in enumerate(harmonies):
+                        h_note, _, h_vel = harmony[step]
+                        ports[voice + 1].send(mido.Message('note_on', note=h_note, velocity=h_vel))
+                    
+                    # Wait for note duration
+                    time.sleep(duration * 60 / tempo)
+                    
+                    # Send note-off messages
+                    ports[0].send(mido.Message('note_off', note=m_note, velocity=0))
+                    for voice, harmony in enumerate(harmonies):
+                        h_note, _, _ = harmony[step]
+                        ports[voice + 1].send(mido.Message('note_off', note=h_note, velocity=0))
+                    
+    except KeyboardInterrupt:
+        print_status("\nPlayback interrupted by user.", clear=True)
+    except Exception as e:
+        print_status(f"\nError during playback: {e}", clear=True)
+    finally:
+        print_status("\nStopping playback and closing ports...", clear=True)
+        # Ensure all ports are closed properly
+        for port in ports:
+            port.close()
 
 def list_and_choose_input_type():
-    """Let user choose between MIDI and audio input."""
+    """Let user choose between MIDI, audio input, generated music, or mode-based processing."""
     print("\nSelect input type:")
     print("1: MIDI Input")
     print("2: Audio Input")
+    print("3: Generated Music")
+    print("4: Mode-based MIDI Processing")
     
     while True:
         try:
-            choice = int(input("\nEnter choice (1 or 2): "))
-            if choice in [1, 2]:
-                return "midi" if choice == 1 else "audio"
+            choice = int(input("\nEnter choice (1-4): "))
+            if choice in [1, 2, 3, 4]:
+                if choice == 1:
+                    return "midi"
+                elif choice == 2:
+                    return "audio"
+                elif choice == 3:
+                    return "generated"
+                else:
+                    return "mode-based"
         except ValueError:
             pass
-        print("Please enter 1 for MIDI or 2 for Audio input.")
+        print("Please enter 1 for MIDI, 2 for Audio input, 3 for Generated Music, or 4 for Mode-based Processing.")
 
 def list_and_choose_midi_ports():
     """List all available MIDI ports and let user choose."""
@@ -248,157 +773,127 @@ def get_scale_notes(key):
     return scale_notes
 
 def find_nearest_diatonic_third(note, key):
-    """Find the nearest diatonic third below the note in the given key"""
+    """Find the nearest diatonic third above the given note in the given key."""
     scale_notes = get_scale_notes(key)
-    base_note = note % 12
+    note_in_scale = note % 12
+    octave = note // 12
     
-    # Find the nearest scale note for the input
-    if base_note not in scale_notes:
-        distances = [(abs(base_note - scale_note), scale_note) for scale_note in scale_notes]
-        base_note = min(distances, key=lambda x: x[0])[1]
+    # Find position in scale
+    try:
+        scale_pos = scale_notes.index(note_in_scale)
+    except ValueError:
+        # If note is not in scale, find nearest scale note
+        nearest_pos = min(range(len(scale_notes)), 
+                         key=lambda i: abs(scale_notes[i] - note_in_scale))
+        scale_pos = nearest_pos
     
-    # Find the note two scale degrees below
-    base_index = scale_notes.index(base_note)
-    third_index = (base_index - 2) % 7  # Changed from +2 to -2 to go down
-    third_note = scale_notes[third_index]
+    # Get note two scale positions up (diatonic third)
+    third_pos = (scale_pos + 2) % len(scale_notes)
+    third = scale_notes[third_pos]
     
-    # Adjust octave to be below the input note
-    current_octave = note // 12
-    third_note = third_note + (current_octave * 12)
+    # Adjust octave if necessary
+    if third < note_in_scale:
+        octave += 1
     
-    # If the third is still above or equal to the input note, move it down an octave
-    if third_note >= note:
-        third_note -= 12
-    
-    return int(third_note)
+    return third + (octave * 12)
 
 def find_nearest_diatonic_fourth(note, key):
-    """Find the nearest diatonic fourth below the note in the given key"""
+    """Find the nearest diatonic fourth above the given note in the given key."""
     scale_notes = get_scale_notes(key)
-    base_note = note % 12
+    note_in_scale = note % 12
+    octave = note // 12
     
-    # Find the nearest scale note for the input
-    if base_note not in scale_notes:
-        distances = [(abs(base_note - scale_note), scale_note) for scale_note in scale_notes]
-        base_note = min(distances, key=lambda x: x[0])[1]
+    # Find position in scale
+    try:
+        scale_pos = scale_notes.index(note_in_scale)
+    except ValueError:
+        # If note is not in scale, find nearest scale note
+        nearest_pos = min(range(len(scale_notes)), 
+                         key=lambda i: abs(scale_notes[i] - note_in_scale))
+        scale_pos = nearest_pos
     
-    # Find the note three scale degrees below
-    base_index = scale_notes.index(base_note)
-    fourth_index = (base_index - 3) % 7  # Three scale degrees below
-    fourth_note = scale_notes[fourth_index]
+    # Get note three scale positions up (diatonic fourth)
+    fourth_pos = (scale_pos + 3) % len(scale_notes)
+    fourth = scale_notes[fourth_pos]
     
-    # Adjust octave to be below the input note
-    current_octave = note // 12
-    fourth_note = fourth_note + (current_octave * 12)
+    # Adjust octave if necessary
+    if fourth < note_in_scale:
+        octave += 1
     
-    # If the fourth is still above or equal to the input note, move it down an octave
-    if fourth_note >= note:
-        fourth_note -= 12
-    
-    return int(fourth_note)
+    return fourth + (octave * 12)
 
 def find_random_diatonic_below(note, key):
-    """Find a random diatonic note below the input note, within an octave range"""
+    """Find a random diatonic note below the given note in the given key."""
     scale_notes = get_scale_notes(key)
-    base_note = note % 12
-    
-    # Find the nearest scale note for the input
-    if base_note not in scale_notes:
-        distances = [(abs(base_note - scale_note), scale_note) for scale_note in scale_notes]
-        base_note = min(distances, key=lambda x: x[0])[1]
-    
-    # Get all possible scale notes within one octave below
-    possible_notes = []
+    note_in_scale = note % 12
     current_octave = note // 12
     
-    # Add notes from current octave and one octave below
-    for octave in [current_octave - 1, current_octave]:
-        for scale_note in scale_notes:
-            note_value = scale_note + (12 * octave)
-            if note_value < note:  # Only include notes below input
-                possible_notes.append(note_value)
+    # Get all possible notes in the scale within one octave below
+    possible_notes = []
+    for scale_note in scale_notes:
+        if scale_note < note_in_scale:
+            possible_notes.append(scale_note + (current_octave * 12))
+        else:
+            possible_notes.append(scale_note + ((current_octave - 1) * 12))
     
-    if not possible_notes:  # If no notes found, take one octave below input
-        return note - 12
-        
     return random.choice(possible_notes)
 
 def find_random_diatonic_below_no_seconds(note, key):
-    """Find a random diatonic note below the input note, excluding seconds"""
+    """Find a random diatonic note below the given note, avoiding seconds."""
     scale_notes = get_scale_notes(key)
-    base_note = note % 12
-    
-    # Find the nearest scale note for the input
-    if base_note not in scale_notes:
-        distances = [(abs(base_note - scale_note), scale_note) for scale_note in scale_notes]
-        base_note = min(distances, key=lambda x: x[0])[1]
-    
-    # Get all possible scale notes within one octave below
-    possible_notes = []
+    note_in_scale = note % 12
     current_octave = note // 12
     
-    # Add notes from current octave and one octave below
-    for octave in [current_octave - 1, current_octave]:
-        for scale_note in scale_notes:
-            note_value = scale_note + (12 * octave)
-            # Only include notes that are:
-            # 1. Below the input note
-            # 2. Not a minor second (1 semitone) or major second (2 semitones) away
-            interval = abs(note - note_value) % 12
-            if note_value < note and interval not in [1, 2]:
-                possible_notes.append(note_value)
+    # Get all possible notes in the scale within one octave below
+    possible_notes = []
+    for scale_note in scale_notes:
+        interval = (note_in_scale - scale_note) % 12
+        if interval not in [1, 2, 10, 11]:  # Avoid seconds and sevenths
+            if scale_note < note_in_scale:
+                possible_notes.append(scale_note + (current_octave * 12))
+            else:
+                possible_notes.append(scale_note + ((current_octave - 1) * 12))
     
-    if not possible_notes:  # If no notes found, take one octave below input
-        return note - 12
-        
     return random.choice(possible_notes)
 
 def find_contrary_diatonic_below_no_seconds(note, key, prev_input=None, prev_output=None):
-    """Find a random diatonic note below the input note that moves in contrary motion"""
+    """Find a diatonic note below the given note using contrary motion and avoiding seconds."""
     scale_notes = get_scale_notes(key)
-    base_note = note % 12
+    note_in_scale = note % 12
+    current_octave = note // 12
     
-    # If no previous notes, just use regular random function
+    # If no previous notes, use random selection
     if prev_input is None or prev_output is None:
         return find_random_diatonic_below_no_seconds(note, key)
     
-    # Determine input direction
-    input_direction = 1 if note > prev_input else (-1 if note < prev_input else 0)
+    # Determine direction of input motion
+    input_direction = 1 if note > prev_input else -1 if note < prev_input else 0
     
-    # If input note didn't change, use regular random function
-    if input_direction == 0:
-        return find_random_diatonic_below_no_seconds(note, key)
-    
-    # Find the nearest scale note for the input
-    if base_note not in scale_notes:
-        distances = [(abs(base_note - scale_note), scale_note) for scale_note in scale_notes]
-        base_note = min(distances, key=lambda x: x[0])[1]
-    
-    # Get all possible scale notes within one octave below
+    # Get all possible notes in contrary motion
     possible_notes = []
-    current_octave = note // 12
+    for scale_note in scale_notes:
+        interval = (note_in_scale - scale_note) % 12
+        if interval not in [1, 2, 10, 11]:  # Avoid seconds and sevenths
+            if scale_note < note_in_scale:
+                new_note = scale_note + (current_octave * 12)
+            else:
+                new_note = scale_note + ((current_octave - 1) * 12)
+            
+            # Check if motion is contrary
+            if input_direction != 0:
+                output_direction = 1 if new_note > prev_output else -1 if new_note < prev_output else 0
+                if output_direction * input_direction >= 0:  # Skip if not contrary
+                    continue
+            
+            possible_notes.append(new_note)
     
-    # Add notes from current octave and one octave below
-    for octave in [current_octave - 1, current_octave]:
-        for scale_note in scale_notes:
-            note_value = scale_note + (12 * octave)
-            # Only include notes that are:
-            # 1. Below the input note
-            # 2. Not a minor second (1 semitone) or major second (2 semitones) away
-            # 3. Moving in contrary motion to the input
-            interval = abs(note - note_value) % 12
-            note_direction = 1 if note_value > prev_output else (-1 if note_value < prev_output else 0)
-            if (note_value < note and 
-                interval not in [1, 2] and 
-                note_direction * input_direction < 0):  # Ensures contrary motion
-                possible_notes.append(note_value)
-    
-    if not possible_notes:  # If no contrary motion notes found, fall back to regular function
+    # If no contrary motion notes found, fall back to any valid note
+    if not possible_notes:
         return find_random_diatonic_below_no_seconds(note, key)
         
     return random.choice(possible_notes)
 
-def find_strict_counterpoint_below(note, key, prev_input=None, prev_output=None):
+def find_strict_counterpoint_below(note, key, prev_input=None, prev_output=None, preferred_intervals=None):
     """Generate counterpoint following standard rules:
     1. Prefer contrary motion
     2. Use consonant intervals (3rds, 6ths, 5ths, octaves)
@@ -413,7 +908,7 @@ def find_strict_counterpoint_below(note, key, prev_input=None, prev_output=None)
     
     # If no previous notes, start with a consonant interval
     if prev_input is None or prev_output is None:
-        consonant_intervals = [3, 4, 7, 8, 9]  # thirds, fifth, sixth
+        consonant_intervals = preferred_intervals if preferred_intervals else [3, 4, 7, 8, 9]
         possible_notes = []
         current_octave = note // 12
         
@@ -503,77 +998,57 @@ def get_key_nonblocking():
     old_settings = termios.tcgetattr(fd)
     try:
         tty.setraw(sys.stdin.fileno())
-        ch = sys.stdin.read(1) if sys.stdin.readable() else None
+        # Add a timeout to prevent blocking indefinitely
+        rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+        if rlist:
+            ch = sys.stdin.read(1)
+        else:
+            ch = None
+    except Exception as e:
+        print(f"\nError reading keyboard input: {e}")
+        ch = None
     finally:
+        # Always restore terminal settings
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return ch
 
-def keyboard_input_thread(command_queue):
+def keyboard_input_thread(command_queue, stop_event):
     """Thread function to handle keyboard input."""
-    while True:
-        key = get_key_nonblocking()
-        if key:
-            if key in ['1', '2', '3', '4', '5', '6']:  # Added '6' to valid mode keys
-                command_queue.put(('change_mode', int(key)))
-            elif key == 'q':
-                command_queue.put(('quit', None))
-                break
+    while not stop_event.is_set():
+        try:
+            key = get_key_nonblocking()
+            if key:
+                if key in ['1', '2', '3', '4', '5', '6', '7', 'q', 'n', 'k']:
+                    command_queue.put(key)
+                    if key == 'q':
+                        break
+        except Exception as e:
+            print(f"\nKeyboard thread error: {e}")
+            break
+    # Ensure terminal is in a good state when exiting
+    try:
+        termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, termios.tcgetattr(sys.stdin.fileno()))
+    except:
+        pass
 
-def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Contrapunk - A MIDI counterpoint generator')
-    parser.add_argument('--ui', action='store_true', help='Use graphical user interface instead of CLI')
-    args = parser.parse_args()
-
-    if args.ui:
-        from contrapunk_ui import run_ui
-        run_ui()
-        return
-
-    # Choose input type (MIDI or Audio)
-    input_type = list_and_choose_input_type()
+def get_chord_notes(root, chord_type, key):
+    """Return the notes of a chord based on its root and type."""
+    scale_notes = get_scale_notes(key)
+    root_note = (root + key) % 12
     
-    # Set up input based on type
-    input_source = None
-    if input_type == "midi":
-        input_port_name = list_and_choose_midi_ports()
-        if input_port_name is None:
-            print("Failed to select MIDI input port.")
-            return
-        input_source = mido.open_input(input_port_name)
-    else:  # audio
-        device_id, channel = list_and_choose_audio_devices()
-        if device_id is None:
-            print("Failed to select audio input device.")
-            return
-        input_source = AudioToMidi(device_id=device_id, input_channel=channel)
-        input_source.start()
+    if chord_type == 'major':
+        intervals = [0, 4, 7]  # Major triad
+    elif chord_type == 'minor':
+        intervals = [0, 3, 7]  # Minor triad
+    else:
+        intervals = [0, 4, 7]  # Default to major triad if type is unknown
+    
+    chord_notes = [(root_note + interval) % 12 for interval in intervals]
+    return chord_notes
 
-    # Select number of outputs
-    print("\nHow many outputs do you want? (minimum 2)")
-    try:
-        num_outputs = max(2, int(input("Enter number of outputs: ")))
-    except ValueError:
-        print("Invalid input. Using default of 2 outputs.")
-        num_outputs = 2
-
-    # Select output ports
-    output_ports = list_and_choose_output_ports(num_outputs)
-    output_ports_list = [mido.open_output(port) for port in output_ports]
-
-    # Select key
-    key_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    print("\nSelect key:")
-    for i, key in enumerate(key_names):
-        print(f"{i}: {key}")
-    try:
-        key = int(input("Enter key number: "))
-    except ValueError:
-        print("Invalid input. Using C major (key 0).")
-        key = 0
-
-    # Select initial mode
-    print("\nSelect mode:")
+def process_mode_based_midi(input_port, output_ports_list, key, command_queue, stop_event):
+    """Process MIDI input using the mode-based system."""
+    print("\nSelect initial mode:")
     print("1: Forward MIDI as-is")
     print("2: Add diatonic thirds")
     print("3: Add diatonic fourths")
@@ -583,65 +1058,43 @@ def main():
     print("7: Add strict counterpoint rules")
     print("\nYou can change modes during runtime using number keys 1-7")
     print("Press 'q' to quit")
+    
     try:
-        mode = int(input("Enter mode number: "))
+        mode = int(input("Enter mode number (1-7): "))
     except ValueError:
-        print("Invalid input. Using mode 1.")
         mode = 1
-
-    if input_type == "midi":
-        print(f"\nInput: {input_port_name}")
-    else:
-        print(f"\nInput: Audio Device {device_id}")
-    print("Outputs:")
-    for i, port in enumerate(output_ports):
-        print(f"Output {i+1}: {port}")
-    print("\nListening for input...")
-    print("Current mode:", mode)
-    print("Press 1-7 to change modes, 'q' to quit")
-
+    
     scale_notes = get_scale_notes(key)
     active_notes = {}  # Maps input note to list of generated notes
     prev_input_notes = {}  # Track previous input notes for each voice
     prev_output_notes = {}  # Track previous output notes for each voice
     
-    # Set up command queue and keyboard input thread
-    command_queue = queue.Queue()
-    keyboard_thread = threading.Thread(target=keyboard_input_thread, args=(command_queue,))
-    keyboard_thread.daemon = True
-    keyboard_thread.start()
-
+    print(f"\nCurrent mode: {mode}")
+    print("Press 1-7 to change modes, 'q' to quit")
+    
     try:
-        while True:
+        while not stop_event.is_set():
             # Check for mode change commands
-            try:
-                command, value = command_queue.get_nowait()
-                if command == 'change_mode':
-                    mode = value
+            if not command_queue.empty():
+                cmd = command_queue.get()
+                if cmd.isdigit() and 1 <= int(cmd) <= 7:
+                    mode = int(cmd)
                     # Reset motion tracking when changing modes
                     prev_input_notes = {}
                     prev_output_notes = {}
                     print(f"\nChanged to mode {mode}")
-                elif command == 'quit':
-                    raise KeyboardInterrupt
-            except queue.Empty:
-                pass
-
-            # Get MIDI message from either MIDI input or audio converter
-            msg = None
-            if input_type == "midi":
-                msg = input_source.poll()
-            else:
-                msg = input_source.get_midi_message()
-
+                elif cmd == 'q':
+                    break
+            
+            # Handle MIDI messages
+            msg = input_port.poll()
             if msg is None:
                 continue
-
-            # Rest of the MIDI processing remains the same
+            
             if msg.type == 'note_on' or msg.type == 'note_off':
                 # Always send original note to first output
                 output_ports_list[0].send(msg)
-
+                
                 # Generate harmony notes based on mode
                 if mode == 1:
                     # Forward as-is to all outputs
@@ -709,23 +1162,273 @@ def main():
                 # Forward all other MIDI messages to all outputs
                 for port in output_ports_list:
                     port.send(msg)
-
+                    
     except KeyboardInterrupt:
-        # Make sure to turn off any active notes before exiting
+        print("\nStopping mode-based processing...")
+    finally:
+        # Turn off any active notes
         if mode != 1:
             for input_note, generated_notes in active_notes.items():
                 for harmony_note in generated_notes:
                     off_msg = mido.Message('note_off', note=int(harmony_note), velocity=0)
                     for port in output_ports_list[1:]:
                         port.send(off_msg)
-        
-        print("\nExiting...")
-        if input_type == "midi":
-            input_source.close()
-        else:
-            input_source.stop()
-        for port in output_ports_list:
-            port.close()
 
-if __name__ == '__main__':
+def curses_main(stdscr):
+    """Main function for the curses interface."""
+    # Set up curses
+    curses.curs_set(0)  # Hide cursor
+    stdscr.nodelay(0)   # Blocking input
+    stdscr.timeout(-1)  # Wait indefinitely for input
+    
+    # Create TUI instance
+    tui = ContrapunkTUI(stdscr)
+    
+    # Main menu
+    input_types = ["MIDI Input", "Audio Input", "Generated Music", "Mode-based MIDI Processing"]
+    choice = tui.show_menu("Contrapunk", input_types)
+    if choice < 0:
+        return
+        
+    if choice == 0:  # MIDI Input
+        # Select MIDI ports
+        available_ports = mido.get_input_names()
+        if not available_ports:
+            tui.show_error("No MIDI input ports available")
+            return
+            
+        port_choice = tui.show_menu("Select MIDI Input Port", available_ports)
+        if port_choice < 0:
+            return
+            
+        input_port = available_ports[port_choice]
+        
+        # Select output ports
+        num_ports = tui.show_value_input("Enter number of output ports", min_val=1, max_val=8)
+        if num_ports is None:
+            return
+            
+        output_ports = []
+        available_ports = mido.get_output_names()
+        for i in range(num_ports):
+            port_choice = tui.show_menu(f"Select Output Port {i+1}", available_ports)
+            if port_choice < 0:
+                return
+            output_ports.append(available_ports[port_choice])
+            
+        # Run MIDI processor
+        with mido.open_input(input_port) as inport:
+            tui.run_midi_processor(inport, output_ports)
+            
+    elif choice == 1:  # Audio Input
+        # Get audio devices
+        audio_devices = AudioToMidi.list_audio_devices()
+        if not audio_devices:
+            tui.show_error("No audio input devices available")
+            return
+            
+        # Show device selection
+        device_options = [f"{name} ({channels} channels)" for _, name, channels in audio_devices]
+        device_choice = tui.show_menu("Select Audio Device", device_options)
+        if device_choice < 0:
+            return
+            
+        device_id = audio_devices[device_choice][0]
+        device_info = sd.query_devices(device_id)
+        
+        # Ask if user wants to monitor levels
+        monitor_choice = tui.show_menu("Would you like to monitor input levels?", ["Yes", "No"])
+        if monitor_choice == 0:  # Yes
+            tui.run_audio_monitor(
+                device_id,
+                device_info['max_input_channels'],
+                int(device_info['default_samplerate'])
+            )
+            
+        # Select channel
+        num_channels = device_info['max_input_channels']
+        channel = tui.show_value_input("Select channel number", min_val=0, max_val=num_channels-1)
+        if channel is None:
+            return
+            
+        # Select output ports
+        num_ports = tui.show_value_input("Enter number of output ports", min_val=1, max_val=8)
+        if num_ports is None:
+            return
+            
+        output_ports = []
+        available_ports = mido.get_output_names()
+        for i in range(num_ports):
+            port_choice = tui.show_menu(f"Select Output Port {i+1}", available_ports)
+            if port_choice < 0:
+                return
+            output_ports.append(available_ports[port_choice])
+            
+    elif choice == 2:  # Generated Music
+        # Select key
+        key_choice = tui.show_menu("Select Key", NOTES)
+        if key_choice < 0:
+            return
+        key = key_choice
+        
+        # Number of outputs
+        num_ports = tui.show_value_input("Enter number of output ports", min_val=2, max_val=8)
+        if num_ports is None:
+            return
+            
+        # Select output ports
+        output_ports = []
+        available_ports = mido.get_output_names()
+        for i in range(num_ports):
+            port_choice = tui.show_menu(f"Select Output Port {i+1}", available_ports)
+            if port_choice < 0:
+                return
+            output_ports.append(available_ports[port_choice])
+            
+        # Select harmony modes
+        harmony_modes = []
+        harmony_options = [
+            "Forward melody as-is",
+            "Add diatonic thirds",
+            "Add diatonic fourths",
+            "Add random diatonic intervals",
+            "Add random diatonic intervals (no seconds)",
+            "Add contrary motion with random intervals",
+            "Add strict counterpoint rules"
+        ]
+        
+        for i in range(num_ports - 1):
+            mode_choice = tui.show_menu(f"Select Harmony Mode for Voice {i+1}", harmony_options)
+            if mode_choice < 0:
+                return
+            harmony_modes.append(mode_choice + 1)
+            
+        # Select chord progression
+        progression_choice = tui.show_menu("Select Chord Progression", list(CHORD_PROGRESSIONS.keys()))
+        if progression_choice < 0:
+            return
+        progression = list(CHORD_PROGRESSIONS.keys())[progression_choice]
+        
+        # Select rhythm pattern
+        rhythm_choice = tui.show_menu("Select Rhythm Pattern", list(RHYTHM_PATTERNS.keys()))
+        if rhythm_choice < 0:
+            return
+        rhythm_pattern = list(RHYTHM_PATTERNS.values())[rhythm_choice]
+        
+        # Start music generation
+        command_queue = queue.Queue()
+        stop_event = threading.Event()
+        
+        # Start keyboard input thread
+        keyboard_thread = threading.Thread(
+            target=keyboard_input_thread,
+            args=(command_queue, stop_event),
+            daemon=True
+        )
+        keyboard_thread.start()
+        
+        # Run music player interface
+        while True:
+            cmd = tui.run_music_player(key, progression, harmony_modes)
+            if cmd == 'q':
+                break
+            elif cmd == 'n':
+                continue
+            elif cmd == 'k':
+                key = (key + 1) % 12
+                
+        stop_event.set()
+        
+    else:  # Mode-based MIDI Processing
+        # Select input port
+        available_ports = mido.get_input_names()
+        if not available_ports:
+            tui.show_error("No MIDI input ports available")
+            return
+            
+        port_choice = tui.show_menu("Select MIDI Input Port", available_ports)
+        if port_choice < 0:
+            return
+            
+        input_port = available_ports[port_choice]
+        
+        # Number of outputs
+        num_ports = tui.show_value_input("Enter number of output ports", min_val=2, max_val=8)
+        if num_ports is None:
+            return
+            
+        # Select output ports
+        output_ports = []
+        available_ports = mido.get_output_names()
+        for i in range(num_ports):
+            port_choice = tui.show_menu(f"Select Output Port {i+1}", available_ports)
+            if port_choice < 0:
+                return
+            output_ports.append(available_ports[port_choice])
+            
+        # Select initial key
+        key_choice = tui.show_menu("Select Key", NOTES)
+        if key_choice < 0:
+            return
+        key = key_choice
+        
+        # Select initial mode
+        mode_choice = tui.show_menu("Select Initial Mode", [
+            "Forward MIDI as-is",
+            "Add diatonic thirds",
+            "Add diatonic fourths",
+            "Add random diatonic intervals",
+            "Add random diatonic intervals (no seconds)",
+            "Add contrary motion with random intervals",
+            "Add strict counterpoint rules"
+        ])
+        if mode_choice < 0:
+            return
+        mode = mode_choice + 1
+        
+        # Start processing
+        command_queue = queue.Queue()
+        stop_event = threading.Event()
+        
+        # Start keyboard input thread
+        keyboard_thread = threading.Thread(
+            target=keyboard_input_thread,
+            args=(command_queue, stop_event),
+            daemon=True
+        )
+        keyboard_thread.start()
+        
+        # Run mode-based processor
+        with mido.open_input(input_port) as inport:
+            output_ports_list = [mido.open_output(port) for port in output_ports]
+            try:
+                while True:
+                    cmd, value = tui.run_mode_based_processor(key, mode, command_queue)
+                    if cmd == 'q':
+                        break
+                    elif cmd == 'k':
+                        key = (key + 1) % 12
+                    elif cmd == 'm':
+                        mode = value
+            finally:
+                for port in output_ports_list:
+                    port.close()
+                stop_event.set()
+
+def main():
+    """Entry point for the application."""
+    try:
+        curses.wrapper(curses_main)
+    except KeyboardInterrupt:
+        print("\nProgram terminated by user")
+    except Exception as e:
+        print(f"\nError: {e}")
+    finally:
+        # Restore terminal state
+        try:
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, termios.tcgetattr(sys.stdin.fileno()))
+        except:
+            pass
+
+if __name__ == "__main__":
     main()
