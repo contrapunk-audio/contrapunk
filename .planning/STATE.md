@@ -12,26 +12,26 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 Phase: 2 of 4 (Harmony Engine)
 Plan: 5 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-28 - Completed 02-05-PLAN.md (user configuration)
+Last activity: 2026-01-28 - Completed 02-04-PLAN.md (harmony router integration)
 
-Progress: [######----] 54% (7 of 13 plans complete)
+Progress: [######----] 62% (8 of 13 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 2.3 min
-- Total execution time: 16 min
+- Total plans completed: 8
+- Average duration: 2.4 min
+- Total execution time: 19 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-midi-foundation | 3 | 6 min | 2 min |
-| 02-harmony-engine | 4 | 10 min | 2.5 min |
+| 02-harmony-engine | 5 | 13 min | 2.6 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (2 min), 02-02 (3 min), 02-03 (4 min), 02-05 (1 min)
+- Last 5 plans: 02-02 (3 min), 02-03 (4 min), 02-05 (1 min), 02-04 (3 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -64,6 +64,9 @@ Recent decisions affecting current work:
 - [02-05]: Default key is C (index 0) for most common use case
 - [02-05]: Default mode is Pass-through (1) for safe no-change starting point
 - [02-05]: Voice roles labeled in summary (melody for first output, harmony for rest)
+- [02-04]: Track active notes in HashMap<u8, Vec<Note>> for Note-Off handling
+- [02-04]: Clear note tracking on key/mode change to prevent stale harmonies
+- [02-04]: Use send_to_port() for targeted output routing
 
 ### Pending Todos
 
@@ -93,17 +96,18 @@ Hardware tested: Akai MPK Mini -> 4 IAC Driver buses (macOS)
 
 **Harmony Engine - IN PROGRESS**
 
-Plans 1, 2, 3, 5 complete:
+Plans 1, 2, 3, 4, 5 complete:
 - Key enum (12 keys), HarmonyMode enum (7 modes), Scale struct with diatonic transposition
 - Five stateless mode functions in modes.rs (pass_through, diatonic_thirds/fourths, random_below variants)
 - ContraryMotionState and CounterpointState for stateful modes 6-7
 - HarmonyEngine with all 7 mode routing and state management
 - CLI key and mode selection with configuration summary display
+- Harmony-aware router with wmidi parsing and Note-On/Off tracking
 
-Next: Plan 02-04 (Router integration with harmony engine) or 02-06 (Hardware verification)
+Next: Plan 02-06 (Hardware verification with harmony generation)
 
 ## Session Continuity
 
-Last session: 2026-01-28 15:38 UTC
-Stopped at: Completed 02-05-PLAN.md
+Last session: 2026-01-28 15:40 UTC
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
