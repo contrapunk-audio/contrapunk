@@ -58,16 +58,23 @@ Plans:
 ### Phase 3: GUI and Distribution
 **Goal**: User has a complete native application with visual interface as a single binary
 **Depends on**: Phase 2
-**Requirements**: GUI-01, GUI-02, GUI-03, DIST-01
+**Requirements**: GUI-01, GUI-02, GUI-03, GUI-04, GUI-05, DIST-01
 **Success Criteria** (what must be TRUE):
   1. Application opens as a native window (not terminal)
   2. User can see current configuration (key, mode, active notes) in the GUI
   3. User can change all settings (input device, output ports, key, mode) via GUI controls
   4. Application compiles to single binary that runs without external dependencies
-**Plans**: TBD
+  5. Virtual piano keyboard shows input notes and generated harmony notes
+  6. Chord detection displays what chord the combined notes form
+**Plans**: 6 plans
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md — GUI foundation with eframe/egui setup and basic window
+- [ ] 03-02-PLAN.md — Configuration controls and MIDI routing integration
+- [ ] 03-03-PLAN.md — Real-time active notes display with shared state
+- [ ] 03-04-PLAN.md — Virtual piano keyboard widget
+- [ ] 03-05-PLAN.md — Chord detection and display
+- [ ] 03-06-PLAN.md — Release build optimization and verification
 
 ### Phase 4: Server Mode
 **Goal**: Binary runs as a server allowing remote users to connect and receive MIDI harmony generations back to their output devices
@@ -93,9 +100,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. MIDI Foundation | 3/3 | Complete | 2026-01-28 |
 | 2. Harmony Engine | 6/6 | Complete | 2026-01-28 |
-| 3. GUI and Distribution | 0/? | Not started | - |
+| 3. GUI and Distribution | 0/6 | Planned | - |
 | 4. Server Mode | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-28 — Phase 2 complete (Harmony Engine)*
+*Last updated: 2026-01-28 — Phase 3 planned (6 plans in 5 waves)*
