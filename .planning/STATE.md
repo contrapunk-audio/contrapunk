@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 3 complete — next: Phase 4 (Server Mode)
+**Current focus:** Phase 4 in progress — Server Mode
 
 ## Current Position
 
 Phase: 4 of 6 (Server Mode)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-28 - Completed 04-02-PLAN.md
+Last activity: 2026-01-28 - Completed 04-03-PLAN.md
 
-Progress: [█████████████████░░░░░░░] 71% (17 of 24 plans complete)
+Progress: [██████████████████░░░░░░] 75% (18 of 24 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
-- Average duration: 2.6 min
-- Total execution time: 39 min
+- Total plans completed: 18
+- Average duration: 2.5 min
+- Total execution time: 41 min
 
 **By Phase:**
 
@@ -30,6 +30,7 @@ Progress: [█████████████████░░░░░░
 | 01-midi-foundation | 3 | 6 min | 2 min |
 | 02-harmony-engine | 6 | 18 min | 3 min |
 | 03-gui-distribution | 6 | 15 min | 2.5 min |
+| 04-server-mode | 3 | 2 min | 0.7 min |
 
 *Updated after each plan completion*
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [03-05]: Chord patterns ordered by specificity (7ths before triads) for correct matching
 - [03-05]: Pitch class reduction (mod 12) for octave-independent chord detection
 - [03-05]: Unknown chord combinations show individual note names
+- [04-03]: clap Args struct unconditional (both builds parse args); only client mode is CLI-gated
+- [04-03]: AtomicUsize voice counter for lock-free round-robin output routing in client
 
 ### Pending Todos
 
@@ -136,6 +139,6 @@ Human-verified: approved.
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 04-02-PLAN.md
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
-Next: Execute 04-03-PLAN.md (integration tests and CLI wiring)
+Next: Execute 04-04-PLAN.md (integration testing)
