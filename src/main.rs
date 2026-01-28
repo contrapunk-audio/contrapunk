@@ -68,13 +68,11 @@ fn main() -> Result<()> {
     // --- Create Harmony Engine and Start Routing ---
 
     // Create harmony engine with user's selections
-    // Note: Engine will be passed to run_router() once 02-04 integrates harmony
-    let _engine = HarmonyEngine::new(key, mode);
+    let mut engine = HarmonyEngine::new(key, mode);
 
     println!("Starting MIDI harmony routing...\n");
 
-    // TODO: Pass &mut engine to run_router() after 02-04 completes
-    if let Err(e) = router::run_router(selected_input, &selected_outputs) {
+    if let Err(e) = router::run_router(selected_input, &selected_outputs, &mut engine) {
         eprintln!("Error during MIDI routing: {}", e);
         return Err(e);
     }

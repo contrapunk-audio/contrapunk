@@ -146,4 +146,32 @@ impl OutputRouter {
     pub fn connection_count(&self) -> usize {
         self.connections.len()
     }
+
+    /// Sends a MIDI message to a specific output port by index.
+    ///
+    /// This is used for harmony routing where different notes go to
+    /// different outputs (e.g., original to port 0, harmony to port 1).
+    ///
+    /// # Arguments
+    ///
+    /// * `port_index` - Index into the connections array (not the original port number)
+    /// * `message` - MIDI message bytes to send
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the message was sent successfully, or an error
+    /// if the port index is out of range or the send failed.
+    pub fn send_to_port(&mut self, port_index: usize, message: &[u8]) -> Result<()> {
+        if let Some(conn) = self.connections.get_mut(port_index) {
+            conn.send(message)
+                .map_err(|e| anyhow!("Failed to send to port {}: {:?}", port_index, e))?;
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Port index {} out of range (have {} ports)",
+                port_index,
+                self.connections.len()
+            ))
+        }
+    }
 }
