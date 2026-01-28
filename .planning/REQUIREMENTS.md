@@ -14,31 +14,31 @@
 
 ### Configuration
 
-- [ ] **CONF-01**: User can select musical key (C through B)
-- [ ] **CONF-02**: User can select harmony mode (1-7)
-- [ ] **CONF-03**: User can change key/mode during playback without stopping
+- [x] **CONF-01**: User can select musical key (C through B)
+- [x] **CONF-02**: User can select harmony mode (1-7)
+- [x] **CONF-03**: User can change key/mode during playback without stopping
 
 ### Harmony Modes
 
-- [ ] **HARM-01**: Mode 1 - Forward MIDI as-is (pass-through)
-- [ ] **HARM-02**: Mode 2 - Diatonic thirds above input note
-- [ ] **HARM-03**: Mode 3 - Diatonic fourths above input note
-- [ ] **HARM-04**: Mode 4 - Random diatonic interval below input
-- [ ] **HARM-05**: Mode 5 - Random diatonic below (excluding seconds)
-- [ ] **HARM-06**: Mode 6 - Contrary motion (harmony moves opposite to melody)
-- [ ] **HARM-07**: Mode 7 - Strict counterpoint (traditional voice leading rules)
+- [x] **HARM-01**: Mode 1 - Forward MIDI as-is (pass-through)
+- [x] **HARM-02**: Mode 2 - Diatonic thirds above input note
+- [x] **HARM-03**: Mode 3 - Diatonic fourths above input note
+- [x] **HARM-04**: Mode 4 - Random diatonic interval below input
+- [x] **HARM-05**: Mode 5 - Random diatonic below (excluding seconds)
+- [x] **HARM-06**: Mode 6 - Contrary motion (harmony moves opposite to melody)
+- [x] **HARM-07**: Mode 7 - Strict counterpoint (traditional voice leading rules)
 
 ### GUI
 
-- [ ] **GUI-01**: Native window renders with egui/eframe
-- [ ] **GUI-02**: Display active notes and current configuration
-- [ ] **GUI-03**: Controls for device selection, key selection, mode selection
-- [ ] **GUI-04**: Virtual piano keyboard showing input and harmony notes
-- [ ] **GUI-05**: Chord detection displaying what chord the combined notes form
+- [x] **GUI-01**: Native window renders with egui/eframe
+- [x] **GUI-02**: Display active notes and current configuration
+- [x] **GUI-03**: Controls for device selection, key selection, mode selection
+- [x] **GUI-04**: Virtual piano keyboard showing input and harmony notes
+- [x] **GUI-05**: Chord detection displaying what chord the combined notes form
 
 ### Distribution
 
-- [ ] **DIST-01**: Compiles to single binary with no runtime dependencies
+- [x] **DIST-01**: Compiles to single binary with no runtime dependencies
 
 ### Octave Variations
 
@@ -80,22 +80,22 @@
 | MIDI-02 | Phase 1 | Complete |
 | MIDI-03 | Phase 1 | Complete |
 | MIDI-04 | Phase 1 | Complete |
-| CONF-01 | Phase 2 | Pending |
-| CONF-02 | Phase 2 | Pending |
-| CONF-03 | Phase 2 | Pending |
-| HARM-01 | Phase 2 | Pending |
-| HARM-02 | Phase 2 | Pending |
-| HARM-03 | Phase 2 | Pending |
-| HARM-04 | Phase 2 | Pending |
-| HARM-05 | Phase 2 | Pending |
-| HARM-06 | Phase 2 | Pending |
-| HARM-07 | Phase 2 | Pending |
-| GUI-01 | Phase 3 | Pending |
-| GUI-02 | Phase 3 | Pending |
-| GUI-03 | Phase 3 | Pending |
-| GUI-04 | Phase 3 | Pending |
-| GUI-05 | Phase 3 | Pending |
-| DIST-01 | Phase 3 | Pending |
+| CONF-01 | Phase 2 | Complete |
+| CONF-02 | Phase 2 | Complete |
+| CONF-03 | Phase 2 | Complete |
+| HARM-01 | Phase 2 | Complete |
+| HARM-02 | Phase 2 | Complete |
+| HARM-03 | Phase 2 | Complete |
+| HARM-04 | Phase 2 | Complete |
+| HARM-05 | Phase 2 | Complete |
+| HARM-06 | Phase 2 | Complete |
+| HARM-07 | Phase 2 | Complete |
+| GUI-01 | Phase 3 | Complete |
+| GUI-02 | Phase 3 | Complete |
+| GUI-03 | Phase 3 | Complete |
+| GUI-04 | Phase 3 | Complete |
+| GUI-05 | Phase 3 | Complete |
+| DIST-01 | Phase 3 | Complete |
 | OCT-01 | Phase 5 | Pending |
 | OCT-02 | Phase 5 | Pending |
 | OCT-03 | Phase 5 | Pending |
