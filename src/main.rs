@@ -1,6 +1,7 @@
 mod harmony;
 mod midi;
 mod router;
+mod server;
 
 #[cfg(feature = "gui")]
 mod app;
