@@ -10,6 +10,7 @@ midir = "0.10"
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.8"
+clap = { version = "4", features = ["derive"] }
 eframe = { version = "0.33", optional = true }
 
 [features]

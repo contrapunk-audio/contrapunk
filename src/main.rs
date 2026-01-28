@@ -21,10 +21,29 @@ use anyhow::Result;
 #[cfg(not(feature = "gui"))]
 use std::io::{self, Write};
 
+use clap::Parser;
+
 #[cfg(not(feature = "gui"))]
 use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine};
 #[cfg(not(feature = "gui"))]
 use crate::midi::ports::{list_input_ports, list_output_ports, select_input_port, select_output_ports};
+
+/// Contrapunk - Real-time MIDI harmony generation
+#[derive(Parser)]
+#[command(name = "contrapunk", about = "Real-time MIDI harmony generation")]
+struct Args {
+    /// Run as a harmony server
+    #[arg(long)]
+    server: bool,
+
+    /// Connect to a server as client (host:port)
+    #[arg(long)]
+    client: Option<String>,
+
+    /// Server port to listen on
+    #[arg(long, default_value_t = 9900)]
+    port: u16,
+}
 
 /// Run the GUI application.
 #[cfg(feature = "gui")]
@@ -45,6 +64,31 @@ fn run_gui() -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    let args = Args::parse();
+
+    // Server mode (works in both GUI and CLI builds)
+    if args.server {
+        let config = server::config::ServerConfig {
+            port: args.port,
+            ..Default::default()
+        };
+        return server::run_server(&config);
+    }
+
+    // Client mode
+    if let Some(ref addr) = args.client {
+        #[cfg(not(feature = "gui"))]
+        {
+            return run_client(addr);
+        }
+        #[cfg(feature = "gui")]
+        {
+            let _ = addr;
+            eprintln!("Client mode requires CLI build (compile without --features gui)");
+            std::process::exit(1);
+        }
+    }
+
     #[cfg(feature = "gui")]
     {
         return run_gui();
@@ -223,4 +267,11 @@ fn select_octave_mode() -> Result<OctaveMode> {
         3 => Ok(OctaveMode::Mirror),
         _ => Err(anyhow!("Octave mode {} not found (valid: 0-3)", number)),
     }
+}
+
+/// Run as a client connecting to a remote Contrapunk server.
+#[cfg(not(feature = "gui"))]
+fn run_client(_addr: &str) -> Result<()> {
+    // TODO: Full implementation in Task 2
+    Err(anyhow!("Client mode not yet implemented"))
 }
