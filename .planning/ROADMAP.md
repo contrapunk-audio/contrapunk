@@ -44,10 +44,15 @@ Plans:
   3. User can change key and mode while playing without stopping or restarting
   4. Mode 1 passes notes through unchanged
   5. Modes 2-7 produce audibly different harmonies following their algorithms
-**Plans**: TBD
+**Plans**: 6 plans
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md — Foundation types (Key, HarmonyMode, Scale with diatonic transposition)
+- [ ] 02-02-PLAN.md — Stateless modes 1-5 and HarmonyEngine struct
+- [ ] 02-03-PLAN.md — Stateful modes 6-7 (ContraryMotion, StrictCounterpoint)
+- [ ] 02-04-PLAN.md — Router integration with harmony processing
+- [ ] 02-05-PLAN.md — CLI key and mode selection
+- [ ] 02-06-PLAN.md — Hardware verification checkpoint
 
 ### Phase 3: GUI and Distribution
 **Goal**: User has a complete native application with visual interface as a single binary
@@ -71,9 +76,9 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. MIDI Foundation | 3/3 | ✓ Complete | 2026-01-28 |
-| 2. Harmony Engine | 0/? | Not started | - |
+| 2. Harmony Engine | 0/6 | Ready to execute | - |
 | 3. GUI and Distribution | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-28 — Phase 1 complete*
+*Last updated: 2026-01-28 — Phase 2 planned (6 plans in 4 waves)*
