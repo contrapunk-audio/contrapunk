@@ -1,6 +1,8 @@
 mod harmony;
 mod midi;
+#[cfg(not(target_arch = "wasm32"))]
 mod router;
+#[cfg(not(target_arch = "wasm32"))]
 mod server;
 
 #[cfg(feature = "gui")]
@@ -21,6 +23,7 @@ use anyhow::Result;
 #[cfg(not(feature = "gui"))]
 use std::io::{self, Write};
 
+#[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
 
 #[cfg(not(feature = "gui"))]
@@ -29,6 +32,7 @@ use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine};
 use crate::midi::ports::{list_input_ports, list_output_ports, select_input_port, select_output_ports};
 
 /// Contrapunk - Real-time MIDI harmony generation
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Parser)]
 #[command(name = "contrapunk", about = "Real-time MIDI harmony generation")]
 struct Args {
@@ -46,7 +50,7 @@ struct Args {
 }
 
 /// Run the GUI application.
-#[cfg(feature = "gui")]
+#[cfg(all(feature = "gui", not(target_arch = "wasm32")))]
 fn run_gui() -> Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -64,112 +68,121 @@ fn run_gui() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let args = Args::parse();
 
-    // Server mode (works in both GUI and CLI builds)
-    if args.server {
-        let config = server::config::ServerConfig {
-            port: args.port,
-            ..Default::default()
-        };
-        return server::run_server(&config);
-    }
-
-    // Client mode
-    if let Some(ref addr) = args.client {
-        #[cfg(not(feature = "gui"))]
-        {
-            return run_client(addr);
+        // Server mode (works in both GUI and CLI builds)
+        if args.server {
+            let config = server::config::ServerConfig {
+                port: args.port,
+                ..Default::default()
+            };
+            return server::run_server(&config);
         }
+
+        // Client mode
+        if let Some(ref addr) = args.client {
+            #[cfg(not(feature = "gui"))]
+            {
+                return run_client(addr);
+            }
+            #[cfg(feature = "gui")]
+            {
+                let _ = addr;
+                eprintln!("Client mode requires CLI build (compile without --features gui)");
+                std::process::exit(1);
+            }
+        }
+
         #[cfg(feature = "gui")]
         {
-            let _ = addr;
-            eprintln!("Client mode requires CLI build (compile without --features gui)");
-            std::process::exit(1);
+            return run_gui();
+        }
+
+        #[cfg(not(feature = "gui"))]
+        {
+            println!("Contrapunk MIDI Harmony Generator");
+            println!("==================================\n");
+
+            // --- MIDI Port Selection ---
+
+            let input_ports = list_input_ports()?;
+            if input_ports.is_empty() {
+                println!("No MIDI input ports available.");
+                println!("Connect a MIDI device and restart the application.");
+                return Ok(());
+            }
+
+            let selected_input = select_input_port(&input_ports)?;
+            println!(
+                "\nSelected input: {} - {}\n",
+                selected_input, input_ports[selected_input].1
+            );
+
+            let output_ports = list_output_ports()?;
+            if output_ports.is_empty() {
+                println!("No MIDI output ports available.");
+                println!("Connect MIDI output devices and restart the application.");
+                return Ok(());
+            }
+
+            let selected_outputs = select_output_ports(&output_ports, 2, 8)?;
+            println!("\nSelected outputs:");
+            for &idx in &selected_outputs {
+                println!("  {} - {}", idx, output_ports[idx].1);
+            }
+
+            // --- Harmony Configuration ---
+
+            println!("\n--- Harmony Configuration ---\n");
+
+            let key = select_key()?;
+            println!("\nSelected key: {}\n", key);
+
+            let mode = select_mode()?;
+            println!("\nSelected mode: {} - {}\n", mode.number(), mode.description());
+
+            let octave_mode = select_octave_mode()?;
+            println!("\nSelected octave mode: {}\n", octave_mode.description());
+
+            // --- Configuration Summary ---
+
+            println!("\n========================================");
+            println!("         Configuration Summary");
+            println!("========================================");
+            println!("Input:   {} ({})", input_ports[selected_input].1, selected_input);
+            println!("Outputs: {} ports", selected_outputs.len());
+            for (i, &idx) in selected_outputs.iter().enumerate() {
+                let role = if i == 0 { "melody" } else { "harmony" };
+                println!("  Voice {}: {} ({}) [{}]", i + 1, output_ports[idx].1, idx, role);
+            }
+            println!("Key:     {}", key);
+            println!("Mode:    {} - {}", mode.number(), mode.description());
+            println!("Octave:  {}", octave_mode.description());
+            println!("========================================\n");
+
+            // --- Create Harmony Engine and Start Routing ---
+
+            // Create harmony engine with user's selections
+            let mut engine = HarmonyEngine::new(key, mode);
+            engine.set_octave_mode(octave_mode);
+
+            println!("Starting MIDI harmony routing...\n");
+
+            if let Err(e) = router::run_router(selected_input, &selected_outputs, &mut engine) {
+                eprintln!("Error during MIDI routing: {}", e);
+                return Err(e);
+            }
+
+            println!("\nContrapunk exited cleanly.");
+            Ok(())
         }
     }
 
-    #[cfg(feature = "gui")]
+    #[cfg(target_arch = "wasm32")]
     {
-        return run_gui();
-    }
-
-    #[cfg(not(feature = "gui"))]
-    {
-        println!("Contrapunk MIDI Harmony Generator");
-        println!("==================================\n");
-
-        // --- MIDI Port Selection ---
-
-        let input_ports = list_input_ports()?;
-        if input_ports.is_empty() {
-            println!("No MIDI input ports available.");
-            println!("Connect a MIDI device and restart the application.");
-            return Ok(());
-        }
-
-        let selected_input = select_input_port(&input_ports)?;
-        println!(
-            "\nSelected input: {} - {}\n",
-            selected_input, input_ports[selected_input].1
-        );
-
-        let output_ports = list_output_ports()?;
-        if output_ports.is_empty() {
-            println!("No MIDI output ports available.");
-            println!("Connect MIDI output devices and restart the application.");
-            return Ok(());
-        }
-
-        let selected_outputs = select_output_ports(&output_ports, 2, 8)?;
-        println!("\nSelected outputs:");
-        for &idx in &selected_outputs {
-            println!("  {} - {}", idx, output_ports[idx].1);
-        }
-
-        // --- Harmony Configuration ---
-
-        println!("\n--- Harmony Configuration ---\n");
-
-        let key = select_key()?;
-        println!("\nSelected key: {}\n", key);
-
-        let mode = select_mode()?;
-        println!("\nSelected mode: {} - {}\n", mode.number(), mode.description());
-
-        let octave_mode = select_octave_mode()?;
-        println!("\nSelected octave mode: {}\n", octave_mode.description());
-
-        // --- Configuration Summary ---
-
-        println!("\n========================================");
-        println!("         Configuration Summary");
-        println!("========================================");
-        println!("Input:   {} ({})", input_ports[selected_input].1, selected_input);
-        println!("Outputs: {} ports", selected_outputs.len());
-        for (i, &idx) in selected_outputs.iter().enumerate() {
-            let role = if i == 0 { "melody" } else { "harmony" };
-            println!("  Voice {}: {} ({}) [{}]", i + 1, output_ports[idx].1, idx, role);
-        }
-        println!("Key:     {}", key);
-        println!("Mode:    {} - {}", mode.number(), mode.description());
-        println!("Octave:  {}", octave_mode.description());
-        println!("========================================\n");
-
-        // --- Create Harmony Engine and Start Routing ---
-
-        // Create harmony engine with user's selections
-        let mut engine = HarmonyEngine::new(key, mode);
-        engine.set_octave_mode(octave_mode);
-
-        println!("Starting MIDI harmony routing...\n");
-
-        if let Err(e) = router::run_router(selected_input, &selected_outputs, &mut engine) {
-            eprintln!("Error during MIDI routing: {}", e);
-            return Err(e);
-        }
-
-        println!("\nContrapunk exited cleanly.");
+        // WASM entry point is in lib.rs, not main
         Ok(())
     }
 }
@@ -365,6 +378,7 @@ fn run_client(addr: &str) -> Result<()> {
         loop {
             match protocol::read_message(&mut read_stream) {
                 Ok(Message::MidiData(bytes)) => {
+                    eprintln!("[client] received {} bytes from server: {:?}", bytes.len(), &bytes);
                     if response_tx.send(bytes).is_err() {
                         break;
                     }
@@ -440,6 +454,7 @@ fn run_client(addr: &str) -> Result<()> {
         // Route server responses to local outputs
         while let Ok(bytes) = response_rx.try_recv() {
             let output_index = vc_reader.fetch_add(1, Ordering::Relaxed) % vc_count;
+            eprintln!("[client] routing {} bytes to output {}", bytes.len(), output_index);
             if let Err(e) = output_router.send_to_port(output_index, &bytes) {
                 eprintln!("[client] Failed to send to output {}: {}", output_index, e);
             }

@@ -3,7 +3,9 @@
 //! This module provides the eframe/egui-based GUI interface.
 
 use std::collections::HashSet;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_arch = "wasm32"))]
 use std::thread::JoinHandle;
 
 use anyhow::Result;
@@ -12,7 +14,9 @@ use eframe::egui;
 use crate::chord::chord_display;
 use crate::harmony::{Key, HarmonyMode, OctaveMode};
 use crate::piano::PianoKeyboard;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::midi::ports::{list_input_ports, list_output_ports};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::router::{spawn_gui_router, GUIRouterState};
 
 /// Converts a MIDI note number to a note name string (e.g., 60 -> "C4").
@@ -52,6 +56,7 @@ pub struct AppState {
 
 impl AppState {
     /// Refreshes the available MIDI device lists.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn refresh_devices(&mut self) {
         self.last_error = None;
 
@@ -88,6 +93,13 @@ impl AppState {
         }
     }
 
+    /// Refreshes the available MIDI device lists (WASM stub).
+    #[cfg(target_arch = "wasm32")]
+    pub fn refresh_devices(&mut self) {
+        // Web MIDI integration comes in Plan 02
+        self.last_error = Some("MIDI device access not yet available in browser".to_string());
+    }
+
     /// Returns selected output ports as a Vec<usize> (filtering out None slots).
     pub fn selected_output_ports(&self) -> Vec<usize> {
         self.output_slots.iter().filter_map(|s| *s).collect()
@@ -114,8 +126,10 @@ impl Default for AppState {
 pub struct ContrapunkApp {
     state: AppState,
     /// Shared state for router communication
+    #[cfg(not(target_arch = "wasm32"))]
     router_state: Option<Arc<Mutex<GUIRouterState>>>,
     /// Handle to the router thread
+    #[cfg(not(target_arch = "wasm32"))]
     router_handle: Option<JoinHandle<Result<()>>>,
 }
 
@@ -124,7 +138,9 @@ impl ContrapunkApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self {
             state: AppState::default(),
+            #[cfg(not(target_arch = "wasm32"))]
             router_state: None,
+            #[cfg(not(target_arch = "wasm32"))]
             router_handle: None,
         };
         // Auto-refresh devices on startup
@@ -138,6 +154,7 @@ impl ContrapunkApp {
     }
 
     /// Validates configuration and attempts to start routing.
+    #[cfg(not(target_arch = "wasm32"))]
     fn try_start(&mut self, ctx: &egui::Context) {
         self.state.last_error = None;
 
@@ -182,7 +199,14 @@ impl ContrapunkApp {
         }
     }
 
+    /// Validates configuration and attempts to start routing (WASM stub).
+    #[cfg(target_arch = "wasm32")]
+    fn try_start(&mut self, _ctx: &egui::Context) {
+        self.state.last_error = Some("MIDI routing not yet available in browser".to_string());
+    }
+
     /// Stops routing.
+    #[cfg(not(target_arch = "wasm32"))]
     fn stop(&mut self) {
         // Signal the router thread to stop
         if let Some(ref router_state) = self.router_state {
@@ -202,13 +226,26 @@ impl ContrapunkApp {
         self.state.is_running = false;
     }
 
+    /// Stops routing (WASM stub).
+    #[cfg(target_arch = "wasm32")]
+    fn stop(&mut self) {
+        self.state.is_running = false;
+    }
+
     /// Gets the current input/harmony notes from the router state.
+    #[cfg(not(target_arch = "wasm32"))]
     fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
         if let Some(ref router_state) = self.router_state {
             if let Ok(state) = router_state.lock() {
                 return (state.input_notes.clone(), state.harmony_notes.clone());
             }
         }
+        (HashSet::new(), HashSet::new())
+    }
+
+    /// Gets the current input/harmony notes (WASM stub).
+    #[cfg(target_arch = "wasm32")]
+    fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
         (HashSet::new(), HashSet::new())
     }
 }

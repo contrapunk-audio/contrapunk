@@ -6,16 +6,27 @@ description = "Real-time MIDI harmony generation"
 authors = ["Contrapunk Team"]
 
 [dependencies]
-midir = "0.10"
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.8"
-clap = { version = "4", features = ["derive"] }
 eframe = { version = "0.33", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+midir = "0.10"
+clap = { version = "4", features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Navigator", "Window", "Document"] }
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.2", features = ["js"] }
 
 [features]
 default = []
 gui = ["eframe"]
+wasm = ["gui"]
 
 [profile.release]
 opt-level = "z"
