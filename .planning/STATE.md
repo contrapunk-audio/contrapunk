@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 4 complete — Ready for Phase 5 (Octave Variations)
+**Current focus:** Phase 5 in progress — Octave Variations
 
 ## Current Position
 
-Phase: 4 of 6 (Server Mode) — COMPLETE
-Plan: 4 of 4 in current phase
-Status: Complete
-Last activity: 2026-01-29 - Phase 4 complete, all 4 plans executed and verified with hardware
+Phase: 5 of 6 (Octave Variations) — In progress
+Plan: 1 of 1 in current phase
+Status: In progress
+Last activity: 2026-01-29 - Completed 05-01-PLAN.md (Mirror Octaves duplication)
 
-Progress: [███████████████████░░░░░] 79% (19 of 24 plans complete)
+Progress: [████████████████████░░░░] 83% (20 of 24 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: 2.7 min
-- Total execution time: 51 min
+- Total execution time: 54 min
 
 **By Phase:**
 
@@ -31,6 +31,7 @@ Progress: [███████████████████░░░░
 | 02-harmony-engine | 6 | 18 min | 3 min |
 | 03-gui-distribution | 6 | 15 min | 2.5 min |
 | 04-server-mode | 4 | 12 min | 3 min |
+| 05-octave-variations | 1 | 3 min | 3 min |
 
 *Updated after each plan completion*
 
@@ -84,6 +85,8 @@ Recent decisions affecting current work:
 - [04-03]: clap Args struct unconditional (both builds parse args); only client mode is CLI-gated
 - [04-03]: AtomicUsize voice counter for lock-free round-robin output routing in client
 - [04-04]: Read timeouts handled as non-fatal in server/client loops
+- [05-01]: Port map stored alongside active notes for Note-Off port restoration
+- [05-01]: Server session unchanged for mirror routing (port routing is client-side)
 
 ### Pending Todos
 
@@ -154,6 +157,6 @@ Timeout bug fixed during verification: read timeouts now non-fatal.
 ## Session Continuity
 
 Last session: 2026-01-29
-Stopped at: Completed Phase 4 (Server Mode) - All 4 plans executed and hardware-verified
+Stopped at: Completed 05-01-PLAN.md (Mirror Octaves duplication)
 Resume file: None
-Next: Phase 5 (Octave Variations) - requires phase planning
+Next: Remaining Phase 5 plans (if any), then Phase 6
