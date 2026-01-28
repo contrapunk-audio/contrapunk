@@ -9,6 +9,7 @@ use std::thread::JoinHandle;
 use anyhow::Result;
 use eframe::egui;
 
+use crate::chord::chord_display;
 use crate::harmony::{Key, HarmonyMode, OctaveMode};
 use crate::piano::PianoKeyboard;
 use crate::midi::ports::{list_input_ports, list_output_ports};
@@ -461,6 +462,22 @@ impl eframe::App for ContrapunkApp {
                         }
                     }
                 });
+            });
+
+            // Chord detection display
+            ui.add_space(10.0);
+            ui.vertical_centered(|ui| {
+                ui.label("Detected Chord");
+                let all_notes: HashSet<u8> = {
+                    let mut combined = input_notes.clone();
+                    combined.extend(&harmony_notes);
+                    combined
+                };
+                ui.label(
+                    egui::RichText::new(chord_display(&all_notes))
+                        .size(32.0)
+                        .strong()
+                );
             });
 
             ui.add_space(20.0);
