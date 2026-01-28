@@ -4,6 +4,8 @@
 
 use std::collections::HashSet;
 
+use eframe::egui;
+
 use crate::harmony::{Key, HarmonyMode};
 
 /// Application state shared across the GUI.
