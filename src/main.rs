@@ -1,4 +1,5 @@
 mod midi;
+mod router;
 
 use anyhow::Result;
 use midi::ports::{list_input_ports, list_output_ports, select_input_port, select_output_ports};
@@ -43,7 +44,14 @@ fn main() -> Result<()> {
         println!("  Voice {}: {} ({})", i + 1, output_ports[idx].1, idx);
     }
 
-    println!("\nReady for MIDI routing. (Connection will be implemented in next plan)");
+    // Start MIDI routing
+    println!("\nStarting MIDI pass-through routing...\n");
 
+    if let Err(e) = router::run_router(selected_input, &selected_outputs) {
+        eprintln!("Error during MIDI routing: {}", e);
+        return Err(e);
+    }
+
+    println!("\nContrapunk exited cleanly.");
     Ok(())
 }
