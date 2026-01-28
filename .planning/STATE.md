@@ -5,32 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 1 complete - Ready for Phase 2
+**Current focus:** Phase 2 - Harmony Engine
 
 ## Current Position
 
-Phase: 1 of 3 (MIDI Foundation) - COMPLETE
-Plan: 3 of 3 in current phase - COMPLETE
-Status: Phase complete, ready for Phase 2
-Last activity: 2026-01-28 - Completed 01-03-PLAN.md (hardware verification)
+Phase: 2 of 4 (Harmony Engine)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-01-28 - Completed 02-01-PLAN.md (harmony types)
 
-Progress: [###-------] 33% (1 of 3 phases complete)
+Progress: [###-------] 30% (4 of 13 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 2 min (excluding verification checkpoint)
-- Total execution time: 6 min
+- Total plans completed: 4
+- Average duration: 2 min
+- Total execution time: 8 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-midi-foundation | 3 | 6 min | 2 min |
+| 02-harmony-engine | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (4 min), 01-02 (2 min), 01-03 (checkpoint)
+- Last 5 plans: 01-01 (4 min), 01-02 (2 min), 01-03 (checkpoint), 02-01 (2 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -52,6 +53,9 @@ Recent decisions affecting current work:
 - [01-02]: Spawn background thread for Enter-key detection
 - [01-02]: OutputRouter stores port indices for debug output
 - [01-03]: Hardware verification confirms MIDI foundation is solid
+- [02-01]: Use wmidi crate for Note type with step() method
+- [02-01]: Major scale offsets stored as semitones from tonic
+- [02-01]: Diatonic transposition calculates octave shift for cross-octave intervals
 
 ### Pending Todos
 
@@ -59,7 +63,11 @@ None.
 
 ### Blockers/Concerns
 
-None - Phase 1 complete, ready for Phase 2.
+None - Phase 2 in progress.
+
+### Roadmap Evolution
+
+- Phase 4 added: Server Mode - Network server for remote MIDI harmony processing
 
 ## Phase 1 Completion Summary
 
@@ -73,8 +81,17 @@ All success criteria verified:
 
 Hardware tested: Akai MPK Mini -> 4 IAC Driver buses (macOS)
 
+## Phase 2 Progress
+
+**Harmony Engine - IN PROGRESS**
+
+Plan 1 complete:
+- Key enum (12 keys), HarmonyMode enum (7 modes), Scale struct with diatonic transposition
+
+Next: Plan 02-02 (HarmonyEngine trait and mode processors)
+
 ## Session Continuity
 
-Last session: 2026-01-28 15:00 UTC
-Stopped at: Completed 01-03-PLAN.md - Phase 1 complete
+Last session: 2026-01-28 15:24 UTC
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
