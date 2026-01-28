@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 5 complete — Octave Variations
+**Current focus:** Phase 5.1 — WASM and In-Browser Support
 
 ## Current Position
 
-Phase: 5 of 6 (Octave Variations) — Complete
-Plan: 1 of 1 in current phase — Complete
-Status: Phase verified (5/5 must-haves)
-Last activity: 2026-01-29 - Phase 5 verified and complete
+Phase: 5.1 of 6 (WASM Browser Deployment)
+Plan: 1 of 3 in current phase — Complete
+Status: In progress
+Last activity: 2026-01-29 - Completed 05.1-01-PLAN.md
 
-Progress: [█████████████████████░░░] 88% (21 of 24 plans complete)
+Progress: [██████████████████████░░] 92% (22 of 24 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20
-- Average duration: 2.7 min
-- Total execution time: 54 min
+- Total plans completed: 21
+- Average duration: 2.8 min
+- Total execution time: 61 min
 
 **By Phase:**
 
@@ -32,6 +32,7 @@ Progress: [█████████████████████░░
 | 03-gui-distribution | 6 | 15 min | 2.5 min |
 | 04-server-mode | 4 | 12 min | 3 min |
 | 05-octave-variations | 1 | 3 min | 3 min |
+| 05.1-wasm-browser | 1 | 7 min | 7 min |
 
 *Updated after each plan completion*
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [04-04]: Read timeouts handled as non-fatal in server/client loops
 - [05-01]: Port map stored alongside active notes for Note-Off port restoration
 - [05-01]: Server session unchanged for mirror routing (port routing is client-side)
+- [05.1-01]: index.html at project root (Trunk expects Cargo.toml alongside HTML)
+- [05.1-01]: WASM stubs return error messages; full Web MIDI deferred to Plan 02
+- [05.1-01]: Entire midi module gated (not individual files) since all depend on midir
 
 ### Pending Todos
 
@@ -99,6 +103,7 @@ None.
 ### Roadmap Evolution
 
 - Phase 4 added: Server Mode - Network server for remote MIDI harmony processing
+- Phase 5.1 inserted after Phase 5: WASM and In-Browser Support with Fly.io deployment (URGENT)
 
 ## Phase 1 Completion Summary
 
@@ -171,6 +176,6 @@ Mirror Octaves tripling implemented with port-aware routing via last_port_map().
 ## Session Continuity
 
 Last session: 2026-01-29
-Stopped at: Phase 5 complete and verified
+Stopped at: Completed 05.1-01-PLAN.md
 Resume file: None
-Next: Phase 6 (Humanization)
+Next: 05.1-02-PLAN.md (Web MIDI integration)
