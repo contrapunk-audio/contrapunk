@@ -2,8 +2,11 @@ mod harmony;
 mod midi;
 mod router;
 
-use anyhow::Result;
-use midi::ports::{list_input_ports, list_output_ports, select_input_port, select_output_ports};
+use anyhow::{anyhow, Result};
+use std::io::{self, Write};
+
+use crate::harmony::{Key, HarmonyMode, HarmonyEngine};
+use crate::midi::ports::{list_input_ports, list_output_ports, select_input_port, select_output_ports};
 
 fn main() -> Result<()> {
     println!("Contrapunk MIDI Router");
@@ -55,4 +58,33 @@ fn main() -> Result<()> {
 
     println!("\nContrapunk exited cleanly.");
     Ok(())
+}
+
+/// Prompts user to select a musical key.
+///
+/// Displays all 12 keys and returns the selected Key.
+fn select_key() -> Result<Key> {
+    println!("Select musical key:");
+    for (i, key) in Key::all().iter().enumerate() {
+        println!("  {}: {}", i, key);
+    }
+
+    print!("\nEnter key number [0-11, default 0 (C)]: ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim();
+
+    if input.is_empty() {
+        return Ok(Key::C);
+    }
+
+    let index: usize = input.parse()
+        .map_err(|_| anyhow!("Invalid number: {}", input))?;
+
+    Key::all()
+        .get(index)
+        .copied()
+        .ok_or_else(|| anyhow!("Key index {} out of range (0-11)", index))
 }
