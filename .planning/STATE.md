@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 2 of 4 (Harmony Engine)
-Plan: 3 of 6 in current phase
+Plan: 5 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-28 - Completed 02-02-PLAN.md (stateless harmony modes)
+Last activity: 2026-01-28 - Completed 02-05-PLAN.md (user configuration)
 
-Progress: [#####-----] 46% (6 of 13 plans complete)
+Progress: [######----] 54% (7 of 13 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 2.5 min
-- Total execution time: 15 min
+- Total plans completed: 7
+- Average duration: 2.3 min
+- Total execution time: 16 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-midi-foundation | 3 | 6 min | 2 min |
-| 02-harmony-engine | 3 | 9 min | 3 min |
+| 02-harmony-engine | 4 | 10 min | 2.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (checkpoint), 02-01 (2 min), 02-02 (3 min), 02-03 (4 min)
+- Last 5 plans: 02-01 (2 min), 02-02 (3 min), 02-03 (4 min), 02-05 (1 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -61,6 +61,9 @@ Recent decisions affecting current work:
 - [02-03]: Contrary motion first note uses third below as default harmony
 - [02-03]: Counterpoint prefers thirds/sixths over fourths/fifths for consonance
 - [02-03]: State resets on both key change and mode change
+- [02-05]: Default key is C (index 0) for most common use case
+- [02-05]: Default mode is Pass-through (1) for safe no-change starting point
+- [02-05]: Voice roles labeled in summary (melody for first output, harmony for rest)
 
 ### Pending Todos
 
@@ -90,16 +93,17 @@ Hardware tested: Akai MPK Mini -> 4 IAC Driver buses (macOS)
 
 **Harmony Engine - IN PROGRESS**
 
-Plans 1, 2, 3 complete:
+Plans 1, 2, 3, 5 complete:
 - Key enum (12 keys), HarmonyMode enum (7 modes), Scale struct with diatonic transposition
 - Five stateless mode functions in modes.rs (pass_through, diatonic_thirds/fourths, random_below variants)
 - ContraryMotionState and CounterpointState for stateful modes 6-7
 - HarmonyEngine with all 7 mode routing and state management
+- CLI key and mode selection with configuration summary display
 
-Next: Plan 02-04 (Router integration with harmony engine)
+Next: Plan 02-04 (Router integration with harmony engine) or 02-06 (Hardware verification)
 
 ## Session Continuity
 
-Last session: 2026-01-28 15:31 UTC
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-01-28 15:38 UTC
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
