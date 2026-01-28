@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 5.1 of 6 (WASM Browser Deployment)
-Plan: 1 of 3 in current phase — Complete
+Plan: 2 of 3 in current phase — Complete
 Status: In progress
-Last activity: 2026-01-29 - Completed 05.1-01-PLAN.md
+Last activity: 2026-01-29 - Completed 05.1-02-PLAN.md
 
-Progress: [██████████████████████░░] 92% (22 of 24 plans complete)
+Progress: [███████████████████████░] 96% (23 of 24 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 21
+- Total plans completed: 22
 - Average duration: 2.8 min
-- Total execution time: 61 min
+- Total execution time: 65 min
 
 **By Phase:**
 
@@ -32,7 +32,7 @@ Progress: [██████████████████████░
 | 03-gui-distribution | 6 | 15 min | 2.5 min |
 | 04-server-mode | 4 | 12 min | 3 min |
 | 05-octave-variations | 1 | 3 min | 3 min |
-| 05.1-wasm-browser | 1 | 7 min | 7 min |
+| 05.1-wasm-browser | 2 | 11 min | 5.5 min |
 
 *Updated after each plan completion*
 
@@ -91,6 +91,9 @@ Recent decisions affecting current work:
 - [05.1-01]: index.html at project root (Trunk expects Cargo.toml alongside HTML)
 - [05.1-01]: WASM stubs return error messages; full Web MIDI deferred to Plan 02
 - [05.1-01]: Entire midi module gated (not individual files) since all depend on midir
+- [05.1-02]: HarmonyEngine owned directly by ContrapunkApp in WASM (no thread, no Arc<Mutex>)
+- [05.1-02]: Frame-based polling drains Rc<RefCell<Vec<Vec<u8>>>> each update() frame
+- [05.1-02]: Output device IDs stored as Vec<String> for Web MIDI routing
 
 ### Pending Todos
 
@@ -176,6 +179,6 @@ Mirror Octaves tripling implemented with port-aware routing via last_port_map().
 ## Session Continuity
 
 Last session: 2026-01-29
-Stopped at: Completed 05.1-01-PLAN.md
+Stopped at: Completed 05.1-02-PLAN.md
 Resume file: None
-Next: 05.1-02-PLAN.md (Web MIDI integration)
+Next: 05.1-03-PLAN.md (Fly.io deployment)
