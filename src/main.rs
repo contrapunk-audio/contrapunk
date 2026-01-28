@@ -1,3 +1,4 @@
+mod harmony;
 mod midi;
 mod router;
 
