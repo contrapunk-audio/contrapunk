@@ -193,10 +193,12 @@ fn handle_note_on_gui(
     let num_outputs = output.connection_count();
 
     // Update shared state with active notes
+    // Note: notes[0] is melody (same as input), notes[1..] are harmonies
     {
         let mut state_lock = state.lock().unwrap();
         state_lock.input_notes.insert(note as u8);
-        for &n in &notes {
+        // Skip first note (melody) - only add harmony notes
+        for &n in notes.iter().skip(1) {
             state_lock.harmony_notes.insert(n as u8);
         }
     }
@@ -228,10 +230,12 @@ fn handle_note_off_gui(
     let num_outputs = output.connection_count();
 
     // Update shared state - remove released notes
+    // Note: notes[0] is melody (same as input), notes[1..] are harmonies
     {
         let mut state_lock = state.lock().unwrap();
         state_lock.input_notes.remove(&(note as u8));
-        for &n in &notes {
+        // Skip first note (melody) - only remove harmony notes
+        for &n in notes.iter().skip(1) {
             state_lock.harmony_notes.remove(&(n as u8));
         }
     }
