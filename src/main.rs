@@ -26,6 +26,9 @@ use std::io::{self, Write};
 #[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 #[cfg(not(feature = "gui"))]
 use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine};
 #[cfg(not(feature = "gui"))]
@@ -182,7 +185,33 @@ fn main() -> Result<()> {
 
     #[cfg(target_arch = "wasm32")]
     {
-        // WASM entry point is in lib.rs, not main
+        use wasm_bindgen::JsCast;
+        console_error_panic_hook::set_once();
+
+        let document = web_sys::window()
+            .expect("no window")
+            .document()
+            .expect("no document");
+        let canvas = document
+            .get_element_by_id("contrapunk_canvas")
+            .expect("canvas not found")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("element is not a canvas");
+
+        let web_options = eframe::WebOptions::default();
+        let runner = eframe::WebRunner::new();
+
+        wasm_bindgen_futures::spawn_local(async move {
+            runner
+                .start(
+                    canvas,
+                    web_options,
+                    Box::new(|cc| Ok(Box::new(app::ContrapunkApp::new(cc)))),
+                )
+                .await
+                .expect("failed to start eframe");
+        });
+
         Ok(())
     }
 }

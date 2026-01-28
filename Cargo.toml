@@ -33,8 +33,7 @@ gui = ["eframe"]
 wasm = ["gui"]
 
 [profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
+opt-level = "s"
+lto = false
 strip = true
 panic = "abort"
