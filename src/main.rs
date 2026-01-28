@@ -21,7 +21,7 @@ use anyhow::Result;
 use std::io::{self, Write};
 
 #[cfg(not(feature = "gui"))]
-use crate::harmony::{Key, HarmonyMode, HarmonyEngine};
+use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine};
 #[cfg(not(feature = "gui"))]
 use crate::midi::ports::{list_input_ports, list_output_ports, select_input_port, select_output_ports};
 
@@ -92,6 +92,9 @@ fn main() -> Result<()> {
         let mode = select_mode()?;
         println!("\nSelected mode: {} - {}\n", mode.number(), mode.description());
 
+        let octave_mode = select_octave_mode()?;
+        println!("\nSelected octave mode: {}\n", octave_mode.description());
+
         // --- Configuration Summary ---
 
         println!("\n========================================");
@@ -105,12 +108,14 @@ fn main() -> Result<()> {
         }
         println!("Key:     {}", key);
         println!("Mode:    {} - {}", mode.number(), mode.description());
+        println!("Octave:  {}", octave_mode.description());
         println!("========================================\n");
 
         // --- Create Harmony Engine and Start Routing ---
 
         // Create harmony engine with user's selections
         let mut engine = HarmonyEngine::new(key, mode);
+        engine.set_octave_mode(octave_mode);
 
         println!("Starting MIDI harmony routing...\n");
 
@@ -183,4 +188,38 @@ fn select_mode() -> Result<HarmonyMode> {
         .find(|m| m.number() == number)
         .copied()
         .ok_or_else(|| anyhow!("Mode {} not found (valid: 1-7)", number))
+}
+
+/// Prompts user to select an octave mode.
+///
+/// Displays all octave modes with descriptions and returns the selected mode.
+#[cfg(not(feature = "gui"))]
+fn select_octave_mode() -> Result<OctaveMode> {
+    println!("Select octave mode:");
+    println!("  0: None (default pitch)");
+    println!("  1: Spread (+1 octave per voice)");
+    println!("  2: Bass/Treble split");
+    println!("  3: Mirror (±1 octave)");
+
+    print!("\nEnter octave mode number [0-3, default 0 (None)]: ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim();
+
+    if input.is_empty() {
+        return Ok(OctaveMode::None);
+    }
+
+    let number: u8 = input.parse()
+        .map_err(|_| anyhow!("Invalid number: {}", input))?;
+
+    match number {
+        0 => Ok(OctaveMode::None),
+        1 => Ok(OctaveMode::Spread),
+        2 => Ok(OctaveMode::BassTrebleSplit),
+        3 => Ok(OctaveMode::Mirror),
+        _ => Err(anyhow!("Octave mode {} not found (valid: 0-3)", number)),
+    }
 }
