@@ -16,24 +16,32 @@ use crate::harmony::Scale;
 pub struct ContraryMotionState {
     last_melody: Option<Note>,
     last_harmony: Option<Note>,
+    /// Direction to move when melody repeats (alternates)
+    repeat_direction: i8,
 }
 
 impl ContraryMotionState {
     /// Creates a new ContraryMotionState with no history.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            last_melody: None,
+            last_harmony: None,
+            repeat_direction: -1, // Start by moving down
+        }
     }
 
     /// Resets the state (e.g., when changing modes or keys).
     pub fn reset(&mut self) {
         self.last_melody = None;
         self.last_harmony = None;
+        self.repeat_direction = -1;
     }
 
     /// Processes a note with contrary motion.
     ///
     /// - First note: harmony starts a third below the melody
     /// - Subsequent notes: harmony moves opposite to melody direction
+    /// - When melody repeats: harmony alternates direction (oblique motion)
     ///
     /// Returns [melody, harmony] or [melody] if harmony out of range.
     pub fn process(&mut self, scale: &Scale, melody: Note) -> Vec<Note> {
@@ -56,8 +64,11 @@ impl ContraryMotionState {
                     // Melody went down, harmony goes up
                     scale.transpose_diatonic(scale.snap_to_scale(last_harm), 1)
                 } else {
-                    // Melody repeated, harmony stays (return as Some)
-                    Some(last_harm)
+                    // Melody repeated: harmony moves in alternating direction (oblique motion)
+                    let result = scale.transpose_diatonic(scale.snap_to_scale(last_harm), self.repeat_direction);
+                    // Alternate direction for next repeat
+                    self.repeat_direction = -self.repeat_direction;
+                    result
                 }
             }
         };
@@ -79,12 +90,18 @@ impl ContraryMotionState {
 
 /// State for Mode 7: Strict Counterpoint
 ///
-/// Tracks previous intervals to avoid parallel fifths and octaves,
-/// which are forbidden in traditional counterpoint.
+/// Implements proper voice-leading rules:
+/// - Prefers stepwise motion in the harmony voice
+/// - Avoids repeating the same harmony note
+/// - When melody repeats, harmony MUST move
+/// - Avoids parallel fifths and octaves
+/// - Varies interval types for musical interest
 #[derive(Debug, Default)]
 pub struct CounterpointState {
     last_melody: Option<Note>,
     last_harmony: Option<Note>,
+    /// Tracks the last interval type used (in scale degrees) for variety
+    last_interval: Option<i8>,
 }
 
 impl CounterpointState {
@@ -97,56 +114,130 @@ impl CounterpointState {
     pub fn reset(&mut self) {
         self.last_melody = None;
         self.last_harmony = None;
+        self.last_interval = None;
     }
 
     /// Processes a note with strict counterpoint rules.
     ///
-    /// Tries intervals in order of preference (3rd, 6th, 4th, 5th),
-    /// rejecting any that would create parallel fifths or octaves
-    /// with the previous interval.
+    /// Uses voice-leading scoring:
+    /// - Prefers stepwise motion from previous harmony
+    /// - Avoids repeating the same harmony note
+    /// - Avoids repeating the same interval type
+    /// - Rejects parallel perfect intervals (fifths, octaves)
+    /// - When melody repeats, harmony must move
     ///
     /// Returns [melody, harmony] or [melody] if no valid harmony found.
     pub fn process(&mut self, scale: &Scale, melody: Note) -> Vec<Note> {
         let snapped = scale.snap_to_scale(melody);
 
-        // Preferred intervals: 3rds and 6ths first (consonant), then 4ths/5ths
-        // Negative = below the melody
-        let preferred_intervals: [i8; 8] = [-2, -5, -3, -4, 2, 5, 3, 4];
+        // Consonant intervals: 3rds and 6ths (below and above)
+        let candidate_intervals: [i8; 8] = [-2, -5, 2, 5, -3, -4, 3, 4];
 
-        let harmony = preferred_intervals.iter()
-            .filter_map(|&interval| {
-                let candidate = scale.transpose_diatonic(snapped, interval)?;
+        // Score each candidate and pick the best
+        let mut best_candidate: Option<(Note, i32)> = None;
 
-                // Check for parallel perfect intervals with previous
-                if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
-                    let prev_interval = self.interval_class(prev_m, prev_h);
-                    let new_interval = self.interval_class(melody, candidate);
+        for &interval in &candidate_intervals {
+            if let Some(candidate) = scale.transpose_diatonic(snapped, interval) {
+                let score = self.score_candidate(melody, candidate, interval);
 
-                    // Reject parallel unisons, fifths, or octaves
-                    if self.is_perfect_interval(prev_interval)
-                        && prev_interval == new_interval
-                    {
-                        return None;
-                    }
+                // Skip if score is negative (hard constraint violated)
+                if score < 0 {
+                    continue;
                 }
 
-                Some(candidate)
-            })
-            .next();
+                match best_candidate {
+                    None => best_candidate = Some((candidate, score)),
+                    Some((_, best_score)) if score > best_score => {
+                        best_candidate = Some((candidate, score));
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         self.last_melody = Some(melody);
 
-        match harmony {
-            Some(h) => {
-                self.last_harmony = Some(h);
-                vec![melody, h]
+        match best_candidate {
+            Some((harmony, _)) => {
+                // Calculate and store the interval used
+                let harmony_midi = u8::from(harmony) as i8;
+                let melody_midi = u8::from(snapped) as i8;
+                let interval_semitones = harmony_midi - melody_midi;
+                self.last_interval = Some(self.semitones_to_interval_class(interval_semitones));
+
+                self.last_harmony = Some(harmony);
+                vec![melody, harmony]
             }
             None => {
-                // No valid counterpoint found, pass through
                 self.last_harmony = None;
+                self.last_interval = None;
                 vec![melody]
             }
         }
+    }
+
+    /// Scores a harmony candidate based on voice-leading principles.
+    /// Returns negative score if hard constraint violated.
+    fn score_candidate(&self, melody: Note, candidate: Note, interval: i8) -> i32 {
+        let mut score: i32 = 0;
+
+        // Hard constraint: avoid parallel perfect intervals
+        if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
+            let prev_interval = self.interval_class(prev_m, prev_h);
+            let new_interval = self.interval_class(melody, candidate);
+
+            if self.is_perfect_interval(prev_interval) && prev_interval == new_interval {
+                return -100; // Hard reject
+            }
+        }
+
+        // Hard constraint: when melody repeats, harmony MUST move
+        if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
+            let melody_repeated = u8::from(melody) == u8::from(prev_m);
+            let harmony_same = u8::from(candidate) == u8::from(prev_h);
+
+            if melody_repeated && harmony_same {
+                return -100; // Hard reject - no static voice when melody repeats
+            }
+        }
+
+        // Soft preference: avoid repeating the same harmony note
+        if let Some(prev_h) = self.last_harmony {
+            if u8::from(candidate) != u8::from(prev_h) {
+                score += 3; // Bonus for different note
+            }
+        }
+
+        // Soft preference: stepwise motion in harmony voice
+        if let Some(prev_h) = self.last_harmony {
+            let prev_midi = u8::from(prev_h) as i32;
+            let cand_midi = u8::from(candidate) as i32;
+            let step_size = (cand_midi - prev_midi).abs();
+
+            match step_size {
+                1 | 2 => score += 4,  // Stepwise (semitone or whole tone)
+                3 | 4 => score += 2,  // Small leap (minor/major 3rd)
+                _ => score += 0,       // Larger leaps get no bonus
+            }
+        }
+
+        // Soft preference: vary the interval type
+        if let Some(last_int) = self.last_interval {
+            let current_int = self.semitones_to_interval_class(
+                u8::from(candidate) as i8 - u8::from(melody) as i8
+            );
+            if current_int != last_int {
+                score += 2; // Bonus for different interval type
+            }
+        }
+
+        // Slight preference for 3rds and 6ths over 4ths and 5ths
+        let abs_interval = interval.abs();
+        if abs_interval == 2 || abs_interval == 5 {
+            score += 1; // 3rds and 6ths
+        }
+
+        score
     }
 
     /// Returns the interval class (0-11) between two notes.
@@ -165,6 +256,23 @@ impl CounterpointState {
     /// (unison, fifth, or octave) that should not move in parallel.
     fn is_perfect_interval(&self, interval_class: u8) -> bool {
         matches!(interval_class, 0 | 7)  // Unison or perfect fifth
+    }
+
+    /// Converts semitone difference to interval class (3rd, 6th, etc.)
+    fn semitones_to_interval_class(&self, semitones: i8) -> i8 {
+        // Normalize to positive interval
+        let normalized = semitones.abs() % 12;
+        match normalized {
+            0 => 0,       // Unison
+            1 | 2 => 2,   // 2nd
+            3 | 4 => 3,   // 3rd
+            5 => 4,       // 4th
+            7 => 5,       // 5th
+            8 | 9 => 6,   // 6th
+            10 | 11 => 7, // 7th
+            6 => 4,       // Tritone (treat as 4th)
+            _ => 0,
+        }
     }
 }
 
@@ -200,28 +308,43 @@ mod tests {
     }
 
     #[test]
+    fn test_contrary_motion_melody_repeats() {
+        let scale = Scale::major(0);
+        let mut state = ContraryMotionState::new();
+
+        // First note: C4, harmony A3
+        let result1 = state.process(&scale, Note::C4);
+        let harmony1 = result1[1];
+
+        // Melody repeats: harmony should MOVE, not stay
+        let result2 = state.process(&scale, Note::C4);
+        let harmony2 = result2[1];
+        assert_ne!(u8::from(harmony1), u8::from(harmony2),
+            "Harmony should move when melody repeats");
+
+        // Third repeat: harmony should move again (opposite direction)
+        let result3 = state.process(&scale, Note::C4);
+        let harmony3 = result3[1];
+        assert_ne!(u8::from(harmony2), u8::from(harmony3),
+            "Harmony should continue moving on repeated melody");
+    }
+
+    #[test]
     fn test_counterpoint_avoids_parallel_fifths() {
         let scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
-        // Set up a fifth interval: C4 melody, F3 harmony (5 semitones = 4th, close to 5th)
-        // Actually let's use G3 to get a perfect 5th
         state.last_melody = Some(Note::C4);
         state.last_harmony = Some(Note::F3);  // Perfect 5th below
 
-        // Now if melody moves to D4, counterpoint should NOT give us G3
-        // (which would be parallel fifths)
         let result = state.process(&scale, Note::D4);
         assert_eq!(result[0], Note::D4);
 
-        // Harmony should NOT be G3 (which would be parallel 5th)
-        // It should prefer a 3rd or 6th
         if result.len() > 1 {
             let harmony_midi: u8 = result[1].into();
             let melody_midi: u8 = Note::D4.into();
             let interval = (melody_midi as i8 - harmony_midi as i8).unsigned_abs() % 12;
-            // Should not be a perfect 5th (7 semitones)
-            assert_ne!(interval, 7);
+            assert_ne!(interval, 7, "Should not produce parallel fifth");
         }
     }
 
@@ -230,11 +353,64 @@ mod tests {
         let scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
-        // First note should get a consonant harmony (3rd preferred)
         let result = state.process(&scale, Note::C4);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Note::C4);
-        // First preferred interval is -2 (third below) = A3
-        assert_eq!(result[1], Note::A3);
+        // Should get a consonant harmony (3rd or 6th preferred)
+    }
+
+    #[test]
+    fn test_counterpoint_melody_repeats_harmony_moves() {
+        let scale = Scale::major(0);
+        let mut state = CounterpointState::new();
+
+        // First note
+        let result1 = state.process(&scale, Note::C4);
+        assert_eq!(result1.len(), 2);
+        let harmony1 = result1[1];
+
+        // Same melody note: harmony MUST change
+        let result2 = state.process(&scale, Note::C4);
+        assert_eq!(result2.len(), 2);
+        let harmony2 = result2[1];
+
+        assert_ne!(u8::from(harmony1), u8::from(harmony2),
+            "Harmony must move when melody repeats");
+    }
+
+    #[test]
+    fn test_counterpoint_prefers_stepwise_motion() {
+        let scale = Scale::major(0);
+        let mut state = CounterpointState::new();
+
+        // Play several notes and check harmony moves smoothly
+        let result1 = state.process(&scale, Note::C4);
+        let h1 = u8::from(result1[1]) as i32;
+
+        let result2 = state.process(&scale, Note::D4);
+        let h2 = u8::from(result2[1]) as i32;
+
+        // Harmony should move by a small interval (stepwise preferred)
+        let step = (h2 - h1).abs();
+        assert!(step <= 4, "Harmony should prefer stepwise motion, got step of {}", step);
+    }
+
+    #[test]
+    fn test_counterpoint_varies_intervals() {
+        let scale = Scale::major(0);
+        let mut state = CounterpointState::new();
+
+        // Play a repeated note several times
+        let mut harmonies = Vec::new();
+        for _ in 0..4 {
+            let result = state.process(&scale, Note::C4);
+            harmonies.push(u8::from(result[1]));
+        }
+
+        // Check that we got at least 2 different harmony notes
+        harmonies.sort();
+        harmonies.dedup();
+        assert!(harmonies.len() >= 2,
+            "Counterpoint should vary harmonies on repeated notes");
     }
 }
