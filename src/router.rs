@@ -207,13 +207,15 @@ fn handle_note_on_gui(
         }
     }
 
-    // Send each note to its corresponding output port
+    // Send each note to its port (using port map for Mirror mode)
+    let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
-        if i < num_outputs {
+        let port = if i < port_map.len() { port_map[i] } else { i };
+        if port < num_outputs {
             let msg = MidiMessage::NoteOn(channel, n, velocity);
             let mut buf = vec![0u8; msg.bytes_size()];
             msg.copy_to_slice(&mut buf)?;
-            output.send_to_port(i, &buf)?;
+            output.send_to_port(port, &buf)?;
         }
     }
 
@@ -244,13 +246,15 @@ fn handle_note_off_gui(
         }
     }
 
-    // Release each note on its corresponding output port
+    // Release each note on its port (using port map for Mirror mode)
+    let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
-        if i < num_outputs {
+        let port = if i < port_map.len() { port_map[i] } else { i };
+        if port < num_outputs {
             let msg = MidiMessage::NoteOff(channel, n, velocity);
             let mut buf = vec![0u8; msg.bytes_size()];
             msg.copy_to_slice(&mut buf)?;
-            output.send_to_port(i, &buf)?;
+            output.send_to_port(port, &buf)?;
         }
     }
 
@@ -404,25 +408,23 @@ fn handle_note_on(
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
 
-    // Send each note to its corresponding output port
-    // note[0] -> port 0 (melody)
-    // note[1] -> port 1 (harmony of melody)
-    // note[2] -> port 2 (harmony of harmony 1)
-    // etc.
+    // Send each note to its port (using port map for Mirror mode)
+    let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
-        if i < num_outputs {
+        let port = if i < port_map.len() { port_map[i] } else { i };
+        if port < num_outputs {
             let msg = MidiMessage::NoteOn(channel, n, velocity);
             let mut buf = vec![0u8; msg.bytes_size()];
             msg.copy_to_slice(&mut buf)?;
-            output.send_to_port(i, &buf)?;
+            output.send_to_port(port, &buf)?;
         }
     }
 
     // Debug output
     if notes.len() > 1 {
         let note_strs: Vec<String> = notes.iter()
-            .enumerate()
-            .map(|(i, n)| format!("{:?}->p{}", n, i))
+            .zip(port_map.iter().chain(std::iter::repeat(&0)))
+            .map(|(n, p)| format!("{:?}->p{}", n, p))
             .collect();
         println!("[CHAIN] {:?} => [{}]", note, note_strs.join(", "));
     } else {
@@ -444,13 +446,15 @@ fn handle_note_off(
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
 
-    // Release each note on its corresponding output port
+    // Release each note on its port (using port map for Mirror mode)
+    let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
-        if i < num_outputs {
+        let port = if i < port_map.len() { port_map[i] } else { i };
+        if port < num_outputs {
             let msg = MidiMessage::NoteOff(channel, n, velocity);
             let mut buf = vec![0u8; msg.bytes_size()];
             msg.copy_to_slice(&mut buf)?;
-            output.send_to_port(i, &buf)?;
+            output.send_to_port(port, &buf)?;
         }
     }
 
