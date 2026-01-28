@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 3 of 4 (GUI and Distribution)
-Plan: 1 of 6 in current phase
+Plan: 2 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-28 - Completed 03-01-PLAN.md (GUI foundation)
+Last activity: 2026-01-28 - Completed 03-02-PLAN.md (MIDI control panel)
 
-Progress: [########--] 77% (10 of 13 plans complete)
+Progress: [########--] 85% (11 of 13 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 2.8 min
-- Total execution time: 28 min
+- Total plans completed: 11
+- Average duration: 3.0 min
+- Total execution time: 33 min
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [########--] 77% (10 of 13 plans complete)
 |-------|-------|-------|----------|
 | 01-midi-foundation | 3 | 6 min | 2 min |
 | 02-harmony-engine | 6 | 18 min | 3 min |
-| 03-gui-distribution | 1 | 4 min | 4 min |
+| 03-gui-distribution | 2 | 9 min | 4.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-05 (1 min), 02-04 (3 min), 02-06 (5 min), 03-01 (4 min)
+- Last 5 plans: 02-04 (3 min), 02-06 (5 min), 03-01 (4 min), 03-02 (5 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -74,6 +74,10 @@ Recent decisions affecting current work:
 - [03-01]: Use eframe::egui re-export for egui types
 - [03-01]: Feature gate CLI code with #[cfg(not(feature = "gui"))]
 - [03-01]: AppState contains all harmony and MIDI state for future use
+- [03-02]: Use output_slots Vec<Option<usize>> for 8 configurable output ports
+- [03-02]: Background router thread with Arc<Mutex<GUIRouterState>> for note state sharing
+- [03-02]: cfg(feature = gui) guards separate GUI and CLI router code paths
+- [03-02]: Router thread receives initial key/mode (dynamic config changes require restart)
 
 ### Pending Todos
 
@@ -116,6 +120,6 @@ All 7 modes verified working with no stuck notes.
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 03-01-PLAN.md (GUI foundation)
+Stopped at: Completed 03-02-PLAN.md (MIDI control panel)
 Resume file: None
-Next: Execute 03-02-PLAN.md (MIDI control panel)
+Next: Execute 03-03-PLAN.md (Piano roll visualization)
