@@ -7,6 +7,10 @@ use std::collections::HashSet;
 use eframe::egui;
 
 use crate::harmony::{Key, HarmonyMode};
+use crate::midi::ports::{list_input_ports, list_output_ports};
+
+/// Maximum number of output slots available in the GUI.
+const MAX_OUTPUT_SLOTS: usize = 8;
 
 /// Application state shared across the GUI.
 ///
@@ -22,8 +26,8 @@ pub struct AppState {
     pub harmony_notes: HashSet<u8>,
     /// Selected input port index
     pub input_port: Option<usize>,
-    /// Selected output port indices
-    pub output_ports: Vec<usize>,
+    /// Selected output port indices (one per slot, None if slot not assigned)
+    pub output_slots: Vec<Option<usize>>,
     /// Available input ports (index, name)
     pub available_inputs: Vec<(usize, String)>,
     /// Available output ports (index, name)
@@ -34,6 +38,50 @@ pub struct AppState {
     pub last_error: Option<String>,
 }
 
+impl AppState {
+    /// Refreshes the available MIDI device lists.
+    pub fn refresh_devices(&mut self) {
+        self.last_error = None;
+
+        match list_input_ports() {
+            Ok(inputs) => self.available_inputs = inputs,
+            Err(e) => {
+                self.last_error = Some(format!("Failed to list input ports: {}", e));
+                self.available_inputs.clear();
+            }
+        }
+
+        match list_output_ports() {
+            Ok(outputs) => self.available_outputs = outputs,
+            Err(e) => {
+                self.last_error = Some(format!("Failed to list output ports: {}", e));
+                self.available_outputs.clear();
+            }
+        }
+
+        // Validate current selections still exist
+        if let Some(input_idx) = self.input_port {
+            if !self.available_inputs.iter().any(|(i, _)| *i == input_idx) {
+                self.input_port = None;
+            }
+        }
+
+        // Validate output selections
+        for slot in &mut self.output_slots {
+            if let Some(idx) = *slot {
+                if !self.available_outputs.iter().any(|(i, _)| *i == idx) {
+                    *slot = None;
+                }
+            }
+        }
+    }
+
+    /// Returns selected output ports as a Vec<usize> (filtering out None slots).
+    pub fn selected_output_ports(&self) -> Vec<usize> {
+        self.output_slots.iter().filter_map(|s| *s).collect()
+    }
+}
+
 impl Default for AppState {
     fn default() -> Self {
         Self {
@@ -42,7 +90,7 @@ impl Default for AppState {
             input_notes: HashSet::new(),
             harmony_notes: HashSet::new(),
             input_port: None,
-            output_ports: Vec::new(),
+            output_slots: vec![None; MAX_OUTPUT_SLOTS],
             available_inputs: Vec::new(),
             available_outputs: Vec::new(),
             is_running: false,
@@ -59,63 +107,238 @@ pub struct ContrapunkApp {
 impl ContrapunkApp {
     /// Create a new ContrapunkApp instance.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        Self {
+        let mut app = Self {
             state: AppState::default(),
+        };
+        // Auto-refresh devices on startup
+        app.state.refresh_devices();
+        app
+    }
+
+    /// Returns whether routing is currently active.
+    fn is_running(&self) -> bool {
+        self.state.is_running
+    }
+
+    /// Validates configuration and attempts to start routing.
+    fn try_start(&mut self) {
+        self.state.last_error = None;
+
+        // Validate input port is selected
+        if self.state.input_port.is_none() {
+            self.state.last_error = Some("Please select an input device".to_string());
+            return;
         }
+
+        // Validate at least one output is selected
+        let outputs = self.state.selected_output_ports();
+        if outputs.is_empty() {
+            self.state.last_error = Some("Please select at least one output device".to_string());
+            return;
+        }
+
+        // Configuration is valid, mark as running
+        // (Actual router spawn will be implemented in Task 2)
+        self.state.is_running = true;
+    }
+
+    /// Stops routing.
+    fn stop(&mut self) {
+        self.state.is_running = false;
+        // (Actual router stop will be implemented in Task 2)
     }
 }
 
 impl eframe::App for ContrapunkApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.heading("Contrapunk");
+        // SidePanel with configuration controls (must be before CentralPanel)
+        egui::SidePanel::left("config_panel")
+            .resizable(false)
+            .default_width(220.0)
+            .show(ctx, |ui| {
+                ui.heading("Configuration");
                 ui.add_space(10.0);
-                ui.label("MIDI Harmony Generator");
-            });
 
-            ui.add_space(20.0);
-            ui.separator();
-            ui.add_space(10.0);
+                // Refresh Devices button
+                if ui.button("Refresh Devices").clicked() {
+                    self.state.refresh_devices();
+                }
+                ui.add_space(15.0);
 
-            // Current settings display
-            ui.horizontal(|ui| {
-                ui.label("Key:");
-                ui.strong(format!("{}", self.state.key));
-            });
+                // MIDI Input selection
+                ui.label("MIDI Input:");
+                let input_text = match self.state.input_port {
+                    Some(idx) => self.state.available_inputs
+                        .iter()
+                        .find(|(i, _)| *i == idx)
+                        .map(|(_, name)| name.clone())
+                        .unwrap_or_else(|| format!("Port {}", idx)),
+                    None => "Select input...".to_string(),
+                };
+                egui::ComboBox::from_id_salt("input_port")
+                    .selected_text(&input_text)
+                    .width(180.0)
+                    .show_ui(ui, |ui| {
+                        for (idx, name) in &self.state.available_inputs {
+                            let is_selected = self.state.input_port == Some(*idx);
+                            if ui.selectable_label(is_selected, name).clicked() {
+                                self.state.input_port = Some(*idx);
+                            }
+                        }
+                    });
+                ui.add_space(15.0);
 
-            ui.horizontal(|ui| {
-                ui.label("Mode:");
-                ui.strong(format!("{} - {}",
-                    self.state.mode.number(),
-                    self.state.mode.description()
-                ));
-            });
+                // MIDI Outputs selection (multiple slots)
+                ui.label("MIDI Outputs:");
+                ui.add_space(5.0);
 
-            ui.add_space(20.0);
-            ui.separator();
-            ui.add_space(10.0);
+                let num_slots = self.state.output_slots.len();
+                for slot_idx in 0..num_slots {
+                    let slot_label = format!("Output {}", slot_idx + 1);
+                    let output_text = match self.state.output_slots[slot_idx] {
+                        Some(idx) => self.state.available_outputs
+                            .iter()
+                            .find(|(i, _)| *i == idx)
+                            .map(|(_, name)| name.clone())
+                            .unwrap_or_else(|| format!("Port {}", idx)),
+                        None => "None".to_string(),
+                    };
 
-            // Status display
-            ui.horizontal(|ui| {
-                ui.label("Status:");
-                if self.state.is_running {
-                    ui.colored_label(egui::Color32::GREEN, "Running");
+                    ui.horizontal(|ui| {
+                        ui.label(&slot_label);
+                    });
+                    egui::ComboBox::from_id_salt(format!("output_slot_{}", slot_idx))
+                        .selected_text(&output_text)
+                        .width(180.0)
+                        .show_ui(ui, |ui| {
+                            // "None" option to clear slot
+                            let is_none = self.state.output_slots[slot_idx].is_none();
+                            if ui.selectable_label(is_none, "None").clicked() {
+                                self.state.output_slots[slot_idx] = None;
+                            }
+                            // Available outputs
+                            for (idx, name) in &self.state.available_outputs {
+                                let is_selected = self.state.output_slots[slot_idx] == Some(*idx);
+                                if ui.selectable_label(is_selected, name).clicked() {
+                                    self.state.output_slots[slot_idx] = Some(*idx);
+                                }
+                            }
+                        });
+                    ui.add_space(3.0);
+                }
+                ui.add_space(15.0);
+
+                ui.separator();
+                ui.add_space(10.0);
+
+                // Key selection
+                ui.label("Musical Key:");
+                egui::ComboBox::from_id_salt("key_select")
+                    .selected_text(format!("{}", self.state.key))
+                    .width(180.0)
+                    .show_ui(ui, |ui| {
+                        for key in Key::all() {
+                            ui.selectable_value(&mut self.state.key, *key, format!("{}", key));
+                        }
+                    });
+                ui.add_space(10.0);
+
+                // Mode selection
+                ui.label("Harmony Mode:");
+                egui::ComboBox::from_id_salt("mode_select")
+                    .selected_text(format!("{}: {}", self.state.mode.number(), self.state.mode.description()))
+                    .width(180.0)
+                    .show_ui(ui, |ui| {
+                        for mode in HarmonyMode::all() {
+                            let text = format!("{}: {}", mode.number(), mode.description());
+                            ui.selectable_value(&mut self.state.mode, *mode, text);
+                        }
+                    });
+                ui.add_space(20.0);
+
+                ui.separator();
+                ui.add_space(10.0);
+
+                // Start/Stop button
+                if self.is_running() {
+                    if ui.add_sized([180.0, 40.0], egui::Button::new("Stop")).clicked() {
+                        self.stop();
+                    }
                 } else {
-                    ui.colored_label(egui::Color32::GRAY, "Stopped");
+                    if ui.add_sized([180.0, 40.0], egui::Button::new("Start")).clicked() {
+                        self.try_start();
+                    }
                 }
             });
 
+        // CentralPanel with status and visualization (after SidePanel)
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.heading("Contrapunk");
+                ui.add_space(5.0);
+                ui.label("MIDI Harmony Generator");
+            });
+
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(10.0);
+
+            // Status row
+            ui.horizontal(|ui| {
+                if self.is_running() {
+                    ui.label(egui::RichText::new("ACTIVE").color(egui::Color32::GREEN).strong());
+                } else {
+                    ui.label(egui::RichText::new("STOPPED").color(egui::Color32::GRAY));
+                }
+                ui.separator();
+                ui.label(format!("Key: {}", self.state.key));
+                ui.separator();
+                ui.label(format!("Mode: {}", self.state.mode.description()));
+            });
+
+            ui.add_space(10.0);
+
             // Error display
             if let Some(ref error) = self.state.last_error {
-                ui.add_space(10.0);
                 ui.colored_label(egui::Color32::RED, format!("Error: {}", error));
+                ui.add_space(10.0);
+            }
+
+            ui.separator();
+            ui.add_space(10.0);
+
+            // Connected devices info (when running)
+            if self.is_running() {
+                ui.label(egui::RichText::new("Connected Devices:").strong());
+                ui.add_space(5.0);
+
+                // Input device
+                if let Some(input_idx) = self.state.input_port {
+                    let input_name = self.state.available_inputs
+                        .iter()
+                        .find(|(i, _)| *i == input_idx)
+                        .map(|(_, name)| name.as_str())
+                        .unwrap_or("Unknown");
+                    ui.label(format!("  Input: {}", input_name));
+                }
+
+                // Output devices
+                let outputs = self.state.selected_output_ports();
+                for (i, idx) in outputs.iter().enumerate() {
+                    let output_name = self.state.available_outputs
+                        .iter()
+                        .find(|(port_idx, _)| port_idx == idx)
+                        .map(|(_, name)| name.as_str())
+                        .unwrap_or("Unknown");
+                    let role = if i == 0 { "melody" } else { "harmony" };
+                    ui.label(format!("  Output {}: {} [{}]", i + 1, output_name, role));
+                }
             }
 
             ui.add_space(20.0);
 
-            // Placeholder text
-            ui.label("GUI controls will be added in subsequent plans.");
+            // Placeholder for future visualizations
+            ui.label("Note visualizations will be added in subsequent plans.");
         });
     }
 }
