@@ -9,10 +9,11 @@ use crate::harmony::{Key, HarmonyMode, HarmonyEngine};
 use crate::midi::ports::{list_input_ports, list_output_ports, select_input_port, select_output_ports};
 
 fn main() -> Result<()> {
-    println!("Contrapunk MIDI Router");
-    println!("======================\n");
+    println!("Contrapunk MIDI Harmony Generator");
+    println!("==================================\n");
 
-    // List and select MIDI input port
+    // --- MIDI Port Selection ---
+
     let input_ports = list_input_ports()?;
     if input_ports.is_empty() {
         println!("No MIDI input ports available.");
@@ -26,7 +27,6 @@ fn main() -> Result<()> {
         selected_input, input_ports[selected_input].1
     );
 
-    // List and select MIDI output ports (2-8 ports for harmony voices)
     let output_ports = list_output_ports()?;
     if output_ports.is_empty() {
         println!("No MIDI output ports available.");
@@ -40,17 +40,40 @@ fn main() -> Result<()> {
         println!("  {} - {}", idx, output_ports[idx].1);
     }
 
-    // Confirmation
-    println!("\n--- Configuration Complete ---");
-    println!("Input:  {} ({})", input_ports[selected_input].1, selected_input);
-    println!("Outputs: {} ports selected", selected_outputs.len());
+    // --- Harmony Configuration ---
+
+    println!("\n--- Harmony Configuration ---\n");
+
+    let key = select_key()?;
+    println!("\nSelected key: {}\n", key);
+
+    let mode = select_mode()?;
+    println!("\nSelected mode: {} - {}\n", mode.number(), mode.description());
+
+    // --- Configuration Summary ---
+
+    println!("\n========================================");
+    println!("         Configuration Summary");
+    println!("========================================");
+    println!("Input:   {} ({})", input_ports[selected_input].1, selected_input);
+    println!("Outputs: {} ports", selected_outputs.len());
     for (i, &idx) in selected_outputs.iter().enumerate() {
-        println!("  Voice {}: {} ({})", i + 1, output_ports[idx].1, idx);
+        let role = if i == 0 { "melody" } else { "harmony" };
+        println!("  Voice {}: {} ({}) [{}]", i + 1, output_ports[idx].1, idx, role);
     }
+    println!("Key:     {}", key);
+    println!("Mode:    {} - {}", mode.number(), mode.description());
+    println!("========================================\n");
 
-    // Start MIDI routing
-    println!("\nStarting MIDI pass-through routing...\n");
+    // --- Create Harmony Engine and Start Routing ---
 
+    // Create harmony engine with user's selections
+    // Note: Engine will be passed to run_router() once 02-04 integrates harmony
+    let _engine = HarmonyEngine::new(key, mode);
+
+    println!("Starting MIDI harmony routing...\n");
+
+    // TODO: Pass &mut engine to run_router() after 02-04 completes
     if let Err(e) = router::run_router(selected_input, &selected_outputs) {
         eprintln!("Error during MIDI routing: {}", e);
         return Err(e);
@@ -87,4 +110,34 @@ fn select_key() -> Result<Key> {
         .get(index)
         .copied()
         .ok_or_else(|| anyhow!("Key index {} out of range (0-11)", index))
+}
+
+/// Prompts user to select a harmony mode.
+///
+/// Displays all 7 modes with descriptions and returns the selected mode.
+fn select_mode() -> Result<HarmonyMode> {
+    println!("Select harmony mode:");
+    for mode in HarmonyMode::all() {
+        println!("  {}: {}", mode.number(), mode.description());
+    }
+
+    print!("\nEnter mode number [1-7, default 1 (Pass-through)]: ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim();
+
+    if input.is_empty() {
+        return Ok(HarmonyMode::PassThrough);
+    }
+
+    let number: u8 = input.parse()
+        .map_err(|_| anyhow!("Invalid number: {}", input))?;
+
+    HarmonyMode::all()
+        .iter()
+        .find(|m| m.number() == number)
+        .copied()
+        .ok_or_else(|| anyhow!("Mode {} not found (valid: 1-7)", number))
 }
