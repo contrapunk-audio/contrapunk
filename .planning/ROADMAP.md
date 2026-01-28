@@ -81,17 +81,20 @@ Plans:
 ### Phase 4: Server Mode
 **Goal**: Binary runs as a server allowing remote users to connect and receive MIDI harmony generations back to their output devices
 **Depends on**: Phase 3
-**Requirements**: TBD (to be defined during planning)
+**Requirements**: SRV-01, SRV-02, SRV-03, SRV-04, SRV-05
 **Success Criteria** (what must be TRUE):
   1. Application can start in server mode, listening on a configurable network port
   2. Remote clients can connect and send MIDI input to the server
   3. Server processes MIDI through harmony engine and returns harmonized output to clients
   4. Multiple clients can connect simultaneously (server handles concurrent sessions)
   5. Clients receive harmonized MIDI output routable to their local output devices
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 04-01: TBD (run /gsd:plan-phase 4 to break down)
+- [ ] 04-01-PLAN.md — Wire protocol and server configuration types
+- [ ] 04-02-PLAN.md — Session handler and server accept loop
+- [ ] 04-03-PLAN.md — CLI integration (clap) and client mode
+- [ ] 04-04-PLAN.md — End-to-end verification with MIDI hardware
 
 ### Phase 5: Octave Variations
 **Goal**: User can apply octave placement variations to counterpoint and harmony modes
@@ -134,10 +137,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. MIDI Foundation | 3/3 | Complete | 2026-01-28 |
 | 2. Harmony Engine | 6/6 | Complete | 2026-01-28 |
 | 3. GUI and Distribution | 6/6 | Complete | 2026-01-28 |
-| 4. Server Mode | 0/? | Not started | - |
+| 4. Server Mode | 0/4 | Planning complete | - |
 | 5. Octave Variations | 0/? | Not started | - |
 | 6. Humanization | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-28 — Phase 3 complete (6/6 plans, verified)*
+*Last updated: 2026-01-28 — Phase 4 planned (4 plans in 4 waves)*
