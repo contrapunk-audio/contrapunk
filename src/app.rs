@@ -9,8 +9,8 @@ use std::thread::JoinHandle;
 use anyhow::Result;
 use eframe::egui;
 
-use crate::chord::chord_display;
 use crate::harmony::{Key, HarmonyMode, OctaveMode};
+use crate::piano::PianoKeyboard;
 use crate::midi::ports::{list_input_ports, list_output_ports};
 use crate::router::{spawn_gui_router, GUIRouterState};
 
@@ -465,8 +465,15 @@ impl eframe::App for ContrapunkApp {
 
             ui.add_space(20.0);
 
-            // Placeholder for future visualizations
-            ui.label("Piano roll visualization will be added in subsequent plans.");
+            // Piano keyboard visualization
+            ui.group(|ui| {
+                ui.label(egui::RichText::new("Piano Keyboard").strong());
+                ui.add_space(5.0);
+
+                PianoKeyboard::new()
+                    .with_notes(input_notes, harmony_notes)
+                    .show(ui);
+            });
         });
     }
 }
