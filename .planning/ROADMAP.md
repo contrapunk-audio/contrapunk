@@ -17,6 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: GUI and Distribution** - Native egui interface and single-binary packaging
 - [x] **Phase 4: Server Mode** - Network server for remote MIDI harmony processing
 - [x] **Phase 5: Octave Variations** - Sub-modes for counterpoint with octave placement options
+- [ ] **Phase 5.1: WASM and In-Browser Support** - Compile to WebAssembly for browser-based use with Fly.io deployment (INSERTED)
 - [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, and groove to generated notes
 
 ## Phase Details
@@ -111,6 +112,23 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md — True Mirror Octaves duplication with port-aware routing
 
+### Phase 5.1: WASM and In-Browser Support (INSERTED)
+**Goal**: Compile Contrapunk to WebAssembly for browser-based use and deploy via Fly.io
+**Depends on**: Phase 5
+**Requirements**: WASM-01, WASM-02, WASM-03
+**Success Criteria** (what must be TRUE):
+  1. Application compiles to WebAssembly and runs in a modern browser
+  2. Web MIDI API provides input/output device access in-browser
+  3. GUI renders correctly via egui's WASM backend
+  4. Application is deployed and accessible via Fly.io
+  5. Browser users can use harmony engine with acceptable latency
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05.1-01-PLAN.md — WASM compilation foundation and Trunk build setup
+- [ ] 05.1-02-PLAN.md — Web MIDI backend and frame-based polling
+- [ ] 05.1-03-PLAN.md — Fly.io deployment and browser verification
+
 ### Phase 6: Humanization
 **Goal**: User can add human-like imperfections to generated harmony notes
 **Depends on**: Phase 2 (Harmony Engine)
@@ -130,7 +148,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -139,8 +157,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. GUI and Distribution | 6/6 | Complete | 2026-01-28 |
 | 4. Server Mode | 4/4 | Complete | 2026-01-29 |
 | 5. Octave Variations | 1/1 | Complete | 2026-01-29 |
+| 5.1 WASM & Browser (INSERTED) | 0/3 | Not started | - |
 | 6. Humanization | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-29 — Phase 5 complete (1 plan, verified)*
+*Last updated: 2026-01-29 — Phase 5.1 planned (3 plans in 3 waves)*
