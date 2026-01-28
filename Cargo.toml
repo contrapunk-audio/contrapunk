@@ -8,3 +8,5 @@ authors = ["Contrapunk Team"]
 [dependencies]
 midir = "0.10"
 anyhow = "1.0"
+wmidi = "4.0"
+rand = "0.8"
