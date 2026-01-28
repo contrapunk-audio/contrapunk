@@ -19,7 +19,10 @@ use wmidi::{Channel, MidiMessage, Note, Velocity};
 /// a loop that processes MIDI messages through the HarmonyEngine.
 ///
 /// - Original notes go to output port 0
-/// - Harmony notes go to output port 1 (if available)
+/// - Chained harmonies go to ports 1, 2, 3, ... (one per port)
+///   - Harmony 1 (of melody) -> port 1
+///   - Harmony 2 (of harmony 1) -> port 2
+///   - Harmony 3 (of harmony 2) -> port 3
 /// - Non-note messages pass through to first output
 ///
 /// # Arguments
@@ -45,6 +48,10 @@ pub fn run_router(
     // Create output router
     let mut output_router = OutputRouter::new(output_ports)?;
 
+    // Configure engine voice count to match output count
+    let num_outputs = output_router.connection_count();
+    engine.set_voice_count(num_outputs);
+
     println!("\n========================================");
     println!("MIDI harmony routing active.");
     println!(
@@ -53,6 +60,7 @@ pub fn run_router(
         engine.mode().number(),
         engine.mode().description()
     );
+    println!("Voices: {} (melody + {} chained harmonies)", num_outputs, num_outputs.saturating_sub(1));
     println!("Press Enter to stop.");
     println!("========================================\n");
 
@@ -143,25 +151,29 @@ fn handle_note_on(
     output: &mut OutputRouter,
 ) -> Result<()> {
     let notes = engine.harmonize_note_on(note);
+    let num_outputs = output.connection_count();
 
-    // Send each note to its designated output
+    // Send each note to its corresponding output port
+    // note[0] -> port 0 (melody)
+    // note[1] -> port 1 (harmony of melody)
+    // note[2] -> port 2 (harmony of harmony 1)
+    // etc.
     for (i, &n) in notes.iter().enumerate() {
-        let msg = MidiMessage::NoteOn(channel, n, velocity);
-        let mut buf = vec![0u8; msg.bytes_size()];
-        msg.copy_to_slice(&mut buf)?;
-
-        if i == 0 {
-            // Original note to first output
-            output.send_to_port(0, &buf)?;
-        } else if output.connection_count() > 1 {
-            // Harmony to second output (if available)
-            output.send_to_port(1, &buf)?;
+        if i < num_outputs {
+            let msg = MidiMessage::NoteOn(channel, n, velocity);
+            let mut buf = vec![0u8; msg.bytes_size()];
+            msg.copy_to_slice(&mut buf)?;
+            output.send_to_port(i, &buf)?;
         }
     }
 
     // Debug output
     if notes.len() > 1 {
-        println!("[HARMONY] {:?} -> {:?} + {:?}", note, notes[0], notes[1]);
+        let note_strs: Vec<String> = notes.iter()
+            .enumerate()
+            .map(|(i, n)| format!("{:?}->p{}", n, i))
+            .collect();
+        println!("[CHAIN] {:?} => [{}]", note, note_strs.join(", "));
     } else {
         println!("[PASS] {:?}", note);
     }
@@ -178,16 +190,15 @@ fn handle_note_off(
     output: &mut OutputRouter,
 ) -> Result<()> {
     let notes = engine.harmonize_note_off(note);
+    let num_outputs = output.connection_count();
 
+    // Release each note on its corresponding output port
     for (i, &n) in notes.iter().enumerate() {
-        let msg = MidiMessage::NoteOff(channel, n, velocity);
-        let mut buf = vec![0u8; msg.bytes_size()];
-        msg.copy_to_slice(&mut buf)?;
-
-        if i == 0 {
-            output.send_to_port(0, &buf)?;
-        } else if output.connection_count() > 1 {
-            output.send_to_port(1, &buf)?;
+        if i < num_outputs {
+            let msg = MidiMessage::NoteOff(channel, n, velocity);
+            let mut buf = vec![0u8; msg.bytes_size()];
+            msg.copy_to_slice(&mut buf)?;
+            output.send_to_port(i, &buf)?;
         }
     }
 

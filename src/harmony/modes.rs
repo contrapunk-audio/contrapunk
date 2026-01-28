@@ -18,12 +18,10 @@ pub fn pass_through(note: Note, _scale: &Scale) -> Vec<Note> {
 /// Mode 2: Diatonic thirds above
 ///
 /// Returns the input note plus a diatonic third (2 scale degrees) above.
-/// If the note is not in the scale, snaps to nearest scale note first.
+/// For out-of-key notes, uses a consonant chromatic third instead.
 /// If harmony would be out of range, returns only the original note.
 pub fn diatonic_thirds(note: Note, scale: &Scale) -> Vec<Note> {
-    let root = scale.snap_to_scale(note);
-
-    match scale.transpose_diatonic(root, 2) {
+    match scale.harmonize_smart(note, 2, true) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],  // Out of range, just pass through
     }
@@ -32,12 +30,10 @@ pub fn diatonic_thirds(note: Note, scale: &Scale) -> Vec<Note> {
 /// Mode 3: Diatonic fourths above
 ///
 /// Returns the input note plus a diatonic fourth (3 scale degrees) above.
-/// If the note is not in the scale, snaps to nearest scale note first.
+/// For out-of-key notes, uses a consonant chromatic interval instead.
 /// If harmony would be out of range, returns only the original note.
 pub fn diatonic_fourths(note: Note, scale: &Scale) -> Vec<Note> {
-    let root = scale.snap_to_scale(note);
-
-    match scale.transpose_diatonic(root, 3) {
+    match scale.harmonize_smart(note, 3, true) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
     }
@@ -47,19 +43,19 @@ pub fn diatonic_fourths(note: Note, scale: &Scale) -> Vec<Note> {
 ///
 /// Returns the input note plus a random diatonic interval below
 /// (2nd through 7th below, i.e., -1 to -6 scale degrees).
+/// For out-of-key notes, uses a consonant chromatic interval instead.
 ///
 /// Note: For deterministic Note-Off handling, this mode requires
 /// tracking active notes. The random selection happens on Note-On
 /// and the same interval is used for Note-Off.
 pub fn random_below(note: Note, scale: &Scale) -> Vec<Note> {
-    let root = scale.snap_to_scale(note);
     let mut rng = rand::thread_rng();
 
     // Intervals: -1 (2nd below) to -6 (7th below)
     let intervals = [-1, -2, -3, -4, -5, -6];
     let interval = intervals[rng.gen_range(0..intervals.len())];
 
-    match scale.transpose_diatonic(root, interval) {
+    match scale.harmonize_smart(note, interval, false) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
     }
@@ -69,15 +65,15 @@ pub fn random_below(note: Note, scale: &Scale) -> Vec<Note> {
 ///
 /// Like Mode 4, but excludes 2nds (which can sound dissonant).
 /// Returns input plus a random interval from 3rd to 7th below.
+/// For out-of-key notes, uses a consonant chromatic interval instead.
 pub fn random_below_no_seconds(note: Note, scale: &Scale) -> Vec<Note> {
-    let root = scale.snap_to_scale(note);
     let mut rng = rand::thread_rng();
 
     // Intervals: -2 (3rd below) to -6 (7th below), skipping -1 (2nd)
     let intervals = [-2, -3, -4, -5, -6];
     let interval = intervals[rng.gen_range(0..intervals.len())];
 
-    match scale.transpose_diatonic(root, interval) {
+    match scale.harmonize_smart(note, interval, false) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
     }
