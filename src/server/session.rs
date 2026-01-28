@@ -40,6 +40,20 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
         let msg = match protocol::read_message(&mut stream) {
             Ok(m) => m,
             Err(e) => {
+                // Check if this is a timeout (not a real disconnect)
+                let is_timeout = e.chain().any(|cause| {
+                    if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                        matches!(
+                            io_err.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        )
+                    } else {
+                        false
+                    }
+                });
+                if is_timeout {
+                    continue; // Keep waiting for data
+                }
                 eprintln!("[server] client {} read error: {}", peer, e);
                 break;
             }

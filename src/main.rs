@@ -377,7 +377,23 @@ fn run_client(addr: &str) -> Result<()> {
                     break;
                 }
                 Ok(_) => {} // Ignore unexpected messages
-                Err(_) => break,
+                Err(e) => {
+                    // Timeout is not fatal — keep waiting for server responses
+                    let is_timeout = e.chain().any(|cause| {
+                        if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                            matches!(
+                                io_err.kind(),
+                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                            )
+                        } else {
+                            false
+                        }
+                    });
+                    if is_timeout {
+                        continue;
+                    }
+                    break;
+                }
             }
         }
     });
