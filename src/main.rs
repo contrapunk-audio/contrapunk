@@ -6,6 +6,12 @@ mod router;
 mod app;
 
 #[cfg(feature = "gui")]
+mod chord;
+
+#[cfg(feature = "gui")]
+mod piano;
+
+#[cfg(feature = "gui")]
 use eframe::egui;
 
 #[cfg(not(feature = "gui"))]
