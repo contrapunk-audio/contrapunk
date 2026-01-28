@@ -42,9 +42,9 @@
 
 ### Octave Variations
 
-- [ ] **OCT-01**: Octave Spread - each harmony voice in progressively different octaves
-- [ ] **OCT-02**: Bass/Treble Split - harmonies below melody go low, above go high
-- [ ] **OCT-03**: Mirror Octaves - harmonies duplicate across multiple octaves simultaneously
+- [x] **OCT-01**: Octave Spread - each harmony voice in progressively different octaves
+- [x] **OCT-02**: Bass/Treble Split - harmonies below melody go low, above go high
+- [x] **OCT-03**: Mirror Octaves - harmonies duplicate across multiple octaves simultaneously
 
 ### Humanization
 
@@ -96,9 +96,9 @@
 | GUI-04 | Phase 3 | Complete |
 | GUI-05 | Phase 3 | Complete |
 | DIST-01 | Phase 3 | Complete |
-| OCT-01 | Phase 5 | Pending |
-| OCT-02 | Phase 5 | Pending |
-| OCT-03 | Phase 5 | Pending |
+| OCT-01 | Phase 5 | Complete |
+| OCT-02 | Phase 5 | Complete |
+| OCT-03 | Phase 5 | Complete |
 | HUM-01 | Phase 6 | Pending |
 | HUM-02 | Phase 6 | Pending |
 | HUM-03 | Phase 6 | Pending |
@@ -111,4 +111,4 @@
 
 ---
 *Requirements defined: 2026-01-28*
-*Last updated: 2026-01-28 after roadmap creation*
+*Last updated: 2026-01-29 — OCT-01, OCT-02, OCT-03 marked Complete (Phase 5)*
