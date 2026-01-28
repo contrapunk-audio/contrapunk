@@ -4,8 +4,12 @@
 //! including scale-aware transposition and multiple harmony modes.
 
 mod config;
+mod engine;
 mod modes;
 mod scale;
+mod stateful;
 
 pub use config::{Key, HarmonyMode};
+pub use engine::HarmonyEngine;
 pub use scale::Scale;
+pub use stateful::{ContraryMotionState, CounterpointState};
