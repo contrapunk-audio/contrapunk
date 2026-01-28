@@ -7,10 +7,10 @@
 
 ### MIDI I/O
 
-- [ ] **MIDI-01**: User can select MIDI input device from available ports
-- [ ] **MIDI-02**: User can select 2-8 MIDI output ports for harmony voices
-- [ ] **MIDI-03**: Original note passes through to first output port
-- [ ] **MIDI-04**: Harmony notes route to additional output ports
+- [x] **MIDI-01**: User can select MIDI input device from available ports
+- [x] **MIDI-02**: User can select 2-8 MIDI output ports for harmony voices
+- [x] **MIDI-03**: Original note passes through to first output port
+- [x] **MIDI-04**: Harmony notes route to additional output ports
 
 ### Configuration
 
@@ -61,10 +61,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MIDI-01 | Phase 1 | Pending |
-| MIDI-02 | Phase 1 | Pending |
-| MIDI-03 | Phase 1 | Pending |
-| MIDI-04 | Phase 1 | Pending |
+| MIDI-01 | Phase 1 | Complete |
+| MIDI-02 | Phase 1 | Complete |
+| MIDI-03 | Phase 1 | Complete |
+| MIDI-04 | Phase 1 | Complete |
 | CONF-01 | Phase 2 | Pending |
 | CONF-02 | Phase 2 | Pending |
 | CONF-03 | Phase 2 | Pending |
@@ -83,8 +83,8 @@
 **Coverage:**
 - v1 requirements: 17 total
 - Mapped to phases: 17
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-28*
-*Last updated: 2026-01-28 after initial definition*
+*Last updated: 2026-01-28 after roadmap creation*
