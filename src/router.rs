@@ -4,7 +4,7 @@
 //! and processes messages through the HarmonyEngine.
 
 #[cfg(feature = "gui")]
-use crate::harmony::{HarmonyEngine, Key, HarmonyMode};
+use crate::harmony::{HarmonyEngine, Key, HarmonyMode, OctaveMode};
 #[cfg(not(feature = "gui"))]
 use crate::harmony::HarmonyEngine;
 use crate::midi::input::connect_input;
@@ -49,6 +49,7 @@ pub struct GUIRouterState {
 /// * `output_ports` - Vec of output port indices
 /// * `key` - Initial musical key
 /// * `mode` - Initial harmony mode
+/// * `octave_mode` - Octave placement mode for harmony voices
 /// * `state` - Shared state for GUI communication
 /// * `ctx` - egui context for requesting repaints
 ///
@@ -61,6 +62,7 @@ pub fn spawn_gui_router(
     output_ports: Vec<usize>,
     key: Key,
     mode: HarmonyMode,
+    octave_mode: OctaveMode,
     state: Arc<Mutex<GUIRouterState>>,
     ctx: egui::Context,
 ) -> Result<JoinHandle<Result<()>>> {
@@ -70,7 +72,7 @@ pub fn spawn_gui_router(
     }
 
     let handle = thread::spawn(move || -> Result<()> {
-        run_gui_router_inner(input_port, &output_ports, key, mode, state, ctx)
+        run_gui_router_inner(input_port, &output_ports, key, mode, octave_mode, state, ctx)
     });
 
     Ok(handle)
@@ -83,6 +85,7 @@ fn run_gui_router_inner(
     output_ports: &[usize],
     key: Key,
     mode: HarmonyMode,
+    octave_mode: OctaveMode,
     state: Arc<Mutex<GUIRouterState>>,
     ctx: egui::Context,
 ) -> Result<()> {
@@ -99,6 +102,7 @@ fn run_gui_router_inner(
     let mut engine = HarmonyEngine::new(key, mode);
     let num_outputs = output_router.connection_count();
     engine.set_voice_count(num_outputs);
+    engine.set_octave_mode(octave_mode);
 
     // Main routing loop
     loop {

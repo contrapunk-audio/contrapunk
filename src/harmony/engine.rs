@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use wmidi::Note;
 
-use crate::harmony::config::{Key, HarmonyMode};
+use crate::harmony::config::{Key, HarmonyMode, OctaveMode};
 use crate::harmony::modes;
 use crate::harmony::scale::Scale;
 use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
@@ -27,6 +27,7 @@ use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
 pub struct HarmonyEngine {
     key: Key,
     mode: HarmonyMode,
+    octave_mode: OctaveMode,
     scale: Scale,
     /// Number of output voices (1 = melody only, 2 = melody + harmony, etc.)
     voice_count: usize,
@@ -55,6 +56,7 @@ impl HarmonyEngine {
         Self {
             key,
             mode,
+            octave_mode: OctaveMode::None,
             scale,
             voice_count,
             contrary_motion_states: (0..harmony_voices)
@@ -81,6 +83,24 @@ impl HarmonyEngine {
     /// Returns the current mode.
     pub fn mode(&self) -> HarmonyMode {
         self.mode
+    }
+
+    /// Returns the current octave mode.
+    pub fn octave_mode(&self) -> OctaveMode {
+        self.octave_mode
+    }
+
+    /// Sets the octave mode.
+    ///
+    /// Octave mode transforms harmony note pitches after generation:
+    /// - None: No change
+    /// - Spread: Each voice is +1 octave higher than previous
+    /// - BassTrebleSplit: Harmonies below melody go -1 octave, above go +1 octave
+    /// - Mirror: Harmonies are duplicated ±1 octave (shifts all by ±1)
+    pub fn set_octave_mode(&mut self, octave_mode: OctaveMode) {
+        self.octave_mode = octave_mode;
+        // Clear note tracking since octave transformations change output
+        self.active_notes.clear();
     }
 
     /// Returns the current voice count.
@@ -151,7 +171,7 @@ impl HarmonyEngine {
     ///
     /// Returns a Vec containing:
     /// - For Mode 1: Just the input note
-    /// - For Modes 2-7: Input note + chained harmony notes
+    /// - For Modes 2-7: Input note + chained harmony notes (octave-transformed)
     ///
     /// Chained harmonies: each harmony is derived from the previous note.
     /// E.g., with 4 voices: [melody, harm1(melody), harm2(harm1), harm3(harm2)]
@@ -184,7 +204,59 @@ impl HarmonyEngine {
             }
         }
 
+        // Apply octave mode transformation to harmony notes (not melody)
+        self.apply_octave_mode(&mut result);
+
         result
+    }
+
+    /// Applies octave mode transformation to harmony notes.
+    /// The melody (index 0) is never modified.
+    fn apply_octave_mode(&self, notes: &mut Vec<Note>) {
+        if notes.len() <= 1 || self.octave_mode == OctaveMode::None {
+            return;
+        }
+
+        let melody = notes[0];
+        let melody_midi = u8::from(melody);
+
+        for (i, note) in notes.iter_mut().enumerate().skip(1) {
+            let midi = u8::from(*note);
+            let shifted = match self.octave_mode {
+                OctaveMode::None => midi,
+                OctaveMode::Spread => {
+                    // Each voice is +1 octave higher than previous
+                    // Voice index 1 (first harmony) = +1 octave
+                    // Voice index 2 (second harmony) = +2 octaves, etc.
+                    let octaves_up = i as u8;
+                    midi.saturating_add(octaves_up * 12).min(127)
+                }
+                OctaveMode::BassTrebleSplit => {
+                    // If harmony is below melody, shift down an octave
+                    // If harmony is above melody, shift up an octave
+                    if midi < melody_midi {
+                        midi.saturating_sub(12)
+                    } else {
+                        midi.saturating_add(12).min(127)
+                    }
+                }
+                OctaveMode::Mirror => {
+                    // Shift all harmonies up by 1 octave (could also do alternating)
+                    // Using +1 octave for odd indices, -1 for even to create spread
+                    if i % 2 == 1 {
+                        midi.saturating_add(12).min(127)
+                    } else {
+                        midi.saturating_sub(12)
+                    }
+                }
+            };
+
+            // Convert back to Note, clamping to valid MIDI range
+            if let Ok(new_note) = Note::try_from(shifted) {
+                *note = new_note;
+            }
+            // If conversion fails (out of range), keep original note
+        }
     }
 
     /// Harmonizes a single note using the mode's algorithm with the given state index.
@@ -550,5 +622,67 @@ mod tests {
         let result = engine.harmonize(Note::C4);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], Note::C4);
+    }
+
+    // Octave mode tests
+
+    #[test]
+    fn test_octave_mode_none_no_change() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_octave_mode(OctaveMode::None);
+
+        // C4 + third = E4, E4 + third = G4 (no octave shift)
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], Note::C4);
+        assert_eq!(result[1], Note::E4);
+        assert_eq!(result[2], Note::G4);
+    }
+
+    #[test]
+    fn test_octave_mode_spread() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_octave_mode(OctaveMode::Spread);
+
+        // C4 + third = E4 (+1 octave = E5), E4 + third = G4 (+2 octaves = G6)
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], Note::C4);  // Melody unchanged
+        assert_eq!(result[1], Note::E5);  // First harmony +1 octave
+        assert_eq!(result[2], Note::G6);  // Second harmony +2 octaves
+    }
+
+    #[test]
+    fn test_octave_mode_bass_treble_split() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
+        engine.set_octave_mode(OctaveMode::BassTrebleSplit);
+
+        // Counterpoint typically produces harmony below melody
+        // C4 -> harmony below (e.g., A3) -> shifted down to A2
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], Note::C4);  // Melody unchanged
+        // Harmony should be shifted (down if below C4, up if above)
+        let harmony_midi = u8::from(result[1]);
+        let c4_midi = u8::from(Note::C4);
+        // Due to bass/treble split, harmony should be shifted away from melody
+        assert!(harmony_midi < c4_midi - 11 || harmony_midi > c4_midi + 11,
+            "Harmony {} should be shifted at least one octave from melody {}",
+            harmony_midi, c4_midi);
+    }
+
+    #[test]
+    fn test_octave_mode_clears_note_tracking() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
+
+        // Press a note
+        engine.harmonize_note_on(Note::C4);
+
+        // Change octave mode
+        engine.set_octave_mode(OctaveMode::Spread);
+
+        // Note-Off should not find tracked harmony (cleared on octave mode change)
+        let off_result = engine.harmonize_note_off(Note::C4);
+        assert_eq!(off_result, vec![Note::C4]);
     }
 }

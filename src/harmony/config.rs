@@ -28,6 +28,48 @@ impl std::fmt::Display for Key {
     }
 }
 
+/// Octave placement modes for harmony voices
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum OctaveMode {
+    /// No octave modification - harmonies stay at their generated pitch
+    #[default]
+    None,
+    /// Spread voices across octaves - each successive voice is +1 octave higher
+    Spread,
+    /// Bass/Treble split - harmonies below melody go down an octave, above go up
+    BassTrebleSplit,
+    /// Mirror - duplicate harmonies in multiple octaves (shifts all harmonies ±1 octave)
+    Mirror,
+}
+
+impl OctaveMode {
+    /// Returns all octave modes for menu display
+    pub fn all() -> &'static [OctaveMode] {
+        &[
+            OctaveMode::None,
+            OctaveMode::Spread,
+            OctaveMode::BassTrebleSplit,
+            OctaveMode::Mirror,
+        ]
+    }
+
+    /// Returns description for menu display
+    pub fn description(&self) -> &'static str {
+        match self {
+            OctaveMode::None => "None (default pitch)",
+            OctaveMode::Spread => "Spread (+1 octave per voice)",
+            OctaveMode::BassTrebleSplit => "Bass/Treble split",
+            OctaveMode::Mirror => "Mirror (±1 octave)",
+        }
+    }
+}
+
+impl std::fmt::Display for OctaveMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.description())
+    }
+}
+
 /// Harmony modes (1-7)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HarmonyMode {

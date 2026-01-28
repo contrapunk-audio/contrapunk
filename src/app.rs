@@ -9,7 +9,8 @@ use std::thread::JoinHandle;
 use anyhow::Result;
 use eframe::egui;
 
-use crate::harmony::{Key, HarmonyMode};
+use crate::chord::chord_display;
+use crate::harmony::{Key, HarmonyMode, OctaveMode};
 use crate::midi::ports::{list_input_ports, list_output_ports};
 use crate::router::{spawn_gui_router, GUIRouterState};
 
@@ -32,6 +33,8 @@ pub struct AppState {
     pub key: Key,
     /// Current harmony mode
     pub mode: HarmonyMode,
+    /// Current octave mode for harmony voices
+    pub octave_mode: OctaveMode,
     /// Selected input port index
     pub input_port: Option<usize>,
     /// Selected output port indices (one per slot, None if slot not assigned)
@@ -95,6 +98,7 @@ impl Default for AppState {
         Self {
             key: Key::C,
             mode: HarmonyMode::PassThrough,
+            octave_mode: OctaveMode::None,
             input_port: None,
             output_slots: vec![None; MAX_OUTPUT_SLOTS],
             available_inputs: Vec::new(),
@@ -162,6 +166,7 @@ impl ContrapunkApp {
             output_ports,
             self.state.key,
             self.state.mode,
+            self.state.octave_mode,
             router_state,
             ctx.clone(),
         ) {
@@ -312,6 +317,18 @@ impl eframe::App for ContrapunkApp {
                             ui.selectable_value(&mut self.state.mode, *mode, text);
                         }
                     });
+                ui.add_space(10.0);
+
+                // Octave mode selection
+                ui.label("Octave Mode:");
+                egui::ComboBox::from_id_salt("octave_mode_select")
+                    .selected_text(self.state.octave_mode.description())
+                    .width(180.0)
+                    .show_ui(ui, |ui| {
+                        for octave_mode in OctaveMode::all() {
+                            ui.selectable_value(&mut self.state.octave_mode, *octave_mode, octave_mode.description());
+                        }
+                    });
                 ui.add_space(20.0);
 
                 ui.separator();
@@ -360,6 +377,10 @@ impl eframe::App for ContrapunkApp {
                 ui.label(format!("Key: {}", self.state.key));
                 ui.separator();
                 ui.label(format!("Mode: {}", self.state.mode.description()));
+                if self.state.octave_mode != OctaveMode::None {
+                    ui.separator();
+                    ui.label(format!("Octave: {}", self.state.octave_mode.description()));
+                }
             });
 
             ui.add_space(10.0);

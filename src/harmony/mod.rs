@@ -9,7 +9,7 @@ mod modes;
 mod scale;
 mod stateful;
 
-pub use config::{Key, HarmonyMode};
+pub use config::{Key, HarmonyMode, OctaveMode};
 pub use engine::HarmonyEngine;
 pub use scale::Scale;
 pub use stateful::{ContraryMotionState, CounterpointState};
