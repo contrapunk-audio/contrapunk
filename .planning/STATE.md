@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 3 of 4 (GUI and Distribution)
-Plan: 4 of 6 in current phase
+Plan: 5 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-28 - Completed 03-04-PLAN.md (Piano keyboard visualization)
+Last activity: 2026-01-28 - Completed 03-05-PLAN.md (Chord detection display)
 
-Progress: [#########-] 93% (13 of 14 plans complete)
+Progress: [##########] 93% (14 of 15 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: 2.7 min
-- Total execution time: 35 min
+- Total plans completed: 14
+- Average duration: 2.6 min
+- Total execution time: 37 min
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [#########-] 93% (13 of 14 plans complete)
 |-------|-------|-------|----------|
 | 01-midi-foundation | 3 | 6 min | 2 min |
 | 02-harmony-engine | 6 | 18 min | 3 min |
-| 03-gui-distribution | 4 | 11 min | 2.75 min |
+| 03-gui-distribution | 5 | 13 min | 2.6 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-06 (5 min), 03-01 (4 min), 03-02 (5 min), 03-03 (1 min), 03-04 (1 min)
+- Last 5 plans: 03-01 (4 min), 03-02 (5 min), 03-03 (1 min), 03-04 (1 min), 03-05 (2 min)
 - Trend: improving
 
 *Updated after each plan completion*
@@ -81,6 +81,9 @@ Recent decisions affecting current work:
 - [03-03]: Input notes track melody only, harmony notes track generated harmonies (skip index 0)
 - [03-03]: midi_to_name uses standard MIDI convention: 60 = C4
 - [03-03]: Notes displayed sorted by pitch for visual consistency
+- [03-05]: Chord patterns ordered by specificity (7ths before triads) for correct matching
+- [03-05]: Pitch class reduction (mod 12) for octave-independent chord detection
+- [03-05]: Unknown chord combinations show individual note names
 
 ### Pending Todos
 
@@ -123,6 +126,6 @@ All 7 modes verified working with no stuck notes.
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 03-04-PLAN.md (Piano keyboard visualization)
+Stopped at: Completed 03-05-PLAN.md (Chord detection display)
 Resume file: None
-Next: Execute 03-05-PLAN.md (Chord detection display)
+Next: Execute 03-06-PLAN.md (Distribution/packaging)
