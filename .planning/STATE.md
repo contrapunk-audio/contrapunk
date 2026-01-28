@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 2 - Harmony Engine
+**Current focus:** Phase 3 - GUI and Distribution
 
 ## Current Position
 
-Phase: 2 of 4 (Harmony Engine)
-Plan: 6 of 6 in current phase - PHASE COMPLETE
-Status: Phase 2 complete, ready for Phase 3
-Last activity: 2026-01-28 - Completed 02-06-PLAN.md (hardware verification)
+Phase: 3 of 4 (GUI and Distribution)
+Plan: 1 of 6 in current phase
+Status: In progress
+Last activity: 2026-01-28 - Completed 03-01-PLAN.md (GUI foundation)
 
-Progress: [#######---] 69% (9 of 13 plans complete)
+Progress: [########--] 77% (10 of 13 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 2.8 min
-- Total execution time: 24 min
+- Total execution time: 28 min
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [#######---] 69% (9 of 13 plans complete)
 |-------|-------|-------|----------|
 | 01-midi-foundation | 3 | 6 min | 2 min |
 | 02-harmony-engine | 6 | 18 min | 3 min |
+| 03-gui-distribution | 1 | 4 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (4 min), 02-05 (1 min), 02-04 (3 min), 02-06 (5 min)
+- Last 5 plans: 02-05 (1 min), 02-04 (3 min), 02-06 (5 min), 03-01 (4 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -67,6 +68,12 @@ Recent decisions affecting current work:
 - [02-04]: Track active notes in HashMap<u8, Vec<Note>> for Note-Off handling
 - [02-04]: Clear note tracking on key/mode change to prevent stale harmonies
 - [02-04]: Use send_to_port() for targeted output routing
+- [02-enh]: Use VecDeque for sliding window history (O(1) push/pop at both ends)
+- [02-enh]: Chained harmonies: each voice pair gets independent CounterpointState
+- [02-enh]: Out-of-key: chromatic intervals (3rds, 6ths, 4ths, 5ths) preferring scale landing
+- [03-01]: Use eframe::egui re-export for egui types
+- [03-01]: Feature gate CLI code with #[cfg(not(feature = "gui"))]
+- [03-01]: AppState contains all harmony and MIDI state for future use
 
 ### Pending Todos
 
@@ -74,7 +81,7 @@ None.
 
 ### Blockers/Concerns
 
-None - Phase 2 in progress.
+None - Phase 3 in progress.
 
 ### Roadmap Evolution
 
@@ -108,7 +115,7 @@ All 7 modes verified working with no stuck notes.
 
 ## Session Continuity
 
-Last session: 2026-01-28 16:05 UTC
-Stopped at: Completed 02-06-PLAN.md (Phase 2 complete)
+Last session: 2026-01-28
+Stopped at: Completed 03-01-PLAN.md (GUI foundation)
 Resume file: None
-Next: Phase 3 - GUI and Distribution
+Next: Execute 03-02-PLAN.md (MIDI control panel)
