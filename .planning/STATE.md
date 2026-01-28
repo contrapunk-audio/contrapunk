@@ -12,26 +12,26 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 Phase: 2 of 4 (Harmony Engine)
 Plan: 3 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-28 - Completed 02-03-PLAN.md (stateful harmony modes)
+Last activity: 2026-01-28 - Completed 02-02-PLAN.md (stateless harmony modes)
 
-Progress: [####------] 38% (5 of 13 plans complete)
+Progress: [#####-----] 46% (6 of 13 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 2.4 min
-- Total execution time: 12 min
+- Total plans completed: 6
+- Average duration: 2.5 min
+- Total execution time: 15 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-midi-foundation | 3 | 6 min | 2 min |
-| 02-harmony-engine | 2 | 6 min | 3 min |
+| 02-harmony-engine | 3 | 9 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (2 min), 01-03 (checkpoint), 02-01 (2 min), 02-03 (4 min)
+- Last 5 plans: 01-03 (checkpoint), 02-01 (2 min), 02-02 (3 min), 02-03 (4 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -56,6 +56,8 @@ Recent decisions affecting current work:
 - [02-01]: Use wmidi crate for Note type with step() method
 - [02-01]: Major scale offsets stored as semitones from tonic
 - [02-01]: Diatonic transposition calculates octave shift for cross-octave intervals
+- [02-02]: Mode functions take (note, scale) and return Vec<Note> for uniform interface
+- [02-02]: Out-of-range harmonies fail gracefully by returning only original note
 - [02-03]: Contrary motion first note uses third below as default harmony
 - [02-03]: Counterpoint prefers thirds/sixths over fourths/fifths for consonance
 - [02-03]: State resets on both key change and mode change
@@ -88,8 +90,9 @@ Hardware tested: Akai MPK Mini -> 4 IAC Driver buses (macOS)
 
 **Harmony Engine - IN PROGRESS**
 
-Plans 1, 3 complete:
+Plans 1, 2, 3 complete:
 - Key enum (12 keys), HarmonyMode enum (7 modes), Scale struct with diatonic transposition
+- Five stateless mode functions in modes.rs (pass_through, diatonic_thirds/fourths, random_below variants)
 - ContraryMotionState and CounterpointState for stateful modes 6-7
 - HarmonyEngine with all 7 mode routing and state management
 
@@ -97,6 +100,6 @@ Next: Plan 02-04 (Router integration with harmony engine)
 
 ## Session Continuity
 
-Last session: 2026-01-28 15:32 UTC
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-01-28 15:31 UTC
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
