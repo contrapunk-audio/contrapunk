@@ -13,8 +13,9 @@ Port Contrapunk from Python to Rust for real-time MIDI harmony generation. The j
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: MIDI Foundation** - Establish MIDI input/output connectivity with pass-through
-- [ ] **Phase 2: Harmony Engine** - Implement music theory core and all 7 harmony modes
+- [x] **Phase 2: Harmony Engine** - Implement music theory core and all 7 harmony modes
 - [ ] **Phase 3: GUI and Distribution** - Native egui interface and single-binary packaging
+- [ ] **Phase 4: Server Mode** - Network server for remote MIDI harmony processing
 
 ## Phase Details
 
@@ -47,12 +48,12 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Foundation types (Key, HarmonyMode, Scale with diatonic transposition)
-- [ ] 02-02-PLAN.md — Stateless modes 1-5 and HarmonyEngine struct
-- [ ] 02-03-PLAN.md — Stateful modes 6-7 (ContraryMotion, StrictCounterpoint)
-- [ ] 02-04-PLAN.md — Router integration with harmony processing
-- [ ] 02-05-PLAN.md — CLI key and mode selection
-- [ ] 02-06-PLAN.md — Hardware verification checkpoint
+- [x] 02-01-PLAN.md — Foundation types (Key, HarmonyMode, Scale with diatonic transposition)
+- [x] 02-02-PLAN.md — Stateless modes 1-5 and HarmonyEngine struct
+- [x] 02-03-PLAN.md — Stateful modes 6-7 (ContraryMotion, StrictCounterpoint)
+- [x] 02-04-PLAN.md — Router integration with harmony processing
+- [x] 02-05-PLAN.md — CLI key and mode selection
+- [x] 02-06-PLAN.md — Hardware verification checkpoint
 
 ### Phase 3: GUI and Distribution
 **Goal**: User has a complete native application with visual interface as a single binary
@@ -68,17 +69,33 @@ Plans:
 Plans:
 - [ ] 03-01: TBD
 
+### Phase 4: Server Mode
+**Goal**: Binary runs as a server allowing remote users to connect and receive MIDI harmony generations back to their output devices
+**Depends on**: Phase 3
+**Requirements**: TBD (to be defined during planning)
+**Success Criteria** (what must be TRUE):
+  1. Application can start in server mode, listening on a configurable network port
+  2. Remote clients can connect and send MIDI input to the server
+  3. Server processes MIDI through harmony engine and returns harmonized output to clients
+  4. Multiple clients can connect simultaneously (server handles concurrent sessions)
+  5. Clients receive harmonized MIDI output routable to their local output devices
+**Plans**: TBD
+
+Plans:
+- [ ] 04-01: TBD (run /gsd:plan-phase 4 to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. MIDI Foundation | 3/3 | ✓ Complete | 2026-01-28 |
-| 2. Harmony Engine | 0/6 | Ready to execute | - |
+| 1. MIDI Foundation | 3/3 | Complete | 2026-01-28 |
+| 2. Harmony Engine | 6/6 | Complete | 2026-01-28 |
 | 3. GUI and Distribution | 0/? | Not started | - |
+| 4. Server Mode | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-28 — Phase 2 planned (6 plans in 4 waves)*
+*Last updated: 2026-01-28 — Phase 2 complete (Harmony Engine)*
