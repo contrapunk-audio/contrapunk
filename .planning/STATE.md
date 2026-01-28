@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 3 of 4 (GUI and Distribution)
-Plan: 2 of 6 in current phase
+Plan: 3 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-28 - Completed 03-02-PLAN.md (MIDI control panel)
+Last activity: 2026-01-28 - Completed 03-03-PLAN.md (Active notes display)
 
-Progress: [########--] 85% (11 of 13 plans complete)
+Progress: [#########-] 92% (12 of 13 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 3.0 min
-- Total execution time: 33 min
+- Total plans completed: 12
+- Average duration: 2.8 min
+- Total execution time: 34 min
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [########--] 85% (11 of 13 plans complete)
 |-------|-------|-------|----------|
 | 01-midi-foundation | 3 | 6 min | 2 min |
 | 02-harmony-engine | 6 | 18 min | 3 min |
-| 03-gui-distribution | 2 | 9 min | 4.5 min |
+| 03-gui-distribution | 3 | 10 min | 3.3 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-04 (3 min), 02-06 (5 min), 03-01 (4 min), 03-02 (5 min)
-- Trend: stable
+- Last 5 plans: 02-06 (5 min), 03-01 (4 min), 03-02 (5 min), 03-03 (1 min)
+- Trend: improving
 
 *Updated after each plan completion*
 
@@ -78,6 +78,9 @@ Recent decisions affecting current work:
 - [03-02]: Background router thread with Arc<Mutex<GUIRouterState>> for note state sharing
 - [03-02]: cfg(feature = gui) guards separate GUI and CLI router code paths
 - [03-02]: Router thread receives initial key/mode (dynamic config changes require restart)
+- [03-03]: Input notes track melody only, harmony notes track generated harmonies (skip index 0)
+- [03-03]: midi_to_name uses standard MIDI convention: 60 = C4
+- [03-03]: Notes displayed sorted by pitch for visual consistency
 
 ### Pending Todos
 
@@ -120,6 +123,6 @@ All 7 modes verified working with no stuck notes.
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 03-02-PLAN.md (MIDI control panel)
+Stopped at: Completed 03-03-PLAN.md (Active notes display)
 Resume file: None
-Next: Execute 03-03-PLAN.md (Piano roll visualization)
+Next: Execute 03-04-PLAN.md (Piano roll visualization)
