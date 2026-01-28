@@ -10,3 +10,15 @@ midir = "0.10"
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.8"
+eframe = { version = "0.33", optional = true }
+
+[features]
+default = []
+gui = ["eframe"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
