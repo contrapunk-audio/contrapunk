@@ -2,6 +2,7 @@
 //!
 //! This module provides the eframe/egui-based GUI interface.
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -11,6 +12,14 @@ use eframe::egui;
 use crate::harmony::{Key, HarmonyMode};
 use crate::midi::ports::{list_input_ports, list_output_ports};
 use crate::router::{spawn_gui_router, GUIRouterState};
+
+/// Converts a MIDI note number to a note name string (e.g., 60 -> "C4").
+fn midi_to_name(midi: u8) -> String {
+    const NOTES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let octave = (midi / 12) as i8 - 1; // MIDI 60 = C4
+    let note = NOTES[(midi % 12) as usize];
+    format!("{}{}", note, octave)
+}
 
 /// Maximum number of output slots available in the GUI.
 const MAX_OUTPUT_SLOTS: usize = 8;
@@ -188,13 +197,13 @@ impl ContrapunkApp {
     }
 
     /// Gets the current input/harmony notes from the router state.
-    fn get_router_notes(&self) -> (usize, usize) {
+    fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
         if let Some(ref router_state) = self.router_state {
             if let Ok(state) = router_state.lock() {
-                return (state.input_notes.len(), state.harmony_notes.len());
+                return (state.input_notes.clone(), state.harmony_notes.clone());
             }
         }
-        (0, 0)
+        (HashSet::new(), HashSet::new())
     }
 }
 
@@ -391,20 +400,52 @@ impl eframe::App for ContrapunkApp {
                     ui.label(format!("  Output {}: {} [{}]", i + 1, output_name, role));
                 }
 
-                // Note activity indicator
-                ui.add_space(15.0);
-                let (input_count, harmony_count) = self.get_router_notes();
-                if input_count > 0 || harmony_count > 0 {
-                    ui.label(egui::RichText::new("Active Notes:").strong());
-                    ui.label(format!("  Input: {} notes", input_count));
-                    ui.label(format!("  Harmony: {} notes", harmony_count));
-                }
             }
+
+            // Active notes display (always shown, updates in real-time)
+            ui.add_space(15.0);
+            let (input_notes, harmony_notes) = self.get_router_notes();
+
+            ui.group(|ui| {
+                ui.label(egui::RichText::new("Active Notes").strong());
+
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Input: ");
+                    if input_notes.is_empty() {
+                        ui.label("(none)");
+                    } else {
+                        let mut sorted: Vec<_> = input_notes.iter().copied().collect();
+                        sorted.sort();
+                        for midi in sorted {
+                            ui.label(
+                                egui::RichText::new(midi_to_name(midi))
+                                    .color(egui::Color32::LIGHT_BLUE)
+                            );
+                        }
+                    }
+                });
+
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Harmony: ");
+                    if harmony_notes.is_empty() {
+                        ui.label("(none)");
+                    } else {
+                        let mut sorted: Vec<_> = harmony_notes.iter().copied().collect();
+                        sorted.sort();
+                        for midi in sorted {
+                            ui.label(
+                                egui::RichText::new(midi_to_name(midi))
+                                    .color(egui::Color32::LIGHT_GREEN)
+                            );
+                        }
+                    }
+                });
+            });
 
             ui.add_space(20.0);
 
             // Placeholder for future visualizations
-            ui.label("Note visualizations will be added in subsequent plans.");
+            ui.label("Piano roll visualization will be added in subsequent plans.");
         });
     }
 }
