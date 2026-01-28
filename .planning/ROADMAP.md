@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: MIDI Foundation** - Establish MIDI input/output connectivity with pass-through
 - [x] **Phase 2: Harmony Engine** - Implement music theory core and all 7 harmony modes
 - [x] **Phase 3: GUI and Distribution** - Native egui interface and single-binary packaging
-- [ ] **Phase 4: Server Mode** - Network server for remote MIDI harmony processing
+- [x] **Phase 4: Server Mode** - Network server for remote MIDI harmony processing
 - [ ] **Phase 5: Octave Variations** - Sub-modes for counterpoint with octave placement options
 - [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, and groove to generated notes
 
@@ -91,10 +91,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Wire protocol and server configuration types
-- [ ] 04-02-PLAN.md — Session handler and server accept loop
-- [ ] 04-03-PLAN.md — CLI integration (clap) and client mode
-- [ ] 04-04-PLAN.md — End-to-end verification with MIDI hardware
+- [x] 04-01-PLAN.md — Wire protocol and server configuration types
+- [x] 04-02-PLAN.md — Session handler and server accept loop
+- [x] 04-03-PLAN.md — CLI integration (clap) and client mode
+- [x] 04-04-PLAN.md — End-to-end verification with MIDI hardware
 
 ### Phase 5: Octave Variations
 **Goal**: User can apply octave placement variations to counterpoint and harmony modes
@@ -137,10 +137,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. MIDI Foundation | 3/3 | Complete | 2026-01-28 |
 | 2. Harmony Engine | 6/6 | Complete | 2026-01-28 |
 | 3. GUI and Distribution | 6/6 | Complete | 2026-01-28 |
-| 4. Server Mode | 0/4 | Planning complete | - |
+| 4. Server Mode | 4/4 | Complete | 2026-01-29 |
 | 5. Octave Variations | 0/? | Not started | - |
 | 6. Humanization | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-28 — Phase 4 planned (4 plans in 4 waves)*
+*Last updated: 2026-01-29 — Phase 4 complete (4/4 plans executed and hardware-verified)*
