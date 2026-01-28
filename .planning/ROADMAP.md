@@ -27,10 +27,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. User can select 2-8 MIDI output ports from available ports
   3. User can play a note on input device and hear it on the first output port
   4. Application runs without GUI (CLI or headless mode) for testing MIDI flow
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md — Project setup and MIDI port enumeration
+- [ ] 01-02-PLAN.md — MIDI connections and pass-through routing
+- [ ] 01-03-PLAN.md — Hardware verification checkpoint
 
 ### Phase 2: Harmony Engine
 **Goal**: User can play notes and hear harmonies generated in any of the 7 modes
@@ -68,7 +70,7 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. MIDI Foundation | 0/? | Not started | - |
+| 1. MIDI Foundation | 0/3 | Planned | - |
 | 2. Harmony Engine | 0/? | Not started | - |
 | 3. GUI and Distribution | 0/? | Not started | - |
 
