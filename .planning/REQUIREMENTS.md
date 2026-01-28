@@ -33,10 +33,25 @@
 - [ ] **GUI-01**: Native window renders with egui/eframe
 - [ ] **GUI-02**: Display active notes and current configuration
 - [ ] **GUI-03**: Controls for device selection, key selection, mode selection
+- [ ] **GUI-04**: Virtual piano keyboard showing input and harmony notes
+- [ ] **GUI-05**: Chord detection displaying what chord the combined notes form
 
 ### Distribution
 
 - [ ] **DIST-01**: Compiles to single binary with no runtime dependencies
+
+### Octave Variations
+
+- [ ] **OCT-01**: Octave Spread - each harmony voice in progressively different octaves
+- [ ] **OCT-02**: Bass/Treble Split - harmonies below melody go low, above go high
+- [ ] **OCT-03**: Mirror Octaves - harmonies duplicate across multiple octaves simultaneously
+
+### Humanization
+
+- [ ] **HUM-01**: Timing jitter - random delays (5-30ms) on harmony note onsets
+- [ ] **HUM-02**: Velocity variation - randomize note velocity within ±10-20 range
+- [ ] **HUM-03**: Note duration variation - slight sustain changes on harmony notes
+- [ ] **HUM-04**: Swing/groove - shift off-beat notes for rhythmic feel
 
 ## v2 Requirements
 
@@ -78,11 +93,20 @@
 | GUI-01 | Phase 3 | Pending |
 | GUI-02 | Phase 3 | Pending |
 | GUI-03 | Phase 3 | Pending |
+| GUI-04 | Phase 3 | Pending |
+| GUI-05 | Phase 3 | Pending |
 | DIST-01 | Phase 3 | Pending |
+| OCT-01 | Phase 5 | Pending |
+| OCT-02 | Phase 5 | Pending |
+| OCT-03 | Phase 5 | Pending |
+| HUM-01 | Phase 6 | Pending |
+| HUM-02 | Phase 6 | Pending |
+| HUM-03 | Phase 6 | Pending |
+| HUM-04 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 17 total
-- Mapped to phases: 17
+- v1 requirements: 26 total
+- Mapped to phases: 26
 - Unmapped: 0
 
 ---

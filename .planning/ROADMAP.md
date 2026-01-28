@@ -16,6 +16,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Harmony Engine** - Implement music theory core and all 7 harmony modes
 - [ ] **Phase 3: GUI and Distribution** - Native egui interface and single-binary packaging
 - [ ] **Phase 4: Server Mode** - Network server for remote MIDI harmony processing
+- [ ] **Phase 5: Octave Variations** - Sub-modes for counterpoint with octave placement options
+- [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, and groove to generated notes
 
 ## Phase Details
 
@@ -91,6 +93,37 @@ Plans:
 Plans:
 - [ ] 04-01: TBD (run /gsd:plan-phase 4 to break down)
 
+### Phase 5: Octave Variations
+**Goal**: User can apply octave placement variations to counterpoint and harmony modes
+**Depends on**: Phase 2 (Harmony Engine)
+**Requirements**: OCT-01, OCT-02, OCT-03
+**Success Criteria** (what must be TRUE):
+  1. User can enable "Octave Spread" mode where each harmony voice is in progressively different octaves
+  2. User can enable "Bass/Treble Split" where harmonies below melody go low octave, above go high
+  3. User can enable "Mirror Octaves" where harmonies duplicate across multiple octaves
+  4. Octave variations can be combined with any existing harmony mode
+  5. GUI displays which octave variation is active
+**Plans**: TBD
+
+Plans:
+- [ ] 05-01: TBD (run /gsd:plan-phase 5 to break down)
+
+### Phase 6: Humanization
+**Goal**: User can add human-like imperfections to generated harmony notes
+**Depends on**: Phase 2 (Harmony Engine)
+**Requirements**: HUM-01, HUM-02, HUM-03, HUM-04
+**Success Criteria** (what must be TRUE):
+  1. User can enable timing jitter (5-30ms random delays on note onsets)
+  2. User can enable velocity variation (±10-20 randomization)
+  3. User can enable note duration variation (slight sustain changes)
+  4. User can enable swing/groove (off-beat note shifting)
+  5. Humanization parameters can be adjusted via GUI sliders
+  6. Multiple humanization effects can be combined
+**Plans**: TBD
+
+Plans:
+- [ ] 06-01: TBD (run /gsd:plan-phase 6 to break down)
+
 ## Progress
 
 **Execution Order:**
@@ -100,8 +133,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. MIDI Foundation | 3/3 | Complete | 2026-01-28 |
 | 2. Harmony Engine | 6/6 | Complete | 2026-01-28 |
-| 3. GUI and Distribution | 0/6 | Planned | - |
+| 3. GUI and Distribution | 3/6 | In Progress | - |
 | 4. Server Mode | 0/? | Not started | - |
+| 5. Octave Variations | 0/? | Not started | - |
+| 6. Humanization | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
