@@ -38,7 +38,7 @@ pub enum OctaveMode {
     Spread,
     /// Bass/Treble split - harmonies below melody go down an octave, above go up
     BassTrebleSplit,
-    /// Mirror - duplicate harmonies in multiple octaves (shifts all harmonies ±1 octave)
+    /// Mirror - duplicate each harmony note in +1 and -1 octaves (tripling harmony notes)
     Mirror,
 }
 
