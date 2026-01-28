@@ -7,17 +7,24 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::JoinHandle;
+#[cfg(target_arch = "wasm32")]
+use std::cell::RefCell;
+#[cfg(target_arch = "wasm32")]
+use std::rc::Rc;
 
 use anyhow::Result;
 use eframe::egui;
-
 use crate::chord::chord_display;
-use crate::harmony::{Key, HarmonyMode, OctaveMode};
+use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine};
 use crate::piano::PianoKeyboard;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::midi::ports::{list_input_ports, list_output_ports};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::router::{spawn_gui_router, GUIRouterState};
+#[cfg(target_arch = "wasm32")]
+use crate::midi::web;
+#[cfg(target_arch = "wasm32")]
+use wmidi::{MidiMessage, Note, Channel, Velocity};
 
 /// Converts a MIDI note number to a note name string (e.g., 60 -> "C4").
 fn midi_to_name(midi: u8) -> String {
@@ -93,11 +100,14 @@ impl AppState {
         }
     }
 
-    /// Refreshes the available MIDI device lists (WASM stub).
+    /// Refreshes the available MIDI device lists (WASM).
+    ///
+    /// Note: On WASM, device refresh is handled via the shared MidiAccess
+    /// object. This method is a no-op since the app polls MidiAccess in update().
     #[cfg(target_arch = "wasm32")]
     pub fn refresh_devices(&mut self) {
-        // Web MIDI integration comes in Plan 02
-        self.last_error = Some("MIDI device access not yet available in browser".to_string());
+        // Device enumeration happens in ContrapunkApp::update() via midi_access
+        self.last_error = None;
     }
 
     /// Returns selected output ports as a Vec<usize> (filtering out None slots).
@@ -131,20 +141,78 @@ pub struct ContrapunkApp {
     /// Handle to the router thread
     #[cfg(not(target_arch = "wasm32"))]
     router_handle: Option<JoinHandle<Result<()>>>,
+    /// Web MIDI access object (WASM only)
+    #[cfg(target_arch = "wasm32")]
+    midi_access: Rc<RefCell<Option<web_sys::MidiAccess>>>,
+    /// Shared MIDI message queue — input callback pushes, update() drains (WASM only)
+    #[cfg(target_arch = "wasm32")]
+    midi_queue: Rc<RefCell<Vec<Vec<u8>>>>,
+    /// Selected output device IDs for Web MIDI (WASM only)
+    #[cfg(target_arch = "wasm32")]
+    connected_output_ids: Vec<String>,
+    /// Whether Web MIDI initialization has been attempted (WASM only)
+    #[cfg(target_arch = "wasm32")]
+    midi_initialized: bool,
+    /// Harmony engine for WASM frame-based processing
+    #[cfg(target_arch = "wasm32")]
+    engine: HarmonyEngine,
+    /// Active input notes for WASM display
+    #[cfg(target_arch = "wasm32")]
+    wasm_input_notes: HashSet<u8>,
+    /// Active harmony notes for WASM display
+    #[cfg(target_arch = "wasm32")]
+    wasm_harmony_notes: HashSet<u8>,
 }
 
 impl ContrapunkApp {
     /// Create a new ContrapunkApp instance.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+        #[cfg(target_arch = "wasm32")]
+        let midi_access = Rc::new(RefCell::new(None));
+        #[cfg(target_arch = "wasm32")]
+        let midi_queue = Rc::new(RefCell::new(Vec::new()));
+
         let mut app = Self {
             state: AppState::default(),
             #[cfg(not(target_arch = "wasm32"))]
             router_state: None,
             #[cfg(not(target_arch = "wasm32"))]
             router_handle: None,
+            #[cfg(target_arch = "wasm32")]
+            midi_access: midi_access.clone(),
+            #[cfg(target_arch = "wasm32")]
+            midi_queue: midi_queue.clone(),
+            #[cfg(target_arch = "wasm32")]
+            connected_output_ids: Vec::new(),
+            #[cfg(target_arch = "wasm32")]
+            midi_initialized: false,
+            #[cfg(target_arch = "wasm32")]
+            engine: HarmonyEngine::new(Key::C, HarmonyMode::PassThrough),
+            #[cfg(target_arch = "wasm32")]
+            wasm_input_notes: HashSet::new(),
+            #[cfg(target_arch = "wasm32")]
+            wasm_harmony_notes: HashSet::new(),
         };
+
         // Auto-refresh devices on startup
         app.state.refresh_devices();
+
+        // Initialize Web MIDI asynchronously (WASM only)
+        #[cfg(target_arch = "wasm32")]
+        {
+            let access_ref = midi_access.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match web::request_midi_access().await {
+                    Ok(access) => {
+                        *access_ref.borrow_mut() = Some(access);
+                    }
+                    Err(_e) => {
+                        // Web MIDI not available — will show message in UI
+                    }
+                }
+            });
+        }
+
         app
     }
 
@@ -199,10 +267,70 @@ impl ContrapunkApp {
         }
     }
 
-    /// Validates configuration and attempts to start routing (WASM stub).
+    /// Validates configuration and attempts to start routing (WASM).
     #[cfg(target_arch = "wasm32")]
     fn try_start(&mut self, _ctx: &egui::Context) {
-        self.state.last_error = Some("MIDI routing not yet available in browser".to_string());
+        self.state.last_error = None;
+
+        let access = self.midi_access.borrow();
+        let access = match access.as_ref() {
+            Some(a) => a,
+            None => {
+                self.state.last_error = Some("Web MIDI not available. Use Chrome/Edge with MIDI device.".to_string());
+                return;
+            }
+        };
+
+        // Validate input port is selected
+        let input_idx = match self.state.input_port {
+            Some(idx) => idx,
+            None => {
+                self.state.last_error = Some("Please select an input device".to_string());
+                return;
+            }
+        };
+
+        // Get input device ID
+        let inputs = web::list_midi_inputs(access);
+        let input_id = match inputs.get(input_idx) {
+            Some((id, _)) => id.clone(),
+            None => {
+                self.state.last_error = Some("Selected input device not found".to_string());
+                return;
+            }
+        };
+
+        // Validate at least one output is selected
+        let output_ports = self.state.selected_output_ports();
+        if output_ports.is_empty() {
+            self.state.last_error = Some("Please select at least one output device".to_string());
+            return;
+        }
+
+        // Collect output device IDs
+        let outputs = web::list_midi_outputs(access);
+        self.connected_output_ids.clear();
+        for idx in &output_ports {
+            if let Some((id, _)) = outputs.get(*idx) {
+                self.connected_output_ids.push(id.clone());
+            }
+        }
+
+        // Connect input callback
+        if let Err(_e) = web::connect_input(access, &input_id, self.midi_queue.clone()) {
+            self.state.last_error = Some("Failed to connect to MIDI input".to_string());
+            return;
+        }
+
+        // Configure harmony engine
+        self.engine = HarmonyEngine::new(self.state.key, self.state.mode);
+        let num_outputs = self.connected_output_ids.len();
+        self.engine.set_voice_count(num_outputs);
+        self.engine.set_octave_mode(self.state.octave_mode);
+
+        self.wasm_input_notes.clear();
+        self.wasm_harmony_notes.clear();
+        self.state.is_running = true;
     }
 
     /// Stops routing.
@@ -226,10 +354,13 @@ impl ContrapunkApp {
         self.state.is_running = false;
     }
 
-    /// Stops routing (WASM stub).
+    /// Stops routing (WASM).
     #[cfg(target_arch = "wasm32")]
     fn stop(&mut self) {
         self.state.is_running = false;
+        self.wasm_input_notes.clear();
+        self.wasm_harmony_notes.clear();
+        self.midi_queue.borrow_mut().clear();
     }
 
     /// Gets the current input/harmony notes from the router state.
@@ -243,15 +374,130 @@ impl ContrapunkApp {
         (HashSet::new(), HashSet::new())
     }
 
-    /// Gets the current input/harmony notes (WASM stub).
+    /// Gets the current input/harmony notes (WASM).
     #[cfg(target_arch = "wasm32")]
     fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
-        (HashSet::new(), HashSet::new())
+        (self.wasm_input_notes.clone(), self.wasm_harmony_notes.clone())
+    }
+}
+
+/// WASM-specific MIDI processing methods.
+#[cfg(target_arch = "wasm32")]
+impl ContrapunkApp {
+    /// Process a single MIDI message through the harmony engine (frame-based).
+    fn process_wasm_midi(&mut self, bytes: &[u8]) {
+        let msg = match MidiMessage::try_from(bytes) {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+
+        match msg {
+            MidiMessage::NoteOn(channel, note, velocity) => {
+                if velocity == Velocity::MIN {
+                    self.handle_wasm_note_off(channel, note, velocity);
+                } else {
+                    self.handle_wasm_note_on(channel, note, velocity);
+                }
+            }
+            MidiMessage::NoteOff(channel, note, velocity) => {
+                self.handle_wasm_note_off(channel, note, velocity);
+            }
+            _ => {
+                // Non-note messages: send to first output
+                if let Some(id) = self.connected_output_ids.first() {
+                    if let Some(ref access) = *self.midi_access.borrow() {
+                        let _ = web::send_to_output(access, id, bytes);
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_wasm_note_on(&mut self, channel: Channel, note: Note, velocity: Velocity) {
+        let notes = self.engine.harmonize_note_on(note);
+        let port_map = self.engine.last_port_map();
+        let num_outputs = self.connected_output_ids.len();
+
+        // Update display state
+        self.wasm_input_notes.insert(note as u8);
+        for &n in notes.iter().skip(1) {
+            self.wasm_harmony_notes.insert(n as u8);
+        }
+
+        // Send to Web MIDI outputs
+        let access = self.midi_access.borrow();
+        if let Some(ref access) = *access {
+            for (i, &n) in notes.iter().enumerate() {
+                let port = if i < port_map.len() { port_map[i] } else { i };
+                if port < num_outputs {
+                    let msg = MidiMessage::NoteOn(channel, n, velocity);
+                    let mut buf = vec![0u8; msg.bytes_size()];
+                    if msg.copy_to_slice(&mut buf).is_ok() {
+                        let _ = web::send_to_output(access, &self.connected_output_ids[port], &buf);
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_wasm_note_off(&mut self, channel: Channel, note: Note, velocity: Velocity) {
+        let notes = self.engine.harmonize_note_off(note);
+        let port_map = self.engine.last_port_map();
+        let num_outputs = self.connected_output_ids.len();
+
+        // Update display state
+        self.wasm_input_notes.remove(&(note as u8));
+        for &n in notes.iter().skip(1) {
+            self.wasm_harmony_notes.remove(&(n as u8));
+        }
+
+        // Send to Web MIDI outputs
+        let access = self.midi_access.borrow();
+        if let Some(ref access) = *access {
+            for (i, &n) in notes.iter().enumerate() {
+                let port = if i < port_map.len() { port_map[i] } else { i };
+                if port < num_outputs {
+                    let msg = MidiMessage::NoteOff(channel, n, velocity);
+                    let mut buf = vec![0u8; msg.bytes_size()];
+                    if msg.copy_to_slice(&mut buf).is_ok() {
+                        let _ = web::send_to_output(access, &self.connected_output_ids[port], &buf);
+                    }
+                }
+            }
+        }
     }
 }
 
 impl eframe::App for ContrapunkApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // WASM: populate device lists from MidiAccess and process MIDI each frame
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Once MidiAccess is available, populate device lists
+            if let Some(ref access) = *self.midi_access.borrow() {
+                if !self.midi_initialized {
+                    self.midi_initialized = true;
+                    let inputs = web::list_midi_inputs(access);
+                    self.state.available_inputs = inputs.iter().enumerate()
+                        .map(|(i, (_, name))| (i, name.clone()))
+                        .collect();
+                    let outputs = web::list_midi_outputs(access);
+                    self.state.available_outputs = outputs.iter().enumerate()
+                        .map(|(i, (_, name))| (i, name.clone()))
+                        .collect();
+                }
+            }
+
+            // Frame-based MIDI processing when running
+            if self.state.is_running {
+                let messages: Vec<Vec<u8>> = self.midi_queue.borrow_mut().drain(..).collect();
+                for msg_bytes in messages {
+                    self.process_wasm_midi(&msg_bytes);
+                }
+                ctx.request_repaint(); // continuous polling
+            }
+        }
+
         // SidePanel with configuration controls (must be before CentralPanel)
         egui::SidePanel::left("config_panel")
             .resizable(false)
@@ -262,8 +508,24 @@ impl eframe::App for ContrapunkApp {
 
                 // Refresh Devices button
                 if ui.button("Refresh Devices").clicked() {
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        // Re-enumerate from MidiAccess
+                        self.midi_initialized = false;
+                    }
                     self.state.refresh_devices();
                 }
+
+                // WASM MIDI status
+                #[cfg(target_arch = "wasm32")]
+                {
+                    if self.midi_access.borrow().is_none() {
+                        ui.colored_label(egui::Color32::YELLOW, "Requesting MIDI access...");
+                    } else if self.state.available_inputs.is_empty() && self.state.available_outputs.is_empty() {
+                        ui.colored_label(egui::Color32::YELLOW, "No MIDI devices found.");
+                    }
+                }
+
                 ui.add_space(15.0);
 
                 // MIDI Input selection
