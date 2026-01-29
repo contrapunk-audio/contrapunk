@@ -511,6 +511,7 @@ impl eframe::App for ContrapunkApp {
             .resizable(false)
             .default_width(220.0)
             .show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Configuration");
                 ui.add_space(10.0);
 
@@ -729,6 +730,7 @@ impl eframe::App for ContrapunkApp {
                         }
                     }
                 }
+                }); // ScrollArea
             });
 
         // CentralPanel with status and visualization (after SidePanel)
