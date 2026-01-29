@@ -48,10 +48,12 @@
 
 ### Humanization
 
-- [ ] **HUM-01**: Timing jitter - random delays (5-30ms) on harmony note onsets
-- [ ] **HUM-02**: Velocity variation - randomize note velocity within ±10-20 range
-- [ ] **HUM-03**: Note duration variation - slight sustain changes on harmony notes
-- [ ] **HUM-04**: Swing/groove - shift off-beat notes for rhythmic feel
+- [x] **HUM-01**: Timing jitter - random delays (5-30ms) on harmony note onsets
+- [x] **HUM-02**: Velocity variation - randomize note velocity within ±10-20 range
+- [x] **HUM-03**: Note duration variation - slight sustain changes on harmony notes
+- [x] **HUM-04**: Swing/groove - shift off-beat notes for rhythmic feel
+- [x] **HUM-05**: Internal beat clock with adjustable BPM and time signature, tracking beat position
+- [x] **HUM-06**: Optional audible metronome click on dedicated MIDI channel (GM percussion)
 
 ## v2 Requirements
 
@@ -99,14 +101,16 @@
 | OCT-01 | Phase 5 | Complete |
 | OCT-02 | Phase 5 | Complete |
 | OCT-03 | Phase 5 | Complete |
-| HUM-01 | Phase 6 | Pending |
-| HUM-02 | Phase 6 | Pending |
-| HUM-03 | Phase 6 | Pending |
-| HUM-04 | Phase 6 | Pending |
+| HUM-01 | Phase 6 | Complete |
+| HUM-02 | Phase 6 | Complete |
+| HUM-03 | Phase 6 | Complete |
+| HUM-04 | Phase 6 | Complete |
+| HUM-05 | Phase 6 | Complete |
+| HUM-06 | Phase 6 | Complete |
 
 **Coverage:**
-- v1 requirements: 26 total
-- Mapped to phases: 26
+- v1 requirements: 28 total
+- Mapped to phases: 28
 - Unmapped: 0
 
 ---

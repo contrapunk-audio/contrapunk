@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6 — Humanization
+**Current focus:** Phase 6.1 — Voice Leading
 
 ## Current Position
 
