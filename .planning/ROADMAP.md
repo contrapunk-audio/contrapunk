@@ -17,8 +17,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: GUI and Distribution** - Native egui interface and single-binary packaging
 - [x] **Phase 4: Server Mode** - Network server for remote MIDI harmony processing
 - [x] **Phase 5: Octave Variations** - Sub-modes for counterpoint with octave placement options
-- [ ] **Phase 5.1: WASM and In-Browser Support** - Compile to WebAssembly for browser-based use with Fly.io deployment (INSERTED)
+- [x] **Phase 5.1: WASM and In-Browser Support** - Compile to WebAssembly for browser-based use with Fly.io deployment (INSERTED)
 - [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, and groove to generated notes
+- [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
+- [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
+- [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
 
 ## Phase Details
 
@@ -125,9 +128,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05.1-01-PLAN.md — WASM compilation foundation and Trunk build setup
-- [ ] 05.1-02-PLAN.md — Web MIDI backend and frame-based polling
-- [ ] 05.1-03-PLAN.md — Fly.io deployment and browser verification
+- [x] 05.1-01-PLAN.md — WASM compilation foundation and Trunk build setup
+- [x] 05.1-02-PLAN.md — Web MIDI backend and frame-based polling
+- [x] 05.1-03-PLAN.md — Fly.io deployment and browser verification
 
 ### Phase 6: Humanization
 **Goal**: User can add human-like imperfections to generated harmony notes
@@ -145,10 +148,57 @@ Plans:
 Plans:
 - [ ] 06-01: TBD (run /gsd:plan-phase 6 to break down)
 
+### Phase 7: Mic Input
+**Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
+**Depends on**: Phase 1 (MIDI Foundation)
+**Requirements**: MIC-01, MIC-02, MIC-03
+**Success Criteria** (what must be TRUE):
+  1. User can select an audio input device (microphone) from available sources
+  2. Audio-to-MIDI: Detected pitch is converted to MIDI notes feeding the harmony engine
+  3. Raw audio capture provides a signal buffer accessible by the vocoder phase
+  4. Pitch detection works with acceptable latency (<50ms) for real-time use
+  5. GUI displays detected pitch and confidence level
+**Plans**: TBD
+
+Plans:
+- [ ] 07-01: TBD (run /gsd:plan-phase 7 to break down)
+
+### Phase 8: Vocoder
+**Goal**: Apply vocoder effects using mic audio and harmony engine output
+**Depends on**: Phase 7 (Mic Input), Phase 2 (Harmony Engine)
+**Requirements**: VOC-01, VOC-02, VOC-03, VOC-04
+**Success Criteria** (what must be TRUE):
+  1. Classic vocoder: Synth/harmony carrier signal modulated by voice input produces robot-voice effect
+  2. Harmony vocoder: Singing a note produces harmonized copies of the user's own voice in real-time
+  3. User can switch between classic and harmony vocoder modes via GUI
+  4. Vocoder parameters (band count, formant shift, wet/dry mix) adjustable via GUI sliders
+  5. Vocoder works with any active harmony mode
+  6. Audio output routable to system audio device
+**Plans**: TBD
+
+Plans:
+- [ ] 08-01: TBD (run /gsd:plan-phase 8 to break down)
+
+### Phase 9: Guitar Input
+**Goal**: Accept guitar audio input with pitch detection optimized for guitar frequency range and playing styles
+**Depends on**: Phase 7 (Mic Input — shares audio capture infrastructure)
+**Requirements**: GTR-01, GTR-02, GTR-03
+**Success Criteria** (what must be TRUE):
+  1. User can select audio input for guitar (direct-in or mic'd amp)
+  2. Monophonic pitch detection tracks single-note lines with low latency (<30ms)
+  3. Polyphonic detection identifies chords (at least triads) from strummed input
+  4. Detected notes feed into harmony engine like any other MIDI input
+  5. GUI displays detected guitar notes with string/fret visualization
+  6. Works with electric guitar (direct input) and acoustic (via mic)
+**Plans**: TBD
+
+Plans:
+- [ ] 09-01: TBD (run /gsd:plan-phase 9 to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -157,8 +207,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6
 | 3. GUI and Distribution | 6/6 | Complete | 2026-01-28 |
 | 4. Server Mode | 4/4 | Complete | 2026-01-29 |
 | 5. Octave Variations | 1/1 | Complete | 2026-01-29 |
-| 5.1 WASM & Browser (INSERTED) | 0/3 | Not started | - |
+| 5.1 WASM & Browser (INSERTED) | 3/3 | Complete | 2026-01-29 |
 | 6. Humanization | 0/? | Not started | - |
+| 7. Mic Input | 0/? | Not started | - |
+| 8. Vocoder | 0/? | Not started | - |
+| 9. Guitar Input | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
