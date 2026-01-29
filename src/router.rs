@@ -7,6 +7,7 @@
 use crate::harmony::{HarmonyEngine, Key, HarmonyMode, OctaveMode};
 #[cfg(not(feature = "gui"))]
 use crate::harmony::HarmonyEngine;
+use crate::humanize::{DelayQueue, HumanizeConfig, HumanizedNote, Humanizer, Metronome};
 use crate::midi::input::connect_input;
 use crate::midi::output::OutputRouter;
 use anyhow::Result;
@@ -21,7 +22,7 @@ use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 #[cfg(not(feature = "gui"))]
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use wmidi::{Channel, MidiMessage, Note, Velocity};
 
 #[cfg(feature = "gui")]
@@ -39,23 +40,11 @@ pub struct GUIRouterState {
     pub harmony_notes: HashSet<u8>,
     /// Signal to stop the router thread
     pub stop_signal: bool,
+    /// Humanization configuration (GUI can read/write)
+    pub humanize_config: HumanizeConfig,
 }
 
 /// Spawns the MIDI router in a background thread for GUI mode.
-///
-/// # Arguments
-///
-/// * `input_port` - Index of the MIDI input port
-/// * `output_ports` - Vec of output port indices
-/// * `key` - Initial musical key
-/// * `mode` - Initial harmony mode
-/// * `octave_mode` - Octave placement mode for harmony voices
-/// * `state` - Shared state for GUI communication
-/// * `ctx` - egui context for requesting repaints
-///
-/// # Returns
-///
-/// Returns a JoinHandle to the spawned thread, or an error if connection fails.
 #[cfg(feature = "gui")]
 pub fn spawn_gui_router(
     input_port: usize,
@@ -104,6 +93,16 @@ fn run_gui_router_inner(
     engine.set_voice_count(num_outputs);
     engine.set_octave_mode(octave_mode);
 
+    // Create humanizer, delay queue, and metronome
+    let mut humanizer = Humanizer::new(HumanizeConfig::default());
+    let mut delay_queue = DelayQueue::new();
+    let metronome = Metronome::new();
+    let epoch = Instant::now();
+    let now_ms = || epoch.elapsed().as_secs_f64() * 1000.0;
+
+    // Start the beat clock
+    humanizer.clock_mut().start(now_ms());
+
     // Main routing loop
     loop {
         // Check stop signal
@@ -114,10 +113,58 @@ fn run_gui_router_inner(
             }
         }
 
+        // Tick humanizer clock
+        let current_ms = now_ms();
+        humanizer.tick(current_ms);
+
+        // Sync humanizer config from shared state
+        {
+            let state_lock = state.lock().unwrap();
+            humanizer.update_config(state_lock.humanize_config.clone());
+        }
+
+        // Check metronome: generate click on beat crossings
+        if humanizer.config().metronome_enabled {
+            if let Some(beat) = humanizer.clock().beat_crossed() {
+                let click = metronome.generate_click(beat);
+                let _ = output_router.send_to_first(&click);
+                // Schedule click-off after 50ms
+                let click_off_note = HumanizedNote {
+                    note: if beat == 0 {
+                        Note::try_from(76u8).unwrap()
+                    } else {
+                        Note::try_from(77u8).unwrap()
+                    },
+                    channel: Channel::Ch10,
+                    velocity: Velocity::try_from(0u8).unwrap(),
+                    delay_ms: 50,
+                    duration_delta_ms: 0,
+                    port: 0,
+                    is_note_off: true,
+                };
+                delay_queue.push(click_off_note, current_ms);
+            }
+        }
+
+        // Drain delay queue: send all ready notes
+        let current_ms = now_ms();
+        for hn in delay_queue.drain_ready(current_ms) {
+            let _ = send_humanized_note(&hn, &mut output_router);
+        }
+
         // Try to receive MIDI message with short timeout
-        match rx.recv_timeout(Duration::from_millis(50)) {
+        match rx.recv_timeout(Duration::from_millis(5)) {
             Ok(message) => {
-                if let Err(e) = process_midi_message_gui(&message, &mut engine, &mut output_router, &state) {
+                let current_ms = now_ms();
+                if let Err(e) = process_midi_message_gui(
+                    &message,
+                    &mut engine,
+                    &mut output_router,
+                    &state,
+                    &mut humanizer,
+                    &mut delay_queue,
+                    current_ms,
+                ) {
                     eprintln!("Error processing message: {}", e);
                 }
                 // Request GUI repaint to show updated notes
@@ -144,6 +191,19 @@ fn run_gui_router_inner(
     Ok(())
 }
 
+/// Sends a humanized note to the appropriate output port.
+fn send_humanized_note(note: &HumanizedNote, output: &mut OutputRouter) -> Result<()> {
+    let msg = if note.is_note_off {
+        MidiMessage::NoteOff(note.channel, note.note, note.velocity)
+    } else {
+        MidiMessage::NoteOn(note.channel, note.note, note.velocity)
+    };
+    let mut buf = vec![0u8; msg.bytes_size()];
+    msg.copy_to_slice(&mut buf)?;
+    output.send_to_port(note.port, &buf)?;
+    Ok(())
+}
+
 /// Processes a single MIDI message for GUI mode (updates shared state).
 #[cfg(feature = "gui")]
 fn process_midi_message_gui(
@@ -151,6 +211,9 @@ fn process_midi_message_gui(
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
     state: &Arc<Mutex<GUIRouterState>>,
+    humanizer: &mut Humanizer,
+    delay_queue: &mut DelayQueue,
+    now_ms: f64,
 ) -> Result<()> {
     // Try to parse as MIDI message
     let msg = match MidiMessage::try_from(bytes) {
@@ -165,14 +228,13 @@ fn process_midi_message_gui(
     match msg {
         MidiMessage::NoteOn(channel, note, velocity) => {
             if velocity == Velocity::MIN {
-                // Velocity 0 = Note-Off (running status optimization)
-                handle_note_off_gui(channel, note, velocity, engine, output, state)?;
+                handle_note_off_gui(channel, note, velocity, engine, output, state, humanizer, delay_queue, now_ms)?;
             } else {
-                handle_note_on_gui(channel, note, velocity, engine, output, state)?;
+                handle_note_on_gui(channel, note, velocity, engine, output, state, humanizer, delay_queue, now_ms)?;
             }
         }
         MidiMessage::NoteOff(channel, note, velocity) => {
-            handle_note_off_gui(channel, note, velocity, engine, output, state)?;
+            handle_note_off_gui(channel, note, velocity, engine, output, state, humanizer, delay_queue, now_ms)?;
         }
         _ => {
             // Non-note messages: pass through unchanged to first output
@@ -183,7 +245,7 @@ fn process_midi_message_gui(
     Ok(())
 }
 
-/// Handles Note-On for GUI mode: harmonize, send to outputs, update state.
+/// Handles Note-On for GUI mode: harmonize, humanize harmony notes, send to outputs.
 #[cfg(feature = "gui")]
 fn handle_note_on_gui(
     channel: Channel,
@@ -192,37 +254,51 @@ fn handle_note_on_gui(
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
     state: &Arc<Mutex<GUIRouterState>>,
+    humanizer: &mut Humanizer,
+    delay_queue: &mut DelayQueue,
+    now_ms: f64,
 ) -> Result<()> {
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
 
     // Update shared state with active notes
-    // Note: notes[0] is melody (same as input), notes[1..] are harmonies
     {
         let mut state_lock = state.lock().unwrap();
         state_lock.input_notes.insert(note as u8);
-        // Skip first note (melody) - only add harmony notes
         for &n in notes.iter().skip(1) {
             state_lock.harmony_notes.insert(n as u8);
         }
     }
 
-    // Send each note to its port (using port map for Mirror mode)
+    // Send each note to its port
     let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
         let port = if i < port_map.len() { port_map[i] } else { i };
-        if port < num_outputs {
+        if port >= num_outputs {
+            continue;
+        }
+
+        if i == 0 {
+            // Melody (index 0): send immediately, no humanization
             let msg = MidiMessage::NoteOn(channel, n, velocity);
             let mut buf = vec![0u8; msg.bytes_size()];
             msg.copy_to_slice(&mut buf)?;
             output.send_to_port(port, &buf)?;
+        } else {
+            // Harmony (index 1+): humanize
+            let hn = humanizer.humanize_note_on(n, channel, velocity, port);
+            if hn.delay_ms == 0 {
+                send_humanized_note(&hn, output)?;
+            } else {
+                delay_queue.push(hn, now_ms);
+            }
         }
     }
 
     Ok(())
 }
 
-/// Handles Note-Off for GUI mode: release notes, update state.
+/// Handles Note-Off for GUI mode: release notes, humanize harmony note-offs.
 #[cfg(feature = "gui")]
 fn handle_note_off_gui(
     channel: Channel,
@@ -231,30 +307,44 @@ fn handle_note_off_gui(
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
     state: &Arc<Mutex<GUIRouterState>>,
+    humanizer: &mut Humanizer,
+    delay_queue: &mut DelayQueue,
+    now_ms: f64,
 ) -> Result<()> {
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
 
     // Update shared state - remove released notes
-    // Note: notes[0] is melody (same as input), notes[1..] are harmonies
     {
         let mut state_lock = state.lock().unwrap();
         state_lock.input_notes.remove(&(note as u8));
-        // Skip first note (melody) - only remove harmony notes
         for &n in notes.iter().skip(1) {
             state_lock.harmony_notes.remove(&(n as u8));
         }
     }
 
-    // Release each note on its port (using port map for Mirror mode)
+    // Release each note on its port
     let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
         let port = if i < port_map.len() { port_map[i] } else { i };
-        if port < num_outputs {
+        if port >= num_outputs {
+            continue;
+        }
+
+        if i == 0 {
+            // Melody: send immediately
             let msg = MidiMessage::NoteOff(channel, n, velocity);
             let mut buf = vec![0u8; msg.bytes_size()];
             msg.copy_to_slice(&mut buf)?;
             output.send_to_port(port, &buf)?;
+        } else {
+            // Harmony: humanize note-off (delay = jitter + duration_delta)
+            let hn = humanizer.humanize_note_off(n, channel, velocity, port);
+            if hn.delay_ms == 0 {
+                send_humanized_note(&hn, output)?;
+            } else {
+                delay_queue.push(hn, now_ms);
+            }
         }
     }
 
@@ -266,26 +356,6 @@ fn handle_note_off_gui(
 // ============================================================================
 
 /// Runs the MIDI routing loop with harmony generation (CLI mode).
-///
-/// Connects to the specified input port and output ports, then enters
-/// a loop that processes MIDI messages through the HarmonyEngine.
-///
-/// - Original notes go to output port 0
-/// - Chained harmonies go to ports 1, 2, 3, ... (one per port)
-///   - Harmony 1 (of melody) -> port 1
-///   - Harmony 2 (of harmony 1) -> port 2
-///   - Harmony 3 (of harmony 2) -> port 3
-/// - Non-note messages pass through to first output
-///
-/// # Arguments
-///
-/// * `input_port` - Index of the MIDI input port
-/// * `output_ports` - Slice of output port indices
-/// * `engine` - HarmonyEngine configured with key and mode
-///
-/// # Returns
-///
-/// Returns `Ok(())` when the user exits, or an error if connection fails.
 #[cfg(not(feature = "gui"))]
 pub fn run_router(
     input_port: usize,
@@ -304,6 +374,14 @@ pub fn run_router(
     // Configure engine voice count to match output count
     let num_outputs = output_router.connection_count();
     engine.set_voice_count(num_outputs);
+
+    // Create humanizer and delay queue (CLI uses default config = disabled)
+    let mut humanizer = Humanizer::new(HumanizeConfig::default());
+    let mut delay_queue = DelayQueue::new();
+    let epoch = Instant::now();
+    let now_ms = || epoch.elapsed().as_secs_f64() * 1000.0;
+
+    humanizer.clock_mut().start(now_ms());
 
     println!("\n========================================");
     println!("MIDI harmony routing active.");
@@ -337,10 +415,21 @@ pub fn run_router(
             break;
         }
 
+        // Tick humanizer
+        let current_ms = now_ms();
+        humanizer.tick(current_ms);
+
+        // Drain delay queue
+        let current_ms = now_ms();
+        for hn in delay_queue.drain_ready(current_ms) {
+            let _ = send_humanized_note(&hn, &mut output_router);
+        }
+
         // Try to receive MIDI message with timeout
-        match rx.recv_timeout(Duration::from_millis(100)) {
+        match rx.recv_timeout(Duration::from_millis(5)) {
             Ok(message) => {
-                if let Err(e) = process_midi_message(&message, engine, &mut output_router) {
+                let current_ms = now_ms();
+                if let Err(e) = process_midi_message(&message, engine, &mut output_router, &mut humanizer, &mut delay_queue, current_ms) {
                     eprintln!("Error processing message: {}", e);
                 }
             }
@@ -364,12 +453,13 @@ fn process_midi_message(
     bytes: &[u8],
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
+    humanizer: &mut Humanizer,
+    delay_queue: &mut DelayQueue,
+    now_ms: f64,
 ) -> Result<()> {
-    // Try to parse as MIDI message
     let msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
         Err(_) => {
-            // Unknown message, pass through to first output
             output.send_to_first(bytes)?;
             return Ok(());
         }
@@ -378,17 +468,15 @@ fn process_midi_message(
     match msg {
         MidiMessage::NoteOn(channel, note, velocity) => {
             if velocity == Velocity::MIN {
-                // Velocity 0 = Note-Off (running status optimization)
-                handle_note_off(channel, note, velocity, engine, output)?;
+                handle_note_off(channel, note, velocity, engine, output, humanizer, delay_queue, now_ms)?;
             } else {
-                handle_note_on(channel, note, velocity, engine, output)?;
+                handle_note_on(channel, note, velocity, engine, output, humanizer, delay_queue, now_ms)?;
             }
         }
         MidiMessage::NoteOff(channel, note, velocity) => {
-            handle_note_off(channel, note, velocity, engine, output)?;
+            handle_note_off(channel, note, velocity, engine, output, humanizer, delay_queue, now_ms)?;
         }
         _ => {
-            // Non-note messages: pass through unchanged to first output
             output.send_to_first(bytes)?;
         }
     }
@@ -404,19 +492,34 @@ fn handle_note_on(
     velocity: Velocity,
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
+    humanizer: &mut Humanizer,
+    delay_queue: &mut DelayQueue,
+    now_ms: f64,
 ) -> Result<()> {
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
 
-    // Send each note to its port (using port map for Mirror mode)
     let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
         let port = if i < port_map.len() { port_map[i] } else { i };
-        if port < num_outputs {
+        if port >= num_outputs {
+            continue;
+        }
+
+        if i == 0 {
+            // Melody: send immediately
             let msg = MidiMessage::NoteOn(channel, n, velocity);
             let mut buf = vec![0u8; msg.bytes_size()];
             msg.copy_to_slice(&mut buf)?;
             output.send_to_port(port, &buf)?;
+        } else {
+            // Harmony: humanize
+            let hn = humanizer.humanize_note_on(n, channel, velocity, port);
+            if hn.delay_ms == 0 {
+                send_humanized_note(&hn, output)?;
+            } else {
+                delay_queue.push(hn, now_ms);
+            }
         }
     }
 
@@ -442,19 +545,34 @@ fn handle_note_off(
     velocity: Velocity,
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
+    humanizer: &mut Humanizer,
+    delay_queue: &mut DelayQueue,
+    now_ms: f64,
 ) -> Result<()> {
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
 
-    // Release each note on its port (using port map for Mirror mode)
     let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
         let port = if i < port_map.len() { port_map[i] } else { i };
-        if port < num_outputs {
+        if port >= num_outputs {
+            continue;
+        }
+
+        if i == 0 {
+            // Melody: send immediately
             let msg = MidiMessage::NoteOff(channel, n, velocity);
             let mut buf = vec![0u8; msg.bytes_size()];
             msg.copy_to_slice(&mut buf)?;
             output.send_to_port(port, &buf)?;
+        } else {
+            // Harmony: humanize note-off
+            let hn = humanizer.humanize_note_off(n, channel, velocity, port);
+            if hn.delay_ms == 0 {
+                send_humanized_note(&hn, output)?;
+            } else {
+                delay_queue.push(hn, now_ms);
+            }
         }
     }
 
