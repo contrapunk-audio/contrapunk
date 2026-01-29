@@ -452,16 +452,38 @@ impl ContrapunkApp {
             self.wasm_harmony_notes.insert(n as u8);
         }
 
+        let now_ms = web_sys::window()
+            .and_then(|w| w.performance())
+            .map(|p| p.now())
+            .unwrap_or(0.0);
+
         // Send to Web MIDI outputs
         let access = self.midi_access.borrow();
         if let Some(ref access) = *access {
             for (i, &n) in notes.iter().enumerate() {
                 let port = if i < port_map.len() { port_map[i] } else { i };
-                if port < num_outputs {
+                if port >= num_outputs {
+                    continue;
+                }
+
+                if i == 0 {
+                    // Melody (index 0): pass through unchanged
                     let msg = MidiMessage::NoteOn(channel, n, velocity);
                     let mut buf = vec![0u8; msg.bytes_size()];
                     if msg.copy_to_slice(&mut buf).is_ok() {
                         let _ = web::send_to_output(access, &self.connected_output_ids[port], &buf);
+                    }
+                } else {
+                    // Harmony notes: process through humanizer
+                    let hn = self.wasm_humanizer.humanize_note_on(n, channel, velocity, port);
+                    if hn.delay_ms == 0 {
+                        let msg = MidiMessage::NoteOn(channel, hn.note, hn.velocity);
+                        let mut buf = vec![0u8; msg.bytes_size()];
+                        if msg.copy_to_slice(&mut buf).is_ok() {
+                            let _ = web::send_to_output(access, &self.connected_output_ids[port], &buf);
+                        }
+                    } else {
+                        self.wasm_delay_queue.push(hn, now_ms);
                     }
                 }
             }
@@ -479,16 +501,38 @@ impl ContrapunkApp {
             self.wasm_harmony_notes.remove(&(n as u8));
         }
 
+        let now_ms = web_sys::window()
+            .and_then(|w| w.performance())
+            .map(|p| p.now())
+            .unwrap_or(0.0);
+
         // Send to Web MIDI outputs
         let access = self.midi_access.borrow();
         if let Some(ref access) = *access {
             for (i, &n) in notes.iter().enumerate() {
                 let port = if i < port_map.len() { port_map[i] } else { i };
-                if port < num_outputs {
+                if port >= num_outputs {
+                    continue;
+                }
+
+                if i == 0 {
+                    // Melody (index 0): pass through unchanged
                     let msg = MidiMessage::NoteOff(channel, n, velocity);
                     let mut buf = vec![0u8; msg.bytes_size()];
                     if msg.copy_to_slice(&mut buf).is_ok() {
                         let _ = web::send_to_output(access, &self.connected_output_ids[port], &buf);
+                    }
+                } else {
+                    // Harmony notes: process through humanizer for matching delay
+                    let hn = self.wasm_humanizer.humanize_note_off(n, channel, velocity, port);
+                    if hn.delay_ms == 0 {
+                        let msg = MidiMessage::NoteOff(channel, hn.note, hn.velocity);
+                        let mut buf = vec![0u8; msg.bytes_size()];
+                        if msg.copy_to_slice(&mut buf).is_ok() {
+                            let _ = web::send_to_output(access, &self.connected_output_ids[port], &buf);
+                        }
+                    } else {
+                        self.wasm_delay_queue.push(hn, now_ms);
                     }
                 }
             }
