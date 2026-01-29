@@ -16,6 +16,7 @@ use anyhow::Result;
 use eframe::egui;
 use crate::chord::chord_display;
 use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine};
+use crate::humanize::HumanizeConfig;
 use crate::piano::PianoKeyboard;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::midi::ports::{list_input_ports, list_output_ports};
@@ -162,6 +163,8 @@ pub struct ContrapunkApp {
     /// Active harmony notes for WASM display
     #[cfg(target_arch = "wasm32")]
     wasm_harmony_notes: HashSet<u8>,
+    /// Local copy of humanization config for GUI editing
+    humanize_config: HumanizeConfig,
 }
 
 impl ContrapunkApp {
@@ -192,6 +195,7 @@ impl ContrapunkApp {
             wasm_input_notes: HashSet::new(),
             #[cfg(target_arch = "wasm32")]
             wasm_harmony_notes: HashSet::new(),
+            humanize_config: HumanizeConfig::default(),
         };
 
         // Auto-refresh devices on startup
@@ -651,6 +655,75 @@ impl eframe::App for ContrapunkApp {
                 }
                 if start_clicked {
                     self.try_start(ctx);
+                }
+
+                ui.add_space(15.0);
+                ui.separator();
+                ui.add_space(10.0);
+
+                // Humanization controls
+                ui.heading("Humanization");
+                ui.add_space(5.0);
+
+                ui.checkbox(&mut self.humanize_config.enabled, "Enable Humanization");
+
+                if self.humanize_config.enabled {
+                    ui.add_space(10.0);
+
+                    // Beat Clock section
+                    ui.label(egui::RichText::new("Beat Clock").strong());
+                    ui.add(egui::Slider::new(&mut self.humanize_config.bpm, 40.0..=240.0).text("BPM"));
+                    ui.label(format!("Time Sig: {}/{}", self.humanize_config.beats_per_bar, self.humanize_config.beat_unit));
+                    ui.checkbox(&mut self.humanize_config.metronome_enabled, "Metronome Click");
+                    ui.add_space(10.0);
+
+                    // Timing Jitter section
+                    ui.label(egui::RichText::new("Timing Jitter").strong());
+                    ui.checkbox(&mut self.humanize_config.jitter_enabled, "Timing Jitter");
+                    if self.humanize_config.jitter_enabled {
+                        ui.add(egui::Slider::new(&mut self.humanize_config.jitter_min_ms, 0..=50).text("Min ms"));
+                        ui.add(egui::Slider::new(&mut self.humanize_config.jitter_max_ms, 0..=50).text("Max ms"));
+                        // Clamp min <= max
+                        if self.humanize_config.jitter_min_ms > self.humanize_config.jitter_max_ms {
+                            self.humanize_config.jitter_min_ms = self.humanize_config.jitter_max_ms;
+                        }
+                    }
+                    ui.add_space(10.0);
+
+                    // Velocity Variation section
+                    ui.label(egui::RichText::new("Velocity").strong());
+                    ui.checkbox(&mut self.humanize_config.velocity_enabled, "Velocity Variation");
+                    if self.humanize_config.velocity_enabled {
+                        ui.add(egui::Slider::new(&mut self.humanize_config.velocity_variation, 0..=30).text("\u{00b1}"));
+                    }
+                    ui.add_space(10.0);
+
+                    // Duration Variation section
+                    ui.label(egui::RichText::new("Duration").strong());
+                    ui.checkbox(&mut self.humanize_config.duration_enabled, "Duration Variation");
+                    if self.humanize_config.duration_enabled {
+                        ui.add(egui::Slider::new(&mut self.humanize_config.duration_variation_ms, 0..=100).text("ms"));
+                    }
+                    ui.add_space(10.0);
+
+                    // Swing section
+                    ui.label(egui::RichText::new("Swing").strong());
+                    ui.checkbox(&mut self.humanize_config.swing_enabled, "Swing");
+                    if self.humanize_config.swing_enabled {
+                        ui.add(egui::Slider::new(&mut self.humanize_config.swing_amount, 0.0..=1.0).text("Amount"));
+                    }
+                }
+
+                // Sync humanize config to router shared state each frame
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if self.state.is_running {
+                        if let Some(ref router_state) = self.router_state {
+                            if let Ok(mut state_lock) = router_state.lock() {
+                                state_lock.humanize_config = self.humanize_config.clone();
+                            }
+                        }
+                    }
                 }
             });
 
