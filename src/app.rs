@@ -17,6 +17,8 @@ use eframe::egui;
 use crate::chord::chord_display;
 use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine};
 use crate::humanize::HumanizeConfig;
+#[cfg(target_arch = "wasm32")]
+use crate::humanize::{Humanizer, DelayQueue, Metronome};
 use crate::piano::PianoKeyboard;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::midi::ports::{list_input_ports, list_output_ports};
@@ -165,6 +167,18 @@ pub struct ContrapunkApp {
     wasm_harmony_notes: HashSet<u8>,
     /// Local copy of humanization config for GUI editing
     humanize_config: HumanizeConfig,
+    /// Humanizer engine for WASM note processing
+    #[cfg(target_arch = "wasm32")]
+    wasm_humanizer: Humanizer,
+    /// Delay queue for WASM humanized note scheduling
+    #[cfg(target_arch = "wasm32")]
+    wasm_delay_queue: DelayQueue,
+    /// Metronome for WASM beat clicks
+    #[cfg(target_arch = "wasm32")]
+    wasm_metronome: Metronome,
+    /// Whether the beat clock has been started (WASM)
+    #[cfg(target_arch = "wasm32")]
+    wasm_clock_started: bool,
 }
 
 impl ContrapunkApp {
@@ -196,6 +210,14 @@ impl ContrapunkApp {
             #[cfg(target_arch = "wasm32")]
             wasm_harmony_notes: HashSet::new(),
             humanize_config: HumanizeConfig::default(),
+            #[cfg(target_arch = "wasm32")]
+            wasm_humanizer: Humanizer::new(HumanizeConfig::default()),
+            #[cfg(target_arch = "wasm32")]
+            wasm_delay_queue: DelayQueue::new(),
+            #[cfg(target_arch = "wasm32")]
+            wasm_metronome: Metronome::new(),
+            #[cfg(target_arch = "wasm32")]
+            wasm_clock_started: false,
         };
 
         // Auto-refresh devices on startup
@@ -365,6 +387,8 @@ impl ContrapunkApp {
         self.wasm_input_notes.clear();
         self.wasm_harmony_notes.clear();
         self.midi_queue.borrow_mut().clear();
+        self.wasm_humanizer.clock_mut().stop();
+        self.wasm_clock_started = false;
     }
 
     /// Gets the current input/harmony notes from the router state.
@@ -493,11 +517,62 @@ impl eframe::App for ContrapunkApp {
             }
 
             // Frame-based MIDI processing when running
-            // TODO: WASM humanization — integrate Humanizer + DelayQueue into frame loop.
-            // GUI sliders render and update humanize_config, but humanization effects
-            // (jitter, velocity, swing) require Humanizer/DelayQueue wired into
-            // process_wasm_midi. BeatClock uses f64 ms so it's WASM-safe.
             if self.state.is_running {
+                let now_ms = web_sys::window()
+                    .and_then(|w| w.performance())
+                    .map(|p| p.now())
+                    .unwrap_or(0.0);
+
+                // Sync humanize config to wasm_humanizer each frame
+                self.wasm_humanizer.update_config(self.humanize_config.clone());
+                self.wasm_metronome.enabled = self.humanize_config.metronome_enabled;
+
+                // Start beat clock on first running frame
+                if !self.wasm_clock_started {
+                    self.wasm_humanizer.clock_mut().start(now_ms);
+                    self.wasm_clock_started = true;
+                }
+
+                // Tick the beat clock
+                self.wasm_humanizer.tick(now_ms);
+
+                // Check for metronome beat crossings
+                if self.humanize_config.enabled && self.wasm_metronome.enabled {
+                    if let Some(beat) = self.wasm_humanizer.clock().beat_crossed() {
+                        let click_on = self.wasm_metronome.generate_click(beat);
+                        let click_off = self.wasm_metronome.generate_click_off(beat);
+                        let access = self.midi_access.borrow();
+                        if let Some(ref access) = *access {
+                            if let Some(id) = self.connected_output_ids.first() {
+                                let _ = web::send_to_output(access, id, &click_on);
+                                let _ = web::send_to_output(access, id, &click_off);
+                            }
+                        }
+                    }
+                }
+
+                // Drain delayed notes from the delay queue
+                let ready_notes = self.wasm_delay_queue.drain_ready(now_ms);
+                let access = self.midi_access.borrow();
+                if let Some(ref access) = *access {
+                    for hn in ready_notes {
+                        let port = hn.port;
+                        if port < self.connected_output_ids.len() {
+                            let midi_msg = if hn.is_note_off {
+                                MidiMessage::NoteOff(hn.channel, hn.note, hn.velocity)
+                            } else {
+                                MidiMessage::NoteOn(hn.channel, hn.note, hn.velocity)
+                            };
+                            let mut buf = vec![0u8; midi_msg.bytes_size()];
+                            if midi_msg.copy_to_slice(&mut buf).is_ok() {
+                                let _ = web::send_to_output(access, &self.connected_output_ids[port], &buf);
+                            }
+                        }
+                    }
+                }
+                drop(access);
+
+                // Process incoming MIDI messages
                 let messages: Vec<Vec<u8>> = self.midi_queue.borrow_mut().drain(..).collect();
                 for msg_bytes in messages {
                     self.process_wasm_midi(&msg_bytes);
