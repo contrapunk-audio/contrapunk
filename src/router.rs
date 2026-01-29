@@ -126,8 +126,9 @@ fn run_gui_router_inner(
         // Check metronome: generate click on beat crossings
         if humanizer.config().metronome_enabled {
             if let Some(beat) = humanizer.clock().beat_crossed() {
+                let metro_port = humanizer.config().metronome_output_port.unwrap_or(0);
                 let click = metronome.generate_click(beat);
-                let _ = output_router.send_to_first(&click);
+                let _ = output_router.send_to_port(metro_port, &click);
                 // Schedule click-off after 50ms
                 let click_off_note = HumanizedNote {
                     note: if beat == 0 {
@@ -139,7 +140,7 @@ fn run_gui_router_inner(
                     velocity: Velocity::try_from(0u8).unwrap(),
                     delay_ms: 50,
                     duration_delta_ms: 0,
-                    port: 0,
+                    port: metro_port,
                     is_note_off: true,
                 };
                 delay_queue.push(click_off_note, current_ms);

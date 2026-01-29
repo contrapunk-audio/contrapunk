@@ -37,6 +37,8 @@ pub struct HumanizeConfig {
 
     /// Whether to enable metronome clicks.
     pub metronome_enabled: bool,
+    /// Output port index for metronome clicks (None = first output).
+    pub metronome_output_port: Option<usize>,
 }
 
 impl Default for HumanizeConfig {
@@ -56,6 +58,7 @@ impl Default for HumanizeConfig {
             beats_per_bar: 4,
             beat_unit: 4,
             metronome_enabled: false,
+            metronome_output_port: None,
         }
     }
 }
