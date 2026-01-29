@@ -6,6 +6,7 @@
 mod app;
 mod chord;
 mod harmony;
+mod humanize;
 mod midi;
 mod piano;
 
