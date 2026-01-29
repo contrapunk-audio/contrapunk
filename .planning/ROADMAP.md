@@ -19,8 +19,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Octave Variations** - Sub-modes for counterpoint with octave placement options
 - [x] **Phase 5.1: WASM and In-Browser Support** - Compile to WebAssembly for browser-based use with Fly.io deployment (INSERTED)
 - [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, groove, and internal beat clock/metronome to generated notes
-- [ ] **Phase 6.1: Voice Leading** - Improved voice leading with smooth transitions, minimal motion, and voice independence (INSERTED)
-- [ ] **Phase 6.2: Style Update** - UI visual redesign and musical style presets (jazz, classical, pop, etc.) (INSERTED)
+- [ ] **Phase 6.1: Humanization UI Fix** - Fix humanization controls visibility in browser, ensure effects are audible end-to-end, redesign humanization UI (INSERTED)
+- [ ] **Phase 6.2: Voice Leading** - Improved voice leading with smooth transitions, minimal motion, and voice independence (INSERTED)
+- [ ] **Phase 6.3: Style Update** - UI visual redesign and musical style presets (jazz, classical, pop, etc.) (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
@@ -154,7 +155,22 @@ Plans:
 - [x] 06-02-PLAN.md — Delay queue scheduler, metronome, and router integration
 - [x] 06-03-PLAN.md — GUI humanization controls and WASM compatibility
 
-### Phase 6.1: Voice Leading (INSERTED)
+### Phase 6.1: Humanization UI Fix (INSERTED)
+**Goal**: Fix humanization controls visibility in browser/WASM, ensure humanization audio effects work end-to-end (user can hear the difference), and redesign humanization UI controls for better UX
+**Depends on**: Phase 6 (Humanization)
+**Requirements**: HUM-UI-01, HUM-UI-02, HUM-UI-03
+**Success Criteria** (what must be TRUE):
+  1. Humanization controls are visible and functional in the browser/WASM build
+  2. Humanization effects (timing jitter, velocity variation, groove) produce audible differences in output
+  3. UI controls are redesigned for clarity and ease of use
+  4. Native and WASM builds have consistent humanization behavior
+**Plans**: 2 plans
+
+Plans:
+- [ ] 06.1-01-PLAN.md — Wire humanizer into WASM MIDI processing path
+- [ ] 06.1-02-PLAN.md — Redesign humanization UI with collapsible sections
+
+### Phase 6.2: Voice Leading (INSERTED)
 **Goal**: Implement proper counterpoint and voice leading based on deep research into classical counterpoint theory (Fux's species counterpoint, Bach chorale voice leading, Palestrina style rules)
 **Depends on**: Phase 6 (Humanization), Phase 2 (Harmony Engine)
 **Requirements**: VL-01, VL-02, VL-03, VL-04
@@ -176,11 +192,11 @@ Plans:
 **Plans**: TBD (research phase with /gsd:research-phase 6.1 strongly recommended before planning)
 
 Plans:
-- [ ] 06.1-01: TBD (run /gsd:research-phase 6.1 then /gsd:plan-phase 6.1 to break down)
+- [ ] 06.2-01: TBD (run /gsd:research-phase 6.2 then /gsd:plan-phase 6.2 to break down)
 
-### Phase 6.2: Style Update (INSERTED)
+### Phase 6.3: Style Update (INSERTED)
 **Goal**: Modernize GUI appearance and add musical style presets combining harmony, voice leading, and humanization settings
-**Depends on**: Phase 6.1 (Voice Leading), Phase 6 (Humanization), Phase 3 (GUI)
+**Depends on**: Phase 6.2 (Voice Leading), Phase 6 (Humanization), Phase 3 (GUI)
 **Requirements**: STY-01, STY-02, STY-03, STY-04
 **Success Criteria** (what must be TRUE):
   1. GUI has a modern visual design (custom color scheme, improved layout, consistent typography)
@@ -192,7 +208,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 06.2-01: TBD (run /gsd:plan-phase 6.2 to break down)
+- [ ] 06.3-01: TBD (run /gsd:plan-phase 6.3 to break down)
 
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
@@ -244,7 +260,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -255,12 +271,13 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 5. Octave Variations | 1/1 | Complete | 2026-01-29 |
 | 5.1 WASM & Browser (INSERTED) | 3/3 | Complete | 2026-01-29 |
 | 6. Humanization | 3/3 | Complete | 2026-01-29 |
-| 6.1 Voice Leading (INSERTED) | 0/? | Not started | - |
-| 6.2 Style Update (INSERTED) | 0/? | Not started | - |
+| 6.1 Humanization UI Fix (INSERTED) | 0/2 | Not started | - |
+| 6.2 Voice Leading (INSERTED) | 0/? | Not started | - |
+| 6.3 Style Update (INSERTED) | 0/? | Not started | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-29 — Phase 6 complete (3 plans, 3 waves)*
+*Last updated: 2026-01-29 — Phase 6.1 planned (2 plans, 2 waves)*
