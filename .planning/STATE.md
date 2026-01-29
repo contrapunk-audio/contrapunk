@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.1 — Voice Leading
+**Current focus:** Phase 6.1 — Humanization UI Fix
 
 ## Current Position
 
-Phase: 6 of 9 (Humanization)
-Plan: 3 of 3 in current phase — Phase complete
-Status: Phase complete
-Last activity: 2026-01-29 - Completed 06-03-PLAN.md (GUI Humanization Controls)
+Phase: 6.1 of 9 (Humanization UI Fix)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-01-29 - Completed 06.1-01-PLAN.md (WASM Humanizer Integration)
 
-Progress: [███████████████████████████] 100% (27 of 27 plans complete)
+Progress: [████████████████████████████] 100% (28 of 29 plans complete)
 
 ## Performance Metrics
 
@@ -94,6 +94,8 @@ Recent decisions affecting current work:
 - [05.1-02]: HarmonyEngine owned directly by ContrapunkApp in WASM (no thread, no Arc<Mutex>)
 - [05.1-02]: Frame-based polling drains Rc<RefCell<Vec<Vec<u8>>>> each update() frame
 - [05.1-02]: Output device IDs stored as Vec<String> for Web MIDI routing
+- [06.1-01]: Melody (index 0) bypasses humanizer; only harmony notes (index 1+) humanized
+- [06.1-01]: Beat clock starts on first running frame, stops on stop()
 
 ### Pending Todos
 
@@ -107,6 +109,7 @@ None.
 
 - Phase 4 added: Server Mode - Network server for remote MIDI harmony processing
 - Phase 5.1 inserted after Phase 5: WASM and In-Browser Support with Fly.io deployment (URGENT)
+- Phase 6.1 inserted as Humanization UI Fix (URGENT) — previous 6.1 (Voice Leading) moved to 6.2, previous 6.2 (Style Update) moved to 6.3
 
 ## Phase 1 Completion Summary
 
@@ -192,6 +195,6 @@ Human-verified: "it works well in the browser"
 ## Session Continuity
 
 Last session: 2026-01-29
-Stopped at: Completed 06-03-PLAN.md (GUI Humanization Controls)
+Stopped at: Completed 06.1-01-PLAN.md (WASM Humanizer Integration)
 Resume file: None
-Next: Phase 6 complete. Proceed to Phase 7.
+Next: Execute 06.1-02-PLAN.md
