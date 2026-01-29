@@ -493,6 +493,10 @@ impl eframe::App for ContrapunkApp {
             }
 
             // Frame-based MIDI processing when running
+            // TODO: WASM humanization — integrate Humanizer + DelayQueue into frame loop.
+            // GUI sliders render and update humanize_config, but humanization effects
+            // (jitter, velocity, swing) require Humanizer/DelayQueue wired into
+            // process_wasm_midi. BeatClock uses f64 ms so it's WASM-safe.
             if self.state.is_running {
                 let messages: Vec<Vec<u8>> = self.midi_queue.borrow_mut().drain(..).collect();
                 for msg_bytes in messages {
