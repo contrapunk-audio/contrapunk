@@ -18,7 +18,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Server Mode** - Network server for remote MIDI harmony processing
 - [x] **Phase 5: Octave Variations** - Sub-modes for counterpoint with octave placement options
 - [x] **Phase 5.1: WASM and In-Browser Support** - Compile to WebAssembly for browser-based use with Fly.io deployment (INSERTED)
-- [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, and groove to generated notes
+- [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, groove, and internal beat clock/metronome to generated notes
+- [ ] **Phase 6.1: Voice Leading** - Improved voice leading with smooth transitions, minimal motion, and voice independence (INSERTED)
+- [ ] **Phase 6.2: Style Update** - UI visual redesign and musical style presets (jazz, classical, pop, etc.) (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
@@ -133,20 +135,64 @@ Plans:
 - [x] 05.1-03-PLAN.md — Fly.io deployment and browser verification
 
 ### Phase 6: Humanization
-**Goal**: User can add human-like imperfections to generated harmony notes
+**Goal**: User can add human-like imperfections to generated harmony notes, with an internal beat clock for musically-aware timing
 **Depends on**: Phase 2 (Harmony Engine)
-**Requirements**: HUM-01, HUM-02, HUM-03, HUM-04
+**Requirements**: HUM-01, HUM-02, HUM-03, HUM-04, HUM-05, HUM-06
 **Success Criteria** (what must be TRUE):
   1. User can enable timing jitter (5-30ms random delays on note onsets)
   2. User can enable velocity variation (±10-20 randomization)
   3. User can enable note duration variation (slight sustain changes)
-  4. User can enable swing/groove (off-beat note shifting)
+  4. User can enable swing/groove (off-beat note shifting using beat clock)
   5. Humanization parameters can be adjusted via GUI sliders
   6. Multiple humanization effects can be combined
+  7. Internal beat clock tracks BPM and beat position (user-adjustable tempo)
+  8. Optional audible metronome click on a dedicated MIDI output channel
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Humanize module: config types, beat clock, and humanizer engine
+- [ ] 06-02-PLAN.md — Delay queue scheduler, metronome, and router integration
+- [ ] 06-03-PLAN.md — GUI humanization controls and WASM compatibility
+
+### Phase 6.1: Voice Leading (INSERTED)
+**Goal**: Implement proper counterpoint and voice leading based on deep research into classical counterpoint theory (Fux's species counterpoint, Bach chorale voice leading, Palestrina style rules)
+**Depends on**: Phase 6 (Humanization), Phase 2 (Harmony Engine)
+**Requirements**: VL-01, VL-02, VL-03, VL-04
+**Research-heavy**: This phase requires extensive research into counterpoint writing before implementation. Key areas:
+  - Species counterpoint (1st through 5th species, Fux's Gradus ad Parnassum)
+  - Bach chorale voice leading conventions (SATB part writing)
+  - Palestrina-style rules (consonance treatment, dissonance preparation/resolution)
+  - Modern jazz voice leading (drop voicings, guide tones, chromatic approach)
+  - Real-time constraints on counterpoint algorithms (must run <5ms per note)
+**Success Criteria** (what must be TRUE):
+  1. Harmony voices move by the smallest possible interval when chords change (smooth voice leading)
+  2. Parallel fifths and octaves are detected and avoided
+  3. Voice crossing is minimized (each voice stays in its assigned register — soprano, alto, tenor, bass)
+  4. Common tones are held when moving between chords
+  5. Dissonance handling follows species counterpoint rules (preparation, suspension, resolution)
+  6. Multiple counterpoint styles selectable (strict Palestrina, Bach chorale, jazz, free)
+  7. Voice leading mode can be toggled on/off via GUI
+  8. Works with all existing harmony modes
+**Plans**: TBD (research phase with /gsd:research-phase 6.1 strongly recommended before planning)
+
+Plans:
+- [ ] 06.1-01: TBD (run /gsd:research-phase 6.1 then /gsd:plan-phase 6.1 to break down)
+
+### Phase 6.2: Style Update (INSERTED)
+**Goal**: Modernize GUI appearance and add musical style presets combining harmony, voice leading, and humanization settings
+**Depends on**: Phase 6.1 (Voice Leading), Phase 6 (Humanization), Phase 3 (GUI)
+**Requirements**: STY-01, STY-02, STY-03, STY-04
+**Success Criteria** (what must be TRUE):
+  1. GUI has a modern visual design (custom color scheme, improved layout, consistent typography)
+  2. Dark/light theme toggle available
+  3. Musical style presets selectable from GUI (at least: Jazz, Classical, Pop, Baroque, Minimal)
+  4. Each preset configures harmony mode, voice leading, humanization, and octave settings as a bundle
+  5. Users can customize and save their own presets
+  6. Style presets provide audibly distinct musical character
 **Plans**: TBD
 
 Plans:
-- [ ] 06-01: TBD (run /gsd:plan-phase 6 to break down)
+- [ ] 06.2-01: TBD (run /gsd:plan-phase 6.2 to break down)
 
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
@@ -198,7 +244,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -208,7 +254,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 7 -> 8 -> 
 | 4. Server Mode | 4/4 | Complete | 2026-01-29 |
 | 5. Octave Variations | 1/1 | Complete | 2026-01-29 |
 | 5.1 WASM & Browser (INSERTED) | 3/3 | Complete | 2026-01-29 |
-| 6. Humanization | 0/? | Not started | - |
+| 6. Humanization | 0/3 | Not started | - |
+| 6.1 Voice Leading (INSERTED) | 0/? | Not started | - |
+| 6.2 Style Update (INSERTED) | 0/? | Not started | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
