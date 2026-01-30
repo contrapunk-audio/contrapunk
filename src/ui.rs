@@ -364,8 +364,15 @@ impl ContrapunkApp {
         let (input_notes, harmony_notes) = self.get_router_notes();
         card(ui, |ui| {
             card_header(ui, "Active Notes");
+            let num_outs = self.state.output_slots.iter().filter(|s| s.is_some()).count().max(1);
+            let labels = voice_position_labels(num_outs);
+            let vp = self.state.voice_position;
+            let voice_label = labels.get(vp).map(|l| l.as_str()).unwrap_or("Voice");
+            // Strip the " (N)" suffix for a cleaner display
+            let voice_name = voice_label.split(" (").next().unwrap_or(voice_label);
+
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new("In:").color(TEXT_SECONDARY));
+                ui.label(egui::RichText::new(format!("In ({}):", voice_name)).color(TEXT_SECONDARY));
                 if input_notes.is_empty() {
                     ui.label(egui::RichText::new("---").color(TEXT_DIM));
                 } else {

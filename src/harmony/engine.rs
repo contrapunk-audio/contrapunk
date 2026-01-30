@@ -8,7 +8,7 @@ use crate::harmony::modes;
 use crate::harmony::scale::Scale;
 use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
 use crate::harmony::voice_leading::{
-    revoice_chord, StyleRules, SuspensionState, VoiceLeadingStyle, VoiceRegister,
+    revoice_chord, StyleRules, SuspensionState, VoiceAnchor, VoiceLeadingStyle, VoiceRegister,
 };
 
 /// Voice leading post-processor that re-voices harmony output for smooth transitions.
@@ -156,6 +156,7 @@ pub struct HarmonyEngine {
     /// For non-Mirror modes: identity mapping (index i -> port i).
     /// For Mirror mode: duplicates map back to the original harmony voice's port.
     last_port_map: Vec<usize>,
+    last_arrangement_indices: Vec<usize>,
     /// Stored port maps for active notes, used to retrieve port assignments on Note-Off.
     active_port_maps: HashMap<u8, Vec<usize>>,
     /// Voice leading post-processor
@@ -190,6 +191,7 @@ impl HarmonyEngine {
                 .collect(),
             active_notes: HashMap::new(),
             last_port_map: Vec::new(),
+            last_arrangement_indices: Vec::new(),
             active_port_maps: HashMap::new(),
             voice_leading: VoiceLeadingProcessor::new(voice_count),
         }
@@ -373,6 +375,8 @@ impl HarmonyEngine {
     /// Note-Off handling (critical for random modes).
     pub fn harmonize(&mut self, note: Note) -> Vec<Note> {
         if self.mode == HarmonyMode::PassThrough || self.voice_count <= 1 {
+            self.last_arrangement_indices = vec![0];
+            self.last_port_map = vec![0];
             return vec![note];
         }
 
@@ -414,8 +418,10 @@ impl HarmonyEngine {
         }
 
         // Flatten: user's note first, then harmony voices in chain order
-        // (closest to user's position first, outward in both directions)
+        // (closest to user's position first, outward in both directions).
+        // Track each entry's arrangement index for fixed SATB port mapping.
         let mut final_result = vec![note];
+        let mut arrangement_indices = vec![self.voice_position];
 
         // Interleave above and below chains, closest first
         let mut above_idx = if self.voice_position > 0 { Some(self.voice_position - 1) } else { None };
@@ -429,16 +435,22 @@ impl HarmonyEngine {
             if let Some(ai) = above_idx {
                 if let Some(n) = result[ai] {
                     final_result.push(n);
+                    arrangement_indices.push(ai);
                 }
                 above_idx = if ai > 0 { Some(ai - 1) } else { None };
             }
             if let Some(bi) = below_idx {
                 if let Some(n) = result[bi] {
                     final_result.push(n);
+                    arrangement_indices.push(bi);
                 }
                 below_idx = if bi < self.voice_count - 1 { Some(bi + 1) } else { None };
             }
         }
+
+        // Store arrangement indices so apply_octave_mode can build
+        // fixed SATB port maps (soprano=0, alto=1, tenor=2, bass=3).
+        self.last_arrangement_indices = arrangement_indices;
 
         // Voice leading post-processing (before octave mode)
         if self.voice_leading.enabled && final_result.len() > 1 {
@@ -451,11 +463,17 @@ impl HarmonyEngine {
                 .previous_voicing
                 .as_ref()
                 .map(|v| v.iter().map(|n| u8::from(*n)).collect());
+            let anchor = VoiceAnchor {
+                midi: u8::from(final_result[0]),
+                arrangement_pos: self.voice_position,
+                harmony_arrangement_positions: self.last_arrangement_indices[1..].to_vec(),
+            };
             let revoiced = revoice_chord(
                 &pitch_classes,
                 prev_midi.as_deref(),
                 &self.voice_leading.registers,
                 &self.voice_leading.style_rules,
+                Some(&anchor),
             );
             // Replace harmony notes with revoiced MIDI values
             for (i, &midi_val) in revoiced.iter().enumerate() {
@@ -488,8 +506,9 @@ impl HarmonyEngine {
     /// producing 3x harmony notes. Duplicates are appended and their port map
     /// entries point back to the original harmony voice's port index.
     fn apply_octave_mode(&mut self, notes: &mut Vec<Note>) {
-        // Default identity port map
-        self.last_port_map = (0..notes.len()).collect();
+        // Port map based on SATB arrangement position (fixed routing).
+        // Each note maps to its arrangement index (0=soprano, 1=alto, 2=tenor, 3=bass).
+        self.last_port_map = self.last_arrangement_indices.clone();
 
         if notes.len() <= 1 || self.octave_mode == OctaveMode::None {
             return;
@@ -498,56 +517,85 @@ impl HarmonyEngine {
         let melody = notes[0];
         let melody_midi = u8::from(melody);
 
+        // Helper: check if a shifted note would cross the user's anchor.
+        // Returns true if the shift is allowed (stays on the correct side).
+        let user_midi = melody_midi;
+        let voice_pos = self.voice_position;
+        let arr_indices = &self.last_arrangement_indices;
+        let anchor_ok = |idx: usize, shifted: u8| -> bool {
+            if let Some(&harm_arr) = arr_indices.get(idx) {
+                if harm_arr < voice_pos {
+                    // Must stay above user
+                    shifted >= user_midi
+                } else if harm_arr > voice_pos {
+                    // Must stay below user
+                    shifted <= user_midi
+                } else {
+                    true // same position as user
+                }
+            } else {
+                true
+            }
+        };
+
         match self.octave_mode {
             OctaveMode::None => {}
             OctaveMode::Spread => {
                 for (i, note) in notes.iter_mut().enumerate().skip(1) {
                     let midi = u8::from(*note);
-                    let octaves_up = i as u8;
-                    let shifted = midi.saturating_add(octaves_up * 12).min(127);
-                    if let Ok(new_note) = Note::try_from(shifted) {
-                        *note = new_note;
+                    let shifted = midi.saturating_add((i as u8) * 12).min(127);
+                    if anchor_ok(i, shifted) {
+                        if let Ok(new_note) = Note::try_from(shifted) {
+                            *note = new_note;
+                        }
                     }
+                    // If not anchor_ok, leave the note as-is
                 }
             }
             OctaveMode::BassTrebleSplit => {
-                for note in notes.iter_mut().skip(1) {
+                for (i, note) in notes.iter_mut().enumerate().skip(1) {
                     let midi = u8::from(*note);
-                    let shifted = if midi < melody_midi {
+                    let shifted = if midi < user_midi {
                         midi.saturating_sub(12)
                     } else {
                         midi.saturating_add(12).min(127)
                     };
-                    if let Ok(new_note) = Note::try_from(shifted) {
-                        *note = new_note;
+                    if anchor_ok(i, shifted) {
+                        if let Ok(new_note) = Note::try_from(shifted) {
+                            *note = new_note;
+                        }
                     }
                 }
             }
             OctaveMode::Mirror => {
-                // True duplication: keep original harmony notes, append +12 and -12 copies
                 let harmony_count = notes.len() - 1;
                 let mut duplicates: Vec<(Note, usize)> = Vec::new();
 
                 for i in 1..=harmony_count {
                     let midi = u8::from(notes[i]);
-                    // +1 octave copy
+                    // +1 octave copy (only if it doesn't cross anchor)
                     let up = midi.wrapping_add(12);
-                    if up <= 127 {
+                    if up <= 127 && anchor_ok(i, up) {
                         if let Ok(n) = Note::try_from(up) {
                             duplicates.push((n, i));
                         }
                     }
-                    // -1 octave copy
-                    if midi >= 12 {
+                    // -1 octave copy (only if it doesn't cross anchor)
+                    if midi >= 12 && anchor_ok(i, midi - 12) {
                         if let Ok(n) = Note::try_from(midi - 12) {
                             duplicates.push((n, i));
                         }
                     }
                 }
 
-                for (dup_note, original_port) in duplicates {
+                for (dup_note, original_idx) in duplicates {
                     notes.push(dup_note);
-                    self.last_port_map.push(original_port);
+                    let arr_port = if original_idx < self.last_arrangement_indices.len() {
+                        self.last_arrangement_indices[original_idx]
+                    } else {
+                        original_idx
+                    };
+                    self.last_port_map.push(arr_port);
                 }
             }
         }
@@ -1055,15 +1103,16 @@ mod tests {
     }
 
     #[test]
-    fn test_mirror_mode_triples_harmony_notes() {
-        // 3 voices: melody + 2 harmonies -> Mirror produces 7 notes total
-        // (1 melody + 2 original + 4 octave copies)
+    fn test_mirror_mode_anchor_aware() {
+        // 3 voices, default vp=2 (bass). User plays C4(60).
+        // Harmony: E4(64) at arr=1, G4(67) at arr=0 — both above user.
+        // Mirror +12 copies allowed (still above), -12 copies rejected (below user).
+        // Result: C4, E4, G4, E5, G5 = 5 notes.
         let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
         engine.set_octave_mode(OctaveMode::Mirror);
 
         let result = engine.harmonize(Note::C4);
-        // C4 (melody), E4 (harm1), G4 (harm2), E5, E3, G5, G3
-        assert_eq!(result.len(), 7, "Mirror should produce 7 notes: {:?}", result);
+        assert_eq!(result.len(), 5, "Mirror should skip copies that cross anchor: {:?}", result);
         assert_eq!(result[0], Note::C4); // melody unchanged
         assert_eq!(result[1], Note::E4); // original harmony 1
         assert_eq!(result[2], Note::G4); // original harmony 2
@@ -1076,15 +1125,14 @@ mod tests {
 
         let _result = engine.harmonize(Note::C4);
         let port_map = engine.last_port_map();
-        // [0, 1, 2, 1, 1, 2, 2] - duplicates map to their original voice's port
-        assert_eq!(port_map.len(), 7);
-        assert_eq!(port_map[0], 0); // melody
-        assert_eq!(port_map[1], 1); // harmony 1
-        assert_eq!(port_map[2], 2); // harmony 2
-        assert_eq!(port_map[3], 1); // E5 -> port of harmony 1
-        assert_eq!(port_map[4], 1); // E3 -> port of harmony 1
-        assert_eq!(port_map[5], 2); // G5 -> port of harmony 2
-        assert_eq!(port_map[6], 2); // G3 -> port of harmony 2
+        // 3-voice, default vp=2 (bass). Only +12 copies survive anchor check.
+        // [user(arr=2), alto(arr=1), soprano(arr=0), alto+12(arr=1), soprano+12(arr=0)]
+        assert_eq!(port_map.len(), 5);
+        assert_eq!(port_map[0], 2); // melody (bass, arr pos 2)
+        assert_eq!(port_map[1], 1); // harmony 1 (alto, arr pos 1)
+        assert_eq!(port_map[2], 0); // harmony 2 (soprano, arr pos 0)
+        assert_eq!(port_map[3], 1); // alto +12 duplicate -> arr pos 1
+        assert_eq!(port_map[4], 0); // soprano +12 duplicate -> arr pos 0
     }
 
     #[test]
@@ -1106,10 +1154,10 @@ mod tests {
         engine.set_octave_mode(OctaveMode::Mirror);
 
         let on_result = engine.harmonize_note_on(Note::C4);
-        assert_eq!(on_result.len(), 7);
+        assert_eq!(on_result.len(), 5); // anchor-aware: only +12 copies survive
 
         let off_result = engine.harmonize_note_off(Note::C4);
-        assert_eq!(off_result.len(), 7, "Note-Off should release all 7 notes");
+        assert_eq!(off_result.len(), 5, "Note-Off should release all notes from Note-On");
         // The harmony notes stored should match
         assert_eq!(on_result[1..], off_result[1..]);
     }
@@ -1137,9 +1185,9 @@ mod tests {
         let result = engine.harmonize(Note::C4);
         let port_map = engine.last_port_map();
         assert_eq!(port_map.len(), result.len());
-        for (i, &p) in port_map.iter().enumerate() {
-            assert_eq!(p, i, "Non-mirror port map should be identity");
-        }
+        // 3-voice, default voice_position=2 (bass). Arrangement indices: [2, 1, 0]
+        // Port map should reflect SATB arrangement positions, not identity.
+        assert_eq!(port_map, &[2, 1, 0]);
     }
 
     #[test]

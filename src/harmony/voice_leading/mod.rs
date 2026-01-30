@@ -11,4 +11,4 @@ pub use rules::{
 };
 pub use styles::{StyleRules, VoiceLeadingStyle};
 pub use suspension::SuspensionState;
-pub use voicer::{revoice_chord, VoiceRegister};
+pub use voicer::{revoice_chord, VoiceAnchor, VoiceRegister};

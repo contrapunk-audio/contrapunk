@@ -794,6 +794,33 @@ impl eframe::App for ContrapunkApp {
             self.theme_applied = true;
         }
 
+        // --- Voice position shortcuts (1-4 keys) ---
+        {
+            let num_outputs = self.state.output_slots.iter().filter(|s| s.is_some()).count().max(1);
+            let new_vp = ctx.input(|input| {
+                for event in &input.events {
+                    if let egui::Event::Key { key, pressed: true, repeat: false, .. } = event {
+                        let pos = match key {
+                            egui::Key::Num1 => Some(0),
+                            egui::Key::Num2 => Some(1),
+                            egui::Key::Num3 => Some(2),
+                            egui::Key::Num4 => Some(3),
+                            _ => None,
+                        };
+                        if let Some(p) = pos {
+                            if p < num_outputs {
+                                return Some(p);
+                            }
+                        }
+                    }
+                }
+                None
+            });
+            if let Some(vp) = new_vp {
+                self.state.voice_position = vp;
+            }
+        }
+
         // --- Ambient animations (rendered after panels so they're visible) ---
         // We store animation state here but render AFTER CentralPanel below.
         {

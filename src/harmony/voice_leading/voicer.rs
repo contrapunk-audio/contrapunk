@@ -75,18 +75,31 @@ impl VoiceRegister {
 ///
 /// # Returns
 /// MIDI note values for each harmony voice (same length as `harmony_pitch_classes`).
+/// Anchor note info for the user's played note, used to constrain revoicing.
+pub struct VoiceAnchor {
+    /// The user's current MIDI note
+    pub midi: u8,
+    /// The user's arrangement position (0=soprano, 1=alto, 2=tenor, 3=bass)
+    pub arrangement_pos: usize,
+    /// Arrangement positions of each harmony voice (in final_result[1..] order)
+    pub harmony_arrangement_positions: Vec<usize>,
+}
+
 pub fn revoice_chord(
     harmony_pitch_classes: &[u8],
     prev_voicing: Option<&[u8]>,
     registers: &[VoiceRegister],
     style_rules: &StyleRules,
+    anchor: Option<&VoiceAnchor>,
 ) -> Vec<u8> {
     let n = harmony_pitch_classes.len();
     if n == 0 {
         return Vec::new();
     }
 
-    // Generate valid placements for each voice
+    // Generate valid placements for each voice, pre-filtered by anchor constraint.
+    // This ensures the cartesian product only contains candidates that respect
+    // the user's voice position (e.g., alto placements must be below soprano).
     let placements: Vec<Vec<u8>> = (0..n)
         .map(|i| {
             let reg = if i + 1 < registers.len() {
@@ -94,16 +107,87 @@ pub fn revoice_chord(
             } else {
                 VoiceRegister::Alto // fallback
             };
-            reg.valid_placements(harmony_pitch_classes[i])
+            let mut valid = reg.valid_placements(harmony_pitch_classes[i]);
+            // Filter by anchor: voices above user must be >= user midi,
+            // voices below must be <= user midi.
+            if let Some(anc) = anchor {
+                if let Some(&harm_arr) = anc.harmony_arrangement_positions.get(i) {
+                    if harm_arr < anc.arrangement_pos {
+                        // Must be above user
+                        valid.retain(|&note| note >= anc.midi);
+                    } else if harm_arr > anc.arrangement_pos {
+                        // Must be below user
+                        valid.retain(|&note| note <= anc.midi);
+                    }
+                }
+            }
+            // If anchor filtering emptied the register, create an adjusted
+            // register range anchored to the user's note. This keeps placements
+            // close (within ~1 octave) so voice leading retains character.
+            if valid.is_empty() {
+                let pc = harmony_pitch_classes[i] % 12;
+                if let Some(anc) = anchor {
+                    if let Some(&harm_arr) = anc.harmony_arrangement_positions.get(i) {
+                        let (lo, hi) = if harm_arr < anc.arrangement_pos {
+                            // Must be above user: from user's note up ~1.5 octaves
+                            (anc.midi, anc.midi.saturating_add(18).min(127))
+                        } else {
+                            // Must be below user: from user's note down ~1.5 octaves
+                            (anc.midi.saturating_sub(18), anc.midi)
+                        };
+                        let mut note = lo + ((12 + pc - (lo % 12)) % 12);
+                        if note < lo { note += 12; }
+                        while note <= hi {
+                            valid.push(note);
+                            note += 12;
+                        }
+                    }
+                }
+                // Ultimate fallback if still empty
+                if valid.is_empty() {
+                    let pc = harmony_pitch_classes[i] % 12;
+                    let mut note = pc;
+                    while note <= 127 {
+                        valid.push(note);
+                        note += 12;
+                    }
+                    if let Some(anc) = anchor {
+                        if let Some(&harm_arr) = anc.harmony_arrangement_positions.get(i) {
+                            if harm_arr < anc.arrangement_pos {
+                                valid.retain(|&n| n >= anc.midi);
+                            } else if harm_arr > anc.arrangement_pos {
+                                valid.retain(|&n| n <= anc.midi);
+                            }
+                        }
+                    }
+                }
+            }
+            valid
         })
         .collect();
 
     // Check if any voice has no placements
     if placements.iter().any(|p| p.is_empty()) {
-        // Fallback: return pitch classes shifted to middle octave
+        // Fallback: return pitch classes respecting anchor direction
         return harmony_pitch_classes
             .iter()
-            .map(|&pc| 60 + (pc % 12))
+            .enumerate()
+            .map(|(i, &pc)| {
+                if let Some(anc) = anchor {
+                    if let Some(&harm_arr) = anc.harmony_arrangement_positions.get(i) {
+                        if harm_arr < anc.arrangement_pos {
+                            // Must be above: place just above user
+                            let base = anc.midi + ((12 + (pc % 12) - (anc.midi % 12)) % 12);
+                            return if base > anc.midi { base.min(127) } else { (base + 12).min(127) };
+                        } else if harm_arr > anc.arrangement_pos {
+                            // Must be below: place just below user
+                            let base = anc.midi.saturating_sub((anc.midi % 12 + 12 - (pc % 12)) % 12);
+                            return if base < anc.midi { base } else { base.saturating_sub(12) };
+                        }
+                    }
+                }
+                60 + (pc % 12)
+            })
             .collect();
     }
 
@@ -117,8 +201,10 @@ pub fn revoice_chord(
             .collect();
     }
 
-    // Build full voicing (with melody placeholder at index 0) for rule checking
-    let melody_note = prev_voicing.map(|p| p[0]).unwrap_or(72);
+    // Build full voicing (with user's note at index 0) for rule checking
+    let melody_note = anchor.map(|a| a.midi)
+        .or_else(|| prev_voicing.map(|p| p[0]))
+        .unwrap_or(72);
 
     let mut scored: Vec<(i64, Vec<u8>)> = Vec::new();
     let mut rejected_candidates: Vec<(i64, Vec<u8>)> = Vec::new();
@@ -127,8 +213,53 @@ pub fn revoice_chord(
         let mut full_voicing = vec![melody_note];
         full_voicing.extend_from_slice(candidate);
 
+        let mut anchor_rejected = false;
         let mut hard_rejected = false;
         let mut score: i64 = 0;
+
+        // Absolute constraint: harmony notes must not cross the user's anchor note.
+        // This is NEVER relaxed, even in fallback.
+        if let Some(anc) = anchor {
+            for i in 0..n {
+                let harm_arr = if i < anc.harmony_arrangement_positions.len() {
+                    anc.harmony_arrangement_positions[i]
+                } else {
+                    continue;
+                };
+                let note = candidate[i];
+                if harm_arr < anc.arrangement_pos && note < anc.midi {
+                    anchor_rejected = true;
+                    break;
+                }
+                if harm_arr > anc.arrangement_pos && note > anc.midi {
+                    anchor_rejected = true;
+                    break;
+                }
+            }
+
+            if !anchor_rejected {
+                // Enforce ordering between harmony voices themselves
+                for i in 0..n {
+                    for j in (i + 1)..n {
+                        let arr_i = if i < anc.harmony_arrangement_positions.len() { anc.harmony_arrangement_positions[i] } else { continue };
+                        let arr_j = if j < anc.harmony_arrangement_positions.len() { anc.harmony_arrangement_positions[j] } else { continue };
+                        if arr_i < arr_j && candidate[i] < candidate[j] {
+                            anchor_rejected = true;
+                        }
+                        if arr_i > arr_j && candidate[i] > candidate[j] {
+                            anchor_rejected = true;
+                        }
+                        if anchor_rejected { break; }
+                    }
+                    if anchor_rejected { break; }
+                }
+            }
+        }
+
+        // Skip entirely — anchor violations are never used in fallback
+        if anchor_rejected {
+            continue;
+        }
 
         // Check hard constraints against previous voicing
         if let Some(prev) = prev_voicing {
@@ -233,7 +364,21 @@ pub fn revoice_chord(
     if scored.is_empty() {
         return harmony_pitch_classes
             .iter()
-            .map(|&pc| 60 + (pc % 12))
+            .enumerate()
+            .map(|(i, &pc)| {
+                if let Some(anc) = anchor {
+                    if let Some(&harm_arr) = anc.harmony_arrangement_positions.get(i) {
+                        if harm_arr < anc.arrangement_pos {
+                            let base = anc.midi + ((12 + (pc % 12) - (anc.midi % 12)) % 12);
+                            return if base > anc.midi { base.min(127) } else { (base + 12).min(127) };
+                        } else if harm_arr > anc.arrangement_pos {
+                            let base = anc.midi.saturating_sub((anc.midi % 12 + 12 - (pc % 12)) % 12);
+                            return if base < anc.midi { base } else { base.saturating_sub(12) };
+                        }
+                    }
+                }
+                60 + (pc % 12)
+            })
             .collect();
     }
 
@@ -405,9 +550,9 @@ mod tests {
         let registers = default_registers_2();
         let rules = StyleRules::for_style(VoiceLeadingStyle::BachChorale);
 
-        let first = revoice_chord(&pcs, Some(&prev), &registers, &rules);
+        let first = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
         for _ in 0..100 {
-            let result = revoice_chord(&pcs, Some(&prev), &registers, &rules);
+            let result = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
             assert_eq!(result, first, "Determinism violated!");
         }
     }
@@ -422,7 +567,7 @@ mod tests {
         let registers = default_registers_2();
         let rules = StyleRules::for_style(VoiceLeadingStyle::BachChorale);
 
-        let result = revoice_chord(&pcs, Some(&prev), &registers, &rules);
+        let result = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
         // E should stay at 64 (common tone)
         assert_eq!(result[0], 64, "E should be retained as common tone");
     }
@@ -439,7 +584,7 @@ mod tests {
         let prev = vec![72u8, 60, 53];
         let pcs = vec![2, 7]; // D, G
 
-        let result = revoice_chord(&pcs, Some(&prev), &registers, &rules);
+        let result = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
 
         // Build full voicing and check no parallel fifths
         let mut full = vec![72u8]; // melody unchanged for test
@@ -457,7 +602,7 @@ mod tests {
         let registers = default_registers_3();
         let rules = StyleRules::for_style(VoiceLeadingStyle::Free);
 
-        let result = revoice_chord(&pcs, None, &registers, &rules);
+        let result = revoice_chord(&pcs, None, &registers, &rules, None);
         assert_eq!(result.len(), 3);
 
         // All notes should be within their register ranges
@@ -475,7 +620,7 @@ mod tests {
         let registers = default_registers_1();
         let rules = StyleRules::for_style(VoiceLeadingStyle::Free);
 
-        let result = revoice_chord(&pcs, None, &registers, &rules);
+        let result = revoice_chord(&pcs, None, &registers, &rules, None);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0] % 12, 0); // Is a C
     }
@@ -485,7 +630,7 @@ mod tests {
         let pcs: Vec<u8> = vec![];
         let registers = vec![VoiceRegister::Soprano];
         let rules = StyleRules::for_style(VoiceLeadingStyle::Free);
-        let result = revoice_chord(&pcs, None, &registers, &rules);
+        let result = revoice_chord(&pcs, None, &registers, &rules, None);
         assert!(result.is_empty());
     }
 
@@ -498,7 +643,7 @@ mod tests {
         let mut rules = StyleRules::for_style(VoiceLeadingStyle::Palestrina);
         rules.max_leap_semitones = 1; // Very restrictive — most candidates rejected
 
-        let result = revoice_chord(&pcs, Some(&prev), &registers, &rules);
+        let result = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
         assert_eq!(result.len(), 2);
         // Should still produce valid output (fallback relaxes hard constraints)
     }
