@@ -202,6 +202,8 @@ pub struct ContrapunkApp {
     note_activity: f32,
     /// Previous frame note count for detecting new note events
     prev_note_count: usize,
+    /// Current animation time (set each frame)
+    anim_time: f32,
     /// Whether voice leading is enabled
     pub(crate) voice_leading_enabled: bool,
     /// Current voice leading style
@@ -272,6 +274,7 @@ impl ContrapunkApp {
             theme_applied: false,
             note_activity: 0.0,
             prev_note_count: 0,
+            anim_time: 0.0,
             voice_leading_enabled: false,
             voice_leading_style: VoiceLeadingStyle::default(),
             humanize_config: HumanizeConfig::default(),
@@ -689,11 +692,11 @@ impl eframe::App for ContrapunkApp {
             self.theme_applied = true;
         }
 
-        // --- Ambient background animations ---
+        // --- Ambient animations (rendered after panels so they're visible) ---
+        // We store animation state here but render AFTER CentralPanel below.
         {
             let time = ctx.input(|i| i.time) as f32;
-            let screen = ctx.screen_rect();
-            let bg_painter = ctx.layer_painter(egui::LayerId::background());
+            self.anim_time = time;
 
             // Update note activity from current notes
             let (input_n, harmony_n) = self.get_router_notes();
@@ -703,61 +706,12 @@ impl eframe::App for ContrapunkApp {
             } else {
                 self.note_activity *= 0.95;
             }
-            let activity = self.note_activity;
             self.prev_note_count = current_count;
-
-            // Gear positions (corners and edges)
-            let gear_specs: [(egui::Pos2, f32, f32); 5] = [
-                (egui::pos2(screen.min.x + 30.0, screen.min.y + 30.0), 18.0, 0.3),
-                (egui::pos2(screen.max.x - 30.0, screen.min.y + 30.0), 14.0, -0.2),
-                (egui::pos2(screen.min.x + 25.0, screen.max.y - 25.0), 16.0, 0.25),
-                (egui::pos2(screen.max.x - 25.0, screen.max.y - 25.0), 15.0, -0.3),
-                (egui::pos2(screen.center().x, screen.min.y + 20.0), 12.0, 0.15),
-            ];
-
-            for (pos, radius, base_speed) in &gear_specs {
-                let speed = base_speed + activity * 2.0 * base_speed.signum();
-                let angle = time * speed;
-                let a = activity.min(1.0);
-                let gear_color = egui::Color32::from_rgba_premultiplied(
-                    (WIDGET_INACTIVE.r() as f32 + (COPPER.r() as f32 - WIDGET_INACTIVE.r() as f32) * a) as u8,
-                    (WIDGET_INACTIVE.g() as f32 + (COPPER.g() as f32 - WIDGET_INACTIVE.g() as f32) * a) as u8,
-                    (WIDGET_INACTIVE.b() as f32 + (COPPER.b() as f32 - WIDGET_INACTIVE.b() as f32) * a) as u8,
-                    70,
-                );
-                if activity > 0.3 {
-                    let glow_alpha = ((activity - 0.3) * 60.0).min(40.0) as u8;
-                    bg_painter.circle_filled(
-                        *pos,
-                        radius * 1.8,
-                        egui::Color32::from_rgba_premultiplied(
-                            COPPER.r(), COPPER.g(), COPPER.b(), glow_alpha,
-                        ),
-                    );
-                }
-                draw_gear(&bg_painter, *pos, *radius, 10, angle, gear_color);
-            }
-
-            // Floating particles
-            for i in 0..8 {
-                let seed = i as f32 * 1.7;
-                let x_base = screen.min.x + (screen.width() * (0.1 + 0.1 * i as f32));
-                let y_period = screen.height();
-                let y = screen.max.y - ((time * 0.5 + seed * 3.0) % y_period);
-                let x = x_base + (time * 0.3 + seed).sin() * 20.0;
-                let alpha = 30 + (activity * 20.0) as u8;
-                bg_painter.circle_filled(
-                    egui::pos2(x, y),
-                    1.5,
-                    egui::Color32::from_rgba_premultiplied(GOLD.r(), GOLD.g(), GOLD.b(), alpha),
-                );
-            }
-
-            // Decorative frame
-            draw_ornate_frame(&bg_painter, screen.shrink(2.0));
 
             // Request repaint at 30fps for ambient animations
             ctx.request_repaint_after(Duration::from_millis(33));
+        }
+
         }
 
         // Tab bar at the top
@@ -923,5 +877,50 @@ impl eframe::App for ContrapunkApp {
                 Tab::Settings => self.draw_settings_tab(ui),
             }
         });
+
+        // --- Render ambient animations on foreground layer (non-interactive overlay) ---
+        {
+            let screen = ctx.screen_rect();
+            let fg_painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("ambient_overlay"),
+            ));
+            let time = self.anim_time;
+            let activity = self.note_activity;
+
+            // Decorative frame — always visible, corners only
+            draw_ornate_frame(&fg_painter, screen.shrink(2.0));
+
+            // Corner gears — subtle decorative elements
+            let gear_specs: [(egui::Pos2, f32, f32); 4] = [
+                (egui::pos2(screen.min.x + 18.0, screen.min.y + 18.0), 14.0, 0.3),
+                (egui::pos2(screen.max.x - 18.0, screen.min.y + 18.0), 12.0, -0.2),
+                (egui::pos2(screen.min.x + 16.0, screen.max.y - 16.0), 13.0, 0.25),
+                (egui::pos2(screen.max.x - 16.0, screen.max.y - 16.0), 11.0, -0.3),
+            ];
+
+            for (pos, radius, base_speed) in &gear_specs {
+                let speed = base_speed + activity * 2.0 * base_speed.signum();
+                let angle = time * speed;
+                let a = activity.min(1.0);
+                let gear_color = egui::Color32::from_rgba_premultiplied(
+                    (WIDGET_INACTIVE.r() as f32 + (COPPER.r() as f32 - WIDGET_INACTIVE.r() as f32) * a) as u8,
+                    (WIDGET_INACTIVE.g() as f32 + (COPPER.g() as f32 - WIDGET_INACTIVE.g() as f32) * a) as u8,
+                    (WIDGET_INACTIVE.b() as f32 + (COPPER.b() as f32 - WIDGET_INACTIVE.b() as f32) * a) as u8,
+                    90,
+                );
+                if activity > 0.3 {
+                    let glow_alpha = ((activity - 0.3) * 80.0).min(60.0) as u8;
+                    fg_painter.circle_filled(
+                        *pos,
+                        radius * 2.0,
+                        egui::Color32::from_rgba_premultiplied(
+                            COPPER.r(), COPPER.g(), COPPER.b(), glow_alpha,
+                        ),
+                    );
+                }
+                draw_gear(&fg_painter, *pos, *radius, 10, angle, gear_color);
+            }
+        }
     }
 }
