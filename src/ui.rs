@@ -4,6 +4,7 @@
 
 use eframe::egui;
 use crate::app::{ContrapunkApp, midi_to_name};
+use crate::generator::{GeneratorMode, ArpDirection, ChordType};
 use crate::harmony::{Key, HarmonyMode, OctaveMode, VoiceLeadingStyle};
 use crate::preset::storage::{export_preset_json, import_preset_json};
 use crate::theme::colors::*;
@@ -426,6 +427,134 @@ impl ContrapunkApp {
                 }
             }
         });
+        ui.add_space(2.0);
+
+        // --- Note Generator ---
+        card(ui, |ui| {
+            card_header(ui, "Note Generator");
+            ornate_toggle(ui, "Enable", &mut self.generator_enabled);
+            let _ = self.generator.set_enabled(self.generator_enabled);
+
+            if self.generator_enabled {
+                ui.add_space(2.0);
+
+                // Mode selector
+                const MODE_LABELS: &[&str] = &[
+                    "Held Notes", "Chord", "Arpeggio Up", "Arpeggio Down",
+                    "Arpeggio Up-Down", "Scale Runner", "Random Diatonic",
+                ];
+                let prev_mode_idx = self.generator_mode_index;
+                egui::ComboBox::from_id_salt("gen_mode")
+                    .selected_text(MODE_LABELS[self.generator_mode_index])
+                    .width(ui.available_width().min(180.0))
+                    .show_ui(ui, |ui| {
+                        for (i, label) in MODE_LABELS.iter().enumerate() {
+                            ui.selectable_value(&mut self.generator_mode_index, i, *label);
+                        }
+                    });
+                if self.generator_mode_index != prev_mode_idx {
+                    let mode = match self.generator_mode_index {
+                        0 => GeneratorMode::HeldNotes,
+                        1 => GeneratorMode::Chord(Self::chord_type_from_index(self.generator_chord_quality)),
+                        2 => GeneratorMode::Arpeggio(ArpDirection::Up),
+                        3 => GeneratorMode::Arpeggio(ArpDirection::Down),
+                        4 => GeneratorMode::Arpeggio(ArpDirection::UpDown),
+                        5 => GeneratorMode::ScaleRunner,
+                        _ => GeneratorMode::RandomDiatonic,
+                    };
+                    let _events = self.generator.set_mode(mode);
+                }
+
+                // Chord picker (visible only in Chord mode)
+                if self.generator_mode_index == 1 {
+                    ui.add_space(2.0);
+                    const ROOT_LABELS: &[&str] = &[
+                        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+                    ];
+                    const QUALITY_LABELS: &[&str] = &[
+                        "Major", "Minor", "Dim", "Aug", "Maj7", "Min7", "Dom7", "Dim7", "HalfDim7",
+                    ];
+                    let prev_root = self.generator_chord_root;
+                    let prev_qual = self.generator_chord_quality;
+                    ui.horizontal(|ui| {
+                        ui.label("Root:");
+                        egui::ComboBox::from_id_salt("gen_root")
+                            .selected_text(ROOT_LABELS[self.generator_chord_root])
+                            .width(50.0)
+                            .show_ui(ui, |ui| {
+                                for (i, label) in ROOT_LABELS.iter().enumerate() {
+                                    ui.selectable_value(&mut self.generator_chord_root, i, *label);
+                                }
+                            });
+                        ui.label("Quality:");
+                        egui::ComboBox::from_id_salt("gen_quality")
+                            .selected_text(QUALITY_LABELS[self.generator_chord_quality])
+                            .width(80.0)
+                            .show_ui(ui, |ui| {
+                                for (i, label) in QUALITY_LABELS.iter().enumerate() {
+                                    ui.selectable_value(&mut self.generator_chord_quality, i, *label);
+                                }
+                            });
+                    });
+                    // Resolve chord to MIDI notes when changed
+                    if self.generator_chord_root != prev_root || self.generator_chord_quality != prev_qual {
+                        let chord_type = Self::chord_type_from_index(self.generator_chord_quality);
+                        let root_midi = 60u8 + self.generator_chord_root as u8; // C4 = 60
+                        let notes: Vec<wmidi::Note> = chord_type.intervals().iter()
+                            .map(|&interval| wmidi::Note::from_u8_lossy(root_midi + interval))
+                            .collect();
+                        self.generator_selected_notes = notes.iter().map(|n| *n as u8).collect();
+                        let _events = self.generator.set_selected_notes(notes);
+                        // Also update mode to new chord type
+                        let _events = self.generator.set_mode(GeneratorMode::Chord(chord_type));
+                    }
+                }
+
+                ui.add_space(2.0);
+
+                // Duration slider
+                let mut dur = self.generator.note_duration_beats() as f32;
+                ornate_slider(ui, "Duration (beats)", &mut dur, 0.125..=2.0);
+                // Snap to 0.125 steps
+                dur = (dur / 0.125).round() * 0.125;
+                self.generator.set_note_duration_beats(dur as f64);
+
+                // Velocity slider
+                let mut vel = self.generator.velocity() as f32;
+                ornate_slider(ui, "Velocity", &mut vel, 1.0..=127.0);
+                self.generator.set_velocity(vel as u8);
+
+                ui.add_space(2.0);
+
+                // Selected notes display
+                let sel_text = if self.generator_selected_notes.is_empty() {
+                    "No notes selected".to_string()
+                } else {
+                    self.generator_selected_notes.iter()
+                        .map(|&n| midi_to_name(n))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                };
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new("Notes:").color(TEXT_SECONDARY));
+                    ui.label(egui::RichText::new(sel_text).color(egui::Color32::from_rgb(0, 220, 220)));
+                });
+            }
+        });
+    }
+
+    fn chord_type_from_index(idx: usize) -> ChordType {
+        match idx {
+            0 => ChordType::Major,
+            1 => ChordType::Minor,
+            2 => ChordType::Dim,
+            3 => ChordType::Aug,
+            4 => ChordType::Maj7,
+            5 => ChordType::Min7,
+            6 => ChordType::Dom7,
+            7 => ChordType::Dim7,
+            _ => ChordType::HalfDim7,
+        }
     }
 
     fn draw_output_slot(&mut self, ui: &mut egui::Ui, slot_idx: usize) {
