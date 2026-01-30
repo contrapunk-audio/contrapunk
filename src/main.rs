@@ -1,3 +1,4 @@
+mod generator;
 mod harmony;
 mod humanize;
 mod midi;
@@ -22,7 +23,7 @@ mod theme;
 mod preset;
 
 #[cfg(feature = "gui")]
-mod tabs;
+mod ui;
 
 #[cfg(feature = "gui")]
 use eframe::egui;
