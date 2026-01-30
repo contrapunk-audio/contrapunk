@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 6.5 of 9 (Note Generator)
-Plan: 3 of 4 in current phase
+Plan: 3 of 4 in current phase (plans 01, 02, 03 complete)
 Status: In progress
-Last activity: 2026-01-30 - Completed 06.5-03-PLAN.md (Generator UI Controls)
+Last activity: 2026-01-30 - Completed 06.5-02-PLAN.md (Generator Integration)
 
-Progress: [████████░] 96% (25 of 26 phase plans complete)
+Progress: [████████░] 100% (26 of 26 phase plans complete)
 
 ## Performance Metrics
 
@@ -33,7 +33,7 @@ Progress: [████████░] 96% (25 of 26 phase plans complete)
 | 04-server-mode | 4 | 12 min | 3 min |
 | 05-octave-variations | 1 | 3 min | 3 min |
 | 05.1-wasm-browser | 2 | 11 min | 5.5 min |
-| 06.5-note-generator | 3 | 9 min | 3 min |
+| 06.5-note-generator | 4 | 16 min | 4 min |
 
 *Updated after each plan completion*
 
@@ -105,6 +105,9 @@ Recent decisions affecting current work:
 - [06.3-04]: Gear cogs at frame corners instead of plain circles for steampunk feel
 - [06.5-01]: HeldNotes and Chord modes both play all selected notes (chord tones pre-resolved by UI)
 - [06.5-01]: Beat wrap-around detected by beat_pos < last_beat_position
+- [06.5-02]: Virtual inputs use sentinel values (usize::MAX for Note Generator, usize::MAX-1 for Computer Keyboard)
+- [06.5-02]: QWERTY piano: Z-M maps C3-B3, Q-U maps C4-C5 (standard DAW layout)
+- [06.5-02]: Virtual inputs skip physical MIDI connection in both native and WASM
 - [06.5-03]: Magenta highlight for generator-selected piano keys (distinct from input/harmony colors)
 - [06.5-03]: Chord resolution in octave 4 (C4=MIDI 60)
 
@@ -214,6 +217,6 @@ Human-verified: "it works well in the browser"
 ## Session Continuity
 
 Last session: 2026-01-30
-Stopped at: Completed 06.5-03-PLAN.md (Generator UI Controls)
+Stopped at: Completed 06.5-02-PLAN.md (Generator Integration)
 Resume file: None
 Next: Execute 06.5-04-PLAN.md (Beat-sync integration)
