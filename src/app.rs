@@ -716,424 +716,64 @@ impl eframe::App for ContrapunkApp {
             }
         }
 
-        // SidePanel with configuration controls (must be before CentralPanel)
-        egui::SidePanel::left("config_panel")
-            .resizable(false)
-            .default_width(220.0)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-                ui.heading("Contrapunk");
-                ui.add_space(5.0);
+        // Handle deferred start/stop from Play tab
+        if self.pending_stop {
+            self.pending_stop = false;
+            self.stop();
+        }
+        if self.pending_start {
+            self.pending_start = false;
+            self.try_start(ctx);
+        }
 
-                // Refresh Devices button
-                if ui.button("Refresh Devices").clicked() {
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        self.midi_initialized = false;
-                    }
-                    self.state.refresh_devices();
-                }
-
-                // WASM MIDI status
-                #[cfg(target_arch = "wasm32")]
-                {
-                    if self.midi_access.borrow().is_none() {
-                        ui.colored_label(egui::Color32::YELLOW, "Requesting MIDI access...");
-                    } else if self.state.available_inputs.is_empty() && self.state.available_outputs.is_empty() {
-                        ui.colored_label(egui::Color32::YELLOW, "No MIDI devices found.");
+        // Sync humanize config and voice leading to router shared state each frame
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if self.state.is_running {
+                if let Some(ref router_state) = self.router_state {
+                    if let Ok(mut state_lock) = router_state.lock() {
+                        state_lock.humanize_config = self.humanize_config.clone();
+                        state_lock.voice_leading_enabled = self.voice_leading_enabled;
+                        state_lock.voice_leading_style = self.voice_leading_style;
                     }
                 }
-
-                ui.add_space(5.0);
-
-                // Start/Stop button (moved to top for visibility)
-                let start_clicked;
-                let stop_clicked;
-                if self.is_running() {
-                    stop_clicked = ui.add_sized([180.0, 35.0], egui::Button::new("Stop")).clicked();
-                    start_clicked = false;
-                } else {
-                    start_clicked = ui.add_sized([180.0, 35.0], egui::Button::new("Start")).clicked();
-                    stop_clicked = false;
-                }
-                if stop_clicked {
-                    self.stop();
-                }
-                if start_clicked {
-                    self.try_start(ctx);
-                }
-
-                ui.add_space(5.0);
-                ui.separator();
-                ui.add_space(5.0);
-
-                // --- MIDI Configuration section ---
-                egui::CollapsingHeader::new("MIDI Configuration")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                    // MIDI Input selection
-                    ui.label("Input:");
-                    let input_text = match self.state.input_port {
-                        Some(idx) => self.state.available_inputs
-                            .iter()
-                            .find(|(i, _)| *i == idx)
-                            .map(|(_, name)| name.clone())
-                            .unwrap_or_else(|| format!("Port {}", idx)),
-                        None => "Select input...".to_string(),
-                    };
-                    egui::ComboBox::from_id_salt("input_port")
-                        .selected_text(&input_text)
-                        .width(160.0)
-                        .show_ui(ui, |ui| {
-                            for (idx, name) in &self.state.available_inputs {
-                                let is_selected = self.state.input_port == Some(*idx);
-                                if ui.selectable_label(is_selected, name).clicked() {
-                                    self.state.input_port = Some(*idx);
-                                }
-                            }
-                        });
-                    ui.add_space(5.0);
-
-                    // MIDI Outputs selection
-                    ui.label("Outputs:");
-                    let num_slots = self.state.output_slots.len();
-                    for slot_idx in 0..num_slots {
-                        let slot_label = format!("Out {}", slot_idx + 1);
-                        let output_text = match self.state.output_slots[slot_idx] {
-                            Some(idx) => self.state.available_outputs
-                                .iter()
-                                .find(|(i, _)| *i == idx)
-                                .map(|(_, name)| name.clone())
-                                .unwrap_or_else(|| format!("Port {}", idx)),
-                            None => "None".to_string(),
-                        };
-
-                        ui.horizontal(|ui| {
-                            ui.label(&slot_label);
-                        });
-                        egui::ComboBox::from_id_salt(format!("output_slot_{}", slot_idx))
-                            .selected_text(&output_text)
-                            .width(160.0)
-                            .show_ui(ui, |ui| {
-                                let is_none = self.state.output_slots[slot_idx].is_none();
-                                if ui.selectable_label(is_none, "None").clicked() {
-                                    self.state.output_slots[slot_idx] = None;
-                                }
-                                for (idx, name) in &self.state.available_outputs {
-                                    let is_selected = self.state.output_slots[slot_idx] == Some(*idx);
-                                    if ui.selectable_label(is_selected, name).clicked() {
-                                        self.state.output_slots[slot_idx] = Some(*idx);
-                                    }
-                                }
-                            });
-                        ui.add_space(2.0);
-                    }
-                });
-
-                // --- Harmony section ---
-                egui::CollapsingHeader::new("Harmony")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                    ui.label("Key:");
-                    egui::ComboBox::from_id_salt("key_select")
-                        .selected_text(format!("{}", self.state.key))
-                        .width(160.0)
-                        .show_ui(ui, |ui| {
-                            for key in Key::all() {
-                                ui.selectable_value(&mut self.state.key, *key, format!("{}", key));
-                            }
-                        });
-                    ui.add_space(5.0);
-
-                    ui.label("Mode:");
-                    egui::ComboBox::from_id_salt("mode_select")
-                        .selected_text(format!("{}: {}", self.state.mode.number(), self.state.mode.description()))
-                        .width(160.0)
-                        .show_ui(ui, |ui| {
-                            for mode in HarmonyMode::all() {
-                                let text = format!("{}: {}", mode.number(), mode.description());
-                                ui.selectable_value(&mut self.state.mode, *mode, text);
-                            }
-                        });
-                    ui.add_space(5.0);
-
-                    ui.label("Octave:");
-                    egui::ComboBox::from_id_salt("octave_mode_select")
-                        .selected_text(self.state.octave_mode.description())
-                        .width(160.0)
-                        .show_ui(ui, |ui| {
-                            for octave_mode in OctaveMode::all() {
-                                ui.selectable_value(&mut self.state.octave_mode, *octave_mode, octave_mode.description());
-                            }
-                        });
-                });
-
-                // --- Voice Leading section ---
-                egui::CollapsingHeader::new("Voice Leading")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                    ui.checkbox(&mut self.voice_leading_enabled, "Enable Voice Leading");
-                    if self.voice_leading_enabled {
-                        ui.add_space(5.0);
-                        ui.label("Style:");
-                        egui::ComboBox::from_id_salt("voice_leading_style")
-                            .selected_text(self.voice_leading_style.description())
-                            .width(160.0)
-                            .show_ui(ui, |ui| {
-                                for style in VoiceLeadingStyle::all() {
-                                    ui.selectable_value(&mut self.voice_leading_style, *style, style.description());
-                                }
-                            });
-                    }
-                });
-
-                // --- Metronome section ---
-                egui::CollapsingHeader::new("Metronome")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                    ui.add(egui::Slider::new(&mut self.humanize_config.bpm, 40.0..=240.0).text("BPM"));
-                    ui.label(format!("Time Sig: {}/{}", self.humanize_config.beats_per_bar, self.humanize_config.beat_unit));
-                    ui.checkbox(&mut self.humanize_config.metronome_enabled, "Metronome Click");
-                    if self.humanize_config.metronome_enabled {
-                        let metro_port = self.humanize_config.metronome_output_port.unwrap_or(0);
-                        let port_label = self.state.output_slots.get(metro_port)
-                            .and_then(|s| *s)
-                            .and_then(|idx| self.state.available_outputs.iter().find(|(i, _)| *i == idx))
-                            .map(|(_, name)| name.clone())
-                            .unwrap_or_else(|| format!("Out {}", metro_port + 1));
-                        ui.label("Output:");
-                        egui::ComboBox::from_id_salt("metronome_output")
-                            .selected_text(&port_label)
-                            .width(160.0)
-                            .show_ui(ui, |ui| {
-                                for (slot_idx, slot) in self.state.output_slots.iter().enumerate() {
-                                    if slot.is_some() {
-                                        let name = slot
-                                            .and_then(|idx| self.state.available_outputs.iter().find(|(i, _)| *i == idx))
-                                            .map(|(_, name)| name.clone())
-                                            .unwrap_or_else(|| format!("Out {}", slot_idx + 1));
-                                        let is_selected = self.humanize_config.metronome_output_port == Some(slot_idx)
-                                            || (self.humanize_config.metronome_output_port.is_none() && slot_idx == 0);
-                                        if ui.selectable_label(is_selected, &name).clicked() {
-                                            self.humanize_config.metronome_output_port = Some(slot_idx);
-                                        }
-                                    }
-                                }
-                            });
-                    }
-                });
-
-                // --- Humanization section ---
-                egui::CollapsingHeader::new("Humanization")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                    ui.checkbox(&mut self.humanize_config.enabled, "Enable Humanization");
-
-                    if self.humanize_config.enabled {
-                        ui.add_space(5.0);
-
-                        // Timing Jitter
-                        egui::CollapsingHeader::new("Timing Jitter")
-                            .default_open(false)
-                            .show(ui, |ui| {
-                            ui.checkbox(&mut self.humanize_config.jitter_enabled, "Enable Jitter");
-                            if self.humanize_config.jitter_enabled {
-                                ui.add(egui::Slider::new(&mut self.humanize_config.jitter_min_ms, 0..=50).text("Min ms"));
-                                ui.add(egui::Slider::new(&mut self.humanize_config.jitter_max_ms, 0..=50).text("Max ms"));
-                                if self.humanize_config.jitter_min_ms > self.humanize_config.jitter_max_ms {
-                                    self.humanize_config.jitter_min_ms = self.humanize_config.jitter_max_ms;
-                                }
-                            }
-                        });
-
-                        // Velocity
-                        egui::CollapsingHeader::new("Velocity")
-                            .default_open(false)
-                            .show(ui, |ui| {
-                            ui.checkbox(&mut self.humanize_config.velocity_enabled, "Velocity Variation");
-                            if self.humanize_config.velocity_enabled {
-                                ui.add(egui::Slider::new(&mut self.humanize_config.velocity_variation, 0..=30).text("\u{00b1}"));
-                            }
-                        });
-
-                        // Duration
-                        egui::CollapsingHeader::new("Duration")
-                            .default_open(false)
-                            .show(ui, |ui| {
-                            ui.checkbox(&mut self.humanize_config.duration_enabled, "Duration Variation");
-                            if self.humanize_config.duration_enabled {
-                                ui.add(egui::Slider::new(&mut self.humanize_config.duration_variation_ms, 0..=100).text("ms"));
-                            }
-                        });
-
-                        // Swing/Groove
-                        egui::CollapsingHeader::new("Swing/Groove")
-                            .default_open(false)
-                            .show(ui, |ui| {
-                            ui.checkbox(&mut self.humanize_config.swing_enabled, "Swing");
-                            if self.humanize_config.swing_enabled {
-                                ui.add(egui::Slider::new(&mut self.humanize_config.swing_amount, 0.0..=1.0).text("Amount"));
-                            }
-                        });
-                    }
-                });
-
-                // Sync humanize config and voice leading to router shared state each frame
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if self.state.is_running {
-                        if let Some(ref router_state) = self.router_state {
-                            if let Ok(mut state_lock) = router_state.lock() {
-                                state_lock.humanize_config = self.humanize_config.clone();
-                                state_lock.voice_leading_enabled = self.voice_leading_enabled;
-                                state_lock.voice_leading_style = self.voice_leading_style;
-                            }
-                        }
-                    }
-                }
-                }); // ScrollArea
-            });
-
-        // CentralPanel with status and visualization (after SidePanel)
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.heading("Contrapunk");
-                ui.add_space(5.0);
-                ui.label("MIDI Harmony Generator");
-            });
-
-            ui.add_space(10.0);
-            ui.separator();
-            ui.add_space(10.0);
-
-            // Status row
-            ui.horizontal(|ui| {
-                if self.is_running() {
-                    ui.label(egui::RichText::new("ACTIVE").color(egui::Color32::GREEN).strong());
-                } else {
-                    ui.label(egui::RichText::new("STOPPED").color(egui::Color32::GRAY));
-                }
-                ui.separator();
-                ui.label(format!("Key: {}", self.state.key));
-                ui.separator();
-                ui.label(format!("Mode: {}", self.state.mode.description()));
-                if self.state.octave_mode != OctaveMode::None {
-                    ui.separator();
-                    ui.label(format!("Octave: {}", self.state.octave_mode.description()));
-                }
-                if self.voice_leading_enabled {
-                    ui.separator();
-                    ui.label(format!("Voice: {}", self.voice_leading_style.description()));
-                }
-            });
-
-            ui.add_space(10.0);
-
-            // Error display
-            if let Some(ref error) = self.state.last_error {
-                ui.colored_label(egui::Color32::RED, format!("Error: {}", error));
-                ui.add_space(10.0);
             }
+        }
 
-            ui.separator();
-            ui.add_space(10.0);
-
-            // Connected devices info (when running)
-            if self.is_running() {
-                ui.label(egui::RichText::new("Connected Devices:").strong());
-                ui.add_space(5.0);
-
-                // Input device
-                if let Some(input_idx) = self.state.input_port {
-                    let input_name = self.state.available_inputs
-                        .iter()
-                        .find(|(i, _)| *i == input_idx)
-                        .map(|(_, name)| name.as_str())
-                        .unwrap_or("Unknown");
-                    ui.label(format!("  Input: {}", input_name));
-                }
-
-                // Output devices
-                let outputs = self.state.selected_output_ports();
-                for (i, idx) in outputs.iter().enumerate() {
-                    let output_name = self.state.available_outputs
-                        .iter()
-                        .find(|(port_idx, _)| port_idx == idx)
-                        .map(|(_, name)| name.as_str())
-                        .unwrap_or("Unknown");
-                    let role = if i == 0 { "melody" } else { "harmony" };
-                    ui.label(format!("  Output {}: {} [{}]", i + 1, output_name, role));
-                }
-
-            }
-
-            // Active notes display (always shown, updates in real-time)
-            ui.add_space(15.0);
+        // Piano keyboard in BottomPanel (always visible)
+        egui::TopBottomPanel::bottom("piano_panel").show(ctx, |ui| {
             let (input_notes, harmony_notes) = self.get_router_notes();
 
-            ui.group(|ui| {
-                ui.label(egui::RichText::new("Active Notes").strong());
-
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Input: ");
-                    if input_notes.is_empty() {
-                        ui.label("(none)");
-                    } else {
-                        let mut sorted: Vec<_> = input_notes.iter().copied().collect();
-                        sorted.sort();
-                        for midi in sorted {
-                            ui.label(
-                                egui::RichText::new(midi_to_name(midi))
-                                    .color(egui::Color32::LIGHT_BLUE)
-                            );
-                        }
-                    }
-                });
-
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Harmony: ");
-                    if harmony_notes.is_empty() {
-                        ui.label("(none)");
-                    } else {
-                        let mut sorted: Vec<_> = harmony_notes.iter().copied().collect();
-                        sorted.sort();
-                        for midi in sorted {
-                            ui.label(
-                                egui::RichText::new(midi_to_name(midi))
-                                    .color(egui::Color32::LIGHT_GREEN)
-                            );
-                        }
-                    }
-                });
-            });
-
-            // Chord detection display
-            ui.add_space(10.0);
+            // Chord detection
+            let all_notes: HashSet<u8> = {
+                let mut combined = input_notes.clone();
+                combined.extend(&harmony_notes);
+                combined
+            };
             ui.vertical_centered(|ui| {
-                ui.label("Detected Chord");
-                let all_notes: HashSet<u8> = {
-                    let mut combined = input_notes.clone();
-                    combined.extend(&harmony_notes);
-                    combined
-                };
                 ui.label(
                     egui::RichText::new(chord_display(&all_notes))
-                        .size(32.0)
+                        .size(24.0)
                         .strong()
                 );
             });
 
-            ui.add_space(20.0);
+            ui.add_space(5.0);
 
-            // Piano keyboard visualization
-            ui.group(|ui| {
-                ui.label(egui::RichText::new("Piano Keyboard").strong());
-                ui.add_space(5.0);
+            PianoKeyboard::new()
+                .with_notes(input_notes, harmony_notes)
+                .show(ui);
 
-                PianoKeyboard::new()
-                    .with_notes(input_notes, harmony_notes)
-                    .show(ui);
-            });
+            ui.add_space(5.0);
+        });
+
+        // CentralPanel with tab content routing
+        egui::CentralPanel::default().show(ctx, |ui| {
+            match self.active_tab {
+                Tab::Play => self.draw_play_tab(ui, ctx),
+                Tab::Craft => self.draw_craft_tab(ui),
+                Tab::Settings => self.draw_settings_tab(ui),
+            }
         });
     }
 }
