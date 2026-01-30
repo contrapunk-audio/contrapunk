@@ -301,6 +301,26 @@ pub fn revoice_chord(
         let crossings = check_voice_crossing(&full_voicing, registers);
         score += crossings.len() as i64 * style_rules.voice_crossing_penalty as i64;
 
+        // Spread preference: reward/penalize average inter-voice distance
+        if style_rules.spread_preference != 0 && n >= 2 {
+            let mut total_spread: i64 = 0;
+            let mut pair_count: i64 = 0;
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    let diff = if candidate[i] >= candidate[j] {
+                        candidate[i] - candidate[j]
+                    } else {
+                        candidate[j] - candidate[i]
+                    };
+                    total_spread += diff as i64;
+                    pair_count += 1;
+                }
+            }
+            if pair_count > 0 {
+                score += (total_spread / pair_count) * style_rules.spread_preference as i64;
+            }
+        }
+
         // Soft penalties for parallels (when not hard-rejected)
         if let Some(prev) = prev_voicing {
             if !style_rules.hard_reject_parallel_fifths {
@@ -333,6 +353,22 @@ pub fn revoice_chord(
                     score += style_rules.stepwise_bonus as i64;
                 } else {
                     score += movement as i64 * style_rules.leap_penalty_per_semitone as i64;
+                }
+            }
+
+            // Contrary motion bonus: reward voices moving opposite to melody
+            if style_rules.contrary_motion_bonus != 0 && prev.len() > 0 {
+                let melody_dir = full_voicing[0] as i32 - prev[0] as i32;
+                if melody_dir != 0 {
+                    for i in 0..n {
+                        let prev_note = if i + 1 < prev.len() { prev[i + 1] } else { continue };
+                        let curr_note = candidate[i];
+                        let voice_dir = curr_note as i32 - prev_note as i32;
+                        // Contrary: melody up, voice down (or vice versa)
+                        if (melody_dir > 0 && voice_dir < 0) || (melody_dir < 0 && voice_dir > 0) {
+                            score += style_rules.contrary_motion_bonus as i64;
+                        }
+                    }
                 }
             }
         } else {

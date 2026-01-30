@@ -70,63 +70,90 @@ pub struct StyleRules {
     pub all_parallel_motion_penalty: i32,
     /// Penalty per spacing violation
     pub spacing_violation_penalty: i32,
+    /// Bonus per semitone of inter-voice spread (positive = prefer wide, negative = prefer tight)
+    pub spread_preference: i32,
+    /// Bonus when a voice moves opposite direction to melody
+    pub contrary_motion_bonus: i32,
 }
 
 impl StyleRules {
     /// Returns the style rules for a given voice leading style.
     pub fn for_style(style: VoiceLeadingStyle) -> StyleRules {
         match style {
+            // Palestrina: Renaissance polyphony — extremely tight, stepwise,
+            // no leaps beyond a 4th, voices clustered close together,
+            // strong contrary motion preference. Should sound like a
+            // choir singing in close harmony with smooth flowing lines.
             VoiceLeadingStyle::Palestrina => StyleRules {
                 hard_reject_parallel_fifths: true,
                 hard_reject_parallel_octaves: true,
-                parallel_fifths_penalty: -50,
-                parallel_octaves_penalty: -50,
-                voice_crossing_penalty: -80,
-                stepwise_bonus: 15,
-                common_tone_bonus: 12,
-                leap_penalty_per_semitone: -3,
-                max_leap_semitones: 7,
-                all_parallel_motion_penalty: -50,
-                spacing_violation_penalty: -100,
+                parallel_fifths_penalty: -200,
+                parallel_octaves_penalty: -200,
+                voice_crossing_penalty: -150,
+                stepwise_bonus: 60,
+                common_tone_bonus: 45,
+                leap_penalty_per_semitone: -15,
+                max_leap_semitones: 5,
+                all_parallel_motion_penalty: -120,
+                spacing_violation_penalty: -200,
+                spread_preference: -4,
+                contrary_motion_bonus: 40,
             },
+            // Bach Chorale: Common tones are king, moderate stepwise,
+            // allows leaps up to an octave, bass voice can leap freely.
+            // Should sound like hymn harmonization — smooth but with
+            // purposeful bass movement and held inner voices.
             VoiceLeadingStyle::BachChorale => StyleRules {
                 hard_reject_parallel_fifths: true,
                 hard_reject_parallel_octaves: true,
-                parallel_fifths_penalty: -40,
-                parallel_octaves_penalty: -40,
-                voice_crossing_penalty: -60,
-                stepwise_bonus: 10,
-                common_tone_bonus: 10,
-                leap_penalty_per_semitone: -2,
+                parallel_fifths_penalty: -100,
+                parallel_octaves_penalty: -100,
+                voice_crossing_penalty: -80,
+                stepwise_bonus: 25,
+                common_tone_bonus: 70,
+                leap_penalty_per_semitone: -4,
                 max_leap_semitones: 12,
-                all_parallel_motion_penalty: -30,
-                spacing_violation_penalty: -50,
+                all_parallel_motion_penalty: -60,
+                spacing_violation_penalty: -80,
+                spread_preference: -1,
+                contrary_motion_bonus: 20,
             },
+            // Jazz: Wide spread voicings, leaps are fine, parallel
+            // motion is fine, voices spread across the keyboard.
+            // Should sound open and spacious, like a jazz piano
+            // with drop-2/drop-3 voicings.
             VoiceLeadingStyle::Jazz => StyleRules {
-                hard_reject_parallel_fifths: false,
-                hard_reject_parallel_octaves: false,
-                parallel_fifths_penalty: -5,
-                parallel_octaves_penalty: -5,
-                voice_crossing_penalty: -20,
-                stepwise_bonus: 4,
-                common_tone_bonus: 3,
-                leap_penalty_per_semitone: -1,
-                max_leap_semitones: 127,
-                all_parallel_motion_penalty: -10,
-                spacing_violation_penalty: -10,
-            },
-            VoiceLeadingStyle::Free => StyleRules {
                 hard_reject_parallel_fifths: false,
                 hard_reject_parallel_octaves: false,
                 parallel_fifths_penalty: -2,
                 parallel_octaves_penalty: -2,
-                voice_crossing_penalty: -5,
+                voice_crossing_penalty: -10,
                 stepwise_bonus: 3,
                 common_tone_bonus: 2,
                 leap_penalty_per_semitone: 0,
                 max_leap_semitones: 127,
                 all_parallel_motion_penalty: -5,
-                spacing_violation_penalty: -5,
+                spacing_violation_penalty: 0,
+                spread_preference: 5,
+                contrary_motion_bonus: 3,
+            },
+            // Free: Closest available note, almost no rules.
+            // Should sound like whatever the harmony engine gives,
+            // with minimal voice leading intervention.
+            VoiceLeadingStyle::Free => StyleRules {
+                hard_reject_parallel_fifths: false,
+                hard_reject_parallel_octaves: false,
+                parallel_fifths_penalty: 0,
+                parallel_octaves_penalty: 0,
+                voice_crossing_penalty: -2,
+                stepwise_bonus: 1,
+                common_tone_bonus: 1,
+                leap_penalty_per_semitone: 0,
+                max_leap_semitones: 127,
+                all_parallel_motion_penalty: 0,
+                spacing_violation_penalty: 0,
+                spread_preference: 0,
+                contrary_motion_bonus: 0,
             },
         }
     }
@@ -152,7 +179,7 @@ mod tests {
         let rules = StyleRules::for_style(VoiceLeadingStyle::Palestrina);
         assert!(rules.hard_reject_parallel_fifths);
         assert!(rules.hard_reject_parallel_octaves);
-        assert_eq!(rules.max_leap_semitones, 7);
+        assert_eq!(rules.max_leap_semitones, 5);
     }
 
     #[test]
