@@ -231,7 +231,16 @@ pub struct ContrapunkApp {
     pub(crate) generator_chord_quality: usize,
     /// Selected notes for piano click-to-select (MIDI note numbers)
     pub(crate) generator_selected_notes: Vec<u8>,
+    /// Whether computer keyboard input is enabled
+    pub(crate) keyboard_enabled: bool,
+    /// Currently held keyboard keys (MIDI note numbers) for proper NoteOff
+    pub(crate) keyboard_held_keys: std::collections::HashSet<u8>,
 }
+
+/// Sentinel port index for "Note Generator" virtual input.
+pub const INPUT_NOTE_GENERATOR: usize = usize::MAX;
+/// Sentinel port index for "Computer Keyboard" virtual input.
+pub const INPUT_COMPUTER_KEYBOARD: usize = usize::MAX - 1;
 
 impl ContrapunkApp {
     /// Create a new ContrapunkApp instance.
@@ -292,6 +301,8 @@ impl ContrapunkApp {
             generator_chord_root: 0,
             generator_chord_quality: 0,
             generator_selected_notes: Vec::new(),
+            keyboard_enabled: false,
+            keyboard_held_keys: std::collections::HashSet::new(),
         };
 
         // Load custom presets from eframe storage
@@ -380,15 +391,6 @@ impl ContrapunkApp {
     fn try_start(&mut self, _ctx: &egui::Context) {
         self.state.last_error = None;
 
-        let access = self.midi_access.borrow();
-        let access = match access.as_ref() {
-            Some(a) => a,
-            None => {
-                self.state.last_error = Some("Web MIDI not available. Use Chrome/Edge with MIDI device.".to_string());
-                return;
-            }
-        };
-
         // Validate input port is selected
         let input_idx = match self.state.input_port {
             Some(idx) => idx,
@@ -398,15 +400,7 @@ impl ContrapunkApp {
             }
         };
 
-        // Get input device ID
-        let inputs = web::list_midi_inputs(access);
-        let input_id = match inputs.get(input_idx) {
-            Some((id, _)) => id.clone(),
-            None => {
-                self.state.last_error = Some("Selected input device not found".to_string());
-                return;
-            }
-        };
+        let is_virtual_input = input_idx == INPUT_NOTE_GENERATOR || input_idx == INPUT_COMPUTER_KEYBOARD;
 
         // Validate at least one output is selected
         let output_ports = self.state.selected_output_ports();
@@ -415,24 +409,47 @@ impl ContrapunkApp {
             return;
         }
 
+        let access = self.midi_access.borrow();
+        let access_ref = match access.as_ref() {
+            Some(a) => Some(a),
+            None if is_virtual_input => None,
+            None => {
+                self.state.last_error = Some("Web MIDI not available. Use Chrome/Edge with MIDI device.".to_string());
+                return;
+            }
+        };
+
         // Collect output device IDs
-        let outputs = web::list_midi_outputs(access);
         self.connected_output_ids.clear();
-        for idx in &output_ports {
-            if let Some((id, _)) = outputs.get(*idx) {
-                self.connected_output_ids.push(id.clone());
+        if let Some(access) = access_ref {
+            let outputs = web::list_midi_outputs(access);
+            for idx in &output_ports {
+                if let Some((id, _)) = outputs.get(*idx) {
+                    self.connected_output_ids.push(id.clone());
+                }
+            }
+
+            // Connect physical input callback (skip for virtual inputs)
+            if !is_virtual_input {
+                let inputs = web::list_midi_inputs(access);
+                let input_id = match inputs.get(input_idx) {
+                    Some((id, _)) => id.clone(),
+                    None => {
+                        self.state.last_error = Some("Selected input device not found".to_string());
+                        return;
+                    }
+                };
+                if let Err(_e) = web::connect_input(access, &input_id, self.midi_queue.clone()) {
+                    self.state.last_error = Some("Failed to connect to MIDI input".to_string());
+                    return;
+                }
             }
         }
-
-        // Connect input callback
-        if let Err(_e) = web::connect_input(access, &input_id, self.midi_queue.clone()) {
-            self.state.last_error = Some("Failed to connect to MIDI input".to_string());
-            return;
-        }
+        drop(access);
 
         // Configure harmony engine
         self.engine = HarmonyEngine::new(self.state.key, self.state.mode);
-        let num_outputs = self.connected_output_ids.len();
+        let num_outputs = self.connected_output_ids.len().max(1);
         self.engine.set_voice_count(num_outputs);
         self.engine.set_octave_mode(self.state.octave_mode);
 
@@ -523,6 +540,88 @@ impl ContrapunkApp {
                 state_lock.mode = Some(preset.harmony_mode);
                 state_lock.octave_mode = Some(preset.octave_mode);
             }
+        }
+    }
+
+    /// Handle input port selection change: enable/disable virtual inputs, send all_notes_off.
+    pub(crate) fn on_input_port_changed(&mut self, _prev: Option<usize>) {
+        // Send all notes off for generator
+        let off_events = self.generator.all_notes_off();
+        // Clear keyboard held keys
+        self.keyboard_held_keys.clear();
+
+        match self.state.input_port {
+            Some(INPUT_NOTE_GENERATOR) => {
+                self.generator_enabled = true;
+                self.keyboard_enabled = false;
+                let _ = self.generator.set_enabled(true);
+            }
+            Some(INPUT_COMPUTER_KEYBOARD) => {
+                self.generator_enabled = false;
+                self.keyboard_enabled = true;
+                let _ = self.generator.set_enabled(false);
+            }
+            _ => {
+                // Physical device or None
+                self.generator_enabled = false;
+                self.keyboard_enabled = false;
+                let _ = self.generator.set_enabled(false);
+            }
+        }
+
+        // Process any pending note-off events through harmony engine (WASM)
+        #[cfg(target_arch = "wasm32")]
+        {
+            for event in off_events {
+                if let crate::generator::GeneratorEvent::NoteOff(note) = event {
+                    self.handle_wasm_note_off(
+                        wmidi::Channel::Ch1,
+                        note,
+                        wmidi::Velocity::try_from(0u8).unwrap(),
+                    );
+                }
+            }
+        }
+
+        // For native, the router thread handles note-off via shared state
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = off_events; // Router thread will pick up enabled=false and handle cleanup
+        }
+    }
+
+    /// Maps a keyboard key to a MIDI note number using QWERTY piano layout.
+    /// Returns None if the key doesn't map to a note.
+    pub(crate) fn key_to_midi_note(key: egui::Key) -> Option<u8> {
+        match key {
+            // Bottom row: C3-B3 (white keys)
+            egui::Key::Z => Some(48),  // C3
+            egui::Key::S => Some(49),  // C#3
+            egui::Key::X => Some(50),  // D3
+            egui::Key::D => Some(51),  // D#3
+            egui::Key::C => Some(52),  // E3
+            egui::Key::V => Some(53),  // F3
+            egui::Key::G => Some(54),  // F#3
+            egui::Key::B => Some(55),  // G3
+            egui::Key::H => Some(56),  // G#3
+            egui::Key::N => Some(57),  // A3
+            egui::Key::J => Some(58),  // A#3
+            egui::Key::M => Some(59),  // B3
+            // Top row: C4-B4 (white keys)
+            egui::Key::Q => Some(60),  // C4
+            egui::Key::Num2 => Some(61), // C#4
+            egui::Key::W => Some(62),  // D4
+            egui::Key::Num3 => Some(63), // D#4
+            egui::Key::E => Some(64),  // E4
+            egui::Key::R => Some(65),  // F4
+            egui::Key::Num5 => Some(66), // F#4
+            egui::Key::T => Some(67),  // G4
+            egui::Key::Num6 => Some(68), // G#4
+            egui::Key::Y => Some(69),  // A4
+            egui::Key::Num7 => Some(70), // A#4
+            egui::Key::U => Some(71),  // B4
+            egui::Key::I => Some(72),  // C5
+            _ => None,
         }
     }
 
@@ -820,6 +919,44 @@ impl eframe::App for ContrapunkApp {
                     }
                 }
 
+                // Process computer keyboard input (WASM)
+                if self.keyboard_enabled {
+                    let (presses, releases) = ctx.input(|input| {
+                        let mut kp = Vec::new();
+                        let mut kr = Vec::new();
+                        for event in &input.events {
+                            match event {
+                                egui::Event::Key { key, pressed: true, repeat: false, .. } => {
+                                    if let Some(midi) = Self::key_to_midi_note(*key) {
+                                        kp.push(midi);
+                                    }
+                                }
+                                egui::Event::Key { key, pressed: false, .. } => {
+                                    if let Some(midi) = Self::key_to_midi_note(*key) {
+                                        kr.push(midi);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        (kp, kr)
+                    });
+                    for midi in presses {
+                        if self.keyboard_held_keys.insert(midi) {
+                            let note = Note::from_u8_lossy(midi);
+                            let vel = Velocity::try_from(100u8).unwrap();
+                            self.handle_wasm_note_on(Channel::Ch1, note, vel);
+                        }
+                    }
+                    for midi in releases {
+                        if self.keyboard_held_keys.remove(&midi) {
+                            let note = Note::from_u8_lossy(midi);
+                            let vel = Velocity::try_from(0u8).unwrap();
+                            self.handle_wasm_note_off(Channel::Ch1, note, vel);
+                        }
+                    }
+                }
+
                 // Process incoming MIDI messages
                 let messages: Vec<Vec<u8>> = self.midi_queue.borrow_mut().drain(..).collect();
                 for msg_bytes in messages {
@@ -855,6 +992,49 @@ impl eframe::App for ContrapunkApp {
                         state_lock.generator_enabled = self.generator_enabled;
                         state_lock.generator_velocity = self.generator.velocity();
                         state_lock.generator_note_duration_beats = self.generator.note_duration_beats();
+                        state_lock.keyboard_enabled = self.keyboard_enabled;
+                    }
+                }
+            }
+
+            // Process keyboard input for native (push events to router state)
+            if self.keyboard_enabled {
+                let (presses, releases) = ctx.input(|input| {
+                    let mut kp = Vec::new();
+                    let mut kr = Vec::new();
+                    for event in &input.events {
+                        match event {
+                            egui::Event::Key { key, pressed: true, repeat: false, .. } => {
+                                if let Some(midi) = Self::key_to_midi_note(*key) {
+                                    kp.push(midi);
+                                }
+                            }
+                            egui::Event::Key { key, pressed: false, .. } => {
+                                if let Some(midi) = Self::key_to_midi_note(*key) {
+                                    kr.push(midi);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    (kp, kr)
+                });
+                let mut kbd_events: Vec<(bool, wmidi::Note)> = Vec::new();
+                for midi in presses {
+                    if self.keyboard_held_keys.insert(midi) {
+                        kbd_events.push((true, wmidi::Note::from_u8_lossy(midi)));
+                    }
+                }
+                for midi in releases {
+                    if self.keyboard_held_keys.remove(&midi) {
+                        kbd_events.push((false, wmidi::Note::from_u8_lossy(midi)));
+                    }
+                }
+                if !kbd_events.is_empty() {
+                    if let Some(ref router_state) = self.router_state {
+                        if let Ok(mut state_lock) = router_state.lock() {
+                            state_lock.keyboard_events.extend(kbd_events);
+                        }
                     }
                 }
             }

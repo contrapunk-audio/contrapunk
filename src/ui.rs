@@ -3,7 +3,7 @@
 //! Three-column layout showing all controls at once — no scrolling, no tabs.
 
 use eframe::egui;
-use crate::app::{ContrapunkApp, midi_to_name};
+use crate::app::{ContrapunkApp, midi_to_name, INPUT_NOTE_GENERATOR, INPUT_COMPUTER_KEYBOARD};
 use crate::generator::{GeneratorMode, ArpDirection, ChordType};
 use crate::harmony::{Key, HarmonyMode, OctaveMode, VoiceLeadingStyle};
 use crate::preset::storage::{export_preset_json, import_preset_json};
@@ -189,12 +189,15 @@ impl ContrapunkApp {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     let input_text = match self.state.input_port {
+                        Some(INPUT_NOTE_GENERATOR) => "Note Generator".to_string(),
+                        Some(INPUT_COMPUTER_KEYBOARD) => "Computer Keyboard".to_string(),
                         Some(idx) => self.state.available_inputs.iter()
                             .find(|(i, _)| *i == idx)
                             .map(|(_, name)| name.clone())
                             .unwrap_or_else(|| format!("Port {}", idx)),
                         None => "Select...".to_string(),
                     };
+                    let prev_port = self.state.input_port;
                     egui::ComboBox::from_id_salt("main_input_port")
                         .selected_text(&input_text)
                         .width(ui.available_width().min(200.0))
@@ -204,32 +207,54 @@ impl ContrapunkApp {
                                     self.state.input_port = Some(*idx);
                                 }
                             }
+                            // Virtual inputs
+                            ui.separator();
+                            if ui.selectable_label(self.state.input_port == Some(INPUT_NOTE_GENERATOR), "Note Generator").clicked() {
+                                self.state.input_port = Some(INPUT_NOTE_GENERATOR);
+                            }
+                            if ui.selectable_label(self.state.input_port == Some(INPUT_COMPUTER_KEYBOARD), "Computer Keyboard").clicked() {
+                                self.state.input_port = Some(INPUT_COMPUTER_KEYBOARD);
+                            }
                         });
+                    // Handle virtual input selection changes
+                    if self.state.input_port != prev_port {
+                        self.on_input_port_changed(prev_port);
+                    }
                 }
                 #[cfg(target_arch = "wasm32")]
                 {
-                    if self.midi_access.borrow().is_none() {
-                        ui.colored_label(egui::Color32::YELLOW, "Requesting...");
-                    } else if self.state.available_inputs.is_empty() {
-                        ui.colored_label(TEXT_DIM, "No devices");
-                    } else {
-                        let input_text = match self.state.input_port {
-                            Some(idx) => self.state.available_inputs.iter()
-                                .find(|(i, _)| *i == idx)
-                                .map(|(_, name)| name.clone())
-                                .unwrap_or_else(|| format!("Port {}", idx)),
-                            None => "Select...".to_string(),
-                        };
-                        egui::ComboBox::from_id_salt("main_input_port")
-                            .selected_text(&input_text)
-                            .width(ui.available_width().min(200.0))
-                            .show_ui(ui, |ui| {
+                    let input_text = match self.state.input_port {
+                        Some(INPUT_NOTE_GENERATOR) => "Note Generator".to_string(),
+                        Some(INPUT_COMPUTER_KEYBOARD) => "Computer Keyboard".to_string(),
+                        Some(idx) => self.state.available_inputs.iter()
+                            .find(|(i, _)| *i == idx)
+                            .map(|(_, name)| name.clone())
+                            .unwrap_or_else(|| format!("Port {}", idx)),
+                        None => "Select...".to_string(),
+                    };
+                    let prev_port = self.state.input_port;
+                    egui::ComboBox::from_id_salt("main_input_port")
+                        .selected_text(&input_text)
+                        .width(ui.available_width().min(200.0))
+                        .show_ui(ui, |ui| {
+                            if self.midi_access.borrow().is_some() {
                                 for (idx, name) in &self.state.available_inputs {
                                     if ui.selectable_label(self.state.input_port == Some(*idx), name).clicked() {
                                         self.state.input_port = Some(*idx);
                                     }
                                 }
-                            });
+                            }
+                            // Virtual inputs (always available)
+                            ui.separator();
+                            if ui.selectable_label(self.state.input_port == Some(INPUT_NOTE_GENERATOR), "Note Generator").clicked() {
+                                self.state.input_port = Some(INPUT_NOTE_GENERATOR);
+                            }
+                            if ui.selectable_label(self.state.input_port == Some(INPUT_COMPUTER_KEYBOARD), "Computer Keyboard").clicked() {
+                                self.state.input_port = Some(INPUT_COMPUTER_KEYBOARD);
+                            }
+                        });
+                    if self.state.input_port != prev_port {
+                        self.on_input_port_changed(prev_port);
                     }
                 }
             });

@@ -131,7 +131,12 @@ fn run_gui_router_inner(
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
 
     // Connect to input port - IMPORTANT: Must keep connection alive
-    let _conn_in = connect_input(input_port, tx)?;
+    // Virtual inputs (usize::MAX, usize::MAX-1) don't need physical connection
+    let _conn_in = if input_port < usize::MAX - 1 {
+        Some(connect_input(input_port, tx)?)
+    } else {
+        None
+    };
 
     // Create output router
     let mut output_router = OutputRouter::new(output_ports)?;
