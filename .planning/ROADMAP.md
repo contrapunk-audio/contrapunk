@@ -200,9 +200,9 @@ Plans:
 - [ ] 06.2-04-PLAN.md — Human verification checkpoint
 
 ### Phase 6.3: Style Update (INSERTED)
-**Goal**: Modernize GUI appearance and add musical style presets combining harmony, voice leading, and humanization settings
+**Goal**: Modernize GUI appearance, add musical style presets, and a 3D harmonic shape visualizer combining waveform mesh, particle system, and geometric shapes
 **Depends on**: Phase 6.2 (Voice Leading), Phase 6 (Humanization), Phase 3 (GUI)
-**Requirements**: STY-01, STY-02, STY-03, STY-04
+**Requirements**: STY-01, STY-02, STY-03, STY-04, STY-05
 **Success Criteria** (what must be TRUE):
   1. GUI has a modern visual design (custom color scheme, improved layout, consistent typography)
   2. Dark/light theme toggle available
@@ -210,7 +210,9 @@ Plans:
   4. Each preset configures harmony mode, voice leading, humanization, and octave settings as a bundle
   5. Users can customize and save their own presets
   6. Style presets provide audibly distinct musical character
-**Plans**: 7 plans
+  7. 3D harmonic shape visualizer displays in the center of the UI, showing voice spread/motion/texture as layered 3D animations (waveform mesh + particles + geometric shapes)
+  8. 3D visualization reacts in real-time to played notes and voice leading style changes
+**Plans**: 9 plans
 
 Plans:
 - [ ] 06.3-01-PLAN.md — Theme system, color palette, serde deps, tab navigation skeleton
@@ -219,7 +221,9 @@ Plans:
 - [ ] 06.3-04-PLAN.md — Custom steampunk widgets (ornate sliders, decorative frame, gear helpers)
 - [ ] 06.3-05-PLAN.md — Preset persistence, JSON export/import, preset management UI in Craft tab
 - [ ] 06.3-06-PLAN.md — Ambient animations (rotating gears, particles) and music-reactive visuals
-- [ ] 06.3-07-PLAN.md — Human verification checkpoint
+- [ ] 06.3-07-PLAN.md — 3D harmonic shape visualizer: waveform mesh, particle system, and geometric shapes layered together
+- [ ] 06.3-08-PLAN.md — Wire 3D visualizer to voice leading state (spread, motion, intervals) for real-time reactivity
+- [ ] 06.3-09-PLAN.md — Human verification checkpoint
 
 ### Phase 6.4: Modal Harmony & Chord Detection (INSERTED)
 **Goal**: Add all 7 church modes plus harmonic/melodic minor scales, modal interchange for smarter chromatic note handling with visual feedback, and comprehensive chord detection (extended chords, slash chords, add chords)
@@ -323,7 +327,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6. Humanization | 3/3 | Complete | 2026-01-29 |
 | 6.1 Humanization UI Fix (INSERTED) | 2/2 | Complete | 2026-01-30 |
 | 6.2 Voice Leading (INSERTED) | 0/4 | Planning complete | - |
-| 6.3 Style Update (INSERTED) | 0/7 | Planning complete | - |
+| 6.3 Style Update (INSERTED) | 0/9 | Planning complete | - |
 | 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/? | Not started | - |
 | 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
 | 7. Mic Input | 0/? | Not started | - |
@@ -332,4 +336,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-31 — Phase 6.5 deferred (Note Generator non-functional, voice leading needs improvement)*
+*Last updated: 2026-01-31 — 3D harmonic visualizer added to Phase 6.3; voice leading style params widened for audible differentiation*
