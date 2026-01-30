@@ -271,11 +271,18 @@ fn handle_note_on_gui(
         }
     }
 
+    // Skip metronome-dedicated port for harmony/melody notes
+    let metro_reserved = if humanizer.config().metronome_enabled {
+        humanizer.config().metronome_output_port
+    } else {
+        None
+    };
+
     // Send each note to its port
     let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
         let port = if i < port_map.len() { port_map[i] } else { i };
-        if port >= num_outputs {
+        if port >= num_outputs || Some(port) == metro_reserved {
             continue;
         }
 
@@ -324,11 +331,18 @@ fn handle_note_off_gui(
         }
     }
 
+    // Skip metronome-dedicated port for harmony/melody notes
+    let metro_reserved = if humanizer.config().metronome_enabled {
+        humanizer.config().metronome_output_port
+    } else {
+        None
+    };
+
     // Release each note on its port
     let port_map = engine.last_port_map();
     for (i, &n) in notes.iter().enumerate() {
         let port = if i < port_map.len() { port_map[i] } else { i };
-        if port >= num_outputs {
+        if port >= num_outputs || Some(port) == metro_reserved {
             continue;
         }
 

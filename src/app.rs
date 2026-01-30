@@ -457,12 +457,19 @@ impl ContrapunkApp {
             .map(|p| p.now())
             .unwrap_or(0.0);
 
+        // Skip metronome-dedicated port for harmony/melody notes
+        let metro_reserved = if self.humanize_config.metronome_enabled {
+            self.humanize_config.metronome_output_port
+        } else {
+            None
+        };
+
         // Send to Web MIDI outputs
         let access = self.midi_access.borrow();
         if let Some(ref access) = *access {
             for (i, &n) in notes.iter().enumerate() {
                 let port = if i < port_map.len() { port_map[i] } else { i };
-                if port >= num_outputs {
+                if port >= num_outputs || Some(port) == metro_reserved {
                     continue;
                 }
 
@@ -506,12 +513,19 @@ impl ContrapunkApp {
             .map(|p| p.now())
             .unwrap_or(0.0);
 
+        // Skip metronome-dedicated port for harmony/melody notes
+        let metro_reserved = if self.humanize_config.metronome_enabled {
+            self.humanize_config.metronome_output_port
+        } else {
+            None
+        };
+
         // Send to Web MIDI outputs
         let access = self.midi_access.borrow();
         if let Some(ref access) = *access {
             for (i, &n) in notes.iter().enumerate() {
                 let port = if i < port_map.len() { port_map[i] } else { i };
-                if port >= num_outputs {
+                if port >= num_outputs || Some(port) == metro_reserved {
                     continue;
                 }
 
