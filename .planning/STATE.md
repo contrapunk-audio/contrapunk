@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 6.5 of 9 (Note Generator)
-Plan: 1 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-30 - Completed 06.5-01-PLAN.md (Generator Config and Engine)
+Last activity: 2026-01-30 - Completed 06.5-03-PLAN.md (Generator UI Controls)
 
-Progress: [███████░] 88% (23 of 26 phase plans complete)
+Progress: [████████░] 96% (25 of 26 phase plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23
+- Total plans completed: 25
 - Average duration: 2.8 min
-- Total execution time: 68 min
+- Total execution time: 74 min
 
 **By Phase:**
 
@@ -33,7 +33,7 @@ Progress: [███████░] 88% (23 of 26 phase plans complete)
 | 04-server-mode | 4 | 12 min | 3 min |
 | 05-octave-variations | 1 | 3 min | 3 min |
 | 05.1-wasm-browser | 2 | 11 min | 5.5 min |
-| 06.5-note-generator | 1 | 3 min | 3 min |
+| 06.5-note-generator | 3 | 9 min | 3 min |
 
 *Updated after each plan completion*
 
@@ -105,6 +105,8 @@ Recent decisions affecting current work:
 - [06.3-04]: Gear cogs at frame corners instead of plain circles for steampunk feel
 - [06.5-01]: HeldNotes and Chord modes both play all selected notes (chord tones pre-resolved by UI)
 - [06.5-01]: Beat wrap-around detected by beat_pos < last_beat_position
+- [06.5-03]: Magenta highlight for generator-selected piano keys (distinct from input/harmony colors)
+- [06.5-03]: Chord resolution in octave 4 (C4=MIDI 60)
 
 ### Pending Todos
 
@@ -212,6 +214,6 @@ Human-verified: "it works well in the browser"
 ## Session Continuity
 
 Last session: 2026-01-30
-Stopped at: Completed 06.5-01-PLAN.md (Generator Config and Engine)
+Stopped at: Completed 06.5-03-PLAN.md (Generator UI Controls)
 Resume file: None
-Next: Execute 06.5-02-PLAN.md (Generator UI integration)
+Next: Execute 06.5-04-PLAN.md (Beat-sync integration)
