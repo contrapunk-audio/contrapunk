@@ -16,6 +16,7 @@ use std::rc::Rc;
 use anyhow::Result;
 use eframe::egui;
 use crate::chord::chord_display;
+use crate::generator::{NoteGenerator, GeneratorMode, GeneratorEvent, ChordType, ArpDirection};
 use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine, VoiceLeadingStyle};
 use crate::humanize::HumanizeConfig;
 #[cfg(target_arch = "wasm32")]
@@ -217,6 +218,19 @@ pub struct ContrapunkApp {
     pub(crate) craft_import_json: String,
     /// Whether import section is open
     pub(crate) craft_import_open: bool,
+    // --- Generator state ---
+    /// Note generator engine
+    pub(crate) generator: NoteGenerator,
+    /// Whether generator is enabled (UI toggle)
+    pub(crate) generator_enabled: bool,
+    /// Current generator mode index for UI combo box
+    pub(crate) generator_mode_index: usize,
+    /// Chord root note index (0=C .. 11=B) for chord mode
+    pub(crate) generator_chord_root: usize,
+    /// Chord quality index for chord mode
+    pub(crate) generator_chord_quality: usize,
+    /// Selected notes for piano click-to-select (MIDI note numbers)
+    pub(crate) generator_selected_notes: Vec<u8>,
 }
 
 impl ContrapunkApp {
@@ -272,6 +286,12 @@ impl ContrapunkApp {
             craft_export_json: String::new(),
             craft_import_json: String::new(),
             craft_import_open: false,
+            generator: NoteGenerator::new(),
+            generator_enabled: false,
+            generator_mode_index: 0,
+            generator_chord_root: 0,
+            generator_chord_quality: 0,
+            generator_selected_notes: Vec::new(),
         };
 
         // Load custom presets from eframe storage
@@ -782,6 +802,24 @@ impl eframe::App for ContrapunkApp {
                 }
                 drop(access);
 
+                // Tick note generator and process events through harmony pipeline
+                if self.generator_enabled {
+                    let beat_pos = self.wasm_humanizer.clock().beat_position();
+                    let bpm = self.humanize_config.bpm;
+                    let gen_events = self.generator.tick(beat_pos, bpm);
+                    for event in gen_events {
+                        match event {
+                            crate::generator::GeneratorEvent::NoteOn(note, vel) => {
+                                let velocity = Velocity::try_from(vel).unwrap_or(Velocity::MAX);
+                                self.handle_wasm_note_on(Channel::Ch1, note, velocity);
+                            }
+                            crate::generator::GeneratorEvent::NoteOff(note) => {
+                                self.handle_wasm_note_off(Channel::Ch1, note, Velocity::try_from(0u8).unwrap());
+                            }
+                        }
+                    }
+                }
+
                 // Process incoming MIDI messages
                 let messages: Vec<Vec<u8>> = self.midi_queue.borrow_mut().drain(..).collect();
                 for msg_bytes in messages {
@@ -813,6 +851,10 @@ impl eframe::App for ContrapunkApp {
                         state_lock.key = Some(self.state.key);
                         state_lock.mode = Some(self.state.mode);
                         state_lock.octave_mode = Some(self.state.octave_mode);
+                        // Sync generator state
+                        state_lock.generator_enabled = self.generator_enabled;
+                        state_lock.generator_velocity = self.generator.velocity();
+                        state_lock.generator_note_duration_beats = self.generator.note_duration_beats();
                     }
                 }
             }
@@ -838,9 +880,27 @@ impl eframe::App for ContrapunkApp {
 
             ui.add_space(5.0);
 
-            PianoKeyboard::new()
+            let gen_selected: HashSet<u8> = self.generator_selected_notes.iter().copied().collect();
+            let gen_enabled = self.generator_enabled;
+            let toggled = PianoKeyboard::new()
                 .with_notes(input_notes, harmony_notes)
+                .with_selectable(gen_selected, gen_enabled)
                 .show(ui);
+
+            // Handle click-to-select toggles for generator
+            for midi in toggled {
+                if let Some(pos) = self.generator_selected_notes.iter().position(|&n| n == midi) {
+                    self.generator_selected_notes.remove(pos);
+                } else {
+                    self.generator_selected_notes.push(midi);
+                    self.generator_selected_notes.sort();
+                }
+                // Sync to generator engine
+                let notes: Vec<wmidi::Note> = self.generator_selected_notes.iter()
+                    .map(|&n| wmidi::Note::from_u8_lossy(n))
+                    .collect();
+                let _events = self.generator.set_selected_notes(notes);
+            }
 
             ui.add_space(5.0);
         });
