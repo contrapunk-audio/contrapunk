@@ -220,6 +220,21 @@ pub struct ContrapunkApp {
     /// Whether the beat clock has been started (WASM)
     #[cfg(target_arch = "wasm32")]
     wasm_clock_started: bool,
+    // --- Craft tab UI state ---
+    /// Whether Save As dialog is open
+    pub(crate) craft_save_as_open: bool,
+    /// Name input for Save As
+    pub(crate) craft_save_as_name: String,
+    /// Persona input for Save As
+    pub(crate) craft_save_as_persona: String,
+    /// Genre input for Save As
+    pub(crate) craft_save_as_genre: String,
+    /// Export JSON text area content
+    pub(crate) craft_export_json: String,
+    /// Import JSON text area content
+    pub(crate) craft_import_json: String,
+    /// Whether import section is open
+    pub(crate) craft_import_open: bool,
 }
 
 impl ContrapunkApp {
@@ -268,6 +283,13 @@ impl ContrapunkApp {
             wasm_metronome: Metronome::new(),
             #[cfg(target_arch = "wasm32")]
             wasm_clock_started: false,
+            craft_save_as_open: false,
+            craft_save_as_name: String::new(),
+            craft_save_as_persona: String::new(),
+            craft_save_as_genre: String::new(),
+            craft_export_json: String::new(),
+            craft_import_json: String::new(),
+            craft_import_open: false,
         };
 
         // Load custom presets from eframe storage
