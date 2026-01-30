@@ -53,6 +53,8 @@ pub struct GUIRouterState {
     pub mode: Option<HarmonyMode>,
     /// Current octave mode (synced from GUI)
     pub octave_mode: Option<OctaveMode>,
+    /// Voice position (synced from GUI)
+    pub voice_position: Option<usize>,
     /// Whether the note generator is enabled
     pub generator_enabled: bool,
     /// Generator mode (taken by router when changed)
@@ -82,6 +84,7 @@ impl Default for GUIRouterState {
             key: None,
             mode: None,
             octave_mode: None,
+            voice_position: None,
             generator_enabled: false,
             generator_mode: None,
             generator_selected_notes: None,
@@ -196,7 +199,14 @@ fn run_gui_router_inner(
                 }
             }
             if let Some(new_octave) = state_lock.octave_mode.take() {
-                engine.set_octave_mode(new_octave);
+                if engine.octave_mode() != new_octave {
+                    engine.set_octave_mode(new_octave);
+                }
+            }
+            if let Some(new_vp) = state_lock.voice_position.take() {
+                if engine.voice_position() != new_vp {
+                    engine.set_voice_position(new_vp);
+                }
             }
 
             // Sync generator config from GUI — collect pending events, process after lock drop

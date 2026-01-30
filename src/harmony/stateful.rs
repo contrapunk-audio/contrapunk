@@ -54,6 +54,60 @@ impl ContraryMotionState {
         self.repeat_direction = -1;
     }
 
+    /// Processes a note with contrary motion, generating harmony in the given direction.
+    ///
+    /// When `above` is true, the initial harmony starts a third above and moves upward.
+    /// When `above` is false, the initial harmony starts a third below and moves downward.
+    pub fn process_directed(&mut self, scale: &Scale, melody: Note, above: bool) -> Vec<Note> {
+        let initial_interval = if above { 2 } else { -2 };
+        let harmony = match self.last_melody {
+            None => {
+                scale.harmonize_smart(melody, initial_interval, above)
+            }
+            Some(prev_melody) => {
+                let melody_midi = u8::from(melody) as i8;
+                let prev_midi = u8::from(prev_melody) as i8;
+                let direction = melody_midi - prev_midi;
+
+                let last_harm = self.last_harmony.unwrap_or(melody);
+
+                if direction > 0 {
+                    // Melody went up, contrary goes opposite
+                    let step = if above { 1 } else { -1 };
+                    if scale.is_in_scale(last_harm) {
+                        scale.transpose_diatonic(last_harm, step)
+                    } else {
+                        scale.transpose_chromatic(last_harm, step * 2)
+                    }
+                } else if direction < 0 {
+                    let step = if above { -1 } else { 1 };
+                    if scale.is_in_scale(last_harm) {
+                        scale.transpose_diatonic(last_harm, step)
+                    } else {
+                        scale.transpose_chromatic(last_harm, step * 2)
+                    }
+                } else {
+                    let step = self.repeat_direction;
+                    self.repeat_direction = -self.repeat_direction;
+                    if scale.is_in_scale(last_harm) {
+                        scale.transpose_diatonic(last_harm, step)
+                    } else {
+                        scale.transpose_chromatic(last_harm, step as i8 * 2)
+                    }
+                }
+            }
+        };
+
+        self.last_melody = Some(melody);
+        match harmony {
+            Some(h) => {
+                self.last_harmony = Some(h);
+                vec![melody, h]
+            }
+            None => vec![melody],
+        }
+    }
+
     /// Processes a note with contrary motion.
     ///
     /// - First note: harmony starts a third below the melody
@@ -270,6 +324,104 @@ impl CounterpointState {
     /// Returns true if the harmony range is narrow (<= 7 semitones).
     fn is_harmony_range_narrow(&self) -> bool {
         self.harmony_range().map_or(false, |range| range <= NARROW_RANGE_THRESHOLD)
+    }
+
+    /// Processes a note with strict counterpoint, preferring the given direction.
+    ///
+    /// When `above` is true, candidate intervals above the melody are tried first.
+    /// When `above` is false, candidate intervals below are tried first.
+    pub fn process_directed(&mut self, scale: &Scale, melody: Note, above: bool) -> Vec<Note> {
+        // Track melody contour before scoring
+        if let Some(prev_melody) = self.last_melody {
+            let direction = Self::direction_between(prev_melody, melody);
+            self.push_contour(direction);
+        }
+
+        let best_candidate = if scale.is_in_scale(melody) {
+            self.find_diatonic_harmony_directed(scale, melody, above)
+        } else {
+            self.find_chromatic_harmony_directed(scale, melody, above)
+        };
+
+        self.last_melody = Some(melody);
+
+        match best_candidate {
+            Some((harmony, _)) => {
+                let harmony_midi = u8::from(harmony) as i8;
+                let melody_midi = u8::from(melody) as i8;
+                let interval_semitones = harmony_midi - melody_midi;
+                let interval_class = self.semitones_to_interval_class(interval_semitones);
+                self.push_interval(interval_class);
+                self.update_harmony_range(harmony);
+                self.last_harmony = Some(harmony);
+                vec![melody, harmony]
+            }
+            None => {
+                self.last_harmony = None;
+                vec![melody]
+            }
+        }
+    }
+
+    /// Finds best diatonic harmony, preferring intervals in the given direction.
+    fn find_diatonic_harmony_directed(&self, scale: &Scale, melody: Note, above: bool) -> Option<(Note, i32)> {
+        // Order candidates by direction preference
+        let candidate_intervals: [i8; 8] = if above {
+            [2, 5, 3, 4, -2, -5, -3, -4]  // Above first
+        } else {
+            [-2, -5, -3, -4, 2, 5, 3, 4]  // Below first
+        };
+        let mut best_candidate: Option<(Note, i32)> = None;
+
+        for &interval in &candidate_intervals {
+            if let Some(candidate) = scale.transpose_diatonic(melody, interval) {
+                let score = self.score_candidate(melody, candidate, interval);
+                if score < 0 { continue; }
+                // Direction bonus: prefer candidates in the requested direction
+                let dir_bonus = if (above && interval > 0) || (!above && interval < 0) { 2 } else { 0 };
+                let total = score + dir_bonus;
+                match best_candidate {
+                    None => best_candidate = Some((candidate, total)),
+                    Some((_, best_score)) if total > best_score => {
+                        best_candidate = Some((candidate, total));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        best_candidate
+    }
+
+    /// Finds best chromatic harmony, preferring intervals in the given direction.
+    fn find_chromatic_harmony_directed(&self, scale: &Scale, melody: Note, above: bool) -> Option<(Note, i32)> {
+        let chromatic_intervals: [i8; 8] = if above {
+            [3, 4, 8, 9, -3, -4, -8, -9]
+        } else {
+            [-3, -4, -8, -9, 3, 4, 8, 9]
+        };
+        let mut best_candidate: Option<(Note, i32)> = None;
+        let melody_midi = u8::from(melody) as i8;
+
+        for &semitones in &chromatic_intervals {
+            let candidate_midi = melody_midi + semitones;
+            if !(0..=127).contains(&candidate_midi) { continue; }
+            if let Ok(candidate) = Note::try_from(candidate_midi as u8) {
+                let approx_interval = semitones / 2;
+                let mut score = self.score_candidate(melody, candidate, approx_interval);
+                if scale.is_in_scale(candidate) { score += 3; }
+                let dir_bonus = if (above && semitones > 0) || (!above && semitones < 0) { 2 } else { 0 };
+                score += dir_bonus;
+                if score < 0 { continue; }
+                match best_candidate {
+                    None => best_candidate = Some((candidate, score)),
+                    Some((_, best_score)) if score > best_score => {
+                        best_candidate = Some((candidate, score));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        best_candidate
     }
 
     /// Processes a note with strict counterpoint rules.

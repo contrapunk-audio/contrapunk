@@ -95,6 +95,9 @@ pub struct HarmonyEngine {
     scale: Scale,
     /// Number of output voices (1 = melody only, 2 = melody + harmony, etc.)
     voice_count: usize,
+    /// Voice position: which voice slot the user plays (0 = top/soprano, voice_count-1 = bass).
+    /// Harmonies are generated outward from this position in both directions.
+    voice_position: usize,
     // Stateful mode state - one per voice pair for chained harmonies
     contrary_motion_states: Vec<ContraryMotionState>,
     counterpoint_states: Vec<CounterpointState>,
@@ -133,6 +136,7 @@ impl HarmonyEngine {
             octave_mode: OctaveMode::None,
             scale,
             voice_count,
+            voice_position: voice_count.saturating_sub(1),
             contrary_motion_states: (0..harmony_voices)
                 .map(|_| ContraryMotionState::new())
                 .collect(),
@@ -195,6 +199,23 @@ impl HarmonyEngine {
         self.voice_count
     }
 
+    /// Returns the current voice position (0 = top/soprano, voice_count-1 = bass).
+    pub fn voice_position(&self) -> usize {
+        self.voice_position
+    }
+
+    /// Sets the voice position. Clears active notes since routing changes.
+    /// Clamped to `voice_count - 1`.
+    pub fn set_voice_position(&mut self, position: usize) {
+        let position = position.min(self.voice_count.saturating_sub(1));
+        if position == self.voice_position {
+            return;
+        }
+        self.voice_position = position;
+        self.active_notes.clear();
+        self.active_port_maps.clear();
+    }
+
     /// Sets the number of output voices.
     /// Resets stateful mode state and active notes.
     ///
@@ -207,6 +228,8 @@ impl HarmonyEngine {
             return;
         }
         self.voice_count = count;
+        // Clamp voice_position to valid range
+        self.voice_position = self.voice_position.min(count.saturating_sub(1));
         let harmony_voices = if count > 1 { count - 1 } else { 0 };
 
         // Rebuild state vectors
@@ -307,26 +330,73 @@ impl HarmonyEngine {
             return vec![note];
         }
 
-        let mut result = vec![note];
-        let mut current = note;
+        // Build result with voice_count slots. User's note goes at voice_position.
+        let mut result = vec![None; self.voice_count];
+        result[self.voice_position] = Some(note);
 
-        // Generate chained harmonies: each derived from the previous
-        for i in 0..(self.voice_count - 1) {
-            let harmony_result = self.harmonize_single(current, i);
+        // State index counter for stateful modes (each chain step gets its own state)
+        let mut state_idx = 0;
 
-            // Extract the harmony note (second element if present)
-            if harmony_result.len() > 1 {
-                current = harmony_result[1];
-                result.push(current);
-            } else {
-                // No harmony produced, stop chain
-                break;
+        // Chain ABOVE: from voice_position-1 down to 0 (higher pitched voices)
+        if self.voice_position > 0 {
+            let mut current = note;
+            for i in (0..self.voice_position).rev() {
+                let harmony_result = self.harmonize_single_directed(current, state_idx, true);
+                state_idx += 1;
+                if harmony_result.len() > 1 {
+                    current = harmony_result[1];
+                    result[i] = Some(current);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Chain BELOW: from voice_position+1 to voice_count-1 (lower pitched voices)
+        if self.voice_position < self.voice_count - 1 {
+            let mut current = note;
+            for i in (self.voice_position + 1)..self.voice_count {
+                let harmony_result = self.harmonize_single_directed(current, state_idx, false);
+                state_idx += 1;
+                if harmony_result.len() > 1 {
+                    current = harmony_result[1];
+                    result[i] = Some(current);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Flatten: user's note first, then harmony voices in chain order
+        // (closest to user's position first, outward in both directions)
+        let mut final_result = vec![note];
+
+        // Interleave above and below chains, closest first
+        let mut above_idx = if self.voice_position > 0 { Some(self.voice_position - 1) } else { None };
+        let mut below_idx = if self.voice_position < self.voice_count - 1 { Some(self.voice_position + 1) } else { None };
+
+        loop {
+            let has_above = above_idx.is_some();
+            let has_below = below_idx.is_some();
+            if !has_above && !has_below { break; }
+
+            if let Some(ai) = above_idx {
+                if let Some(n) = result[ai] {
+                    final_result.push(n);
+                }
+                above_idx = if ai > 0 { Some(ai - 1) } else { None };
+            }
+            if let Some(bi) = below_idx {
+                if let Some(n) = result[bi] {
+                    final_result.push(n);
+                }
+                below_idx = if bi < self.voice_count - 1 { Some(bi + 1) } else { None };
             }
         }
 
         // Voice leading post-processing (before octave mode)
-        if self.voice_leading.enabled && result.len() > 1 {
-            let pitch_classes: Vec<u8> = result[1..]
+        if self.voice_leading.enabled && final_result.len() > 1 {
+            let pitch_classes: Vec<u8> = final_result[1..]
                 .iter()
                 .map(|n| u8::from(*n) % 12)
                 .collect();
@@ -343,9 +413,9 @@ impl HarmonyEngine {
             );
             // Replace harmony notes with revoiced MIDI values
             for (i, &midi_val) in revoiced.iter().enumerate() {
-                if i + 1 < result.len() {
+                if i + 1 < final_result.len() {
                     if let Ok(n) = Note::try_from(midi_val) {
-                        result[i + 1] = n;
+                        final_result[i + 1] = n;
                     }
                 }
             }
@@ -353,16 +423,16 @@ impl HarmonyEngine {
             let prev_notes = self.voice_leading.previous_voicing.clone();
             self.voice_leading
                 .suspension_state
-                .process(&mut result, prev_notes.as_deref(), &self.scale);
+                .process(&mut final_result, prev_notes.as_deref(), &self.scale);
 
             // Store current voicing for next call
-            self.voice_leading.previous_voicing = Some(result.clone());
+            self.voice_leading.previous_voicing = Some(final_result.clone());
         }
 
         // Apply octave mode transformation to harmony notes (not melody)
-        self.apply_octave_mode(&mut result);
+        self.apply_octave_mode(&mut final_result);
 
-        result
+        final_result
     }
 
     /// Applies octave mode transformation to harmony notes and populates `last_port_map`.
@@ -432,6 +502,33 @@ impl HarmonyEngine {
                 for (dup_note, original_port) in duplicates {
                     notes.push(dup_note);
                     self.last_port_map.push(original_port);
+                }
+            }
+        }
+    }
+
+    /// Harmonizes a single note in a specific direction using the mode's algorithm.
+    /// `above`: if true, generate harmony above; if false, generate below.
+    /// Used for bidirectional voice position generation.
+    fn harmonize_single_directed(&mut self, note: Note, state_index: usize, above: bool) -> Vec<Note> {
+        match self.mode {
+            HarmonyMode::PassThrough => modes::pass_through(note, &self.scale),
+            HarmonyMode::DiatonicThirds => modes::diatonic_thirds_directed(note, &self.scale, above),
+            HarmonyMode::DiatonicFourths => modes::diatonic_fourths_directed(note, &self.scale, above),
+            HarmonyMode::RandomBelow => modes::random_directed(note, &self.scale, above),
+            HarmonyMode::RandomBelowNoSeconds => modes::random_no_seconds_directed(note, &self.scale, above),
+            HarmonyMode::ContraryMotion => {
+                if let Some(state) = self.contrary_motion_states.get_mut(state_index) {
+                    state.process_directed(&self.scale, note, above)
+                } else {
+                    vec![note]
+                }
+            }
+            HarmonyMode::StrictCounterpoint => {
+                if let Some(state) = self.counterpoint_states.get_mut(state_index) {
+                    state.process_directed(&self.scale, note, above)
+                } else {
+                    vec![note]
                 }
             }
         }
@@ -591,22 +688,24 @@ mod tests {
     fn test_contrary_motion_mode() {
         let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::ContraryMotion);
 
-        // First note should produce harmony (third below)
+        // Default voice_position is bass (bottom), so harmony generates above
+        // First note should produce harmony (third above)
         let result = engine.harmonize(Note::E4);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Note::E4);
-        assert_eq!(result[1], Note::C4);  // Third below E = C
+        assert_eq!(result[1], Note::G4);  // Third above E = G
     }
 
     #[test]
     fn test_counterpoint_mode() {
         let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
 
-        // Should produce consonant harmony (third preferred)
+        // Default voice_position is bass, so harmony generates above
+        // Should produce consonant harmony (third above preferred)
         let result = engine.harmonize(Note::C4);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Note::C4);
-        assert_eq!(result[1], Note::A3);  // Third below C = A
+        assert_eq!(result[1], Note::E4);  // Third above C = E
     }
 
     #[test]
@@ -621,10 +720,11 @@ mod tests {
         engine.set_key(Key::G);
 
         // Next note should be treated as "first note" again
+        // Default voice_position is bass, so harmony generates above (third above)
         let result = engine.harmonize(Note::G4);
         assert_eq!(result.len(), 2);
-        // First note in contrary motion gets third below
-        assert_eq!(result[1], Note::E4);  // G - 2 degrees in G major = E
+        // First note in contrary motion (directed above) gets third above
+        assert_eq!(result[1], Note::B4);  // G + 2 degrees in G major = B
     }
 
     // Note-On/Off tracking tests
@@ -808,6 +908,57 @@ mod tests {
         let result = engine.harmonize(Note::C4);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], Note::C4);
+    }
+
+    // Voice position tests
+
+    #[test]
+    fn test_voice_position_default_is_bass() {
+        let engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        assert_eq!(engine.voice_position(), 3); // Last index = bass
+    }
+
+    #[test]
+    fn test_voice_position_top_generates_below() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        engine.set_voice_position(0); // Soprano: all harmony below
+
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0], Note::C4);
+        // Thirds below: C4 -> A3 -> F3 -> D3
+        assert_eq!(result[1], Note::A3);
+        assert_eq!(result[2], Note::F3);
+        assert_eq!(result[3], Note::D3);
+    }
+
+    #[test]
+    fn test_voice_position_middle_generates_both_directions() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_voice_position(1); // Middle: 1 above, 1 below
+
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], Note::C4);
+        // Above (closest first): E4
+        assert_eq!(result[1], Note::E4);
+        // Below: A3
+        assert_eq!(result[2], Note::A3);
+    }
+
+    #[test]
+    fn test_voice_position_clamped_on_set() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_voice_position(10); // Out of range
+        assert_eq!(engine.voice_position(), 2); // Clamped to max
+    }
+
+    #[test]
+    fn test_voice_position_clamped_on_voice_count_change() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        engine.set_voice_position(3); // Bass in 4-voice
+        engine.set_voice_count(2); // Now only 2 voices
+        assert_eq!(engine.voice_position(), 1); // Clamped
     }
 
     // Octave mode tests

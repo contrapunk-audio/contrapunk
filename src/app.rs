@@ -56,6 +56,8 @@ pub struct AppState {
     pub mode: HarmonyMode,
     /// Current octave mode for harmony voices
     pub octave_mode: OctaveMode,
+    /// Voice position: which voice slot the user plays (0 = top/soprano, max = bass)
+    pub voice_position: usize,
     /// Selected input port index
     pub input_port: Option<usize>,
     /// Selected output port indices (one per slot, None if slot not assigned)
@@ -131,6 +133,7 @@ impl Default for AppState {
             key: Key::C,
             mode: HarmonyMode::PassThrough,
             octave_mode: OctaveMode::None,
+            voice_position: 0, // Will be set to voice_count-1 (bass) when routing starts
             input_port: None,
             output_slots: vec![None; MAX_OUTPUT_SLOTS],
             available_inputs: Vec::new(),
@@ -452,6 +455,7 @@ impl ContrapunkApp {
         let num_outputs = self.connected_output_ids.len().max(1);
         self.engine.set_voice_count(num_outputs);
         self.engine.set_octave_mode(self.state.octave_mode);
+        self.engine.set_voice_position(self.state.voice_position);
 
         self.wasm_input_notes.clear();
         self.wasm_harmony_notes.clear();
@@ -850,6 +854,9 @@ impl eframe::App for ContrapunkApp {
                 if self.engine.voice_leading_style() != self.voice_leading_style {
                     self.engine.set_voice_leading_style(self.voice_leading_style);
                 }
+                if self.engine.voice_position() != self.state.voice_position {
+                    self.engine.set_voice_position(self.state.voice_position);
+                }
 
                 // Sync humanize config to wasm_humanizer each frame
                 self.wasm_humanizer.update_config(self.humanize_config.clone());
@@ -1014,6 +1021,7 @@ impl eframe::App for ContrapunkApp {
                         state_lock.key = Some(self.state.key);
                         state_lock.mode = Some(self.state.mode);
                         state_lock.octave_mode = Some(self.state.octave_mode);
+                        state_lock.voice_position = Some(self.state.voice_position);
                         // Sync generator state
                         state_lock.generator_enabled = self.generator_enabled;
                         state_lock.generator_velocity = self.generator.velocity();

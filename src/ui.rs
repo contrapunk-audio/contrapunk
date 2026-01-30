@@ -10,6 +10,22 @@ use crate::preset::storage::{export_preset_json, import_preset_json};
 use crate::theme::colors::*;
 use crate::theme::widgets::{ornate_slider, ornate_toggle};
 
+/// Returns voice position labels based on voice count.
+/// E.g., 4 voices: ["Soprano (1)", "Alto (2)", "Tenor (3)", "Bass (4)"]
+fn voice_position_labels(voice_count: usize) -> Vec<String> {
+    let names = ["Soprano", "Alto", "Tenor", "Bass"];
+    (0..voice_count)
+        .map(|i| {
+            let name = if voice_count <= 4 {
+                names.get(i).unwrap_or(&"Voice")
+            } else {
+                "Voice"
+            };
+            format!("{} ({})", name, i + 1)
+        })
+        .collect()
+}
+
 /// Helper to wrap content in a styled card frame.
 fn card(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::group(ui.style())
@@ -305,6 +321,24 @@ impl ContrapunkApp {
                         ui.selectable_value(&mut self.state.octave_mode, *octave_mode, octave_mode.description());
                     }
                 });
+            // Voice position selector (only meaningful with 2+ outputs)
+            let num_outputs = self.state.output_slots.iter().filter(|s| s.is_some()).count().max(1);
+            if num_outputs > 1 {
+                ui.add_space(2.0);
+                ui.label("My Voice:");
+                let voice_labels = voice_position_labels(num_outputs);
+                let current_label = voice_labels.get(self.state.voice_position)
+                    .cloned()
+                    .unwrap_or_else(|| format!("Voice {}", self.state.voice_position + 1));
+                egui::ComboBox::from_id_salt("main_voice_position")
+                    .selected_text(current_label)
+                    .width(ui.available_width().min(180.0))
+                    .show_ui(ui, |ui| {
+                        for (i, label) in voice_labels.iter().enumerate() {
+                            ui.selectable_value(&mut self.state.voice_position, i, label);
+                        }
+                    });
+            }
         });
         ui.add_space(2.0);
 

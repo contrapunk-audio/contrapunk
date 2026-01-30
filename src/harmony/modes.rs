@@ -79,6 +79,63 @@ pub fn random_below_no_seconds(note: Note, scale: &Scale) -> Vec<Note> {
     }
 }
 
+// --- Directed variants for voice position ---
+// These take an `above: bool` parameter to control harmony direction.
+// When `above` is true, harmony is generated above the input note.
+// When `above` is false, harmony is generated below.
+
+/// Directed diatonic thirds: above or below the input note.
+pub fn diatonic_thirds_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
+    let interval = if above { 2 } else { -2 };
+    match scale.harmonize_smart(note, interval, above) {
+        Some(harmony) => vec![note, harmony],
+        None => vec![note],
+    }
+}
+
+/// Directed diatonic fourths: above or below the input note.
+pub fn diatonic_fourths_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
+    let interval = if above { 3 } else { -3 };
+    match scale.harmonize_smart(note, interval, above) {
+        Some(harmony) => vec![note, harmony],
+        None => vec![note],
+    }
+}
+
+/// Directed random diatonic interval.
+/// Above: random 2nd-7th above. Below: random 2nd-7th below.
+pub fn random_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
+    let mut rng = rand::thread_rng();
+    let intervals: [i8; 6] = if above {
+        [1, 2, 3, 4, 5, 6]
+    } else {
+        [-1, -2, -3, -4, -5, -6]
+    };
+    let interval = intervals[rng.gen_range(0..intervals.len())];
+
+    match scale.harmonize_smart(note, interval, above) {
+        Some(harmony) => vec![note, harmony],
+        None => vec![note],
+    }
+}
+
+/// Directed random diatonic interval, excluding seconds.
+/// Above: random 3rd-7th above. Below: random 3rd-7th below.
+pub fn random_no_seconds_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
+    let mut rng = rand::thread_rng();
+    let intervals: [i8; 5] = if above {
+        [2, 3, 4, 5, 6]
+    } else {
+        [-2, -3, -4, -5, -6]
+    };
+    let interval = intervals[rng.gen_range(0..intervals.len())];
+
+    match scale.harmonize_smart(note, interval, above) {
+        Some(harmony) => vec![note, harmony],
+        None => vec![note],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
