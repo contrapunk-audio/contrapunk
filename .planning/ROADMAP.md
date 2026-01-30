@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, groove, and internal beat clock/metronome to generated notes
 - [ ] **Phase 6.1: Humanization UI Fix** - Fix humanization controls visibility in browser, ensure effects are audible end-to-end, redesign humanization UI (INSERTED)
 - [ ] **Phase 6.2: Voice Leading** - Improved voice leading with smooth transitions, minimal motion, and voice independence (INSERTED)
-- [ ] **Phase 6.3: Style Update** - UI visual redesign and musical style presets (jazz, classical, pop, etc.) (INSERTED)
+- [x] **Phase 6.3: Style Update** - UI visual redesign and musical style presets (jazz, classical, pop, etc.) (INSERTED)
 - [ ] **Phase 6.4: Modal Harmony & Chord Detection** - All church modes + harmonic/melodic minor, modal interchange with visual feedback, comprehensive chord detection (INSERTED)
 - [ ] **Phase 6.5: Note Generator** - Virtual MIDI input source: beat-synced note generation (arpeggiator, scale runner, random, chord player), selectable as IN source alongside physical devices (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
@@ -200,30 +200,29 @@ Plans:
 - [ ] 06.2-04-PLAN.md — Human verification checkpoint
 
 ### Phase 6.3: Style Update (INSERTED)
-**Goal**: Modernize GUI appearance, add musical style presets, and a 3D harmonic shape visualizer combining waveform mesh, particle system, and geometric shapes
-**Depends on**: Phase 6.2 (Voice Leading), Phase 6 (Humanization), Phase 3 (GUI)
+**Goal**: Modernize GUI appearance with steampunk theme, add musical style presets, tabbed navigation, and ambient animations
+**Depends on**: Phase 6 (Humanization), Phase 3 (GUI)
 **Requirements**: STY-01, STY-02, STY-03, STY-04, STY-05
 **Success Criteria** (what must be TRUE):
-  1. GUI has a modern visual design (custom color scheme, improved layout, consistent typography)
-  2. Dark/light theme toggle available
-  3. Musical style presets selectable from GUI (at least: Jazz, Classical, Pop, Baroque, Minimal)
+  1. GUI has steampunk dark theme (gold/copper/amber colors, custom typography)
+  2. Tabbed navigation (Play/Craft/Settings) with always-visible piano keyboard
+  3. Musical style presets selectable from GUI (11+ built-in with character personas)
   4. Each preset configures harmony mode, voice leading, humanization, and octave settings as a bundle
-  5. Users can customize and save their own presets
+  5. Users can customize and save their own presets (JSON persistence)
   6. Style presets provide audibly distinct musical character
-  7. 3D harmonic shape visualizer displays in the center of the UI, showing voice spread/motion/texture as layered 3D animations (waveform mesh + particles + geometric shapes)
-  8. 3D visualization reacts in real-time to played notes and voice leading style changes
-**Plans**: 9 plans
+  7. Ambient animations (rotating gears, decorative frame, music-reactive visuals)
+**Plans**: 7 plans
 
 Plans:
-- [ ] 06.3-01-PLAN.md — Theme system, color palette, serde deps, tab navigation skeleton
-- [ ] 06.3-02-PLAN.md — Preset data model, built-in presets with character personas, PresetManager
-- [ ] 06.3-03-PLAN.md — Layout refactor: tabbed navigation (Play/Craft/Settings) with always-visible piano
-- [ ] 06.3-04-PLAN.md — Custom steampunk widgets (ornate sliders, decorative frame, gear helpers)
-- [ ] 06.3-05-PLAN.md — Preset persistence, JSON export/import, preset management UI in Craft tab
-- [ ] 06.3-06-PLAN.md — Ambient animations (rotating gears, particles) and music-reactive visuals
-- [ ] 06.3-07-PLAN.md — 3D harmonic shape visualizer: waveform mesh, particle system, and geometric shapes layered together
-- [ ] 06.3-08-PLAN.md — Wire 3D visualizer to voice leading state (spread, motion, intervals) for real-time reactivity
-- [ ] 06.3-09-PLAN.md — Human verification checkpoint
+- [x] 06.3-01-PLAN.md — Theme system, color palette, serde deps, tab navigation skeleton
+- [x] 06.3-02-PLAN.md — Preset data model, built-in presets with character personas, PresetManager
+- [x] 06.3-03-PLAN.md — Layout refactor: tabbed navigation (Play/Craft/Settings) with always-visible piano
+- [x] 06.3-04-PLAN.md — Custom steampunk widgets (ornate sliders, decorative frame, gear helpers)
+- [x] 06.3-05-PLAN.md — Preset persistence, JSON export/import, preset management UI in Craft tab
+- [x] 06.3-06-PLAN.md — Ambient animations (rotating gears, particles) and music-reactive visuals
+- [x] 06.3-07-PLAN.md — Human verification checkpoint
+
+**Scoped out:** Dark/light toggle (dark-only by decision), 3D harmonic visualizer (deferred)
 
 ### Phase 6.4: Modal Harmony & Chord Detection (INSERTED)
 **Goal**: Add all 7 church modes plus harmonic/melodic minor scales, modal interchange for smarter chromatic note handling with visual feedback, and comprehensive chord detection (extended chords, slash chords, add chords)
@@ -327,7 +326,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6. Humanization | 3/3 | Complete | 2026-01-29 |
 | 6.1 Humanization UI Fix (INSERTED) | 2/2 | Complete | 2026-01-30 |
 | 6.2 Voice Leading (INSERTED) | 0/4 | Planning complete | - |
-| 6.3 Style Update (INSERTED) | 0/9 | Planning complete | - |
+| 6.3 Style Update (INSERTED) | 7/7 | Complete | 2026-01-31 |
 | 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/? | Not started | - |
 | 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
 | 7. Mic Input | 0/? | Not started | - |
