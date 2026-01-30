@@ -7,6 +7,8 @@
 use crate::harmony::{HarmonyEngine, Key, HarmonyMode, OctaveMode, VoiceLeadingStyle};
 #[cfg(not(feature = "gui"))]
 use crate::harmony::HarmonyEngine;
+#[cfg(feature = "gui")]
+use crate::generator::{NoteGenerator, GeneratorMode, GeneratorEvent};
 use crate::humanize::{DelayQueue, HumanizeConfig, HumanizedNote, Humanizer, Metronome};
 use crate::midi::input::connect_input;
 use crate::midi::output::OutputRouter;
@@ -32,7 +34,6 @@ use eframe::egui;
 ///
 /// Allows the GUI to observe router state and control the router.
 #[cfg(feature = "gui")]
-#[derive(Default)]
 pub struct GUIRouterState {
     /// MIDI note numbers currently held on input
     pub input_notes: HashSet<u8>,
@@ -52,6 +53,44 @@ pub struct GUIRouterState {
     pub mode: Option<HarmonyMode>,
     /// Current octave mode (synced from GUI)
     pub octave_mode: Option<OctaveMode>,
+    /// Whether the note generator is enabled
+    pub generator_enabled: bool,
+    /// Generator mode (taken by router when changed)
+    pub generator_mode: Option<GeneratorMode>,
+    /// Generator selected notes (taken by router when changed)
+    pub generator_selected_notes: Option<Vec<wmidi::Note>>,
+    /// Generator velocity
+    pub generator_velocity: u8,
+    /// Generator note duration in beats
+    pub generator_note_duration_beats: f64,
+    /// Keyboard input events: (is_note_on, note)
+    pub keyboard_events: Vec<(bool, wmidi::Note)>,
+    /// Whether keyboard input is enabled
+    pub keyboard_enabled: bool,
+}
+
+#[cfg(feature = "gui")]
+impl Default for GUIRouterState {
+    fn default() -> Self {
+        Self {
+            input_notes: HashSet::new(),
+            harmony_notes: HashSet::new(),
+            stop_signal: false,
+            humanize_config: HumanizeConfig::default(),
+            voice_leading_enabled: false,
+            voice_leading_style: VoiceLeadingStyle::default(),
+            key: None,
+            mode: None,
+            octave_mode: None,
+            generator_enabled: false,
+            generator_mode: None,
+            generator_selected_notes: None,
+            generator_velocity: 100,
+            generator_note_duration_beats: 0.5,
+            keyboard_events: Vec::new(),
+            keyboard_enabled: false,
+        }
+    }
 }
 
 /// Spawns the MIDI router in a background thread for GUI mode.
@@ -110,6 +149,9 @@ fn run_gui_router_inner(
     let epoch = Instant::now();
     let now_ms = || epoch.elapsed().as_secs_f64() * 1000.0;
 
+    // Create note generator (owned by router thread)
+    let mut generator = NoteGenerator::new();
+
     // Start the beat clock
     humanizer.clock_mut().start(now_ms());
 
@@ -151,6 +193,76 @@ fn run_gui_router_inner(
             if let Some(new_octave) = state_lock.octave_mode.take() {
                 engine.set_octave_mode(new_octave);
             }
+
+            // Sync generator config from GUI — collect pending events, process after lock drop
+            let mut pending_gen_events: Vec<GeneratorEvent> = Vec::new();
+            let gen_enabled = state_lock.generator_enabled;
+            if generator.enabled() != gen_enabled {
+                pending_gen_events.extend(generator.set_enabled(gen_enabled));
+            }
+            if let Some(new_mode) = state_lock.generator_mode.take() {
+                pending_gen_events.extend(generator.set_mode(new_mode));
+            }
+            if let Some(new_notes) = state_lock.generator_selected_notes.take() {
+                pending_gen_events.extend(generator.set_selected_notes(new_notes));
+            }
+            generator.set_velocity(state_lock.generator_velocity);
+            generator.set_note_duration_beats(state_lock.generator_note_duration_beats);
+
+            // Drain keyboard events
+            let kbd_events: Vec<(bool, Note)> = state_lock.keyboard_events.drain(..).collect();
+            drop(state_lock);
+
+            // Process pending generator note-off events
+            for event in pending_gen_events {
+                if let GeneratorEvent::NoteOff(note) = event {
+                    let _ = handle_note_off_gui(
+                        Channel::Ch1, note, Velocity::try_from(0u8).unwrap(),
+                        &mut engine, &mut output_router, &state, &mut humanizer, &mut delay_queue, current_ms,
+                    );
+                }
+            }
+
+            // Process keyboard events through harmony pipeline
+            for (is_on, note) in kbd_events {
+                if is_on {
+                    let _ = handle_note_on_gui(
+                        Channel::Ch1, note, Velocity::try_from(100u8).unwrap(),
+                        &mut engine, &mut output_router, &state, &mut humanizer, &mut delay_queue, current_ms,
+                    );
+                } else {
+                    let _ = handle_note_off_gui(
+                        Channel::Ch1, note, Velocity::try_from(0u8).unwrap(),
+                        &mut engine, &mut output_router, &state, &mut humanizer, &mut delay_queue, current_ms,
+                    );
+                }
+            }
+        }
+
+        // Tick generator and process events through harmony pipeline
+        if generator.enabled() {
+            let beat_pos = humanizer.clock().beat_position();
+            let bpm = humanizer.config().bpm;
+            let gen_events = generator.tick(beat_pos, bpm);
+            let current_ms = now_ms();
+            for event in gen_events {
+                match event {
+                    GeneratorEvent::NoteOn(note, vel) => {
+                        let velocity = Velocity::try_from(vel).unwrap_or(Velocity::MAX);
+                        let _ = handle_note_on_gui(
+                            Channel::Ch1, note, velocity,
+                            &mut engine, &mut output_router, &state, &mut humanizer, &mut delay_queue, current_ms,
+                        );
+                    }
+                    GeneratorEvent::NoteOff(note) => {
+                        let _ = handle_note_off_gui(
+                            Channel::Ch1, note, Velocity::try_from(0u8).unwrap(),
+                            &mut engine, &mut output_router, &state, &mut humanizer, &mut delay_queue, current_ms,
+                        );
+                    }
+                }
+            }
+            ctx.request_repaint();
         }
 
         // Check metronome: generate click on beat crossings

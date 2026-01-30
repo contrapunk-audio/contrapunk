@@ -49,6 +49,11 @@ impl BeatClock {
         self.beat_position
     }
 
+    /// Returns the current beat position within the bar.
+    pub fn beat_position(&self) -> f64 {
+        self.beat_position
+    }
+
     /// Returns true if the current position is on an offbeat (fractional part between 0.4 and 0.6).
     pub fn is_offbeat(&self) -> bool {
         let frac = self.beat_position.fract();
