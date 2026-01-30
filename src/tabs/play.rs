@@ -39,6 +39,21 @@ impl ContrapunkApp {
         ui.separator();
         ui.add_space(5.0);
         ui.label(egui::RichText::new("Preset").strong());
+        // Show active preset persona prominently
+        if let Some(preset) = self.preset_manager.active() {
+            ui.label(
+                egui::RichText::new(&preset.persona)
+                    .size(18.0)
+                    .strong()
+                    .color(egui::Color32::from_rgb(218, 165, 32)) // gold
+            );
+            ui.label(
+                egui::RichText::new(&preset.genre)
+                    .size(12.0)
+                    .italics()
+                    .color(egui::Color32::GRAY)
+            );
+        }
         let active_name = self.preset_manager.active()
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "(none)".to_string());
