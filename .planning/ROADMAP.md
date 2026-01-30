@@ -208,10 +208,16 @@ Plans:
   4. Each preset configures harmony mode, voice leading, humanization, and octave settings as a bundle
   5. Users can customize and save their own presets
   6. Style presets provide audibly distinct musical character
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
-- [ ] 06.3-01: TBD (run /gsd:plan-phase 6.3 to break down)
+- [ ] 06.3-01-PLAN.md — Theme system, color palette, serde deps, tab navigation skeleton
+- [ ] 06.3-02-PLAN.md — Preset data model, built-in presets with character personas, PresetManager
+- [ ] 06.3-03-PLAN.md — Layout refactor: tabbed navigation (Play/Craft/Settings) with always-visible piano
+- [ ] 06.3-04-PLAN.md — Custom steampunk widgets (ornate sliders, decorative frame, gear helpers)
+- [ ] 06.3-05-PLAN.md — Preset persistence, JSON export/import, preset management UI in Craft tab
+- [ ] 06.3-06-PLAN.md — Ambient animations (rotating gears, particles) and music-reactive visuals
+- [ ] 06.3-07-PLAN.md — Human verification checkpoint
 
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
@@ -276,7 +282,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6. Humanization | 3/3 | Complete | 2026-01-29 |
 | 6.1 Humanization UI Fix (INSERTED) | 2/2 | Complete | 2026-01-30 |
 | 6.2 Voice Leading (INSERTED) | 0/4 | Planning complete | - |
-| 6.3 Style Update (INSERTED) | 0/? | Not started | - |
+| 6.3 Style Update (INSERTED) | 0/7 | Planning complete | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
