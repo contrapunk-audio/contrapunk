@@ -325,11 +325,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.2 Voice Leading (INSERTED) | 0/4 | Planning complete | - |
 | 6.3 Style Update (INSERTED) | 0/7 | Planning complete | - |
 | 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/? | Not started | - |
-| 6.5 Note Generator (INSERTED) | 0/4 | Planning complete | - |
+| 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-30 — Phase 6.5 inserted (Note Generator — virtual MIDI input with note/chord selection and beat-synced patterns)*
+*Last updated: 2026-01-31 — Phase 6.5 deferred (Note Generator non-functional, voice leading needs improvement)*

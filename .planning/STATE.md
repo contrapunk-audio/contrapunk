@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.5 — Note Generator
+**Current focus:** Phase 6.5 deferred — deciding next steps
 
 ## Current Position
 
 Phase: 6.5 of 9 (Note Generator)
-Plan: 3 of 4 in current phase (plans 01, 02, 03 complete)
-Status: In progress
-Last activity: 2026-01-30 - Completed 06.5-02-PLAN.md (Generator Integration)
+Plan: 4 of 4 in current phase (plans 01-03 complete, plan 04 failed verification)
+Status: Deferred
+Last activity: 2026-01-31 - Human verification failed (Note Generator non-functional, voice leading not distinct enough)
 
 Progress: [████████░] 100% (26 of 26 phase plans complete)
 
@@ -214,9 +214,20 @@ All success criteria verified (5/5):
 
 Human-verified: "it works well in the browser"
 
+## Phase 6.5 Outcome
+
+**Note Generator - DEFERRED**
+
+Human verification failed:
+1. Note Generator feature is non-functional
+2. Voice leading modes not distinct enough between styles
+3. User chose to defer note generation work
+
+Feedback: "voice leading isn't unique enough between different voice leading modes" and "note generator just doesn't work"
+
 ## Session Continuity
 
-Last session: 2026-01-30
-Stopped at: Completed 06.5-02-PLAN.md (Generator Integration)
+Last session: 2026-01-31
+Stopped at: Phase 6.5 verification failed — deferred
 Resume file: None
-Next: Execute 06.5-04-PLAN.md (Beat-sync integration)
+Next: User to decide next phase (6.2 voice leading needs work, or move to other phases)
