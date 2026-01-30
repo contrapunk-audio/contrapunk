@@ -20,6 +20,7 @@ use crate::humanize::HumanizeConfig;
 #[cfg(target_arch = "wasm32")]
 use crate::humanize::{Humanizer, DelayQueue, Metronome};
 use crate::piano::PianoKeyboard;
+use crate::theme::ContrapunkTheme;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::midi::ports::{list_input_ports, list_output_ports};
 #[cfg(not(target_arch = "wasm32"))]
@@ -28,6 +29,24 @@ use crate::router::{spawn_gui_router, GUIRouterState};
 use crate::midi::web;
 #[cfg(target_arch = "wasm32")]
 use wmidi::{MidiMessage, Note, Channel, Velocity};
+
+/// Tab navigation for the main UI.
+#[derive(Clone, Copy, PartialEq)]
+enum Tab {
+    Play,
+    Craft,
+    Settings,
+}
+
+impl Tab {
+    fn label(&self) -> &'static str {
+        match self {
+            Tab::Play => "Play",
+            Tab::Craft => "Craft",
+            Tab::Settings => "Settings",
+        }
+    }
+}
 
 /// Converts a MIDI note number to a note name string (e.g., 60 -> "C4").
 fn midi_to_name(midi: u8) -> String {
@@ -165,6 +184,10 @@ pub struct ContrapunkApp {
     /// Active harmony notes for WASM display
     #[cfg(target_arch = "wasm32")]
     wasm_harmony_notes: HashSet<u8>,
+    /// Currently active tab
+    active_tab: Tab,
+    /// Whether the theme has been applied (apply only once)
+    theme_applied: bool,
     /// Whether voice leading is enabled
     voice_leading_enabled: bool,
     /// Current voice leading style
@@ -213,6 +236,8 @@ impl ContrapunkApp {
             wasm_input_notes: HashSet::new(),
             #[cfg(target_arch = "wasm32")]
             wasm_harmony_notes: HashSet::new(),
+            active_tab: Tab::Play,
+            theme_applied: false,
             voice_leading_enabled: false,
             voice_leading_style: VoiceLeadingStyle::default(),
             humanize_config: HumanizeConfig::default(),
@@ -562,6 +587,21 @@ impl ContrapunkApp {
 
 impl eframe::App for ContrapunkApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply steampunk theme once on first frame
+        if !self.theme_applied {
+            ContrapunkTheme::apply(ctx);
+            self.theme_applied = true;
+        }
+
+        // Tab bar at the top
+        egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                for tab in &[Tab::Play, Tab::Craft, Tab::Settings] {
+                    ui.selectable_value(&mut self.active_tab, *tab, tab.label());
+                }
+            });
+        });
+
         // WASM: populate device lists from MidiAccess and process MIDI each frame
         #[cfg(target_arch = "wasm32")]
         {
