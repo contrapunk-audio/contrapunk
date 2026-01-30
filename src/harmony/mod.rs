@@ -8,6 +8,7 @@ mod engine;
 mod modes;
 mod scale;
 mod stateful;
+pub mod voice_leading;
 
 pub use config::{Key, HarmonyMode, OctaveMode};
 pub use engine::HarmonyEngine;
