@@ -921,7 +921,7 @@ impl eframe::App for ContrapunkApp {
 
                 // Process computer keyboard input (WASM)
                 if self.keyboard_enabled {
-                    let (presses, releases) = ctx.input(|input| {
+                    let (presses, releases, focus_lost, keys_down) = ctx.input(|input| {
                         let mut kp = Vec::new();
                         let mut kr = Vec::new();
                         for event in &input.events {
@@ -939,7 +939,12 @@ impl eframe::App for ContrapunkApp {
                                 _ => {}
                             }
                         }
-                        (kp, kr)
+                        // Collect currently held keys for reconciliation
+                        let down: std::collections::HashSet<u8> = input.keys_down.iter()
+                            .filter_map(|k| Self::key_to_midi_note(*k))
+                            .collect();
+                        let lost = input.focused.is_some() && !input.focused.unwrap_or(true);
+                        (kp, kr, lost, down)
                     });
                     for midi in presses {
                         if self.keyboard_held_keys.insert(midi) {
@@ -950,6 +955,27 @@ impl eframe::App for ContrapunkApp {
                     }
                     for midi in releases {
                         if self.keyboard_held_keys.remove(&midi) {
+                            let note = Note::from_u8_lossy(midi);
+                            let vel = Velocity::try_from(0u8).unwrap();
+                            self.handle_wasm_note_off(Channel::Ch1, note, vel);
+                        }
+                    }
+                    // Reconcile: release any keys we think are held but aren't actually down
+                    // This catches missed keyup events (common in WASM/browser)
+                    let stale: Vec<u8> = self.keyboard_held_keys.iter()
+                        .filter(|midi| !keys_down.contains(midi))
+                        .copied()
+                        .collect();
+                    for midi in stale {
+                        self.keyboard_held_keys.remove(&midi);
+                        let note = Note::from_u8_lossy(midi);
+                        let vel = Velocity::try_from(0u8).unwrap();
+                        self.handle_wasm_note_off(Channel::Ch1, note, vel);
+                    }
+                    // On focus loss, release everything
+                    if focus_lost {
+                        let all_held: Vec<u8> = self.keyboard_held_keys.drain().collect();
+                        for midi in all_held {
                             let note = Note::from_u8_lossy(midi);
                             let vel = Velocity::try_from(0u8).unwrap();
                             self.handle_wasm_note_off(Channel::Ch1, note, vel);
@@ -999,7 +1025,7 @@ impl eframe::App for ContrapunkApp {
 
             // Process keyboard input for native (push events to router state)
             if self.keyboard_enabled {
-                let (presses, releases) = ctx.input(|input| {
+                let (presses, releases, keys_down, focus_lost) = ctx.input(|input| {
                     let mut kp = Vec::new();
                     let mut kr = Vec::new();
                     for event in &input.events {
@@ -1017,7 +1043,11 @@ impl eframe::App for ContrapunkApp {
                             _ => {}
                         }
                     }
-                    (kp, kr)
+                    let down: std::collections::HashSet<u8> = input.keys_down.iter()
+                        .filter_map(|k| Self::key_to_midi_note(*k))
+                        .collect();
+                    let lost = input.focused.is_some() && !input.focused.unwrap_or(true);
+                    (kp, kr, down, lost)
                 });
                 let mut kbd_events: Vec<(bool, wmidi::Note)> = Vec::new();
                 for midi in presses {
@@ -1027,6 +1057,22 @@ impl eframe::App for ContrapunkApp {
                 }
                 for midi in releases {
                     if self.keyboard_held_keys.remove(&midi) {
+                        kbd_events.push((false, wmidi::Note::from_u8_lossy(midi)));
+                    }
+                }
+                // Reconcile: release any keys we think are held but aren't actually down
+                let stale: Vec<u8> = self.keyboard_held_keys.iter()
+                    .filter(|midi| !keys_down.contains(midi))
+                    .copied()
+                    .collect();
+                for midi in stale {
+                    self.keyboard_held_keys.remove(&midi);
+                    kbd_events.push((false, wmidi::Note::from_u8_lossy(midi)));
+                }
+                // On focus loss, release everything
+                if focus_lost {
+                    let all_held: Vec<u8> = self.keyboard_held_keys.drain().collect();
+                    for midi in all_held {
                         kbd_events.push((false, wmidi::Note::from_u8_lossy(midi)));
                     }
                 }
