@@ -15,22 +15,22 @@ fn card(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
         .fill(WIDGET_BG)
         .stroke(egui::Stroke::new(1.0, BORDER))
         .rounding(egui::Rounding::ZERO)
-        .inner_margin(egui::Margin::same(16))
+        .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {
             add_contents(ui);
         });
 }
 
 fn card_header(ui: &mut egui::Ui, label: &str) {
-    ui.label(egui::RichText::new(label).color(GOLD).size(14.0).strong());
-    ui.add_space(6.0);
+    ui.label(egui::RichText::new(label).color(GOLD).size(12.0).strong());
+    ui.add_space(3.0);
 }
 
 impl ContrapunkApp {
     /// Draws the single-screen two-column layout.
     pub fn draw_main_ui(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            ui.add_space(12.0);
+            ui.add_space(4.0);
 
             ui.columns(2, |cols| {
                 self.draw_left_column(&mut cols[0]);
@@ -68,7 +68,7 @@ impl ContrapunkApp {
             });
         });
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
         // --- Preset card ---
         card(ui, |ui| {
@@ -221,7 +221,7 @@ impl ContrapunkApp {
             }
         });
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
         // --- MIDI Input card ---
         card(ui, |ui| {
@@ -298,7 +298,7 @@ impl ContrapunkApp {
             }
         });
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
         // --- Output Slots card (all 8) ---
         card(ui, |ui| {
@@ -310,7 +310,7 @@ impl ContrapunkApp {
             }
         });
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
         // --- Active Notes card ---
         let (input_notes, harmony_notes) = self.get_router_notes();
@@ -397,7 +397,7 @@ impl ContrapunkApp {
                 });
         });
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
         // --- Voice Leading card ---
         card(ui, |ui| {
@@ -417,7 +417,7 @@ impl ContrapunkApp {
             }
         });
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
         // --- Metronome card ---
         card(ui, |ui| {
@@ -458,7 +458,7 @@ impl ContrapunkApp {
             }
         });
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
         // --- Humanization card (all sub-sections inline, no collapse) ---
         card(ui, |ui| {
@@ -466,7 +466,7 @@ impl ContrapunkApp {
             ornate_toggle(ui, "Enable Humanization", &mut self.humanize_config.enabled);
 
             if self.humanize_config.enabled {
-                ui.add_space(6.0);
+                ui.add_space(3.0);
 
                 // Timing Jitter
                 ui.label(egui::RichText::new("Timing Jitter").color(TEXT_SECONDARY).strong());
@@ -483,7 +483,7 @@ impl ContrapunkApp {
                     }
                 }
 
-                ui.add_space(6.0);
+                ui.add_space(3.0);
 
                 // Velocity
                 ui.label(egui::RichText::new("Velocity").color(TEXT_SECONDARY).strong());
@@ -494,7 +494,7 @@ impl ContrapunkApp {
                     self.humanize_config.velocity_variation = vel as u8;
                 }
 
-                ui.add_space(6.0);
+                ui.add_space(3.0);
 
                 // Duration
                 ui.label(egui::RichText::new("Duration").color(TEXT_SECONDARY).strong());
@@ -505,7 +505,7 @@ impl ContrapunkApp {
                     self.humanize_config.duration_variation_ms = dur as u16;
                 }
 
-                ui.add_space(6.0);
+                ui.add_space(3.0);
 
                 // Swing/Groove
                 ui.label(egui::RichText::new("Swing/Groove").color(TEXT_SECONDARY).strong());

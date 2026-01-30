@@ -51,9 +51,9 @@ impl ContrapunkTheme {
             (TextStyle::Monospace,FontId::new(10.0, FontFamily::Monospace)),
         ].into();
 
-        // Increase widget spacing for pixel font readability
-        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        style.spacing.button_padding = egui::vec2(8.0, 4.0);
+        // Compact widget spacing for pixel font
+        style.spacing.item_spacing = egui::vec2(6.0, 4.0);
+        style.spacing.button_padding = egui::vec2(6.0, 3.0);
 
         ctx.set_style(style);
 

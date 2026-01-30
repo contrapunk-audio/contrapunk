@@ -691,13 +691,13 @@ impl eframe::App for ContrapunkApp {
             ctx.request_repaint_after(Duration::from_millis(33));
         }
 
-        // Title bar
-        egui::TopBottomPanel::top("title_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
+        // Title bar — padded to clear the ornate border overlay
+        egui::TopBottomPanel::top("title_bar")
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 12, right: 12, top: 10, bottom: 4 }))
+            .show(ctx, |ui| {
                 ui.label(egui::RichText::new("CONTRAPUNK")
                     .color(GOLD).size(18.0).strong());
             });
-        });
 
         // WASM: populate device lists from MidiAccess and process MIDI each frame
         #[cfg(target_arch = "wasm32")]
