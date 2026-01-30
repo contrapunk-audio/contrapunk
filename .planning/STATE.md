@@ -202,6 +202,6 @@ Human-verified: "it works well in the browser"
 ## Session Continuity
 
 Last session: 2026-01-30
-Stopped at: Completed 06.3-06-PLAN.md (Ambient Animations and Music-Reactive Visuals)
-Resume file: None
-Next: 06.3-07-PLAN.md
+Stopped at: Retro pixel art theme overhaul — deployed, awaiting user review
+Resume file: .planning/phases/06.3-style-update/.continue-here.md
+Next: User review of retro pixel theme at contrapunk.fly.dev, then commit + checkpoint
