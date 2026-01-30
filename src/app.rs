@@ -23,7 +23,7 @@ use crate::humanize::{Humanizer, DelayQueue, Metronome};
 use crate::piano::PianoKeyboard;
 use crate::preset::{PresetManager, storage as preset_storage};
 use crate::theme::ContrapunkTheme;
-use crate::theme::widgets::{draw_gear, draw_ornate_frame};
+use crate::theme::widgets::{draw_ornate_frame, draw_scanlines};
 use crate::theme::colors::*;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::midi::ports::{list_input_ports, list_output_ports};
@@ -33,24 +33,6 @@ use crate::router::{spawn_gui_router, GUIRouterState};
 use crate::midi::web;
 #[cfg(target_arch = "wasm32")]
 use wmidi::{MidiMessage, Note, Channel, Velocity};
-
-/// Tab navigation for the main UI.
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum Tab {
-    Play,
-    Craft,
-    Settings,
-}
-
-impl Tab {
-    fn label(&self) -> &'static str {
-        match self {
-            Tab::Play => "Play",
-            Tab::Craft => "Craft",
-            Tab::Settings => "Settings",
-        }
-    }
-}
 
 /// Converts a MIDI note number to a note name string (e.g., 60 -> "C4").
 pub(crate) fn midi_to_name(midi: u8) -> String {
@@ -188,8 +170,6 @@ pub struct ContrapunkApp {
     /// Active harmony notes for WASM display
     #[cfg(target_arch = "wasm32")]
     wasm_harmony_notes: HashSet<u8>,
-    /// Currently active tab
-    pub(crate) active_tab: Tab,
     /// Preset manager for built-in and custom presets
     pub(crate) preset_manager: PresetManager,
     /// Deferred start signal (set by Play tab, consumed in update)
@@ -267,7 +247,6 @@ impl ContrapunkApp {
             wasm_input_notes: HashSet::new(),
             #[cfg(target_arch = "wasm32")]
             wasm_harmony_notes: HashSet::new(),
-            active_tab: Tab::Play,
             preset_manager: PresetManager::new(),
             pending_start: false,
             pending_stop: false,
@@ -712,14 +691,11 @@ impl eframe::App for ContrapunkApp {
             ctx.request_repaint_after(Duration::from_millis(33));
         }
 
-        }
-
-        // Tab bar at the top
-        egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
+        // Title bar
+        egui::TopBottomPanel::top("title_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                for tab in &[Tab::Play, Tab::Craft, Tab::Settings] {
-                    ui.selectable_value(&mut self.active_tab, *tab, tab.label());
-                }
+                ui.label(egui::RichText::new("CONTRAPUNK")
+                    .color(GOLD).size(18.0).strong());
             });
         });
 
@@ -869,58 +845,24 @@ impl eframe::App for ContrapunkApp {
             ui.add_space(5.0);
         });
 
-        // CentralPanel with tab content routing
+        // CentralPanel with single-screen layout
         egui::CentralPanel::default().show(ctx, |ui| {
-            match self.active_tab {
-                Tab::Play => self.draw_play_tab(ui, ctx),
-                Tab::Craft => self.draw_craft_tab(ui),
-                Tab::Settings => self.draw_settings_tab(ui),
-            }
+            self.draw_main_ui(ui, ctx);
         });
 
-        // --- Render ambient animations on foreground layer (non-interactive overlay) ---
+        // --- Render retro pixel overlay on foreground layer (non-interactive) ---
         {
             let screen = ctx.screen_rect();
             let fg_painter = ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,
                 egui::Id::new("ambient_overlay"),
             ));
-            let time = self.anim_time;
-            let activity = self.note_activity;
 
-            // Decorative frame — always visible, corners only
+            // Pixel-art decorative frame
             draw_ornate_frame(&fg_painter, screen.shrink(2.0));
 
-            // Corner gears — subtle decorative elements
-            let gear_specs: [(egui::Pos2, f32, f32); 4] = [
-                (egui::pos2(screen.min.x + 18.0, screen.min.y + 18.0), 14.0, 0.3),
-                (egui::pos2(screen.max.x - 18.0, screen.min.y + 18.0), 12.0, -0.2),
-                (egui::pos2(screen.min.x + 16.0, screen.max.y - 16.0), 13.0, 0.25),
-                (egui::pos2(screen.max.x - 16.0, screen.max.y - 16.0), 11.0, -0.3),
-            ];
-
-            for (pos, radius, base_speed) in &gear_specs {
-                let speed = base_speed + activity * 2.0 * base_speed.signum();
-                let angle = time * speed;
-                let a = activity.min(1.0);
-                let gear_color = egui::Color32::from_rgba_premultiplied(
-                    (WIDGET_INACTIVE.r() as f32 + (COPPER.r() as f32 - WIDGET_INACTIVE.r() as f32) * a) as u8,
-                    (WIDGET_INACTIVE.g() as f32 + (COPPER.g() as f32 - WIDGET_INACTIVE.g() as f32) * a) as u8,
-                    (WIDGET_INACTIVE.b() as f32 + (COPPER.b() as f32 - WIDGET_INACTIVE.b() as f32) * a) as u8,
-                    90,
-                );
-                if activity > 0.3 {
-                    let glow_alpha = ((activity - 0.3) * 80.0).min(60.0) as u8;
-                    fg_painter.circle_filled(
-                        *pos,
-                        radius * 2.0,
-                        egui::Color32::from_rgba_premultiplied(
-                            COPPER.r(), COPPER.g(), COPPER.b(), glow_alpha,
-                        ),
-                    );
-                }
-                draw_gear(&fg_painter, *pos, *radius, 10, angle, gear_color);
-            }
+            // CRT scanline overlay
+            draw_scanlines(&fg_painter, screen);
         }
     }
 }
