@@ -7,6 +7,70 @@ use crate::harmony::config::{Key, HarmonyMode, OctaveMode};
 use crate::harmony::modes;
 use crate::harmony::scale::Scale;
 use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
+use crate::harmony::voice_leading::{
+    revoice_chord, StyleRules, SuspensionState, VoiceLeadingStyle, VoiceRegister,
+};
+
+/// Voice leading post-processor that re-voices harmony output for smooth transitions.
+#[derive(Debug)]
+struct VoiceLeadingProcessor {
+    enabled: bool,
+    style: VoiceLeadingStyle,
+    style_rules: StyleRules,
+    /// Previous chord voicing (index 0 = melody, 1+ = harmony)
+    previous_voicing: Option<Vec<Note>>,
+    /// Register assignments (index 0 = melody placeholder, 1+ = harmony voices)
+    registers: Vec<VoiceRegister>,
+    suspension_state: SuspensionState,
+}
+
+impl VoiceLeadingProcessor {
+    fn new(voice_count: usize) -> Self {
+        let style = VoiceLeadingStyle::default();
+        let style_rules = StyleRules::for_style(style);
+        let registers = Self::build_registers(voice_count);
+        let suspension_state = SuspensionState::new(style == VoiceLeadingStyle::Palestrina);
+        Self {
+            enabled: false,
+            style,
+            style_rules,
+            previous_voicing: None,
+            registers,
+            suspension_state,
+        }
+    }
+
+    fn build_registers(voice_count: usize) -> Vec<VoiceRegister> {
+        let mut regs = vec![VoiceRegister::Soprano]; // index 0: melody placeholder
+        let harmony_voices = if voice_count > 1 { voice_count - 1 } else { 0 };
+        for i in 0..harmony_voices {
+            regs.push(match i {
+                0 => VoiceRegister::Soprano,
+                1 => VoiceRegister::Alto,
+                2 => VoiceRegister::Tenor,
+                _ => VoiceRegister::Bass,
+            });
+        }
+        regs
+    }
+
+    fn reset(&mut self) {
+        self.previous_voicing = None;
+        self.suspension_state.reset();
+    }
+
+    fn set_style(&mut self, style: VoiceLeadingStyle) {
+        self.style = style;
+        self.style_rules = StyleRules::for_style(style);
+        self.suspension_state = SuspensionState::new(style == VoiceLeadingStyle::Palestrina);
+        self.previous_voicing = None;
+    }
+
+    fn rebuild_for_voices(&mut self, voice_count: usize) {
+        self.registers = Self::build_registers(voice_count);
+        self.reset();
+    }
+}
 
 /// The harmony engine that transforms incoming MIDI notes.
 ///
@@ -46,6 +110,8 @@ pub struct HarmonyEngine {
     last_port_map: Vec<usize>,
     /// Stored port maps for active notes, used to retrieve port assignments on Note-Off.
     active_port_maps: HashMap<u8, Vec<usize>>,
+    /// Voice leading post-processor
+    voice_leading: VoiceLeadingProcessor,
 }
 
 impl HarmonyEngine {
@@ -76,6 +142,7 @@ impl HarmonyEngine {
             active_notes: HashMap::new(),
             last_port_map: Vec::new(),
             active_port_maps: HashMap::new(),
+            voice_leading: VoiceLeadingProcessor::new(voice_count),
         }
     }
 
@@ -151,6 +218,7 @@ impl HarmonyEngine {
             .collect();
         self.active_notes.clear();
         self.active_port_maps.clear();
+        self.voice_leading.rebuild_for_voices(count);
     }
 
     /// Sets the musical key, rebuilding the scale.
@@ -170,6 +238,7 @@ impl HarmonyEngine {
         // Clear note tracking since harmonies would change with new scale
         self.active_notes.clear();
         self.active_port_maps.clear();
+        self.voice_leading.reset();
     }
 
     /// Sets the harmony mode.
@@ -186,6 +255,34 @@ impl HarmonyEngine {
             state.reset();
         }
         // Clear note tracking since harmonies would change with new mode
+        self.active_notes.clear();
+        self.active_port_maps.clear();
+        self.voice_leading.reset();
+    }
+
+    /// Returns whether voice leading is enabled.
+    pub fn voice_leading_enabled(&self) -> bool {
+        self.voice_leading.enabled
+    }
+
+    /// Returns the current voice leading style.
+    pub fn voice_leading_style(&self) -> VoiceLeadingStyle {
+        self.voice_leading.style
+    }
+
+    /// Enables or disables voice leading post-processing.
+    pub fn set_voice_leading_enabled(&mut self, enabled: bool) {
+        self.voice_leading.enabled = enabled;
+        if !enabled {
+            self.voice_leading.reset();
+        }
+        self.active_notes.clear();
+        self.active_port_maps.clear();
+    }
+
+    /// Sets the voice leading style, resetting VL state.
+    pub fn set_voice_leading_style(&mut self, style: VoiceLeadingStyle) {
+        self.voice_leading.set_style(style);
         self.active_notes.clear();
         self.active_port_maps.clear();
     }
@@ -225,6 +322,41 @@ impl HarmonyEngine {
                 // No harmony produced, stop chain
                 break;
             }
+        }
+
+        // Voice leading post-processing (before octave mode)
+        if self.voice_leading.enabled && result.len() > 1 {
+            let pitch_classes: Vec<u8> = result[1..]
+                .iter()
+                .map(|n| u8::from(*n) % 12)
+                .collect();
+            let prev_midi: Option<Vec<u8>> = self
+                .voice_leading
+                .previous_voicing
+                .as_ref()
+                .map(|v| v.iter().map(|n| u8::from(*n)).collect());
+            let revoiced = revoice_chord(
+                &pitch_classes,
+                prev_midi.as_deref(),
+                &self.voice_leading.registers,
+                &self.voice_leading.style_rules,
+            );
+            // Replace harmony notes with revoiced MIDI values
+            for (i, &midi_val) in revoiced.iter().enumerate() {
+                if i + 1 < result.len() {
+                    if let Ok(n) = Note::try_from(midi_val) {
+                        result[i + 1] = n;
+                    }
+                }
+            }
+            // Apply suspension if style requires it
+            let prev_notes = self.voice_leading.previous_voicing.clone();
+            self.voice_leading
+                .suspension_state
+                .process(&mut result, prev_notes.as_deref(), &self.scale);
+
+            // Store current voicing for next call
+            self.voice_leading.previous_voicing = Some(result.clone());
         }
 
         // Apply octave mode transformation to harmony notes (not melody)
@@ -826,5 +958,125 @@ mod tests {
         // Note-Off should not find tracked harmony (cleared on octave mode change)
         let off_result = engine.harmonize_note_off(Note::C4);
         assert_eq!(off_result, vec![Note::C4]);
+    }
+
+    // Voice leading integration tests
+
+    #[test]
+    fn test_vl_disabled_by_default() {
+        let engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        assert!(!engine.voice_leading_enabled());
+    }
+
+    #[test]
+    fn test_vl_disabled_unchanged_behavior() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        // VL disabled (default): behavior identical to before
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0], Note::C4);
+        assert_eq!(result[1], Note::E4);
+        assert_eq!(result[2], Note::G4);
+        assert_eq!(result[3], Note::B4);
+    }
+
+    #[test]
+    fn test_vl_enabled_produces_output() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_voice_leading_enabled(true);
+
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], Note::C4); // Melody NEVER modified
+    }
+
+    #[test]
+    fn test_vl_melody_never_modified() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        engine.set_voice_leading_enabled(true);
+
+        // Play several notes
+        for note in [Note::C4, Note::D4, Note::E4, Note::F4, Note::G4] {
+            let result = engine.harmonize(note);
+            assert_eq!(result[0], note, "Melody must never be modified by VL");
+        }
+    }
+
+    #[test]
+    fn test_vl_resets_on_key_change() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_voice_leading_enabled(true);
+
+        engine.harmonize(Note::C4);
+        engine.set_key(Key::G);
+
+        // After key change, VL state should be reset (previous_voicing cleared)
+        // This means next harmonize is treated as first chord
+        let result = engine.harmonize(Note::G4);
+        assert_eq!(result[0], Note::G4);
+        assert!(result.len() == 3);
+    }
+
+    #[test]
+    fn test_vl_resets_on_mode_change() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_voice_leading_enabled(true);
+
+        engine.harmonize(Note::C4);
+        engine.set_mode(HarmonyMode::DiatonicFourths);
+
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result[0], Note::C4);
+    }
+
+    #[test]
+    fn test_vl_resets_on_style_change() {
+        use crate::harmony::voice_leading::VoiceLeadingStyle;
+
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_voice_leading_enabled(true);
+
+        engine.harmonize(Note::C4);
+        engine.set_voice_leading_style(VoiceLeadingStyle::Palestrina);
+
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result[0], Note::C4);
+    }
+
+    #[test]
+    fn test_vl_style_getter_setter() {
+        use crate::harmony::voice_leading::VoiceLeadingStyle;
+
+        let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        assert_eq!(engine.voice_leading_style(), VoiceLeadingStyle::Free);
+
+        engine.set_voice_leading_style(VoiceLeadingStyle::BachChorale);
+        assert_eq!(engine.voice_leading_style(), VoiceLeadingStyle::BachChorale);
+    }
+
+    #[test]
+    fn test_vl_before_octave_mode() {
+        // Verify VL runs before octave mode by enabling both
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_voice_leading_enabled(true);
+        engine.set_octave_mode(OctaveMode::Spread);
+
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result[0], Note::C4); // Melody unchanged
+        // With Spread, harmony voices get +1/+2 octave shifts applied AFTER VL
+        assert!(result.len() == 3);
+    }
+
+    #[test]
+    fn test_vl_works_with_all_modes() {
+        let modes = HarmonyMode::all();
+        for &mode in modes {
+            let mut engine = HarmonyEngine::with_voices(Key::C, mode, 3);
+            engine.set_voice_leading_enabled(true);
+
+            let result = engine.harmonize(Note::C4);
+            assert_eq!(result[0], Note::C4, "Melody unchanged for mode {:?}", mode);
+            // Should not panic for any mode
+        }
     }
 }

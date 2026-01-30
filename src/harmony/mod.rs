@@ -14,3 +14,4 @@ pub use config::{Key, HarmonyMode, OctaveMode};
 pub use engine::HarmonyEngine;
 pub use scale::Scale;
 pub use stateful::{ContraryMotionState, CounterpointState};
+pub use voice_leading::VoiceLeadingStyle;
