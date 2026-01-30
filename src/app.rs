@@ -595,7 +595,7 @@ impl eframe::App for ContrapunkApp {
                 self.wasm_humanizer.tick(now_ms);
 
                 // Check for metronome beat crossings
-                if self.humanize_config.enabled && self.wasm_metronome.enabled {
+                if self.wasm_metronome.enabled {
                     if let Some(beat) = self.wasm_humanizer.clock().beat_crossed() {
                         let click_on = self.wasm_metronome.generate_click(beat);
                         let click_off = self.wasm_metronome.generate_click_off(beat);
@@ -792,6 +792,42 @@ impl eframe::App for ContrapunkApp {
                         });
                 });
 
+                // --- Metronome section ---
+                egui::CollapsingHeader::new("Metronome")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                    ui.add(egui::Slider::new(&mut self.humanize_config.bpm, 40.0..=240.0).text("BPM"));
+                    ui.label(format!("Time Sig: {}/{}", self.humanize_config.beats_per_bar, self.humanize_config.beat_unit));
+                    ui.checkbox(&mut self.humanize_config.metronome_enabled, "Metronome Click");
+                    if self.humanize_config.metronome_enabled {
+                        let metro_port = self.humanize_config.metronome_output_port.unwrap_or(0);
+                        let port_label = self.state.output_slots.get(metro_port)
+                            .and_then(|s| *s)
+                            .and_then(|idx| self.state.available_outputs.iter().find(|(i, _)| *i == idx))
+                            .map(|(_, name)| name.clone())
+                            .unwrap_or_else(|| format!("Out {}", metro_port + 1));
+                        ui.label("Output:");
+                        egui::ComboBox::from_id_salt("metronome_output")
+                            .selected_text(&port_label)
+                            .width(160.0)
+                            .show_ui(ui, |ui| {
+                                for (slot_idx, slot) in self.state.output_slots.iter().enumerate() {
+                                    if slot.is_some() {
+                                        let name = slot
+                                            .and_then(|idx| self.state.available_outputs.iter().find(|(i, _)| *i == idx))
+                                            .map(|(_, name)| name.clone())
+                                            .unwrap_or_else(|| format!("Out {}", slot_idx + 1));
+                                        let is_selected = self.humanize_config.metronome_output_port == Some(slot_idx)
+                                            || (self.humanize_config.metronome_output_port.is_none() && slot_idx == 0);
+                                        if ui.selectable_label(is_selected, &name).clicked() {
+                                            self.humanize_config.metronome_output_port = Some(slot_idx);
+                                        }
+                                    }
+                                }
+                            });
+                    }
+                });
+
                 // --- Humanization section ---
                 egui::CollapsingHeader::new("Humanization")
                     .default_open(true)
@@ -800,42 +836,6 @@ impl eframe::App for ContrapunkApp {
 
                     if self.humanize_config.enabled {
                         ui.add_space(5.0);
-
-                        // Beat Clock
-                        egui::CollapsingHeader::new("Beat Clock")
-                            .default_open(true)
-                            .show(ui, |ui| {
-                            ui.add(egui::Slider::new(&mut self.humanize_config.bpm, 40.0..=240.0).text("BPM"));
-                            ui.label(format!("Time Sig: {}/{}", self.humanize_config.beats_per_bar, self.humanize_config.beat_unit));
-                            ui.checkbox(&mut self.humanize_config.metronome_enabled, "Metronome Click");
-                            if self.humanize_config.metronome_enabled {
-                                let metro_port = self.humanize_config.metronome_output_port.unwrap_or(0);
-                                let port_label = self.state.output_slots.get(metro_port)
-                                    .and_then(|s| *s)
-                                    .and_then(|idx| self.state.available_outputs.iter().find(|(i, _)| *i == idx))
-                                    .map(|(_, name)| name.clone())
-                                    .unwrap_or_else(|| format!("Out {}", metro_port + 1));
-                                ui.label("Metronome Output:");
-                                egui::ComboBox::from_id_salt("metronome_output")
-                                    .selected_text(&port_label)
-                                    .width(160.0)
-                                    .show_ui(ui, |ui| {
-                                        for (slot_idx, slot) in self.state.output_slots.iter().enumerate() {
-                                            if slot.is_some() {
-                                                let name = slot
-                                                    .and_then(|idx| self.state.available_outputs.iter().find(|(i, _)| *i == idx))
-                                                    .map(|(_, name)| name.clone())
-                                                    .unwrap_or_else(|| format!("Out {}", slot_idx + 1));
-                                                let is_selected = self.humanize_config.metronome_output_port == Some(slot_idx)
-                                                    || (self.humanize_config.metronome_output_port.is_none() && slot_idx == 0);
-                                                if ui.selectable_label(is_selected, &name).clicked() {
-                                                    self.humanize_config.metronome_output_port = Some(slot_idx);
-                                                }
-                                            }
-                                        }
-                                    });
-                            }
-                        });
 
                         // Timing Jitter
                         egui::CollapsingHeader::new("Timing Jitter")
