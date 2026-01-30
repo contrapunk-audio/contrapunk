@@ -93,11 +93,11 @@ pub fn ornate_toggle(
 ) -> egui::Response {
     let toggle_width = 36.0;
     let toggle_height = 18.0;
-    let label_width = ui.fonts(|f| {
-        f.layout_no_wrap(label.to_string(), egui::FontId::proportional(12.0), TEXT_PRIMARY)
-            .rect
-            .width()
-    });
+    let label_width = ui.painter().layout_no_wrap(
+        label.to_string(),
+        egui::FontId::proportional(12.0),
+        TEXT_PRIMARY,
+    ).rect.width();
     let total_width = toggle_width + 8.0 + label_width;
     let desired_size = Vec2::new(total_width, toggle_height);
     let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
