@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.3 — Style Update
+**Current focus:** Phase 6.5 — Note Generator
 
 ## Current Position
 
-Phase: 6.3 of 9 (Style Update)
-Plan: 6 of 7 in current phase
+Phase: 6.5 of 9 (Note Generator)
+Plan: 1 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-30 - Completed quick task 001: Nice fonts typography
+Last activity: 2026-01-30 - Completed 06.5-01-PLAN.md (Generator Config and Engine)
 
-Progress: [██████░] 86% (6 of 7 phase plans complete)
+Progress: [███████░] 88% (23 of 26 phase plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
+- Total plans completed: 23
 - Average duration: 2.8 min
-- Total execution time: 65 min
+- Total execution time: 68 min
 
 **By Phase:**
 
@@ -33,6 +33,7 @@ Progress: [██████░] 86% (6 of 7 phase plans complete)
 | 04-server-mode | 4 | 12 min | 3 min |
 | 05-octave-variations | 1 | 3 min | 3 min |
 | 05.1-wasm-browser | 2 | 11 min | 5.5 min |
+| 06.5-note-generator | 1 | 3 min | 3 min |
 
 *Updated after each plan completion*
 
@@ -102,6 +103,8 @@ Recent decisions affecting current work:
 - [06.3-03]: Deferred start/stop via pending flags consumed in update()
 - [06.3-03]: Piano keyboard in BottomPanel always visible across all tabs
 - [06.3-04]: Gear cogs at frame corners instead of plain circles for steampunk feel
+- [06.5-01]: HeldNotes and Chord modes both play all selected notes (chord tones pre-resolved by UI)
+- [06.5-01]: Beat wrap-around detected by beat_pos < last_beat_position
 
 ### Pending Todos
 
@@ -123,6 +126,7 @@ None.
 - Phase 5.1 inserted after Phase 5: WASM and In-Browser Support with Fly.io deployment (URGENT)
 - Phase 6.1 inserted as Humanization UI Fix (URGENT) — previous 6.1 (Voice Leading) moved to 6.2, previous 6.2 (Style Update) moved to 6.3
 - Phase 6.4 inserted after Phase 6.3: Modal Harmony & Chord Detection — all church modes + harmonic/melodic minor, modal interchange with visual feedback, comprehensive chord detection (extended, slash, add chords)
+- Phase 6.5 inserted after Phase 6.4: Note Generator — virtual MIDI input source with note/chord selection and beat-synced patterns (arpeggiator, scale runner, random), feeds into harmony engine
 
 ## Phase 1 Completion Summary
 
@@ -208,6 +212,6 @@ Human-verified: "it works well in the browser"
 ## Session Continuity
 
 Last session: 2026-01-30
-Stopped at: Retro pixel art theme overhaul — deployed, awaiting user review
-Resume file: .planning/phases/06.3-style-update/.continue-here.md
-Next: User review of retro pixel theme at contrapunk.fly.dev, then commit + checkpoint
+Stopped at: Completed 06.5-01-PLAN.md (Generator Config and Engine)
+Resume file: None
+Next: Execute 06.5-02-PLAN.md (Generator UI integration)
