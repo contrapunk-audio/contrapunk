@@ -15,7 +15,7 @@ use std::rc::Rc;
 use anyhow::Result;
 use eframe::egui;
 use crate::chord::chord_display;
-use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine};
+use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine, VoiceLeadingStyle};
 use crate::humanize::HumanizeConfig;
 #[cfg(target_arch = "wasm32")]
 use crate::humanize::{Humanizer, DelayQueue, Metronome};
@@ -165,6 +165,10 @@ pub struct ContrapunkApp {
     /// Active harmony notes for WASM display
     #[cfg(target_arch = "wasm32")]
     wasm_harmony_notes: HashSet<u8>,
+    /// Whether voice leading is enabled
+    voice_leading_enabled: bool,
+    /// Current voice leading style
+    voice_leading_style: VoiceLeadingStyle,
     /// Local copy of humanization config for GUI editing
     humanize_config: HumanizeConfig,
     /// Humanizer engine for WASM note processing
@@ -209,6 +213,8 @@ impl ContrapunkApp {
             wasm_input_notes: HashSet::new(),
             #[cfg(target_arch = "wasm32")]
             wasm_harmony_notes: HashSet::new(),
+            voice_leading_enabled: false,
+            voice_leading_style: VoiceLeadingStyle::default(),
             humanize_config: HumanizeConfig::default(),
             #[cfg(target_arch = "wasm32")]
             wasm_humanizer: Humanizer::new(HumanizeConfig::default()),
@@ -581,6 +587,14 @@ impl eframe::App for ContrapunkApp {
                     .map(|p| p.now())
                     .unwrap_or(0.0);
 
+                // Sync voice leading state to engine each frame
+                if self.engine.voice_leading_enabled() != self.voice_leading_enabled {
+                    self.engine.set_voice_leading_enabled(self.voice_leading_enabled);
+                }
+                if self.engine.voice_leading_style() != self.voice_leading_style {
+                    self.engine.set_voice_leading_style(self.voice_leading_style);
+                }
+
                 // Sync humanize config to wasm_humanizer each frame
                 self.wasm_humanizer.update_config(self.humanize_config.clone());
                 self.wasm_metronome.enabled = self.humanize_config.metronome_enabled;
@@ -792,6 +806,25 @@ impl eframe::App for ContrapunkApp {
                         });
                 });
 
+                // --- Voice Leading section ---
+                egui::CollapsingHeader::new("Voice Leading")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                    ui.checkbox(&mut self.voice_leading_enabled, "Enable Voice Leading");
+                    if self.voice_leading_enabled {
+                        ui.add_space(5.0);
+                        ui.label("Style:");
+                        egui::ComboBox::from_id_salt("voice_leading_style")
+                            .selected_text(self.voice_leading_style.description())
+                            .width(160.0)
+                            .show_ui(ui, |ui| {
+                                for style in VoiceLeadingStyle::all() {
+                                    ui.selectable_value(&mut self.voice_leading_style, *style, style.description());
+                                }
+                            });
+                    }
+                });
+
                 // --- Metronome section ---
                 egui::CollapsingHeader::new("Metronome")
                     .default_open(true)
@@ -883,13 +916,15 @@ impl eframe::App for ContrapunkApp {
                     }
                 });
 
-                // Sync humanize config to router shared state each frame
+                // Sync humanize config and voice leading to router shared state each frame
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     if self.state.is_running {
                         if let Some(ref router_state) = self.router_state {
                             if let Ok(mut state_lock) = router_state.lock() {
                                 state_lock.humanize_config = self.humanize_config.clone();
+                                state_lock.voice_leading_enabled = self.voice_leading_enabled;
+                                state_lock.voice_leading_style = self.voice_leading_style;
                             }
                         }
                     }
@@ -923,6 +958,10 @@ impl eframe::App for ContrapunkApp {
                 if self.state.octave_mode != OctaveMode::None {
                     ui.separator();
                     ui.label(format!("Octave: {}", self.state.octave_mode.description()));
+                }
+                if self.voice_leading_enabled {
+                    ui.separator();
+                    ui.label(format!("Voice: {}", self.voice_leading_style.description()));
                 }
             });
 

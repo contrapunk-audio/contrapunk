@@ -4,7 +4,7 @@
 //! and processes messages through the HarmonyEngine.
 
 #[cfg(feature = "gui")]
-use crate::harmony::{HarmonyEngine, Key, HarmonyMode, OctaveMode};
+use crate::harmony::{HarmonyEngine, Key, HarmonyMode, OctaveMode, VoiceLeadingStyle};
 #[cfg(not(feature = "gui"))]
 use crate::harmony::HarmonyEngine;
 use crate::humanize::{DelayQueue, HumanizeConfig, HumanizedNote, Humanizer, Metronome};
@@ -42,6 +42,10 @@ pub struct GUIRouterState {
     pub stop_signal: bool,
     /// Humanization configuration (GUI can read/write)
     pub humanize_config: HumanizeConfig,
+    /// Whether voice leading is enabled
+    pub voice_leading_enabled: bool,
+    /// Current voice leading style
+    pub voice_leading_style: VoiceLeadingStyle,
 }
 
 /// Spawns the MIDI router in a background thread for GUI mode.
@@ -117,10 +121,16 @@ fn run_gui_router_inner(
         let current_ms = now_ms();
         humanizer.tick(current_ms);
 
-        // Sync humanizer config from shared state
+        // Sync humanizer config and voice leading state from shared state
         {
             let state_lock = state.lock().unwrap();
             humanizer.update_config(state_lock.humanize_config.clone());
+            if engine.voice_leading_enabled() != state_lock.voice_leading_enabled {
+                engine.set_voice_leading_enabled(state_lock.voice_leading_enabled);
+            }
+            if engine.voice_leading_style() != state_lock.voice_leading_style {
+                engine.set_voice_leading_style(state_lock.voice_leading_style);
+            }
         }
 
         // Check metronome: generate click on beat crossings
