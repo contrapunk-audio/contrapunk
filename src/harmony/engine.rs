@@ -41,16 +41,61 @@ impl VoiceLeadingProcessor {
     }
 
     fn build_registers(voice_count: usize) -> Vec<VoiceRegister> {
-        let mut regs = vec![VoiceRegister::Soprano]; // index 0: melody placeholder
-        let harmony_voices = if voice_count > 1 { voice_count - 1 } else { 0 };
-        for i in 0..harmony_voices {
-            regs.push(match i {
-                0 => VoiceRegister::Soprano,
-                1 => VoiceRegister::Alto,
-                2 => VoiceRegister::Tenor,
-                _ => VoiceRegister::Bass,
-            });
+        Self::build_registers_for_position(voice_count, voice_count.saturating_sub(1))
+    }
+
+    /// Builds register assignments based on voice position.
+    ///
+    /// Assigns registers to the full voice arrangement (0=top to N-1=bass),
+    /// then reorders to match final_result layout: [user, closest-above,
+    /// closest-below, next-above, next-below, ...].
+    fn build_registers_for_position(voice_count: usize, voice_position: usize) -> Vec<VoiceRegister> {
+        if voice_count <= 1 {
+            return vec![VoiceRegister::Soprano];
         }
+
+        // Assign registers to the full voice arrangement (0=soprano to N-1=bass)
+        let arrangement_regs: Vec<VoiceRegister> = (0..voice_count)
+            .map(|i| {
+                if voice_count <= 4 {
+                    match i {
+                        0 => VoiceRegister::Soprano,
+                        1 if voice_count == 2 => VoiceRegister::Bass,
+                        1 => VoiceRegister::Alto,
+                        2 if voice_count == 3 => VoiceRegister::Bass,
+                        2 => VoiceRegister::Tenor,
+                        _ => VoiceRegister::Bass,
+                    }
+                } else {
+                    // For 5+ voices, spread evenly
+                    let fraction = i as f32 / (voice_count - 1) as f32;
+                    if fraction < 0.25 { VoiceRegister::Soprano }
+                    else if fraction < 0.5 { VoiceRegister::Alto }
+                    else if fraction < 0.75 { VoiceRegister::Tenor }
+                    else { VoiceRegister::Bass }
+                }
+            })
+            .collect();
+
+        // Build final_result order: user first, then interleaved above/below
+        let vp = voice_position.min(voice_count - 1);
+        let mut regs = vec![arrangement_regs[vp]]; // user's register
+
+        let mut above_idx = if vp > 0 { Some(vp - 1) } else { None };
+        let mut below_idx = if vp < voice_count - 1 { Some(vp + 1) } else { None };
+
+        loop {
+            if above_idx.is_none() && below_idx.is_none() { break; }
+            if let Some(ai) = above_idx {
+                regs.push(arrangement_regs[ai]);
+                above_idx = if ai > 0 { Some(ai - 1) } else { None };
+            }
+            if let Some(bi) = below_idx {
+                regs.push(arrangement_regs[bi]);
+                below_idx = if bi < voice_count - 1 { Some(bi + 1) } else { None };
+            }
+        }
+
         regs
     }
 
@@ -66,8 +111,8 @@ impl VoiceLeadingProcessor {
         self.previous_voicing = None;
     }
 
-    fn rebuild_for_voices(&mut self, voice_count: usize) {
-        self.registers = Self::build_registers(voice_count);
+    fn rebuild_for_voices(&mut self, voice_count: usize, voice_position: usize) {
+        self.registers = Self::build_registers_for_position(voice_count, voice_position);
         self.reset();
     }
 }
@@ -214,6 +259,7 @@ impl HarmonyEngine {
         self.voice_position = position;
         self.active_notes.clear();
         self.active_port_maps.clear();
+        self.voice_leading.rebuild_for_voices(self.voice_count, position);
     }
 
     /// Sets the number of output voices.
@@ -241,7 +287,7 @@ impl HarmonyEngine {
             .collect();
         self.active_notes.clear();
         self.active_port_maps.clear();
-        self.voice_leading.rebuild_for_voices(count);
+        self.voice_leading.rebuild_for_voices(count, self.voice_position);
     }
 
     /// Sets the musical key, rebuilding the scale.

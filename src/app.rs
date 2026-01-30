@@ -133,7 +133,7 @@ impl Default for AppState {
             key: Key::C,
             mode: HarmonyMode::PassThrough,
             octave_mode: OctaveMode::None,
-            voice_position: 0, // Will be set to voice_count-1 (bass) when routing starts
+            voice_position: MAX_OUTPUT_SLOTS - 1, // Bass (clamped to voice_count-1 when routing starts)
             input_port: None,
             output_slots: vec![None; MAX_OUTPUT_SLOTS],
             available_inputs: Vec::new(),
