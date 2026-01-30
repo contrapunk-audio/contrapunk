@@ -3,6 +3,7 @@
 //! Provides a dark steampunk color scheme applied globally via egui Visuals.
 
 pub mod colors;
+pub mod widgets;
 
 use eframe::egui;
 use colors::*;
