@@ -20,6 +20,7 @@ use crate::humanize::HumanizeConfig;
 #[cfg(target_arch = "wasm32")]
 use crate::humanize::{Humanizer, DelayQueue, Metronome};
 use crate::piano::PianoKeyboard;
+use crate::preset::PresetManager;
 use crate::theme::ContrapunkTheme;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::midi::ports::{list_input_ports, list_output_ports};
@@ -32,7 +33,7 @@ use wmidi::{MidiMessage, Note, Channel, Velocity};
 
 /// Tab navigation for the main UI.
 #[derive(Clone, Copy, PartialEq)]
-enum Tab {
+pub(crate) enum Tab {
     Play,
     Craft,
     Settings,
@@ -49,7 +50,7 @@ impl Tab {
 }
 
 /// Converts a MIDI note number to a note name string (e.g., 60 -> "C4").
-fn midi_to_name(midi: u8) -> String {
+pub(crate) fn midi_to_name(midi: u8) -> String {
     const NOTES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
     let octave = (midi / 12) as i8 - 1; // MIDI 60 = C4
     let note = NOTES[(midi % 12) as usize];
@@ -156,16 +157,16 @@ impl Default for AppState {
 
 /// Main application struct for eframe.
 pub struct ContrapunkApp {
-    state: AppState,
+    pub(crate) state: AppState,
     /// Shared state for router communication
     #[cfg(not(target_arch = "wasm32"))]
-    router_state: Option<Arc<Mutex<GUIRouterState>>>,
+    pub(crate) router_state: Option<Arc<Mutex<GUIRouterState>>>,
     /// Handle to the router thread
     #[cfg(not(target_arch = "wasm32"))]
     router_handle: Option<JoinHandle<Result<()>>>,
     /// Web MIDI access object (WASM only)
     #[cfg(target_arch = "wasm32")]
-    midi_access: Rc<RefCell<Option<web_sys::MidiAccess>>>,
+    pub(crate) midi_access: Rc<RefCell<Option<web_sys::MidiAccess>>>,
     /// Shared MIDI message queue — input callback pushes, update() drains (WASM only)
     #[cfg(target_arch = "wasm32")]
     midi_queue: Rc<RefCell<Vec<Vec<u8>>>>,
@@ -174,7 +175,7 @@ pub struct ContrapunkApp {
     connected_output_ids: Vec<String>,
     /// Whether Web MIDI initialization has been attempted (WASM only)
     #[cfg(target_arch = "wasm32")]
-    midi_initialized: bool,
+    pub(crate) midi_initialized: bool,
     /// Harmony engine for WASM frame-based processing
     #[cfg(target_arch = "wasm32")]
     engine: HarmonyEngine,
@@ -185,15 +186,21 @@ pub struct ContrapunkApp {
     #[cfg(target_arch = "wasm32")]
     wasm_harmony_notes: HashSet<u8>,
     /// Currently active tab
-    active_tab: Tab,
+    pub(crate) active_tab: Tab,
+    /// Preset manager for built-in and custom presets
+    pub(crate) preset_manager: PresetManager,
+    /// Deferred start signal (set by Play tab, consumed in update)
+    pub(crate) pending_start: bool,
+    /// Deferred stop signal (set by Play tab, consumed in update)
+    pub(crate) pending_stop: bool,
     /// Whether the theme has been applied (apply only once)
     theme_applied: bool,
     /// Whether voice leading is enabled
-    voice_leading_enabled: bool,
+    pub(crate) voice_leading_enabled: bool,
     /// Current voice leading style
-    voice_leading_style: VoiceLeadingStyle,
+    pub(crate) voice_leading_style: VoiceLeadingStyle,
     /// Local copy of humanization config for GUI editing
-    humanize_config: HumanizeConfig,
+    pub(crate) humanize_config: HumanizeConfig,
     /// Humanizer engine for WASM note processing
     #[cfg(target_arch = "wasm32")]
     wasm_humanizer: Humanizer,
@@ -237,6 +244,9 @@ impl ContrapunkApp {
             #[cfg(target_arch = "wasm32")]
             wasm_harmony_notes: HashSet::new(),
             active_tab: Tab::Play,
+            preset_manager: PresetManager::new(),
+            pending_start: false,
+            pending_stop: false,
             theme_applied: false,
             voice_leading_enabled: false,
             voice_leading_style: VoiceLeadingStyle::default(),
@@ -274,7 +284,7 @@ impl ContrapunkApp {
     }
 
     /// Returns whether routing is currently active.
-    fn is_running(&self) -> bool {
+    pub(crate) fn is_running(&self) -> bool {
         self.state.is_running
     }
 
@@ -424,7 +434,7 @@ impl ContrapunkApp {
 
     /// Gets the current input/harmony notes from the router state.
     #[cfg(not(target_arch = "wasm32"))]
-    fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
+    pub(crate) fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
         if let Some(ref router_state) = self.router_state {
             if let Ok(state) = router_state.lock() {
                 return (state.input_notes.clone(), state.harmony_notes.clone());
@@ -435,8 +445,20 @@ impl ContrapunkApp {
 
     /// Gets the current input/harmony notes (WASM).
     #[cfg(target_arch = "wasm32")]
-    fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
+    pub(crate) fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
         (self.wasm_input_notes.clone(), self.wasm_harmony_notes.clone())
+    }
+
+    /// Applies the currently active preset's settings to app state.
+    pub(crate) fn apply_active_preset(&mut self) {
+        if let Some(preset) = self.preset_manager.active().cloned() {
+            self.state.key = preset.key;
+            self.state.mode = preset.harmony_mode;
+            self.state.octave_mode = preset.octave_mode;
+            self.voice_leading_enabled = preset.voice_leading_enabled;
+            self.voice_leading_style = preset.voice_leading_style;
+            self.humanize_config = preset.humanize_config;
+        }
     }
 }
 

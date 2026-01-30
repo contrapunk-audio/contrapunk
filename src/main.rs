@@ -19,6 +19,12 @@ mod piano;
 mod theme;
 
 #[cfg(feature = "gui")]
+mod preset;
+
+#[cfg(feature = "gui")]
+mod tabs;
+
+#[cfg(feature = "gui")]
 use eframe::egui;
 
 #[cfg(not(feature = "gui"))]

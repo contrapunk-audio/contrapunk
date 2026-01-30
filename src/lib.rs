@@ -9,6 +9,8 @@ mod harmony;
 mod humanize;
 mod midi;
 mod piano;
+mod preset;
+mod tabs;
 mod theme;
 
 use wasm_bindgen::prelude::*;
