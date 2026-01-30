@@ -943,7 +943,7 @@ impl eframe::App for ContrapunkApp {
                         let down: std::collections::HashSet<u8> = input.keys_down.iter()
                             .filter_map(|k| Self::key_to_midi_note(*k))
                             .collect();
-                        let lost = input.focused.is_some() && !input.focused.unwrap_or(true);
+                        let lost = !input.focused;
                         (kp, kr, lost, down)
                     });
                     for midi in presses {
@@ -1046,7 +1046,7 @@ impl eframe::App for ContrapunkApp {
                     let down: std::collections::HashSet<u8> = input.keys_down.iter()
                         .filter_map(|k| Self::key_to_midi_note(*k))
                         .collect();
-                    let lost = input.focused.is_some() && !input.focused.unwrap_or(true);
+                    let lost = !input.focused;
                     (kp, kr, down, lost)
                 });
                 let mut kbd_events: Vec<(bool, wmidi::Note)> = Vec::new();
