@@ -488,15 +488,46 @@ impl ContrapunkApp {
         (self.wasm_input_notes.clone(), self.wasm_harmony_notes.clone())
     }
 
+    /// Creates a StylePreset from the current app state.
+    pub(crate) fn preset_from_current(&self, name: &str, persona: &str, genre: &str) -> crate::preset::StylePreset {
+        crate::preset::StylePreset {
+            name: name.to_string(),
+            persona: persona.to_string(),
+            genre: genre.to_string(),
+            harmony_mode: self.state.mode,
+            key: self.state.key,
+            voice_leading_enabled: self.voice_leading_enabled,
+            voice_leading_style: self.voice_leading_style,
+            octave_mode: self.state.octave_mode,
+            humanize_config: self.humanize_config.clone(),
+            is_builtin: false,
+        }
+    }
+
+    /// Applies a specific preset's settings to app state.
+    pub(crate) fn apply_preset(&mut self, preset: &crate::preset::StylePreset) {
+        self.state.key = preset.key;
+        self.state.mode = preset.harmony_mode;
+        self.state.octave_mode = preset.octave_mode;
+        self.voice_leading_enabled = preset.voice_leading_enabled;
+        self.voice_leading_style = preset.voice_leading_style;
+        self.humanize_config = preset.humanize_config.clone();
+
+        // Signal router thread of key/mode/octave changes
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(ref router_state) = self.router_state {
+            if let Ok(mut state_lock) = router_state.lock() {
+                state_lock.key = Some(preset.key);
+                state_lock.mode = Some(preset.harmony_mode);
+                state_lock.octave_mode = Some(preset.octave_mode);
+            }
+        }
+    }
+
     /// Applies the currently active preset's settings to app state.
     pub(crate) fn apply_active_preset(&mut self) {
         if let Some(preset) = self.preset_manager.active().cloned() {
-            self.state.key = preset.key;
-            self.state.mode = preset.harmony_mode;
-            self.state.octave_mode = preset.octave_mode;
-            self.voice_leading_enabled = preset.voice_leading_enabled;
-            self.voice_leading_style = preset.voice_leading_style;
-            self.humanize_config = preset.humanize_config;
+            self.apply_preset(&preset);
         }
     }
 }
@@ -840,7 +871,7 @@ impl eframe::App for ContrapunkApp {
             self.try_start(ctx);
         }
 
-        // Sync humanize config and voice leading to router shared state each frame
+        // Sync humanize config, voice leading, and key/mode/octave to router shared state each frame
         #[cfg(not(target_arch = "wasm32"))]
         {
             if self.state.is_running {
@@ -849,6 +880,9 @@ impl eframe::App for ContrapunkApp {
                         state_lock.humanize_config = self.humanize_config.clone();
                         state_lock.voice_leading_enabled = self.voice_leading_enabled;
                         state_lock.voice_leading_style = self.voice_leading_style;
+                        state_lock.key = Some(self.state.key);
+                        state_lock.mode = Some(self.state.mode);
+                        state_lock.octave_mode = Some(self.state.octave_mode);
                     }
                 }
             }

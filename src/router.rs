@@ -46,6 +46,12 @@ pub struct GUIRouterState {
     pub voice_leading_enabled: bool,
     /// Current voice leading style
     pub voice_leading_style: VoiceLeadingStyle,
+    /// Current musical key (synced from GUI)
+    pub key: Option<Key>,
+    /// Current harmony mode (synced from GUI)
+    pub mode: Option<HarmonyMode>,
+    /// Current octave mode (synced from GUI)
+    pub octave_mode: Option<OctaveMode>,
 }
 
 /// Spawns the MIDI router in a background thread for GUI mode.
@@ -121,15 +127,29 @@ fn run_gui_router_inner(
         let current_ms = now_ms();
         humanizer.tick(current_ms);
 
-        // Sync humanizer config and voice leading state from shared state
+        // Sync humanizer config, voice leading, and key/mode/octave from shared state
         {
-            let state_lock = state.lock().unwrap();
+            let mut state_lock = state.lock().unwrap();
             humanizer.update_config(state_lock.humanize_config.clone());
             if engine.voice_leading_enabled() != state_lock.voice_leading_enabled {
                 engine.set_voice_leading_enabled(state_lock.voice_leading_enabled);
             }
             if engine.voice_leading_style() != state_lock.voice_leading_style {
                 engine.set_voice_leading_style(state_lock.voice_leading_style);
+            }
+            // Sync key/mode/octave if changed from GUI
+            if let Some(new_key) = state_lock.key.take() {
+                if engine.key() != new_key {
+                    engine.set_key(new_key);
+                }
+            }
+            if let Some(new_mode) = state_lock.mode.take() {
+                if engine.mode() != new_mode {
+                    engine.set_mode(new_mode);
+                }
+            }
+            if let Some(new_octave) = state_lock.octave_mode.take() {
+                engine.set_octave_mode(new_octave);
             }
         }
 
