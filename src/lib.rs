@@ -9,6 +9,7 @@ mod harmony;
 mod humanize;
 mod midi;
 mod piano;
+mod theme;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
