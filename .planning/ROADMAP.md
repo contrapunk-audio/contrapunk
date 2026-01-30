@@ -22,6 +22,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 6.1: Humanization UI Fix** - Fix humanization controls visibility in browser, ensure effects are audible end-to-end, redesign humanization UI (INSERTED)
 - [ ] **Phase 6.2: Voice Leading** - Improved voice leading with smooth transitions, minimal motion, and voice independence (INSERTED)
 - [ ] **Phase 6.3: Style Update** - UI visual redesign and musical style presets (jazz, classical, pop, etc.) (INSERTED)
+- [ ] **Phase 6.4: Modal Harmony & Chord Detection** - All church modes + harmonic/melodic minor, modal interchange with visual feedback, comprehensive chord detection (INSERTED)
+- [ ] **Phase 6.5: Note Generator** - Virtual MIDI input source: beat-synced note generation (arpeggiator, scale runner, random, chord player), selectable as IN source alongside physical devices (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
@@ -219,6 +221,45 @@ Plans:
 - [ ] 06.3-06-PLAN.md — Ambient animations (rotating gears, particles) and music-reactive visuals
 - [ ] 06.3-07-PLAN.md — Human verification checkpoint
 
+### Phase 6.4: Modal Harmony & Chord Detection (INSERTED)
+**Goal**: Add all 7 church modes plus harmonic/melodic minor scales, modal interchange for smarter chromatic note handling with visual feedback, and comprehensive chord detection (extended chords, slash chords, add chords)
+**Depends on**: Phase 6.3 (Style Update), Phase 2 (Harmony Engine)
+**Requirements**: MOD-01, MOD-02, MOD-03, CHD-01, CHD-02
+**Success Criteria** (what must be TRUE):
+  1. User can select scale mode (Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, Locrian) in addition to key
+  2. Harmonic minor and melodic minor scale variants are available
+  3. Out-of-key notes use modal interchange (borrowing from parallel modes) instead of generic consonant intervals
+  4. GUI visually indicates when modal interchange is happening (e.g., highlight borrowed notes, show source mode)
+  5. Chord detection recognizes extended chords (9th, 11th, 13th), altered dominants (b9, #9, #11, b13)
+  6. Chord detection recognizes slash chords (C/E), add chords (Cadd9), and 6th chords
+  7. All previously unrecognized note combinations now show a chord name instead of raw note names
+  8. Scale mode selection works with all existing harmony modes and voice leading
+**Plans**: TBD
+
+Plans:
+- [ ] 06.4-01: TBD (run /gsd:plan-phase 6.4 to break down)
+
+### Phase 6.5: Note Generator (INSERTED)
+**Goal**: Provide a virtual MIDI input source that generates notes using the shared beat clock, selectable in the IN dropdown alongside physical MIDI devices. Users can pick individual notes, chords, or algorithmic patterns that feed into the harmony engine.
+**Depends on**: Phase 6 (Humanization — beat clock), Phase 6.3 (Style Update — UI tabs/layout)
+**Requirements**: GEN-01, GEN-02, GEN-03, GEN-04, GEN-05
+**Success Criteria** (what must be TRUE):
+  1. "Note Generator" appears as a selectable option in the IN device dropdown
+  2. User can select specific notes (click piano keys or note names) to feed into the harmony engine
+  3. User can select a chord (e.g., Cmaj, Am7) and all chord tones feed into the harmony engine
+  4. Beat-synced generator modes work: arpeggiator (up/down/up-down), scale runner, random diatonic
+  5. Generator notes flow through the full harmony engine pipeline (harmonized, voice-led, humanized)
+  6. Generator can run alongside a physical MIDI input (both sources merge into the engine)
+  7. Generator uses the existing BeatClock (shared BPM/time-signature with metronome)
+  8. Works in both native and WASM builds
+**Plans**: 4 plans
+
+Plans:
+- [ ] 06.5-01-PLAN.md — Generator module: config types (modes, chords, events) and NoteGenerator engine
+- [ ] 06.5-02-PLAN.md — Integration: wire generator into app update loop and IN device dropdown
+- [ ] 06.5-03-PLAN.md — Generator UI: mode selector, chord picker, piano click-to-select
+- [ ] 06.5-04-PLAN.md — Human verification checkpoint
+
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
 **Depends on**: Phase 1 (MIDI Foundation)
@@ -269,7 +310,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -283,10 +324,12 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.1 Humanization UI Fix (INSERTED) | 2/2 | Complete | 2026-01-30 |
 | 6.2 Voice Leading (INSERTED) | 0/4 | Planning complete | - |
 | 6.3 Style Update (INSERTED) | 0/7 | Planning complete | - |
+| 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/? | Not started | - |
+| 6.5 Note Generator (INSERTED) | 0/4 | Planning complete | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-30 — Phase 6.2 planned (4 plans, 4 waves)*
+*Last updated: 2026-01-30 — Phase 6.5 inserted (Note Generator — virtual MIDI input with note/chord selection and beat-synced patterns)*
