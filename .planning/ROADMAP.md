@@ -167,8 +167,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06.1-01-PLAN.md — Wire humanizer into WASM MIDI processing path
-- [ ] 06.1-02-PLAN.md — Redesign humanization UI with collapsible sections
+- [x] 06.1-01-PLAN.md — Wire humanizer into WASM MIDI processing path
+- [x] 06.1-02-PLAN.md — Redesign humanization UI with collapsible sections
 
 ### Phase 6.2: Voice Leading (INSERTED)
 **Goal**: Implement proper counterpoint and voice leading based on deep research into classical counterpoint theory (Fux's species counterpoint, Bach chorale voice leading, Palestrina style rules)
@@ -189,10 +189,13 @@ Plans:
   6. Multiple counterpoint styles selectable (strict Palestrina, Bach chorale, jazz, free)
   7. Voice leading mode can be toggled on/off via GUI
   8. Works with all existing harmony modes
-**Plans**: TBD (research phase with /gsd:research-phase 6.1 strongly recommended before planning)
+**Plans**: 4 plans
 
 Plans:
-- [ ] 06.2-01: TBD (run /gsd:research-phase 6.2 then /gsd:plan-phase 6.2 to break down)
+- [ ] 06.2-01-PLAN.md — Core voice leading types, rules, styles, and voicer algorithm
+- [ ] 06.2-02-PLAN.md — VoiceLeadingProcessor, suspension state machine, and engine integration
+- [ ] 06.2-03-PLAN.md — GUI voice leading controls (native and WASM)
+- [ ] 06.2-04-PLAN.md — Human verification checkpoint
 
 ### Phase 6.3: Style Update (INSERTED)
 **Goal**: Modernize GUI appearance and add musical style presets combining harmony, voice leading, and humanization settings
@@ -271,8 +274,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 5. Octave Variations | 1/1 | Complete | 2026-01-29 |
 | 5.1 WASM & Browser (INSERTED) | 3/3 | Complete | 2026-01-29 |
 | 6. Humanization | 3/3 | Complete | 2026-01-29 |
-| 6.1 Humanization UI Fix (INSERTED) | 0/2 | Not started | - |
-| 6.2 Voice Leading (INSERTED) | 0/? | Not started | - |
+| 6.1 Humanization UI Fix (INSERTED) | 2/2 | Complete | 2026-01-30 |
+| 6.2 Voice Leading (INSERTED) | 0/4 | Planning complete | - |
 | 6.3 Style Update (INSERTED) | 0/? | Not started | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
@@ -280,4 +283,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-29 — Phase 6.1 planned (2 plans, 2 waves)*
+*Last updated: 2026-01-30 — Phase 6.2 planned (4 plans, 4 waves)*
