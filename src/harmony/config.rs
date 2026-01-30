@@ -1,5 +1,8 @@
+use serde::{Serialize, Deserialize};
+
 /// Musical keys (C through B, 12 options)
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Key {
     C, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B,
 }
@@ -29,7 +32,8 @@ impl std::fmt::Display for Key {
 }
 
 /// Octave placement modes for harmony voices
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OctaveMode {
     /// No octave modification - harmonies stay at their generated pitch
     #[default]
@@ -71,7 +75,8 @@ impl std::fmt::Display for OctaveMode {
 }
 
 /// Harmony modes (1-7)
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum HarmonyMode {
     PassThrough,       // Mode 1: Forward as-is
     DiatonicThirds,    // Mode 2: Add diatonic thirds above

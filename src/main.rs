@@ -16,6 +16,9 @@ mod chord;
 mod piano;
 
 #[cfg(feature = "gui")]
+mod theme;
+
+#[cfg(feature = "gui")]
 use eframe::egui;
 
 #[cfg(not(feature = "gui"))]

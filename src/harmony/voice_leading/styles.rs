@@ -1,7 +1,10 @@
 //! Voice leading style presets with hard vs soft constraint distinction.
 
+use serde::{Serialize, Deserialize};
+
 /// Voice leading style presets.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum VoiceLeadingStyle {
     /// Renaissance polyphony — strictest rules
     Palestrina,

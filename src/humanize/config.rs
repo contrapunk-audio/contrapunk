@@ -1,7 +1,8 @@
+use serde::{Serialize, Deserialize};
 use wmidi::{Channel, Note, Velocity};
 
 /// Master configuration for all humanization parameters.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HumanizeConfig {
     /// Master toggle for all humanization.
     pub enabled: bool,
