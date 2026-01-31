@@ -1,5 +1,5 @@
 use super::StylePreset;
-use crate::harmony::{Key, HarmonyMode, OctaveMode, VoiceLeadingStyle};
+use crate::harmony::{Key, HarmonyMode, OctaveMode, ScaleMode, VoiceLeadingStyle};
 use crate::humanize::HumanizeConfig;
 
 /// Returns all built-in presets with character personas.
@@ -27,6 +27,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.55,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -51,6 +54,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.0,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -75,6 +81,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.2,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -99,6 +108,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.0,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -123,6 +135,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.0,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -147,6 +162,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.65,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -171,6 +189,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.0,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -195,6 +216,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.4,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -219,6 +243,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.0,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -243,6 +270,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.3,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
         StylePreset {
@@ -267,6 +297,9 @@ pub fn all() -> Vec<StylePreset> {
                 swing_amount: 0.5,
                 ..HumanizeConfig::default()
             },
+            scale_mode: ScaleMode::Ionian,
+            interchange_enabled: false,
+            borrowing_range: 3,
             is_builtin: true,
         },
     ]

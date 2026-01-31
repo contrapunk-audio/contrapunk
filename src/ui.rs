@@ -5,7 +5,7 @@
 use eframe::egui;
 use crate::app::{ContrapunkApp, midi_to_name, INPUT_NOTE_GENERATOR, INPUT_COMPUTER_KEYBOARD};
 use crate::generator::{GeneratorMode, ArpDirection, ChordType};
-use crate::harmony::{Key, HarmonyMode, OctaveMode, VoiceLeadingStyle};
+use crate::harmony::{Key, HarmonyMode, OctaveMode, ScaleMode, VoiceLeadingStyle};
 use crate::preset::storage::{export_preset_json, import_preset_json};
 use crate::theme::colors::*;
 use crate::theme::widgets::{ornate_slider, ornate_toggle};
@@ -291,15 +291,34 @@ impl ContrapunkApp {
         // --- Harmony ---
         card(ui, |ui| {
             card_header(ui, "Harmony");
-            ui.label("Key:");
-            egui::ComboBox::from_id_salt("main_key")
-                .selected_text(format!("{}", self.state.key))
-                .width(80.0)
-                .show_ui(ui, |ui| {
-                    for key in Key::all() {
-                        ui.selectable_value(&mut self.state.key, *key, format!("{}", key));
-                    }
-                });
+            ui.horizontal(|ui| {
+                ui.label("Key:");
+                egui::ComboBox::from_id_salt("main_key")
+                    .selected_text(format!("{}", self.state.key))
+                    .width(60.0)
+                    .show_ui(ui, |ui| {
+                        for key in Key::all() {
+                            ui.selectable_value(&mut self.state.key, *key, format!("{}", key));
+                        }
+                    });
+                ui.label("Scale:");
+                egui::ComboBox::from_id_salt("main_scale_mode")
+                    .selected_text(format!("{}", self.scale_mode))
+                    .width(ui.available_width().min(130.0))
+                    .show_ui(ui, |ui| {
+                        for mode in ScaleMode::all() {
+                            ui.selectable_value(&mut self.scale_mode, *mode, format!("{}", mode));
+                        }
+                    });
+            });
+            ui.add_space(2.0);
+            // Modal Interchange controls
+            ornate_toggle(ui, "Modal Interchange", &mut self.interchange_enabled);
+            if self.interchange_enabled {
+                let mut range_f32 = self.borrowing_range as f32;
+                ornate_slider(ui, "Borrowing Range", &mut range_f32, 1.0..=5.0);
+                self.borrowing_range = range_f32.round() as u8;
+            }
             ui.add_space(2.0);
             ui.label("Mode:");
             egui::ComboBox::from_id_salt("main_mode")

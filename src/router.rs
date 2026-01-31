@@ -4,7 +4,7 @@
 //! and processes messages through the HarmonyEngine.
 
 #[cfg(feature = "gui")]
-use crate::harmony::{HarmonyEngine, Key, HarmonyMode, OctaveMode, VoiceLeadingStyle};
+use crate::harmony::{HarmonyEngine, Key, HarmonyMode, OctaveMode, ScaleMode, VoiceLeadingStyle};
 #[cfg(not(feature = "gui"))]
 use crate::harmony::HarmonyEngine;
 #[cfg(feature = "gui")]
@@ -69,6 +69,12 @@ pub struct GUIRouterState {
     pub keyboard_events: Vec<(bool, wmidi::Note)>,
     /// Whether keyboard input is enabled
     pub keyboard_enabled: bool,
+    /// Current scale mode (synced from GUI)
+    pub scale_mode: Option<ScaleMode>,
+    /// Whether modal interchange is enabled (synced from GUI)
+    pub interchange_enabled: Option<bool>,
+    /// Borrowing range (synced from GUI)
+    pub borrowing_range: Option<u8>,
 }
 
 #[cfg(feature = "gui")]
@@ -92,6 +98,9 @@ impl Default for GUIRouterState {
             generator_note_duration_beats: 0.5,
             keyboard_events: Vec::new(),
             keyboard_enabled: false,
+            scale_mode: None,
+            interchange_enabled: None,
+            borrowing_range: None,
         }
     }
 }
@@ -206,6 +215,21 @@ fn run_gui_router_inner(
             if let Some(new_vp) = state_lock.voice_position.take() {
                 if engine.voice_position() != new_vp {
                     engine.set_voice_position(new_vp);
+                }
+            }
+            if let Some(new_sm) = state_lock.scale_mode.take() {
+                if engine.scale_mode() != new_sm {
+                    engine.set_scale_mode(new_sm);
+                }
+            }
+            if let Some(new_ie) = state_lock.interchange_enabled.take() {
+                if engine.interchange_enabled() != new_ie {
+                    engine.set_interchange_enabled(new_ie);
+                }
+            }
+            if let Some(new_br) = state_lock.borrowing_range.take() {
+                if engine.borrowing_range() != new_br {
+                    engine.set_borrowing_range(new_br);
                 }
             }
 

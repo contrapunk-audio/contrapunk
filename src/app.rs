@@ -15,7 +15,8 @@ use std::rc::Rc;
 
 use anyhow::Result;
 use eframe::egui;
-use crate::chord::chord_display;
+use crate::chord::chord_display_with_analysis;
+use crate::harmony::ScaleMode;
 use crate::generator::{NoteGenerator, GeneratorMode, GeneratorEvent, ChordType, ArpDirection};
 use crate::harmony::{Key, HarmonyMode, OctaveMode, HarmonyEngine, VoiceLeadingStyle};
 use crate::humanize::HumanizeConfig;
@@ -192,6 +193,12 @@ pub struct ContrapunkApp {
     pub(crate) voice_leading_enabled: bool,
     /// Current voice leading style
     pub(crate) voice_leading_style: VoiceLeadingStyle,
+    /// Current scale mode
+    pub(crate) scale_mode: ScaleMode,
+    /// Whether modal interchange is enabled
+    pub(crate) interchange_enabled: bool,
+    /// Borrowing range for modal interchange (1-5)
+    pub(crate) borrowing_range: u8,
     /// Local copy of humanization config for GUI editing
     pub(crate) humanize_config: HumanizeConfig,
     /// Humanizer engine for WASM note processing
@@ -282,6 +289,9 @@ impl ContrapunkApp {
             anim_time: 0.0,
             voice_leading_enabled: false,
             voice_leading_style: VoiceLeadingStyle::default(),
+            scale_mode: ScaleMode::default(),
+            interchange_enabled: false,
+            borrowing_range: 3,
             humanize_config: HumanizeConfig::default(),
             #[cfg(target_arch = "wasm32")]
             wasm_humanizer: Humanizer::new(HumanizeConfig::default()),
@@ -523,6 +533,9 @@ impl ContrapunkApp {
             voice_leading_style: self.voice_leading_style,
             octave_mode: self.state.octave_mode,
             humanize_config: self.humanize_config.clone(),
+            scale_mode: self.scale_mode,
+            interchange_enabled: self.interchange_enabled,
+            borrowing_range: self.borrowing_range,
             is_builtin: false,
         }
     }
@@ -535,6 +548,9 @@ impl ContrapunkApp {
         self.voice_leading_enabled = preset.voice_leading_enabled;
         self.voice_leading_style = preset.voice_leading_style;
         self.humanize_config = preset.humanize_config.clone();
+        self.scale_mode = preset.scale_mode;
+        self.interchange_enabled = preset.interchange_enabled;
+        self.borrowing_range = preset.borrowing_range;
 
         // Signal router thread of key/mode/octave changes
         #[cfg(not(target_arch = "wasm32"))]
@@ -884,6 +900,16 @@ impl eframe::App for ContrapunkApp {
                 if self.engine.voice_position() != self.state.voice_position {
                     self.engine.set_voice_position(self.state.voice_position);
                 }
+                // Sync scale mode and interchange settings
+                if self.engine.scale_mode() != self.scale_mode {
+                    self.engine.set_scale_mode(self.scale_mode);
+                }
+                if self.engine.interchange_enabled() != self.interchange_enabled {
+                    self.engine.set_interchange_enabled(self.interchange_enabled);
+                }
+                if self.engine.borrowing_range() != self.borrowing_range {
+                    self.engine.set_borrowing_range(self.borrowing_range);
+                }
 
                 // Sync humanize config to wasm_humanizer each frame
                 self.wasm_humanizer.update_config(self.humanize_config.clone());
@@ -1049,6 +1075,9 @@ impl eframe::App for ContrapunkApp {
                         state_lock.mode = Some(self.state.mode);
                         state_lock.octave_mode = Some(self.state.octave_mode);
                         state_lock.voice_position = Some(self.state.voice_position);
+                        state_lock.scale_mode = Some(self.scale_mode);
+                        state_lock.interchange_enabled = Some(self.interchange_enabled);
+                        state_lock.borrowing_range = Some(self.borrowing_range);
                         // Sync generator state
                         state_lock.generator_enabled = self.generator_enabled;
                         state_lock.generator_velocity = self.generator.velocity();
@@ -1132,11 +1161,26 @@ impl eframe::App for ContrapunkApp {
                 combined
             };
             ui.vertical_centered(|ui| {
+                let key_tonic = Some(self.state.key.semitones_from_c());
                 ui.label(
-                    egui::RichText::new(chord_display(&all_notes))
+                    egui::RichText::new(chord_display_with_analysis(&all_notes, key_tonic))
                         .size(24.0)
                         .strong()
                 );
+                // Borrowed-from indicator
+                if self.interchange_enabled {
+                    #[cfg(target_arch = "wasm32")]
+                    let borrowed = self.engine.last_borrowed_from();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let borrowed: Option<ScaleMode> = None; // Router owns engine on native
+                    if let Some(mode) = borrowed {
+                        ui.label(
+                            egui::RichText::new(format!("borrowed from {} {}", self.state.key, mode))
+                                .size(12.0)
+                                .color(egui::Color32::from_rgb(204, 153, 0))
+                        );
+                    }
+                }
             });
 
             ui.add_space(5.0);

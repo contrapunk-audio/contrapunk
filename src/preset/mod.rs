@@ -2,7 +2,7 @@ pub mod builtins;
 pub mod storage;
 
 use serde::{Serialize, Deserialize};
-use crate::harmony::{Key, HarmonyMode, OctaveMode, VoiceLeadingStyle};
+use crate::harmony::{Key, HarmonyMode, OctaveMode, ScaleMode, VoiceLeadingStyle};
 use crate::humanize::HumanizeConfig;
 
 /// A complete musical style preset bundling harmony, voice leading,
@@ -20,8 +20,21 @@ pub struct StylePreset {
     pub voice_leading_style: VoiceLeadingStyle,
     pub octave_mode: OctaveMode,
     pub humanize_config: HumanizeConfig,
+    /// Scale mode (defaults to Ionian for backward compatibility)
+    #[serde(default)]
+    pub scale_mode: ScaleMode,
+    /// Whether modal interchange is enabled
+    #[serde(default)]
+    pub interchange_enabled: bool,
+    /// Borrowing range for modal interchange (1-5)
+    #[serde(default = "default_borrowing_range")]
+    pub borrowing_range: u8,
     #[serde(skip)]
     pub is_builtin: bool,
+}
+
+fn default_borrowing_range() -> u8 {
+    3
 }
 
 /// Manages built-in and custom presets.
