@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use wmidi::Note;
 
-use crate::harmony::config::{Key, HarmonyMode, OctaveMode};
+use crate::harmony::config::{Key, HarmonyMode, OctaveMode, ScaleMode};
 use crate::harmony::modes;
 use crate::harmony::scale::Scale;
 use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
@@ -137,7 +137,11 @@ pub struct HarmonyEngine {
     key: Key,
     mode: HarmonyMode,
     octave_mode: OctaveMode,
+    scale_mode: ScaleMode,
     scale: Scale,
+    interchange_enabled: bool,
+    borrowing_range: u8,
+    last_borrowed_from: Option<ScaleMode>,
     /// Number of output voices (1 = melody only, 2 = melody + harmony, etc.)
     voice_count: usize,
     /// Voice position: which voice slot the user plays (0 = top/soprano, voice_count-1 = bass).
@@ -172,7 +176,7 @@ impl HarmonyEngine {
     /// * `mode` - The harmony mode to use
     /// * `voice_count` - Number of output voices (1 = melody only, 2+ = melody + harmonies)
     pub fn with_voices(key: Key, mode: HarmonyMode, voice_count: usize) -> Self {
-        let scale = Scale::major(key.semitones_from_c());
+        let scale = Scale::new(key.semitones_from_c(), ScaleMode::Ionian);
         let voice_count = voice_count.max(1); // At least 1 voice
         let harmony_voices = if voice_count > 1 { voice_count - 1 } else { 0 };
 
@@ -180,7 +184,11 @@ impl HarmonyEngine {
             key,
             mode,
             octave_mode: OctaveMode::None,
+            scale_mode: ScaleMode::Ionian,
             scale,
+            interchange_enabled: false,
+            borrowing_range: 3,
+            last_borrowed_from: None,
             voice_count,
             voice_position: voice_count.saturating_sub(1),
             contrary_motion_states: (0..harmony_voices)
@@ -298,7 +306,9 @@ impl HarmonyEngine {
     /// This can be called during playback without stopping.
     pub fn set_key(&mut self, key: Key) {
         self.key = key;
-        self.scale = Scale::major(key.semitones_from_c());
+        self.scale = Scale::new(key.semitones_from_c(), self.scale_mode);
+        self.scale.set_interchange_enabled(self.interchange_enabled);
+        self.scale.set_borrowing_range(self.borrowing_range);
         // Reset stateful modes since scale changed
         for state in &mut self.contrary_motion_states {
             state.reset();
@@ -329,6 +339,60 @@ impl HarmonyEngine {
         self.active_notes.clear();
         self.active_port_maps.clear();
         self.voice_leading.reset();
+    }
+
+    /// Returns the current scale mode.
+    pub fn scale_mode(&self) -> ScaleMode {
+        self.scale_mode
+    }
+
+    /// Sets the scale mode, rebuilding the scale.
+    /// Resets stateful mode state and active notes.
+    pub fn set_scale_mode(&mut self, mode: ScaleMode) {
+        self.scale_mode = mode;
+        self.scale = Scale::new(self.key.semitones_from_c(), mode);
+        self.scale.set_interchange_enabled(self.interchange_enabled);
+        self.scale.set_borrowing_range(self.borrowing_range);
+        for state in &mut self.contrary_motion_states {
+            state.reset();
+        }
+        for state in &mut self.counterpoint_states {
+            state.reset();
+        }
+        self.active_notes.clear();
+        self.active_port_maps.clear();
+        self.voice_leading.reset();
+    }
+
+    /// Returns whether modal interchange is enabled.
+    pub fn interchange_enabled(&self) -> bool {
+        self.interchange_enabled
+    }
+
+    /// Enables or disables modal interchange.
+    pub fn set_interchange_enabled(&mut self, enabled: bool) {
+        self.interchange_enabled = enabled;
+        self.scale.set_interchange_enabled(enabled);
+        self.active_notes.clear();
+        self.active_port_maps.clear();
+    }
+
+    /// Returns the current borrowing range (1-5).
+    pub fn borrowing_range(&self) -> u8 {
+        self.borrowing_range
+    }
+
+    /// Sets the borrowing range (clamped 1-5).
+    pub fn set_borrowing_range(&mut self, range: u8) {
+        self.borrowing_range = range.clamp(1, 5);
+        self.scale.set_borrowing_range(self.borrowing_range);
+        self.active_notes.clear();
+        self.active_port_maps.clear();
+    }
+
+    /// Returns the last mode borrowed from during modal interchange.
+    pub fn last_borrowed_from(&self) -> Option<ScaleMode> {
+        self.last_borrowed_from
     }
 
     /// Returns whether voice leading is enabled.
@@ -673,6 +737,8 @@ impl HarmonyEngine {
     /// Vec of notes to send: original note first, harmony notes after.
     pub fn harmonize_note_on(&mut self, note: Note) -> Vec<Note> {
         let result = self.harmonize(note);
+        // Copy last_borrowed_from from scale for UI access
+        self.last_borrowed_from = self.scale.last_borrowed_from();
         // Store the harmony notes and port map for Note-Off retrieval
         let midi = u8::from(note);
         if result.len() > 1 {
@@ -1310,6 +1376,72 @@ mod tests {
         assert_eq!(result[0], Note::C4); // Melody unchanged
         // With Spread, harmony voices get +1/+2 octave shifts applied AFTER VL
         assert!(result.len() == 3);
+    }
+
+    // Scale mode and modal interchange tests
+
+    #[test]
+    fn test_scale_mode_default_is_ionian() {
+        let engine = HarmonyEngine::default();
+        assert_eq!(engine.scale_mode(), ScaleMode::Ionian);
+    }
+
+    #[test]
+    fn test_set_scale_mode_changes_harmony() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
+
+        // C Ionian: C4 + third = E4
+        let result_ionian = engine.harmonize(Note::C4);
+        assert_eq!(result_ionian[1], Note::E4);
+
+        // C Dorian: C4 + third = Eb4
+        engine.set_scale_mode(ScaleMode::Dorian);
+        let result_dorian = engine.harmonize(Note::C4);
+        assert_eq!(result_dorian[1], Note::Eb4);
+    }
+
+    #[test]
+    fn test_interchange_enabled_propagates() {
+        let mut engine = HarmonyEngine::default();
+        assert!(!engine.interchange_enabled());
+
+        engine.set_interchange_enabled(true);
+        assert!(engine.interchange_enabled());
+    }
+
+    #[test]
+    fn test_set_key_preserves_scale_mode() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
+        engine.set_scale_mode(ScaleMode::Dorian);
+        engine.set_key(Key::G);
+        assert_eq!(engine.scale_mode(), ScaleMode::Dorian);
+
+        // G Dorian: G4 + third should give Bb4
+        let result = engine.harmonize(Note::G4);
+        assert_eq!(result[1], Note::Bb4);
+    }
+
+    #[test]
+    fn test_borrowing_range_propagates() {
+        let mut engine = HarmonyEngine::default();
+        assert_eq!(engine.borrowing_range(), 3);
+
+        engine.set_borrowing_range(5);
+        assert_eq!(engine.borrowing_range(), 5);
+
+        engine.set_borrowing_range(0); // should clamp to 1
+        assert_eq!(engine.borrowing_range(), 1);
+    }
+
+    #[test]
+    fn test_interchange_produces_borrowed_harmonies() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
+        engine.set_interchange_enabled(true);
+
+        // Eb4 is not in C Ionian but is in C Aeolian
+        let result = engine.harmonize_note_on(Note::Eb4);
+        assert!(result.len() >= 2);
+        assert!(engine.last_borrowed_from().is_some());
     }
 
     #[test]
