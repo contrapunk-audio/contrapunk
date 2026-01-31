@@ -606,21 +606,21 @@ impl HarmonyEngine {
     /// Used for bidirectional voice position generation.
     fn harmonize_single_directed(&mut self, note: Note, state_index: usize, above: bool) -> Vec<Note> {
         match self.mode {
-            HarmonyMode::PassThrough => modes::pass_through(note, &self.scale),
-            HarmonyMode::DiatonicThirds => modes::diatonic_thirds_directed(note, &self.scale, above),
-            HarmonyMode::DiatonicFourths => modes::diatonic_fourths_directed(note, &self.scale, above),
-            HarmonyMode::RandomBelow => modes::random_directed(note, &self.scale, above),
-            HarmonyMode::RandomBelowNoSeconds => modes::random_no_seconds_directed(note, &self.scale, above),
+            HarmonyMode::PassThrough => modes::pass_through(note, &mut self.scale),
+            HarmonyMode::DiatonicThirds => modes::diatonic_thirds_directed(note, &mut self.scale, above),
+            HarmonyMode::DiatonicFourths => modes::diatonic_fourths_directed(note, &mut self.scale, above),
+            HarmonyMode::RandomBelow => modes::random_directed(note, &mut self.scale, above),
+            HarmonyMode::RandomBelowNoSeconds => modes::random_no_seconds_directed(note, &mut self.scale, above),
             HarmonyMode::ContraryMotion => {
                 if let Some(state) = self.contrary_motion_states.get_mut(state_index) {
-                    state.process_directed(&self.scale, note, above)
+                    state.process_directed(&mut self.scale, note, above)
                 } else {
                     vec![note]
                 }
             }
             HarmonyMode::StrictCounterpoint => {
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
-                    state.process_directed(&self.scale, note, above)
+                    state.process_directed(&mut self.scale, note, above)
                 } else {
                     vec![note]
                 }
@@ -632,21 +632,21 @@ impl HarmonyEngine {
     /// Used internally for chained harmony generation.
     fn harmonize_single(&mut self, note: Note, state_index: usize) -> Vec<Note> {
         match self.mode {
-            HarmonyMode::PassThrough => modes::pass_through(note, &self.scale),
-            HarmonyMode::DiatonicThirds => modes::diatonic_thirds(note, &self.scale),
-            HarmonyMode::DiatonicFourths => modes::diatonic_fourths(note, &self.scale),
-            HarmonyMode::RandomBelow => modes::random_below(note, &self.scale),
-            HarmonyMode::RandomBelowNoSeconds => modes::random_below_no_seconds(note, &self.scale),
+            HarmonyMode::PassThrough => modes::pass_through(note, &mut self.scale),
+            HarmonyMode::DiatonicThirds => modes::diatonic_thirds(note, &mut self.scale),
+            HarmonyMode::DiatonicFourths => modes::diatonic_fourths(note, &mut self.scale),
+            HarmonyMode::RandomBelow => modes::random_below(note, &mut self.scale),
+            HarmonyMode::RandomBelowNoSeconds => modes::random_below_no_seconds(note, &mut self.scale),
             HarmonyMode::ContraryMotion => {
                 if let Some(state) = self.contrary_motion_states.get_mut(state_index) {
-                    state.process(&self.scale, note)
+                    state.process(&mut self.scale, note)
                 } else {
                     vec![note]
                 }
             }
             HarmonyMode::StrictCounterpoint => {
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
-                    state.process(&self.scale, note)
+                    state.process(&mut self.scale, note)
                 } else {
                     vec![note]
                 }

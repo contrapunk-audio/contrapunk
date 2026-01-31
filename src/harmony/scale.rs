@@ -1,8 +1,6 @@
 use wmidi::Note;
 
-/// Semitone offsets for major scale (Ionian mode)
-/// Index = scale degree (0-6), Value = semitones from tonic
-const MAJOR_SCALE_OFFSETS: [u8; 7] = [0, 2, 4, 5, 7, 9, 11];
+use crate::harmony::config::ScaleMode;
 
 /// Consonant chromatic intervals (in semitones) for out-of-key notes.
 /// These sound good regardless of key context.
@@ -10,7 +8,22 @@ const MAJOR_SCALE_OFFSETS: [u8; 7] = [0, 2, 4, 5, 7, 9, 11];
 const CONSONANT_INTERVALS_ABOVE: [i8; 6] = [4, 3, 9, 8, 7, 5]; // M3, m3, M6, m6, P5, P4
 const CONSONANT_INTERVALS_BELOW: [i8; 6] = [-3, -4, -8, -9, -5, -7]; // m3, M3, m6, M6, P4, P5
 
-/// A musical scale defined by a tonic and semitone offsets.
+/// Borrowing sources by range level (1-5).
+/// Each level includes all modes from previous levels plus new ones.
+fn borrowing_sources(range: u8) -> &'static [ScaleMode] {
+    match range {
+        1 => &[ScaleMode::Aeolian],
+        2 => &[ScaleMode::Aeolian, ScaleMode::Dorian],
+        3 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian],
+        4 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian, ScaleMode::Phrygian],
+        _ => &[
+            ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian,
+            ScaleMode::Phrygian, ScaleMode::Lydian, ScaleMode::Locrian, ScaleMode::Ionian,
+        ],
+    }
+}
+
+/// A musical scale defined by a tonic, mode, and semitone offsets.
 ///
 /// Provides diatonic operations like finding scale degrees
 /// and transposing by scale degrees (not chromatic semitones).
@@ -18,20 +31,54 @@ const CONSONANT_INTERVALS_BELOW: [i8; 6] = [-3, -4, -8, -9, -5, -7]; // m3, M3, 
 pub struct Scale {
     /// Tonic pitch class (0-11, where 0 = C)
     tonic: u8,
+    /// The scale mode
+    mode: ScaleMode,
     /// Semitone offsets for each scale degree (0-6)
     offsets: [u8; 7],
+    /// Whether modal interchange is enabled for out-of-key notes
+    interchange_enabled: bool,
+    /// How many parallel modes to search (1-5)
+    borrowing_range: u8,
+    /// Last mode borrowed from during interchange (for UI display)
+    last_borrowed_from: Option<ScaleMode>,
 }
 
 impl Scale {
-    /// Creates a new major scale with the given tonic.
-    ///
-    /// # Arguments
-    /// * `tonic` - Pitch class of the tonic (0-11, where 0 = C)
-    pub fn major(tonic: u8) -> Self {
+    /// Creates a new scale with the given tonic and mode.
+    pub fn new(tonic: u8, mode: ScaleMode) -> Self {
         Self {
             tonic: tonic % 12,
-            offsets: MAJOR_SCALE_OFFSETS,
+            mode,
+            offsets: mode.intervals(),
+            interchange_enabled: false,
+            borrowing_range: 3,
+            last_borrowed_from: None,
         }
+    }
+
+    /// Creates a new major scale with the given tonic.
+    pub fn major(tonic: u8) -> Self {
+        Self::new(tonic, ScaleMode::Ionian)
+    }
+
+    /// Returns the current scale mode.
+    pub fn mode(&self) -> ScaleMode {
+        self.mode
+    }
+
+    /// Returns the last mode borrowed from during modal interchange.
+    pub fn last_borrowed_from(&self) -> Option<ScaleMode> {
+        self.last_borrowed_from
+    }
+
+    /// Sets whether modal interchange is enabled.
+    pub fn set_interchange_enabled(&mut self, enabled: bool) {
+        self.interchange_enabled = enabled;
+    }
+
+    /// Sets the borrowing range (clamped 1-5).
+    pub fn set_borrowing_range(&mut self, range: u8) {
+        self.borrowing_range = range.clamp(1, 5);
     }
 
     /// Finds the scale degree (0-6) for a given MIDI note.
@@ -51,10 +98,6 @@ impl Scale {
     ///
     /// Returns None if the resulting note would be out of MIDI range (0-127)
     /// or if the input note is not in the scale.
-    ///
-    /// # Arguments
-    /// * `note` - The note to transpose
-    /// * `degrees` - Scale degrees to transpose (positive = up, negative = down)
     pub fn transpose_diatonic(&self, note: Note, degrees: i8) -> Option<Note> {
         let current_degree = self.degree_of(note)? as i8;
         let note_midi = u8::from(note) as i8;
@@ -134,6 +177,10 @@ impl Scale {
     /// Harmonizes a note, using diatonic intervals for in-key notes
     /// and consonant chromatic intervals for out-of-key notes.
     ///
+    /// When `interchange_enabled` is true, out-of-key notes are handled
+    /// via modal interchange (borrowing from parallel modes) instead of
+    /// plain chromatic intervals.
+    ///
     /// # Arguments
     /// * `note` - The note to harmonize
     /// * `diatonic_degrees` - Scale degrees to transpose if in-key
@@ -141,14 +188,44 @@ impl Scale {
     ///
     /// # Returns
     /// The harmony note, or None if out of MIDI range
-    pub fn harmonize_smart(&self, note: Note, diatonic_degrees: i8, prefer_above: bool) -> Option<Note> {
+    pub fn harmonize_smart(&mut self, note: Note, diatonic_degrees: i8, prefer_above: bool) -> Option<Note> {
         if self.is_in_scale(note) {
             // In-key: use diatonic transposition
             self.transpose_diatonic(note, diatonic_degrees)
+        } else if self.interchange_enabled {
+            // Out-of-key with interchange: try borrowing from parallel modes
+            self.harmonize_with_interchange(note, prefer_above)
         } else {
-            // Out-of-key: use consonant chromatic interval
+            // Out-of-key without interchange: use consonant chromatic interval
             self.harmonize_chromatic(note, prefer_above)
         }
+    }
+
+    /// Finds a harmony for an out-of-key note using modal interchange.
+    ///
+    /// Searches parallel modes (built on the same tonic) to find one that
+    /// contains the note, then uses that mode's diatonic harmonization.
+    /// Falls back to chromatic harmonization if no parallel mode contains the note.
+    pub fn harmonize_with_interchange(&mut self, note: Note, prefer_above: bool) -> Option<Note> {
+        let sources = borrowing_sources(self.borrowing_range);
+        for &borrowed_mode in sources {
+            // Skip current mode (already checked in harmonize_smart)
+            if borrowed_mode == self.mode {
+                continue;
+            }
+            let borrowed_scale = Scale::new(self.tonic, borrowed_mode);
+            if borrowed_scale.is_in_scale(note) {
+                // Found a parallel mode containing this note — use its diatonic third
+                let degrees = if prefer_above { 2 } else { -2 };
+                if let Some(harmony) = borrowed_scale.transpose_diatonic(note, degrees) {
+                    self.last_borrowed_from = Some(borrowed_mode);
+                    return Some(harmony);
+                }
+            }
+        }
+        // No parallel mode contains this note — fall back to chromatic
+        self.last_borrowed_from = None;
+        self.harmonize_chromatic(note, prefer_above)
     }
 
     /// Finds a consonant chromatic harmony for an out-of-key note.
@@ -259,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_harmonize_smart_in_key() {
-        let scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0);  // C major
 
         // In-key note should use diatonic transposition
         // C4 + 2 degrees = E4
@@ -269,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_harmonize_smart_out_of_key() {
-        let scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0);  // C major
 
         // C#4 is out of key - should get consonant chromatic harmony
         let result = scale.harmonize_smart(Note::Db4, 2, true);
@@ -290,16 +367,13 @@ mod tests {
 
     #[test]
     fn test_chromatic_harmony_prefers_scale_tones() {
-        let scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0);  // C major
 
         // F#4 is out of key
-        // Chromatic harmony should prefer landing on a scale tone if possible
         let result = scale.harmonize_smart(Note::Gb4, -2, false);
         assert!(result.is_some());
 
-        // Check if the result landed on a scale tone (preferred but not guaranteed)
         let harmony = result.unwrap();
-        // The harmony should at least be consonant
         let melody_midi = u8::from(Note::Gb4);
         let harmony_midi = u8::from(harmony);
         let interval = (melody_midi as i8 - harmony_midi as i8).abs();
@@ -307,5 +381,126 @@ mod tests {
             [3, 4, 5, 7, 8, 9].contains(&interval),
             "Expected consonant interval below, got {} semitones", interval
         );
+    }
+
+    // New ScaleMode and Scale::new tests
+
+    #[test]
+    fn test_scale_new_with_each_mode() {
+        // Verify all 9 modes produce scales with correct degrees
+        for &mode in ScaleMode::all() {
+            let scale = Scale::new(0, mode); // C as tonic
+            // Tonic (C) should always be degree 0
+            assert_eq!(scale.degree_of(Note::C4), Some(0),
+                "Tonic should be degree 0 for {:?}", mode);
+            // Should have exactly 7 scale degrees
+            let mut count = 0;
+            for midi in 60..72 { // C4 through B4
+                if let Ok(note) = Note::try_from(midi) {
+                    if scale.degree_of(note).is_some() {
+                        count += 1;
+                    }
+                }
+            }
+            assert_eq!(count, 7, "Mode {:?} should have 7 degrees in an octave", mode);
+        }
+    }
+
+    #[test]
+    fn test_c_dorian_has_eb_and_bb() {
+        let scale = Scale::new(0, ScaleMode::Dorian); // C Dorian
+
+        // C Dorian: C D Eb F G A Bb
+        assert_eq!(scale.degree_of(Note::C4), Some(0));
+        assert_eq!(scale.degree_of(Note::D4), Some(1));
+        assert_eq!(scale.degree_of(Note::Eb4), Some(2)); // Eb is degree 2
+        assert_eq!(scale.degree_of(Note::F4), Some(3));
+        assert_eq!(scale.degree_of(Note::G4), Some(4));
+        assert_eq!(scale.degree_of(Note::A4), Some(5));
+        assert_eq!(scale.degree_of(Note::Bb4), Some(6)); // Bb is degree 6
+
+        // E natural should NOT be in C Dorian
+        assert_eq!(scale.degree_of(Note::E4), None);
+        // B natural should NOT be in C Dorian
+        assert_eq!(scale.degree_of(Note::B4), None);
+    }
+
+    #[test]
+    fn test_modal_interchange_finds_borrowing_source() {
+        // C Ionian scale, interchange enabled
+        let mut scale = Scale::new(0, ScaleMode::Ionian);
+        scale.set_interchange_enabled(true);
+        scale.set_borrowing_range(3);
+
+        // Eb4 is not in C Ionian, but IS in C Aeolian and C Dorian
+        let result = scale.harmonize_with_interchange(Note::Eb4, true);
+        assert!(result.is_some(), "Should find harmony via interchange for Eb");
+        assert!(scale.last_borrowed_from().is_some(), "Should record borrowed mode");
+
+        let borrowed = scale.last_borrowed_from().unwrap();
+        // Eb is in both Aeolian and Dorian; Aeolian is checked first at range >= 1
+        assert!(
+            borrowed == ScaleMode::Aeolian || borrowed == ScaleMode::Dorian,
+            "Should borrow from Aeolian or Dorian, got {:?}", borrowed
+        );
+    }
+
+    #[test]
+    fn test_harmonize_smart_with_interchange_enabled() {
+        let mut scale = Scale::new(0, ScaleMode::Ionian);
+        scale.set_interchange_enabled(true);
+
+        // In-key note: should still use diatonic (interchange doesn't affect in-key)
+        let result = scale.harmonize_smart(Note::C4, 2, true);
+        assert_eq!(result, Some(Note::E4));
+
+        // Out-of-key note: should use interchange path
+        let result = scale.harmonize_smart(Note::Eb4, 2, true);
+        assert!(result.is_some());
+        // Should have set last_borrowed_from
+        assert!(scale.last_borrowed_from().is_some());
+    }
+
+    #[test]
+    fn test_harmonize_smart_without_interchange_unchanged() {
+        let mut scale = Scale::new(0, ScaleMode::Ionian);
+        // interchange_enabled is false by default
+
+        // Out-of-key: should use chromatic path (no last_borrowed_from)
+        let result = scale.harmonize_smart(Note::Eb4, 2, true);
+        assert!(result.is_some());
+        assert!(scale.last_borrowed_from().is_none());
+    }
+
+    #[test]
+    fn test_scale_mode_getter() {
+        let scale = Scale::new(0, ScaleMode::Lydian);
+        assert_eq!(scale.mode(), ScaleMode::Lydian);
+    }
+
+    #[test]
+    fn test_major_is_ionian() {
+        let major = Scale::major(0);
+        let ionian = Scale::new(0, ScaleMode::Ionian);
+        // Both should produce same degrees for all notes
+        for midi in 0..=127 {
+            if let Ok(note) = Note::try_from(midi) {
+                assert_eq!(major.degree_of(note), ionian.degree_of(note));
+            }
+        }
+    }
+
+    #[test]
+    fn test_borrowing_range_clamp() {
+        let mut scale = Scale::new(0, ScaleMode::Ionian);
+        scale.set_borrowing_range(0);
+        assert_eq!(scale.borrowing_range, 1); // clamped to min
+        scale.set_borrowing_range(10);
+        assert_eq!(scale.borrowing_range, 5); // clamped to max
+    }
+
+    #[test]
+    fn test_scale_mode_all_returns_9() {
+        assert_eq!(ScaleMode::all().len(), 9);
     }
 }

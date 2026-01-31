@@ -58,7 +58,7 @@ impl ContraryMotionState {
     ///
     /// When `above` is true, the initial harmony starts a third above and moves upward.
     /// When `above` is false, the initial harmony starts a third below and moves downward.
-    pub fn process_directed(&mut self, scale: &Scale, melody: Note, above: bool) -> Vec<Note> {
+    pub fn process_directed(&mut self, scale: &mut Scale, melody: Note, above: bool) -> Vec<Note> {
         let initial_interval = if above { 2 } else { -2 };
         let harmony = match self.last_melody {
             None => {
@@ -116,7 +116,7 @@ impl ContraryMotionState {
     /// - Out-of-key notes: uses consonant chromatic intervals
     ///
     /// Returns [melody, harmony] or [melody] if harmony out of range.
-    pub fn process(&mut self, scale: &Scale, melody: Note) -> Vec<Note> {
+    pub fn process(&mut self, scale: &mut Scale, melody: Note) -> Vec<Note> {
         let harmony = match self.last_melody {
             None => {
                 // First note: start harmony a third below
@@ -330,7 +330,7 @@ impl CounterpointState {
     ///
     /// When `above` is true, candidate intervals above the melody are tried first.
     /// When `above` is false, candidate intervals below are tried first.
-    pub fn process_directed(&mut self, scale: &Scale, melody: Note, above: bool) -> Vec<Note> {
+    pub fn process_directed(&mut self, scale: &mut Scale, melody: Note, above: bool) -> Vec<Note> {
         // Track melody contour before scoring
         if let Some(prev_melody) = self.last_melody {
             let direction = Self::direction_between(prev_melody, melody);
@@ -437,7 +437,7 @@ impl CounterpointState {
     /// - Out-of-key notes: uses chromatic consonant intervals
     ///
     /// Returns [melody, harmony] or [melody] if no valid harmony found.
-    pub fn process(&mut self, scale: &Scale, melody: Note) -> Vec<Note> {
+    pub fn process(&mut self, scale: &mut Scale, melody: Note) -> Vec<Note> {
         // Track melody contour before scoring
         if let Some(prev_melody) = self.last_melody {
             let direction = Self::direction_between(prev_melody, melody);
@@ -696,11 +696,11 @@ mod tests {
 
     #[test]
     fn test_contrary_motion_first_note() {
-        let scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0);  // C major
         let mut state = ContraryMotionState::new();
 
         // First note gets harmony a third below
-        let result = state.process(&scale, Note::E4);
+        let result = state.process(&mut scale, Note::E4);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Note::E4);
         assert_eq!(result[1], Note::C4);  // E - 2 degrees = C
@@ -708,14 +708,14 @@ mod tests {
 
     #[test]
     fn test_contrary_motion_opposite_direction() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = ContraryMotionState::new();
 
         // First note: E4, harmony C4
-        let _ = state.process(&scale, Note::E4);
+        let _ = state.process(&mut scale, Note::E4);
 
         // Melody goes up to G4, harmony should go down from C4
-        let result = state.process(&scale, Note::G4);
+        let result = state.process(&mut scale, Note::G4);
         assert_eq!(result[0], Note::G4);
         // Harmony should be B3 (C4 - 1 degree)
         assert_eq!(result[1], Note::B3);
@@ -723,21 +723,21 @@ mod tests {
 
     #[test]
     fn test_contrary_motion_melody_repeats() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = ContraryMotionState::new();
 
         // First note: C4, harmony A3
-        let result1 = state.process(&scale, Note::C4);
+        let result1 = state.process(&mut scale, Note::C4);
         let harmony1 = result1[1];
 
         // Melody repeats: harmony should MOVE, not stay
-        let result2 = state.process(&scale, Note::C4);
+        let result2 = state.process(&mut scale, Note::C4);
         let harmony2 = result2[1];
         assert_ne!(u8::from(harmony1), u8::from(harmony2),
             "Harmony should move when melody repeats");
 
         // Third repeat: harmony should move again (opposite direction)
-        let result3 = state.process(&scale, Note::C4);
+        let result3 = state.process(&mut scale, Note::C4);
         let harmony3 = result3[1];
         assert_ne!(u8::from(harmony2), u8::from(harmony3),
             "Harmony should continue moving on repeated melody");
@@ -745,13 +745,13 @@ mod tests {
 
     #[test]
     fn test_counterpoint_avoids_parallel_fifths() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
         state.last_melody = Some(Note::C4);
         state.last_harmony = Some(Note::F3);  // Perfect 5th below
 
-        let result = state.process(&scale, Note::D4);
+        let result = state.process(&mut scale, Note::D4);
         assert_eq!(result[0], Note::D4);
 
         if result.len() > 1 {
@@ -764,10 +764,10 @@ mod tests {
 
     #[test]
     fn test_counterpoint_first_note() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
-        let result = state.process(&scale, Note::C4);
+        let result = state.process(&mut scale, Note::C4);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Note::C4);
         // Should get a consonant harmony (3rd or 6th preferred)
@@ -775,16 +775,16 @@ mod tests {
 
     #[test]
     fn test_counterpoint_melody_repeats_harmony_moves() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
         // First note
-        let result1 = state.process(&scale, Note::C4);
+        let result1 = state.process(&mut scale, Note::C4);
         assert_eq!(result1.len(), 2);
         let harmony1 = result1[1];
 
         // Same melody note: harmony MUST change
-        let result2 = state.process(&scale, Note::C4);
+        let result2 = state.process(&mut scale, Note::C4);
         assert_eq!(result2.len(), 2);
         let harmony2 = result2[1];
 
@@ -794,14 +794,14 @@ mod tests {
 
     #[test]
     fn test_counterpoint_prefers_stepwise_motion() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
         // Play several notes and check harmony moves smoothly
-        let result1 = state.process(&scale, Note::C4);
+        let result1 = state.process(&mut scale, Note::C4);
         let h1 = u8::from(result1[1]) as i32;
 
-        let result2 = state.process(&scale, Note::D4);
+        let result2 = state.process(&mut scale, Note::D4);
         let h2 = u8::from(result2[1]) as i32;
 
         // Harmony should move by a small interval (stepwise preferred)
@@ -811,13 +811,13 @@ mod tests {
 
     #[test]
     fn test_counterpoint_varies_intervals() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
         // Play a repeated note several times
         let mut harmonies = Vec::new();
         for _ in 0..4 {
-            let result = state.process(&scale, Note::C4);
+            let result = state.process(&mut scale, Note::C4);
             harmonies.push(u8::from(result[1]));
         }
 
@@ -899,14 +899,14 @@ mod tests {
 
     #[test]
     fn test_contrary_motion_preferred_with_ascending_melody() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
         // Build up an ascending contour
-        let _ = state.process(&scale, Note::C4);
-        let _ = state.process(&scale, Note::D4);
-        let _ = state.process(&scale, Note::E4);
-        let _ = state.process(&scale, Note::F4);
+        let _ = state.process(&mut scale, Note::C4);
+        let _ = state.process(&mut scale, Note::D4);
+        let _ = state.process(&mut scale, Note::E4);
+        let _ = state.process(&mut scale, Note::F4);
 
         // Contour should now be ascending
         assert_eq!(state.dominant_contour(), Some(MelodicDirection::Ascending));
@@ -915,7 +915,7 @@ mod tests {
         let prev_h = state.last_harmony.unwrap();
 
         // Play another ascending note
-        let result = state.process(&scale, Note::G4);
+        let result = state.process(&mut scale, Note::G4);
         let new_h = result[1];
 
         // Harmony should tend to go down (contrary motion)
@@ -963,13 +963,13 @@ mod tests {
 
     #[test]
     fn test_reset_clears_all_history() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
         // Build up some state
-        let _ = state.process(&scale, Note::C4);
-        let _ = state.process(&scale, Note::D4);
-        let _ = state.process(&scale, Note::E4);
+        let _ = state.process(&mut scale, Note::C4);
+        let _ = state.process(&mut scale, Note::D4);
+        let _ = state.process(&mut scale, Note::E4);
 
         assert!(state.last_melody.is_some());
         assert!(state.last_harmony.is_some());
@@ -989,13 +989,13 @@ mod tests {
 
     #[test]
     fn test_varied_harmony_over_repeated_melody() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
         // Play the same note 6 times
         let mut harmonies = Vec::new();
         for _ in 0..6 {
-            let result = state.process(&scale, Note::C4);
+            let result = state.process(&mut scale, Note::C4);
             assert_eq!(result.len(), 2, "Should always produce harmony");
             harmonies.push(u8::from(result[1]));
         }
@@ -1011,7 +1011,7 @@ mod tests {
 
     #[test]
     fn test_ascending_scale_gets_varied_intervals() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
         let mut state = CounterpointState::new();
 
         // Play ascending scale: C D E F G A
@@ -1019,7 +1019,7 @@ mod tests {
         let mut intervals = Vec::new();
 
         for note in &notes {
-            let result = state.process(&scale, *note);
+            let result = state.process(&mut scale, *note);
             if result.len() == 2 {
                 let melody_midi = u8::from(*note) as i8;
                 let harmony_midi = u8::from(result[1]) as i8;

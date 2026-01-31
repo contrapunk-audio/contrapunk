@@ -11,7 +11,7 @@ use crate::harmony::Scale;
 /// Mode 1: Pass-through (no harmony)
 ///
 /// Returns only the input note unchanged.
-pub fn pass_through(note: Note, _scale: &Scale) -> Vec<Note> {
+pub fn pass_through(note: Note, _scale: &mut Scale) -> Vec<Note> {
     vec![note]
 }
 
@@ -20,7 +20,7 @@ pub fn pass_through(note: Note, _scale: &Scale) -> Vec<Note> {
 /// Returns the input note plus a diatonic third (2 scale degrees) above.
 /// For out-of-key notes, uses a consonant chromatic third instead.
 /// If harmony would be out of range, returns only the original note.
-pub fn diatonic_thirds(note: Note, scale: &Scale) -> Vec<Note> {
+pub fn diatonic_thirds(note: Note, scale: &mut Scale) -> Vec<Note> {
     match scale.harmonize_smart(note, 2, true) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],  // Out of range, just pass through
@@ -32,7 +32,7 @@ pub fn diatonic_thirds(note: Note, scale: &Scale) -> Vec<Note> {
 /// Returns the input note plus a diatonic fourth (3 scale degrees) above.
 /// For out-of-key notes, uses a consonant chromatic interval instead.
 /// If harmony would be out of range, returns only the original note.
-pub fn diatonic_fourths(note: Note, scale: &Scale) -> Vec<Note> {
+pub fn diatonic_fourths(note: Note, scale: &mut Scale) -> Vec<Note> {
     match scale.harmonize_smart(note, 3, true) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
@@ -48,7 +48,7 @@ pub fn diatonic_fourths(note: Note, scale: &Scale) -> Vec<Note> {
 /// Note: For deterministic Note-Off handling, this mode requires
 /// tracking active notes. The random selection happens on Note-On
 /// and the same interval is used for Note-Off.
-pub fn random_below(note: Note, scale: &Scale) -> Vec<Note> {
+pub fn random_below(note: Note, scale: &mut Scale) -> Vec<Note> {
     let mut rng = rand::thread_rng();
 
     // Intervals: -1 (2nd below) to -6 (7th below)
@@ -66,7 +66,7 @@ pub fn random_below(note: Note, scale: &Scale) -> Vec<Note> {
 /// Like Mode 4, but excludes 2nds (which can sound dissonant).
 /// Returns input plus a random interval from 3rd to 7th below.
 /// For out-of-key notes, uses a consonant chromatic interval instead.
-pub fn random_below_no_seconds(note: Note, scale: &Scale) -> Vec<Note> {
+pub fn random_below_no_seconds(note: Note, scale: &mut Scale) -> Vec<Note> {
     let mut rng = rand::thread_rng();
 
     // Intervals: -2 (3rd below) to -6 (7th below), skipping -1 (2nd)
@@ -85,7 +85,7 @@ pub fn random_below_no_seconds(note: Note, scale: &Scale) -> Vec<Note> {
 // When `above` is false, harmony is generated below.
 
 /// Directed diatonic thirds: above or below the input note.
-pub fn diatonic_thirds_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
+pub fn diatonic_thirds_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
     let interval = if above { 2 } else { -2 };
     match scale.harmonize_smart(note, interval, above) {
         Some(harmony) => vec![note, harmony],
@@ -94,7 +94,7 @@ pub fn diatonic_thirds_directed(note: Note, scale: &Scale, above: bool) -> Vec<N
 }
 
 /// Directed diatonic fourths: above or below the input note.
-pub fn diatonic_fourths_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
+pub fn diatonic_fourths_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
     let interval = if above { 3 } else { -3 };
     match scale.harmonize_smart(note, interval, above) {
         Some(harmony) => vec![note, harmony],
@@ -104,7 +104,7 @@ pub fn diatonic_fourths_directed(note: Note, scale: &Scale, above: bool) -> Vec<
 
 /// Directed random diatonic interval.
 /// Above: random 2nd-7th above. Below: random 2nd-7th below.
-pub fn random_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
+pub fn random_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
     let mut rng = rand::thread_rng();
     let intervals: [i8; 6] = if above {
         [1, 2, 3, 4, 5, 6]
@@ -121,7 +121,7 @@ pub fn random_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
 
 /// Directed random diatonic interval, excluding seconds.
 /// Above: random 3rd-7th above. Below: random 3rd-7th below.
-pub fn random_no_seconds_directed(note: Note, scale: &Scale, above: bool) -> Vec<Note> {
+pub fn random_no_seconds_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
     let mut rng = rand::thread_rng();
     let intervals: [i8; 5] = if above {
         [2, 3, 4, 5, 6]
@@ -142,39 +142,39 @@ mod tests {
 
     #[test]
     fn test_pass_through() {
-        let scale = Scale::major(0);
-        let result = pass_through(Note::C4, &scale);
+        let mut scale = Scale::major(0);
+        let result = pass_through(Note::C4, &mut scale);
         assert_eq!(result, vec![Note::C4]);
     }
 
     #[test]
     fn test_diatonic_thirds() {
-        let scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0);  // C major
 
         // C4 + third = E4
-        let result = diatonic_thirds(Note::C4, &scale);
+        let result = diatonic_thirds(Note::C4, &mut scale);
         assert_eq!(result, vec![Note::C4, Note::E4]);
 
         // E4 + third = G4 (minor third, but still 2 scale degrees)
-        let result = diatonic_thirds(Note::E4, &scale);
+        let result = diatonic_thirds(Note::E4, &mut scale);
         assert_eq!(result, vec![Note::E4, Note::G4]);
     }
 
     #[test]
     fn test_diatonic_fourths() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
 
         // C4 + fourth = F4
-        let result = diatonic_fourths(Note::C4, &scale);
+        let result = diatonic_fourths(Note::C4, &mut scale);
         assert_eq!(result, vec![Note::C4, Note::F4]);
     }
 
     #[test]
     fn test_random_below_produces_harmony() {
-        let scale = Scale::major(0);
+        let mut scale = Scale::major(0);
 
         // Should produce 2 notes (original + harmony below)
-        let result = random_below(Note::C5, &scale);
+        let result = random_below(Note::C5, &mut scale);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Note::C5);
 

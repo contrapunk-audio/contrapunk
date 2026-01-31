@@ -74,6 +74,75 @@ impl std::fmt::Display for OctaveMode {
     }
 }
 
+/// Scale modes (7 church modes + harmonic minor + melodic minor)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScaleMode {
+    Ionian,
+    Dorian,
+    Phrygian,
+    Lydian,
+    Mixolydian,
+    Aeolian,
+    Locrian,
+    HarmonicMinor,
+    MelodicMinor,
+}
+
+impl ScaleMode {
+    /// Returns semitone offsets from tonic for each scale degree (0-6).
+    pub fn intervals(&self) -> [u8; 7] {
+        match self {
+            ScaleMode::Ionian       => [0, 2, 4, 5, 7, 9, 11],
+            ScaleMode::Dorian       => [0, 2, 3, 5, 7, 9, 10],
+            ScaleMode::Phrygian     => [0, 1, 3, 5, 7, 8, 10],
+            ScaleMode::Lydian       => [0, 2, 4, 6, 7, 9, 11],
+            ScaleMode::Mixolydian   => [0, 2, 4, 5, 7, 9, 10],
+            ScaleMode::Aeolian      => [0, 2, 3, 5, 7, 8, 10],
+            ScaleMode::Locrian      => [0, 1, 3, 5, 6, 8, 10],
+            ScaleMode::HarmonicMinor => [0, 2, 3, 5, 7, 8, 11],
+            ScaleMode::MelodicMinor => [0, 2, 3, 5, 7, 9, 11],
+        }
+    }
+
+    /// Returns all scale modes for menu display.
+    pub fn all() -> &'static [ScaleMode] {
+        &[
+            ScaleMode::Ionian,
+            ScaleMode::Dorian,
+            ScaleMode::Phrygian,
+            ScaleMode::Lydian,
+            ScaleMode::Mixolydian,
+            ScaleMode::Aeolian,
+            ScaleMode::Locrian,
+            ScaleMode::HarmonicMinor,
+            ScaleMode::MelodicMinor,
+        ]
+    }
+}
+
+impl Default for ScaleMode {
+    fn default() -> Self {
+        ScaleMode::Ionian
+    }
+}
+
+impl std::fmt::Display for ScaleMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScaleMode::Ionian => write!(f, "Ionian (Major)"),
+            ScaleMode::Dorian => write!(f, "Dorian"),
+            ScaleMode::Phrygian => write!(f, "Phrygian"),
+            ScaleMode::Lydian => write!(f, "Lydian"),
+            ScaleMode::Mixolydian => write!(f, "Mixolydian"),
+            ScaleMode::Aeolian => write!(f, "Aeolian (Minor)"),
+            ScaleMode::Locrian => write!(f, "Locrian"),
+            ScaleMode::HarmonicMinor => write!(f, "Harmonic Minor"),
+            ScaleMode::MelodicMinor => write!(f, "Melodic Minor"),
+        }
+    }
+}
+
 /// Harmony modes (1-7)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
