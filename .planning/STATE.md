@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 6.4 of 9 (Modal Harmony & Chord Detection)
-Plan: 2 of 4 in current phase
+Plan: 2 of 4 in current phase (01 and 02 complete)
 Status: In progress
-Last activity: 2026-01-31 - Completed 06.4-02-PLAN.md (expanded chord detection)
+Last activity: 2026-01-31 - Completed 06.4-01-PLAN.md (ScaleMode enum + modal interchange)
 
-Progress: [████████░] (34 of 37 phase plans complete)
+Progress: [█████████░] (35 of 37 phase plans complete)
 
 ## Performance Metrics
 
@@ -110,6 +110,9 @@ Recent decisions affecting current work:
 - [06.5-02]: Virtual inputs skip physical MIDI connection in both native and WASM
 - [06.5-03]: Magenta highlight for generator-selected piano keys (distinct from input/harmony colors)
 - [06.5-03]: Chord resolution in octave 4 (C4=MIDI 60)
+- [06.4-01]: harmonize_smart takes &mut self to track last_borrowed_from for UI
+- [06.4-01]: Borrowing range 1-5 maps to progressively more parallel modes
+- [06.4-01]: All mode functions take &mut Scale for consistency with interchange
 - [06.4-02]: Smart match priority prefers longer patterns then root-position chords over inversions
 
 ### Pending Todos
@@ -245,6 +248,6 @@ Human-verified: approved
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 06.4-02-PLAN.md
+Stopped at: Completed 06.4-01-PLAN.md (and 06.4-02 previously)
 Resume file: None
 Next: 06.4-03-PLAN.md
