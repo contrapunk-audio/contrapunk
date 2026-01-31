@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.3 complete — Style Update verified
+**Current focus:** Phase 6.4 in progress — Modal Harmony & Chord Detection
 
 ## Current Position
 
-Phase: 6.3 of 9 (Style Update)
-Plan: 7 of 7 in current phase (all complete, human verified)
-Status: Complete
-Last activity: 2026-01-31 - Phase 6.3 Style Update human-verified and marked complete
+Phase: 6.4 of 9 (Modal Harmony & Chord Detection)
+Plan: 2 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-31 - Completed 06.4-02-PLAN.md (expanded chord detection)
 
-Progress: [████████░] 100% (33 of 33 phase plans complete)
+Progress: [████████░] (34 of 37 phase plans complete)
 
 ## Performance Metrics
 
@@ -110,6 +110,7 @@ Recent decisions affecting current work:
 - [06.5-02]: Virtual inputs skip physical MIDI connection in both native and WASM
 - [06.5-03]: Magenta highlight for generator-selected piano keys (distinct from input/harmony colors)
 - [06.5-03]: Chord resolution in octave 4 (C4=MIDI 60)
+- [06.4-02]: Smart match priority prefers longer patterns then root-position chords over inversions
 
 ### Pending Todos
 
@@ -244,6 +245,6 @@ Human-verified: approved
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Phase 6.3 complete
+Stopped at: Completed 06.4-02-PLAN.md
 Resume file: None
-Next: Phase 6.4 (Modal Harmony & Chord Detection) or other phases
+Next: 06.4-03-PLAN.md
