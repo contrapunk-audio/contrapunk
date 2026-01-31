@@ -1187,8 +1187,16 @@ impl eframe::App for ContrapunkApp {
 
             let gen_selected: HashSet<u8> = self.generator_selected_notes.iter().copied().collect();
             let gen_enabled = self.generator_enabled;
+            // Compute in-scale pitch classes for piano tinting
+            let in_scale_pcs: HashSet<u8> = {
+                let tonic = self.state.key.semitones_from_c();
+                let intervals = self.scale_mode.intervals();
+                intervals.iter().map(|&offset| (tonic + offset) % 12).collect()
+            };
+            let borrowed_active = self.interchange_enabled && !harmony_notes.is_empty();
             let toggled = PianoKeyboard::new()
                 .with_notes(input_notes, harmony_notes)
+                .with_scale_tint(in_scale_pcs, borrowed_active)
                 .with_selectable(gen_selected, gen_enabled)
                 .show(ui);
 
