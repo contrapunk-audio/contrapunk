@@ -237,10 +237,13 @@ Plans:
   6. Chord detection recognizes slash chords (C/E), add chords (Cadd9), and 6th chords
   7. All previously unrecognized note combinations now show a chord name instead of raw note names
   8. Scale mode selection works with all existing harmony modes and voice leading
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 06.4-01: TBD (run /gsd:plan-phase 6.4 to break down)
+- [ ] 06.4-01-PLAN.md — ScaleMode enum, Scale::new() parameterization, modal interchange, engine wiring
+- [ ] 06.4-02-PLAN.md — Expanded chord detection (40+ patterns, slash chords, roman numerals)
+- [ ] 06.4-03-PLAN.md — GUI integration (scale dropdown, interchange controls, piano tinting, chord display)
+- [ ] 06.4-04-PLAN.md — Human verification checkpoint
 
 ### Phase 6.5: Note Generator (INSERTED)
 **Goal**: Provide a virtual MIDI input source that generates notes using the shared beat clock, selectable in the IN dropdown alongside physical MIDI devices. Users can pick individual notes, chords, or algorithmic patterns that feed into the harmony engine.
@@ -327,7 +330,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.1 Humanization UI Fix (INSERTED) | 2/2 | Complete | 2026-01-30 |
 | 6.2 Voice Leading (INSERTED) | 0/4 | Planning complete | - |
 | 6.3 Style Update (INSERTED) | 7/7 | Complete | 2026-01-31 |
-| 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/? | Not started | - |
+| 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/4 | Planning complete | - |
 | 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
@@ -335,4 +338,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-31 — 3D harmonic visualizer added to Phase 6.3; voice leading style params widened for audible differentiation*
+*Last updated: 2026-01-31 — Phase 6.4 planned: 4 plans in 3 waves*
