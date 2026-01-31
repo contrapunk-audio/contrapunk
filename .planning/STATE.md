@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 6.4 of 9 (Modal Harmony & Chord Detection)
-Plan: 2 of 4 in current phase (01 and 02 complete)
+Plan: 3 of 4 in current phase (01, 02, and 03 complete)
 Status: In progress
-Last activity: 2026-01-31 - Completed 06.4-01-PLAN.md (ScaleMode enum + modal interchange)
+Last activity: 2026-01-31 - Completed 06.4-03-PLAN.md (GUI integration for modal harmony)
 
-Progress: [█████████░] (35 of 37 phase plans complete)
+Progress: [█████████░] (36 of 37 phase plans complete)
 
 ## Performance Metrics
 
@@ -114,6 +114,9 @@ Recent decisions affecting current work:
 - [06.4-01]: Borrowing range 1-5 maps to progressively more parallel modes
 - [06.4-01]: All mode functions take &mut Scale for consistency with interchange
 - [06.4-02]: Smart match priority prefers longer patterns then root-position chords over inversions
+- [06.4-03]: Borrowed note amber on piano when interchange enabled and harmony sounding
+- [06.4-03]: Subtle gold scale tinting on in-scale keys (warm wash white, lighter black)
+- [06.4-03]: Roman numeral chord analysis in display (e.g., "Fmaj7 (IVmaj7 in C)")
 
 ### Pending Todos
 
@@ -248,6 +251,6 @@ Human-verified: approved
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 06.4-01-PLAN.md (and 06.4-02 previously)
+Stopped at: Completed 06.4-03-PLAN.md
 Resume file: None
-Next: 06.4-03-PLAN.md
+Next: 06.4-04-PLAN.md
