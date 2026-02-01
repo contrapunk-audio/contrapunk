@@ -295,6 +295,7 @@ pub enum HarmonyMode {
     RandomBelowNoSeconds, // Mode 5: Random below excluding seconds
     ContraryMotion,    // Mode 6: Harmony moves opposite to melody
     StrictCounterpoint, // Mode 7: Traditional voice leading rules
+    BarryHarris,        // Mode 8: Barry Harris 6th dim movement
 }
 
 impl HarmonyMode {
@@ -308,6 +309,7 @@ impl HarmonyMode {
             HarmonyMode::RandomBelowNoSeconds => 5,
             HarmonyMode::ContraryMotion => 6,
             HarmonyMode::StrictCounterpoint => 7,
+            HarmonyMode::BarryHarris => 8,
         }
     }
 
@@ -321,6 +323,7 @@ impl HarmonyMode {
             HarmonyMode::RandomBelowNoSeconds,
             HarmonyMode::ContraryMotion,
             HarmonyMode::StrictCounterpoint,
+            HarmonyMode::BarryHarris,
         ]
     }
 
@@ -334,6 +337,7 @@ impl HarmonyMode {
             HarmonyMode::RandomBelowNoSeconds => "Random below (no 2nds)",
             HarmonyMode::ContraryMotion => "Contrary motion",
             HarmonyMode::StrictCounterpoint => "Strict counterpoint",
+            HarmonyMode::BarryHarris => "Barry Harris (6th dim movement)",
         }
     }
 }

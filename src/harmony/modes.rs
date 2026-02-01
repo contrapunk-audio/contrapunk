@@ -136,6 +136,28 @@ pub fn random_no_seconds_directed(note: Note, scale: &mut Scale, above: bool) ->
     }
 }
 
+/// Mode 8: Barry Harris 6th diminished movement
+///
+/// Moves by 2 scale degrees in the current scale. In an 8-note Barry Harris
+/// scale, this preserves chord-tone/passing-tone parity (even degrees map to
+/// even, odd to odd). Works with any scale but is musically intended for
+/// BH 6th Dim scales.
+pub fn barry_harris(note: Note, scale: &mut Scale) -> Vec<Note> {
+    match scale.harmonize_smart(note, 2, true) {
+        Some(harmony) => vec![note, harmony],
+        None => vec![note],
+    }
+}
+
+/// Directed Barry Harris movement: above or below the input note.
+pub fn barry_harris_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
+    let interval = if above { 2 } else { -2 };
+    match scale.harmonize_smart(note, interval, above) {
+        Some(harmony) => vec![note, harmony],
+        None => vec![note],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
