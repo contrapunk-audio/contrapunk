@@ -75,6 +75,10 @@ pub struct GUIRouterState {
     pub interchange_enabled: Option<bool>,
     /// Borrowing range (synced from GUI)
     pub borrowing_range: Option<u8>,
+    /// MIDI note numbers that were borrowed from another mode via interchange
+    pub borrowed_notes: HashSet<u8>,
+    /// Last mode borrowed from during modal interchange (for UI display)
+    pub last_borrowed_from: Option<ScaleMode>,
 }
 
 #[cfg(feature = "gui")]
@@ -101,6 +105,8 @@ impl Default for GUIRouterState {
             scale_mode: None,
             interchange_enabled: None,
             borrowing_range: None,
+            borrowed_notes: HashSet::new(),
+            last_borrowed_from: None,
         }
     }
 }
@@ -367,6 +373,7 @@ fn run_gui_router_inner(
         let mut state_lock = state.lock().unwrap();
         state_lock.input_notes.clear();
         state_lock.harmony_notes.clear();
+        state_lock.borrowed_notes.clear();
     }
     ctx.request_repaint();
 
@@ -443,12 +450,19 @@ fn handle_note_on_gui(
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
 
-    // Update shared state with active notes
+    // Update shared state with active notes and interchange info
     {
         let mut state_lock = state.lock().unwrap();
         state_lock.input_notes.insert(note as u8);
         for &n in notes.iter().skip(1) {
             state_lock.harmony_notes.insert(n as u8);
+        }
+        // Track borrowed notes and source mode for UI display
+        state_lock.last_borrowed_from = engine.last_borrowed_from();
+        if engine.last_borrowed_from().is_some() {
+            for &n in notes.iter().skip(1) {
+                state_lock.borrowed_notes.insert(n as u8);
+            }
         }
     }
 
@@ -509,6 +523,7 @@ fn handle_note_off_gui(
         state_lock.input_notes.remove(&(note as u8));
         for &n in notes.iter().skip(1) {
             state_lock.harmony_notes.remove(&(n as u8));
+            state_lock.borrowed_notes.remove(&(n as u8));
         }
     }
 

@@ -12,13 +12,20 @@ const CONSONANT_INTERVALS_BELOW: [i8; 6] = [-3, -4, -8, -9, -5, -7]; // m3, M3, 
 /// Each level includes all modes from previous levels plus new ones.
 fn borrowing_sources(range: u8) -> &'static [ScaleMode] {
     match range {
-        1 => &[ScaleMode::Aeolian],
-        2 => &[ScaleMode::Aeolian, ScaleMode::Dorian],
-        3 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian],
-        4 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian, ScaleMode::Phrygian],
+        1 => &[ScaleMode::Aeolian, ScaleMode::HarmonicMinor],
+        2 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::HarmonicMinor,
+               ScaleMode::MelodicMinor],
+        3 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian,
+               ScaleMode::Phrygian, ScaleMode::HarmonicMinor, ScaleMode::MelodicMinor],
+        4 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian,
+               ScaleMode::Phrygian, ScaleMode::Lydian,
+               ScaleMode::HarmonicMinor, ScaleMode::MelodicMinor,
+               ScaleMode::PhrygianDominant],
         _ => &[
             ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian,
             ScaleMode::Phrygian, ScaleMode::Lydian, ScaleMode::Locrian, ScaleMode::Ionian,
+            ScaleMode::HarmonicMinor, ScaleMode::MelodicMinor,
+            ScaleMode::PhrygianDominant, ScaleMode::LydianDominant,
         ],
     }
 }
@@ -196,6 +203,8 @@ impl Scale {
     /// The harmony note, or None if out of MIDI range
     pub fn harmonize_smart(&mut self, note: Note, diatonic_degrees: i8, prefer_above: bool) -> Option<Note> {
         if self.is_in_scale(note) {
+            // In-key: clear any previous borrowed mode indicator
+            self.last_borrowed_from = None;
             // In-key: use diatonic transposition
             self.transpose_diatonic(note, diatonic_degrees)
         } else if self.interchange_enabled {
