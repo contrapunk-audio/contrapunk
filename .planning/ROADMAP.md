@@ -24,6 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6.3: Style Update** - UI visual redesign and musical style presets (jazz, classical, pop, etc.) (INSERTED)
 - [ ] **Phase 6.4: Modal Harmony & Chord Detection** - All church modes + harmonic/melodic minor, modal interchange with visual feedback, comprehensive chord detection (INSERTED)
 - [ ] **Phase 6.5: Note Generator** - Virtual MIDI input source: beat-synced note generation (arpeggiator, scale runner, random, chord player), selectable as IN source alongside physical devices (INSERTED)
+- [ ] **Phase 6.6: Default MIDI Selection** - Persist default MIDI input/output device selections across sessions on both native and WASM (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
@@ -266,6 +267,21 @@ Plans:
 - [ ] 06.5-03-PLAN.md — Generator UI: mode selector, chord picker, piano click-to-select
 - [ ] 06.5-04-PLAN.md — Human verification checkpoint
 
+### Phase 6.6: Default MIDI Selection (INSERTED)
+**Goal**: Persist default MIDI input and output device selections so they are remembered across application restarts, on both native (file-based eframe::Storage) and WASM (localStorage)
+**Depends on**: Phase 6.4 (Modal Harmony — current phase), Phase 3 (GUI)
+**Requirements**: DEF-01, DEF-02
+**Success Criteria** (what must be TRUE):
+  1. User can select MIDI input and output devices, and those selections are remembered on next launch
+  2. Device matching uses port names (not indices) since indices can change between sessions
+  3. If a previously-saved device is unavailable on launch, selection falls back to "Select..." (no silent failure)
+  4. Works on native (eframe file storage) and WASM (localStorage) identically
+  5. A "Set as Default" action or automatic save on selection change persists the choice
+**Plans**: 1 plan
+
+Plans:
+- [ ] 06.6-01-PLAN.md — MidiDefaults persistence module and app integration
+
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
 **Depends on**: Phase 1 (MIDI Foundation)
@@ -316,7 +332,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -332,10 +348,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.3 Style Update (INSERTED) | 7/7 | Complete | 2026-01-31 |
 | 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/4 | Planning complete | - |
 | 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
+| 6.6 Default MIDI Selection (INSERTED) | 0/1 | Planning complete | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-01-31 — Phase 6.4 planned: 4 plans in 3 waves*
+*Last updated: 2026-02-02 — Phase 6.6 planned: 1 plan in 1 wave*
