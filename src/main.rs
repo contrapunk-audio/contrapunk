@@ -20,6 +20,9 @@ mod piano;
 mod theme;
 
 #[cfg(feature = "gui")]
+mod midi_defaults;
+
+#[cfg(feature = "gui")]
 mod preset;
 
 #[cfg(feature = "gui")]

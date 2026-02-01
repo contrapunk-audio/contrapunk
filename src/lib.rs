@@ -5,6 +5,7 @@
 
 mod app;
 mod chord;
+mod midi_defaults;
 mod generator;
 mod harmony;
 mod humanize;
