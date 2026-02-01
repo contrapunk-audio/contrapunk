@@ -117,10 +117,14 @@ Recent decisions affecting current work:
 - [06.4-03]: Borrowed note amber on piano when interchange enabled and harmony sounding
 - [06.4-03]: Subtle gold scale tinting on in-scale keys (warm wash white, lighter black)
 - [06.4-03]: Roman numeral chord analysis in display (e.g., "Fmaj7 (IVmaj7 in C)")
+- [bugfix]: ScaleFamily re-exported from harmony module (GUI build fix)
+- [bugfix]: last_borrowed_from cleared on in-key notes (stuck interchange display fix)
+- [bugfix]: borrowing_sources expanded with harmonic/melodic minor at all ranges, Phrygian at range 3+
+- [bugfix]: GUIRouterState now tracks borrowed_notes and last_borrowed_from for native UI
 
 ### Pending Todos
 
-None.
+- Stuck MIDI notes when changing settings mid-play (voice leading, key, mode, etc.) — active_notes tracking cleared without sending Note-Offs. Needs a proper fix that doesn't introduce new stuck notes.
 
 ### Blockers/Concerns
 
@@ -253,6 +257,6 @@ Human-verified: approved
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 06.7-02-PLAN.md (phase 6.7 complete)
+Stopped at: Bugfix session — modal interchange fixes, GUI build fix, borrowed_notes tracking
 Resume file: None
-Next: Phase 6.7 complete — all 3 plans done
+Next: Fix stuck MIDI notes on setting change (known issue), then Phase 7 discussion
