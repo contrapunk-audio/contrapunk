@@ -33,8 +33,8 @@ pub struct Scale {
     tonic: u8,
     /// The scale mode
     mode: ScaleMode,
-    /// Semitone offsets for each scale degree (0-6)
-    offsets: [u8; 7],
+    /// Semitone offsets for each scale degree (variable length: 7 or 8)
+    offsets: Vec<u8>,
     /// Whether modal interchange is enabled for out-of-key notes
     interchange_enabled: bool,
     /// How many parallel modes to search (1-5)
@@ -54,6 +54,11 @@ impl Scale {
             borrowing_range: 3,
             last_borrowed_from: None,
         }
+    }
+
+    /// Returns the number of degrees in this scale (7 for most, 8 for Barry Harris).
+    pub fn scale_len(&self) -> usize {
+        self.offsets.len()
     }
 
     /// Creates a new major scale with the given tonic.
@@ -104,12 +109,13 @@ impl Scale {
 
         // Calculate new degree with octave handling
         let total_degrees = current_degree + degrees;
+        let len = self.scale_len() as i8;
         let octave_shift = if total_degrees < 0 {
-            (total_degrees - 6) / 7  // Floor division for negative
+            (total_degrees - (len - 1)) / len  // Floor division for negative
         } else {
-            total_degrees / 7
+            total_degrees / len
         };
-        let new_degree = ((total_degrees % 7) + 7) % 7;
+        let new_degree = ((total_degrees % len) + len) % len;
 
         // Calculate semitone difference
         let current_offset = self.offsets[current_degree as usize] as i8;
@@ -402,7 +408,8 @@ mod tests {
                     }
                 }
             }
-            assert_eq!(count, 7, "Mode {:?} should have 7 degrees in an octave", mode);
+            let expected = mode.intervals().len();
+            assert_eq!(count, expected, "Mode {:?} should have {} degrees in an octave", mode, expected);
         }
     }
 
@@ -500,7 +507,64 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_mode_all_returns_9() {
-        assert_eq!(ScaleMode::all().len(), 9);
+    fn test_scale_mode_all_returns_28() {
+        assert_eq!(ScaleMode::all().len(), 28);
+    }
+
+    #[test]
+    fn test_barry_harris_major_6th_dim_has_8_degrees() {
+        let scale = Scale::new(0, ScaleMode::BHMajor6thDim);
+        assert_eq!(scale.scale_len(), 8);
+        // C BH Major 6th Dim: C D E F G Ab A B (8 notes)
+        let mut count = 0;
+        for midi in 60..72 {
+            if let Ok(note) = Note::try_from(midi) {
+                if scale.degree_of(note).is_some() {
+                    count += 1;
+                }
+            }
+        }
+        assert_eq!(count, 8);
+        assert_eq!(scale.degree_of(Note::C4), Some(0));
+        assert_eq!(scale.degree_of(Note::Ab4), Some(5));
+        assert_eq!(scale.degree_of(Note::A4), Some(6));
+        assert_eq!(scale.degree_of(Note::B4), Some(7));
+    }
+
+    #[test]
+    fn test_barry_harris_transpose_diatonic() {
+        let scale = Scale::new(0, ScaleMode::BHMajor6thDim);
+        // Degree 7 (B4) + 1 = degree 0 one octave up (C5)
+        let result = scale.transpose_diatonic(Note::B4, 1);
+        assert_eq!(result, Some(Note::C5));
+        // Degree 0 (C4) - 1 = degree 7 one octave down (B3)
+        let result = scale.transpose_diatonic(Note::C4, -1);
+        assert_eq!(result, Some(Note::B3));
+    }
+
+    #[test]
+    fn test_phrygian_dominant_intervals() {
+        let scale = Scale::new(0, ScaleMode::PhrygianDominant);
+        // C Phrygian Dominant: C Db E F G Ab Bb
+        assert_eq!(scale.degree_of(Note::C4), Some(0));
+        assert_eq!(scale.degree_of(Note::Db4), Some(1));
+        assert_eq!(scale.degree_of(Note::E4), Some(2));  // E natural, not Eb
+        assert_eq!(scale.degree_of(Note::Eb4), None);
+        assert_eq!(scale.degree_of(Note::G4), Some(4));
+        assert_eq!(scale.degree_of(Note::Ab4), Some(5));
+        assert_eq!(scale.degree_of(Note::Bb4), Some(6));
+    }
+
+    #[test]
+    fn test_existing_modes_unchanged() {
+        let scale = Scale::new(0, ScaleMode::Ionian);
+        // C Ionian: C D E F G A B
+        assert_eq!(scale.degree_of(Note::C4), Some(0));
+        assert_eq!(scale.degree_of(Note::D4), Some(1));
+        assert_eq!(scale.degree_of(Note::E4), Some(2));
+        assert_eq!(scale.degree_of(Note::F4), Some(3));
+        assert_eq!(scale.degree_of(Note::G4), Some(4));
+        assert_eq!(scale.degree_of(Note::A4), Some(5));
+        assert_eq!(scale.degree_of(Note::B4), Some(6));
     }
 }
