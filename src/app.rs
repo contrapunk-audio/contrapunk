@@ -23,6 +23,7 @@ use crate::humanize::HumanizeConfig;
 #[cfg(target_arch = "wasm32")]
 use crate::humanize::{Humanizer, DelayQueue, Metronome};
 use crate::piano::PianoKeyboard;
+use crate::midi_defaults;
 use crate::preset::{PresetManager, storage as preset_storage};
 use crate::theme::ContrapunkTheme;
 use crate::theme::widgets::{draw_ornate_frame, draw_scanlines};
@@ -245,6 +246,8 @@ pub struct ContrapunkApp {
     pub(crate) keyboard_enabled: bool,
     /// Currently held keyboard keys (MIDI note numbers) for proper NoteOff
     pub(crate) keyboard_held_keys: std::collections::HashSet<u8>,
+    /// Pending MIDI defaults for deferred application (WASM: apply after device enumeration)
+    midi_defaults_pending: Option<midi_defaults::MidiDefaults>,
 }
 
 /// Sentinel port index for "Note Generator" virtual input.
@@ -316,6 +319,7 @@ impl ContrapunkApp {
             generator_selected_notes: Vec::new(),
             keyboard_enabled: false,
             keyboard_held_keys: std::collections::HashSet::new(),
+            midi_defaults_pending: None,
         };
 
         // Load custom presets from eframe storage
@@ -326,8 +330,21 @@ impl ContrapunkApp {
             }
         }
 
+        // Load saved MIDI defaults from storage
+        let loaded_defaults = _cc.storage.map(|s| midi_defaults::load_midi_defaults(s));
+
         // Auto-refresh devices on startup
         app.state.refresh_devices();
+
+        // Apply MIDI defaults: native can apply immediately, WASM defers until devices enumerated
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(ref defaults) = loaded_defaults {
+            midi_defaults::apply_midi_defaults(&mut app.state, defaults);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            app.midi_defaults_pending = loaded_defaults;
+        }
 
         // Initialize Web MIDI asynchronously (WASM only)
         #[cfg(target_arch = "wasm32")]
@@ -504,21 +521,39 @@ impl ContrapunkApp {
         self.wasm_clock_started = false;
     }
 
-    /// Gets the current input/harmony notes from the router state.
+    /// Gets the current input/harmony/borrowed notes from the router state.
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
+    pub(crate) fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>, HashSet<u8>) {
         if let Some(ref router_state) = self.router_state {
             if let Ok(state) = router_state.lock() {
-                return (state.input_notes.clone(), state.harmony_notes.clone());
+                return (state.input_notes.clone(), state.harmony_notes.clone(), state.borrowed_notes.clone());
             }
         }
-        (HashSet::new(), HashSet::new())
+        (HashSet::new(), HashSet::new(), HashSet::new())
     }
 
-    /// Gets the current input/harmony notes (WASM).
+    /// Gets the current input/harmony/borrowed notes (WASM).
     #[cfg(target_arch = "wasm32")]
-    pub(crate) fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>) {
-        (self.wasm_input_notes.clone(), self.wasm_harmony_notes.clone())
+    pub(crate) fn get_router_notes(&self) -> (HashSet<u8>, HashSet<u8>, HashSet<u8>) {
+        // TODO: track borrowed_notes in WASM path too
+        (self.wasm_input_notes.clone(), self.wasm_harmony_notes.clone(), HashSet::new())
+    }
+
+    /// Gets last_borrowed_from from the router state (native) or engine (WASM).
+    pub(crate) fn get_last_borrowed_from(&self) -> Option<crate::harmony::ScaleMode> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.engine.last_borrowed_from()
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some(ref router_state) = self.router_state {
+                if let Ok(state) = router_state.lock() {
+                    return state.last_borrowed_from;
+                }
+            }
+            None
+        }
     }
 
     /// Creates a StylePreset from the current app state.
@@ -801,6 +836,8 @@ impl ContrapunkApp {
 impl eframe::App for ContrapunkApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         preset_storage::save_custom_presets(storage, self.preset_manager.custom_presets());
+        let defaults = midi_defaults::build_midi_defaults(&self.state);
+        midi_defaults::save_midi_defaults(storage, &defaults);
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -844,7 +881,7 @@ impl eframe::App for ContrapunkApp {
             self.anim_time = time;
 
             // Update note activity from current notes
-            let (input_n, harmony_n) = self.get_router_notes();
+            let (input_n, harmony_n, _) = self.get_router_notes();
             let current_count = input_n.len() + harmony_n.len();
             if current_count > 0 {
                 self.note_activity = 1.0;
@@ -880,6 +917,11 @@ impl eframe::App for ContrapunkApp {
                     self.state.available_outputs = outputs.iter().enumerate()
                         .map(|(i, (_, name))| (i, name.clone()))
                         .collect();
+
+                    // Apply deferred MIDI defaults now that devices are available
+                    if let Some(defaults) = self.midi_defaults_pending.take() {
+                        midi_defaults::apply_midi_defaults(&mut self.state, &defaults);
+                    }
                 }
             }
 
@@ -1152,7 +1194,7 @@ impl eframe::App for ContrapunkApp {
 
         // Piano keyboard in BottomPanel (always visible)
         egui::TopBottomPanel::bottom("piano_panel").show(ctx, |ui| {
-            let (input_notes, harmony_notes) = self.get_router_notes();
+            let (input_notes, harmony_notes, borrowed_notes) = self.get_router_notes();
 
             // Chord detection
             let all_notes: HashSet<u8> = {
@@ -1169,11 +1211,7 @@ impl eframe::App for ContrapunkApp {
                 );
                 // Borrowed-from indicator
                 if self.interchange_enabled {
-                    #[cfg(target_arch = "wasm32")]
-                    let borrowed = self.engine.last_borrowed_from();
-                    #[cfg(not(target_arch = "wasm32"))]
-                    let borrowed: Option<ScaleMode> = None; // Router owns engine on native
-                    if let Some(mode) = borrowed {
+                    if let Some(mode) = self.get_last_borrowed_from() {
                         ui.label(
                             egui::RichText::new(format!("borrowed from {} {}", self.state.key, mode))
                                 .size(12.0)
@@ -1193,10 +1231,9 @@ impl eframe::App for ContrapunkApp {
                 let intervals = self.scale_mode.intervals();
                 intervals.iter().map(|&offset| (tonic + offset) % 12).collect()
             };
-            let borrowed_active = self.interchange_enabled && !harmony_notes.is_empty();
             let toggled = PianoKeyboard::new()
                 .with_notes(input_notes, harmony_notes)
-                .with_scale_tint(in_scale_pcs, borrowed_active)
+                .with_scale_tint(in_scale_pcs, borrowed_notes)
                 .with_selectable(gen_selected, gen_enabled)
                 .show(ui);
 
