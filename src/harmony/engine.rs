@@ -689,6 +689,7 @@ impl HarmonyEngine {
                     vec![note]
                 }
             }
+            HarmonyMode::BarryHarris => modes::barry_harris_directed(note, &mut self.scale, above),
         }
     }
 
@@ -715,6 +716,7 @@ impl HarmonyEngine {
                     vec![note]
                 }
             }
+            HarmonyMode::BarryHarris => modes::barry_harris(note, &mut self.scale),
         }
     }
 

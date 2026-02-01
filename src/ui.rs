@@ -4,7 +4,7 @@
 
 use eframe::egui;
 use crate::app::{ContrapunkApp, midi_to_name, INPUT_COMPUTER_KEYBOARD};
-use crate::harmony::{Key, HarmonyMode, OctaveMode, ScaleMode, VoiceLeadingStyle};
+use crate::harmony::{Key, HarmonyMode, OctaveMode, ScaleFamily, ScaleMode, VoiceLeadingStyle};
 use crate::preset::storage::{export_preset_json, import_preset_json};
 use crate::theme::colors::*;
 use crate::theme::widgets::{ornate_slider, ornate_toggle};
@@ -274,6 +274,26 @@ impl ContrapunkApp {
             { if ui.small_button("Refresh").clicked() { self.state.refresh_devices(); } }
             #[cfg(target_arch = "wasm32")]
             { if ui.small_button("Refresh").clicked() { self.midi_initialized = false; self.state.refresh_devices(); } }
+
+            // IAC Driver help (macOS only, but shown on all native builds)
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                ui.add_space(4.0);
+                egui::CollapsingHeader::new(
+                    egui::RichText::new("No MIDI devices?").color(TEXT_DIM).small()
+                )
+                .id_salt("iac_help")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.label(egui::RichText::new("macOS: Add IAC Driver buses").color(TEXT_SECONDARY).small());
+                    ui.label(egui::RichText::new("1. Open Audio MIDI Setup.app").color(TEXT_DIM).small());
+                    ui.label(egui::RichText::new("2. Window \u{2192} Show MIDI Studio").color(TEXT_DIM).small());
+                    ui.label(egui::RichText::new("3. Double-click \"IAC Driver\"").color(TEXT_DIM).small());
+                    ui.label(egui::RichText::new("4. Check \"Device is online\"").color(TEXT_DIM).small());
+                    ui.label(egui::RichText::new("5. Click \"+\" to add buses").color(TEXT_DIM).small());
+                    ui.label(egui::RichText::new("6. Click Refresh above").color(TEXT_DIM).small());
+                });
+            }
         });
     }
 
@@ -295,10 +315,16 @@ impl ContrapunkApp {
                 ui.label("Scale:");
                 egui::ComboBox::from_id_salt("main_scale_mode")
                     .selected_text(format!("{}", self.scale_mode))
-                    .width(ui.available_width().min(130.0))
+                    .width(ui.available_width().min(160.0))
                     .show_ui(ui, |ui| {
-                        for mode in ScaleMode::all() {
-                            ui.selectable_value(&mut self.scale_mode, *mode, format!("{}", mode));
+                        for (i, family) in ScaleFamily::all().iter().enumerate() {
+                            if i > 0 {
+                                ui.separator();
+                            }
+                            ui.label(egui::RichText::new(family.to_string()).color(GOLD).strong().size(10.0));
+                            for mode in ScaleMode::all_in_family(*family) {
+                                ui.selectable_value(&mut self.scale_mode, mode, format!("{}", mode));
+                            }
                         }
                     });
             });
