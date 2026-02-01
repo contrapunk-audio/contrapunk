@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.6 complete — Default MIDI Selection
+**Current focus:** Phase 6.7 in progress — Extended Scale Modes & Barry Harris
 
 ## Current Position
 
-Phase: 6.6 of 9 (Default MIDI Selection)
-Plan: 1 of 1 in current phase (01 complete)
-Status: Phase complete
-Last activity: 2026-02-02 - Completed 06.6-01-PLAN.md (MIDI device persistence)
+Phase: 6.7 of 9 (Extended Scale Modes & Barry Harris)
+Plan: 1 of 3 in current phase (01 complete)
+Status: In progress
+Last activity: 2026-02-02 - Completed 06.7-01-PLAN.md (scale system generalization)
 
-Progress: [█████████░] (37 of 38 phase plans complete)
+Progress: [█████████░] (38 of 40 phase plans complete)
 
 ## Performance Metrics
 
@@ -140,6 +140,7 @@ None.
 - Phase 6.4 inserted after Phase 6.3: Modal Harmony & Chord Detection — all church modes + harmonic/melodic minor, modal interchange with visual feedback, comprehensive chord detection (extended, slash, add chords)
 - Phase 6.5 inserted after Phase 6.4: Note Generator — virtual MIDI input source with note/chord selection and beat-synced patterns (arpeggiator, scale runner, random), feeds into harmony engine
 - Phase 6.6 inserted after Phase 6.5: Default MIDI Selection — persist MIDI device choices across sessions using eframe::Storage (native file + WASM localStorage)
+- Phase 6.7 inserted after Phase 6.6: Extended Scale Modes & Barry Harris — all harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules
 
 ## Phase 1 Completion Summary
 
@@ -252,6 +253,6 @@ Human-verified: approved
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 06.6-01-PLAN.md
+Stopped at: Completed 06.7-01-PLAN.md
 Resume file: None
-Next: None
+Next: 06.7-02-PLAN.md
