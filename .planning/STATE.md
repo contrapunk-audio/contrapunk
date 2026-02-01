@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.7 complete — Extended Scale Modes & Barry Harris
+**Current focus:** Phase 6.8 complete — CI Fix
 
 ## Current Position
 
-Phase: 6.7 of 9 (Extended Scale Modes & Barry Harris)
-Plan: 3 of 3 in current phase (01, 02, 03 complete)
+Phase: 6.8 of 9 (CI Fix)
+Plan: 1 of 1 in current phase (01 complete)
 Status: Phase complete
-Last activity: 2026-02-02 - Completed 06.7-02-PLAN.md (Barry Harris harmony mode)
+Last activity: 2026-02-02 - Completed 06.8-01-PLAN.md (Fix WASM Build and Improve CI Caching)
 
-Progress: [██████████] (40 of 40 phase plans complete)
+Progress: [██████████] (41 of 41 phase plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 25
+- Total plans completed: 26
 - Average duration: 2.8 min
-- Total execution time: 74 min
+- Total execution time: 77 min
 
 **By Phase:**
 
@@ -34,6 +34,7 @@ Progress: [██████████] (40 of 40 phase plans complete)
 | 05-octave-variations | 1 | 3 min | 3 min |
 | 05.1-wasm-browser | 2 | 11 min | 5.5 min |
 | 06.5-note-generator | 4 | 16 min | 4 min |
+| 06.8-ci-fix | 1 | 3 min | 3 min |
 
 *Updated after each plan completion*
 
@@ -121,6 +122,9 @@ Recent decisions affecting current work:
 - [bugfix]: last_borrowed_from cleared on in-key notes (stuck interchange display fix)
 - [bugfix]: borrowing_sources expanded with harmonic/melodic minor at all ranges, Phrygian at range 3+
 - [bugfix]: GUIRouterState now tracks borrowed_notes and last_borrowed_from for native UI
+- [06.8-01]: Use Swatinem/rust-cache@v2 instead of manual actions/cache for Rust deps
+- [06.8-01]: Cache Trunk binary with version-keyed key (trunk-OS-v0.21)
+- [06.8-01]: Three parallel CI jobs: check, test, wasm-check
 
 ### Pending Todos
 
@@ -145,6 +149,7 @@ None.
 - Phase 6.5 inserted after Phase 6.4: Note Generator — virtual MIDI input source with note/chord selection and beat-synced patterns (arpeggiator, scale runner, random), feeds into harmony engine
 - Phase 6.6 inserted after Phase 6.5: Default MIDI Selection — persist MIDI device choices across sessions using eframe::Storage (native file + WASM localStorage)
 - Phase 6.7 inserted after Phase 6.6: Extended Scale Modes & Barry Harris — all harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules
+- Phase 6.8 inserted after Phase 6.7: CI Fix (URGENT)
 
 ## Phase 1 Completion Summary
 
@@ -257,6 +262,6 @@ Human-verified: approved
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Bugfix session — modal interchange fixes, GUI build fix, borrowed_notes tracking
+Stopped at: Completed 06.8-01-PLAN.md (Fix WASM Build and Improve CI Caching)
 Resume file: None
 Next: Fix stuck MIDI notes on setting change (known issue), then Phase 7 discussion
