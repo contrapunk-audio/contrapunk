@@ -25,6 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 6.4: Modal Harmony & Chord Detection** - All church modes + harmonic/melodic minor, modal interchange with visual feedback, comprehensive chord detection (INSERTED)
 - [ ] **Phase 6.5: Note Generator** - Virtual MIDI input source: beat-synced note generation (arpeggiator, scale runner, random, chord player), selectable as IN source alongside physical devices (INSERTED)
 - [x] **Phase 6.6: Default MIDI Selection** - Persist default MIDI input/output device selections across sessions on both native and WASM (INSERTED)
+- [ ] **Phase 6.7: Extended Scale Modes & Barry Harris** - All harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
@@ -282,6 +283,26 @@ Plans:
 Plans:
 - [ ] 06.6-01-PLAN.md — MidiDefaults persistence module and app integration
 
+### Phase 6.7: Extended Scale Modes & Barry Harris (INSERTED)
+**Goal**: Add all modes of harmonic minor (7), all modes of melodic minor (7), popular exotic scales (5), and Barry Harris 6th diminished 8-note scales (2) with Barry Harris movement rules as a new harmony mode
+**Depends on**: Phase 6.4 (Modal Harmony & Chord Detection), Phase 2 (Harmony Engine)
+**Requirements**: ESM-01, ESM-02, ESM-03
+**Success Criteria** (what must be TRUE):
+  1. All 7 modes of harmonic minor are selectable as scale modes
+  2. All 7 modes of melodic minor are selectable as scale modes
+  3. Popular exotic scales (Double Harmonic, Hungarian Minor, Enigmatic, Neapolitan Minor/Major) are available
+  4. Barry Harris Major 6th Diminished and Minor 6th Diminished 8-note scales are available
+  5. Scale dropdown groups modes by family (Church, Harmonic Minor, Melodic Minor, Exotic, Barry Harris)
+  6. Barry Harris harmony mode implements movement rules (chord tones to chord tones, passing tones to passing tones)
+  7. Scale system supports variable-length scales (7 and 8 note) without breaking existing modes
+  8. All existing harmony modes work with all new scale types
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06.7-01-PLAN.md — Generalize Scale to variable-length offsets, add ~28 ScaleMode variants with ScaleFamily
+- [ ] 06.7-02-PLAN.md — Barry Harris harmony mode with 6th diminished movement rules
+- [ ] 06.7-03-PLAN.md — Grouped scale dropdown UI and Barry Harris in harmony mode list
+
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
 **Depends on**: Phase 1 (MIDI Foundation)
@@ -332,7 +353,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 6.7 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -349,10 +370,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/4 | Planning complete | - |
 | 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
 | 6.6 Default MIDI Selection (INSERTED) | 1/1 | Complete | 2026-02-02 |
+| 6.7 Extended Scale Modes & Barry Harris (INSERTED) | 0/3 | Planning complete | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-02-02 — Phase 6.6 complete: MIDI device persistence*
+*Last updated: 2026-02-02 — Phase 6.7 planned: 3 plans in 2 waves*
