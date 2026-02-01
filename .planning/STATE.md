@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.8 complete — CI Fix
+**Current focus:** Phase 6.9 in progress — Repo Cleanup & Documentation
 
 ## Current Position
 
-Phase: 6.8 of 9 (CI Fix)
+Phase: 6.9 of 9 (Repo Cleanup & Documentation)
 Plan: 1 of 1 in current phase (01 complete)
-Status: Phase complete
-Last activity: 2026-02-02 - Completed 06.8-01-PLAN.md (Fix WASM Build and Improve CI Caching)
+Status: In progress
+Last activity: 2026-02-02 - Completed 06.9-01-PLAN.md (Consolidate CI/CD Workflows)
 
-Progress: [██████████] (41 of 41 phase plans complete)
+Progress: [██████████] (42 of 42 phase plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 26
+- Total plans completed: 27
 - Average duration: 2.8 min
-- Total execution time: 77 min
+- Total execution time: 79 min
 
 **By Phase:**
 
@@ -35,6 +35,7 @@ Progress: [██████████] (41 of 41 phase plans complete)
 | 05.1-wasm-browser | 2 | 11 min | 5.5 min |
 | 06.5-note-generator | 4 | 16 min | 4 min |
 | 06.8-ci-fix | 1 | 3 min | 3 min |
+| 06.9-repo-cleanup | 1 | 2 min | 2 min |
 
 *Updated after each plan completion*
 
@@ -125,6 +126,7 @@ Recent decisions affecting current work:
 - [06.8-01]: Use Swatinem/rust-cache@v2 instead of manual actions/cache for Rust deps
 - [06.8-01]: Cache Trunk binary with version-keyed key (trunk-OS-v0.21)
 - [06.8-01]: Three parallel CI jobs: check, test, wasm-check
+- [06.9-01]: Unified CI/CD in single ci.yml with deploy gated behind all checks, main-only
 
 ### Pending Todos
 
@@ -150,6 +152,7 @@ None.
 - Phase 6.6 inserted after Phase 6.5: Default MIDI Selection — persist MIDI device choices across sessions using eframe::Storage (native file + WASM localStorage)
 - Phase 6.7 inserted after Phase 6.6: Extended Scale Modes & Barry Harris — all harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules
 - Phase 6.8 inserted after Phase 6.7: CI Fix (URGENT)
+- Phase 6.9 inserted after Phase 6.8: Repo Cleanup & Documentation — remove Python scripts, clean README, comprehensive docs
 
 ## Phase 1 Completion Summary
 
@@ -262,6 +265,6 @@ Human-verified: approved
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 06.8-01-PLAN.md (Fix WASM Build and Improve CI Caching)
+Stopped at: Completed 06.9-01-PLAN.md (Consolidate CI/CD Workflows)
 Resume file: None
-Next: Fix stuck MIDI notes on setting change (known issue), then Phase 7 discussion
+Next: Continue 06.9 repo cleanup plans if any, then Phase 7 discussion
