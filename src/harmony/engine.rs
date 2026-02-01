@@ -1458,4 +1458,66 @@ mod tests {
             // Should not panic for any mode
         }
     }
+
+    // Barry Harris mode tests
+
+    #[test]
+    fn test_barry_harris_chord_tone_to_chord_tone() {
+        // C BH Major 6th Dim: C D E F G Ab A B (degrees 0-7)
+        // C4 is degree 0 (chord tone, even). +2 degrees = E4 (degree 2, chord tone, even).
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 2);
+        engine.set_scale_mode(ScaleMode::BHMajor6thDim);
+
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], Note::C4);
+        assert_eq!(result[1], Note::E4); // degree 0 + 2 = degree 2 = E
+    }
+
+    #[test]
+    fn test_barry_harris_passing_tone_to_passing_tone() {
+        // C BH Major 6th Dim: C D E F G Ab A B (degrees 0-7)
+        // D4 is degree 1 (passing tone, odd). +2 degrees = F4 (degree 3, passing tone, odd).
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 2);
+        engine.set_scale_mode(ScaleMode::BHMajor6thDim);
+
+        let result = engine.harmonize(Note::D4);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], Note::D4);
+        assert_eq!(result[1], Note::F4); // degree 1 + 2 = degree 3 = F
+    }
+
+    #[test]
+    fn test_all_modes_with_barry_harris_scale() {
+        for &mode in HarmonyMode::all() {
+            let mut engine = HarmonyEngine::with_voices(Key::C, mode, 2);
+            engine.set_scale_mode(ScaleMode::BHMajor6thDim);
+
+            let result = engine.harmonize(Note::C4);
+            assert!(!result.is_empty(), "Mode {:?} with BH scale should produce output", mode);
+            assert_eq!(result[0], Note::C4);
+        }
+    }
+
+    #[test]
+    fn test_all_modes_with_exotic_scales() {
+        for &mode in HarmonyMode::all() {
+            let mut engine = HarmonyEngine::with_voices(Key::C, mode, 2);
+            engine.set_scale_mode(ScaleMode::DoubleHarmonic);
+
+            let result = engine.harmonize(Note::C4);
+            assert!(!result.is_empty(), "Mode {:?} with DoubleHarmonic should not panic", mode);
+        }
+    }
+
+    #[test]
+    fn test_barry_harris_with_7note_scale() {
+        // BarryHarris mode with Ionian (7-note) scale still works
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 2);
+
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], Note::C4);
+        assert_eq!(result[1], Note::E4);
+    }
 }
