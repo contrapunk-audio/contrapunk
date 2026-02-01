@@ -16,17 +16,19 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Cache cargo
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm
+
+      - name: Cache Trunk
+        id: trunk-cache
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: wasm-${{ hashFiles('Cargo.lock') }}
-          restore-keys: wasm-
+          path: ~/.cargo/bin/trunk
+          key: trunk-${{ runner.os }}-v0.21
 
       - name: Install Trunk
+        if: steps.trunk-cache.outputs.cache-hit != 'true'
         run: cargo install trunk --locked
 
       - name: Build WASM
