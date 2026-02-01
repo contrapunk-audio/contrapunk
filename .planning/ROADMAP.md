@@ -26,6 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 6.5: Note Generator** - Virtual MIDI input source: beat-synced note generation (arpeggiator, scale runner, random, chord player), selectable as IN source alongside physical devices (INSERTED)
 - [x] **Phase 6.6: Default MIDI Selection** - Persist default MIDI input/output device selections across sessions on both native and WASM (INSERTED)
 - [x] **Phase 6.7: Extended Scale Modes & Barry Harris** - All harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules (INSERTED)
+- [x] **Phase 6.8: CI Fix** - Fix CI pipeline issues (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
@@ -303,6 +304,14 @@ Plans:
 - [x] 06.7-02-PLAN.md — Barry Harris harmony mode with 6th diminished movement rules
 - [x] 06.7-03-PLAN.md — Grouped scale dropdown UI and Barry Harris in harmony mode list
 
+### Phase 6.8: CI Fix (INSERTED)
+**Goal**: Fix CI pipeline issues
+**Depends on**: Phase 6.7
+**Plans**: 1 plan
+
+Plans:
+- [x] 06.8-01-PLAN.md — Fix WASM build and improve CI caching
+
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
 **Depends on**: Phase 1 (MIDI Foundation)
@@ -371,10 +380,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
 | 6.6 Default MIDI Selection (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.7 Extended Scale Modes & Barry Harris (INSERTED) | 3/3 | Complete | 2026-02-02 |
+| 6.8 CI Fix (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-02-02 — Phase 6.7 complete: 28 scale modes, Barry Harris harmony mode*
+*Last updated: 2026-02-02 — Phase 6.8 complete: CI fix, WASM build fix, deploy caching*
