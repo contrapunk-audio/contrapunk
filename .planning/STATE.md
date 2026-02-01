@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.4 in progress — Modal Harmony & Chord Detection
+**Current focus:** Phase 6.6 complete — Default MIDI Selection
 
 ## Current Position
 
-Phase: 6.4 of 9 (Modal Harmony & Chord Detection)
-Plan: 3 of 4 in current phase (01, 02, and 03 complete)
-Status: In progress
-Last activity: 2026-01-31 - Completed 06.4-03-PLAN.md (GUI integration for modal harmony)
+Phase: 6.6 of 9 (Default MIDI Selection)
+Plan: 1 of 1 in current phase (01 complete)
+Status: Phase complete
+Last activity: 2026-02-02 - Completed 06.6-01-PLAN.md (MIDI device persistence)
 
-Progress: [█████████░] (36 of 37 phase plans complete)
+Progress: [█████████░] (37 of 38 phase plans complete)
 
 ## Performance Metrics
 
@@ -139,6 +139,7 @@ None.
 - Phase 6.1 inserted as Humanization UI Fix (URGENT) — previous 6.1 (Voice Leading) moved to 6.2, previous 6.2 (Style Update) moved to 6.3
 - Phase 6.4 inserted after Phase 6.3: Modal Harmony & Chord Detection — all church modes + harmonic/melodic minor, modal interchange with visual feedback, comprehensive chord detection (extended, slash, add chords)
 - Phase 6.5 inserted after Phase 6.4: Note Generator — virtual MIDI input source with note/chord selection and beat-synced patterns (arpeggiator, scale runner, random), feeds into harmony engine
+- Phase 6.6 inserted after Phase 6.5: Default MIDI Selection — persist MIDI device choices across sessions using eframe::Storage (native file + WASM localStorage)
 
 ## Phase 1 Completion Summary
 
@@ -250,7 +251,7 @@ Human-verified: approved
 
 ## Session Continuity
 
-Last session: 2026-01-31
-Stopped at: Completed 06.4-03-PLAN.md
+Last session: 2026-02-02
+Stopped at: Completed 06.6-01-PLAN.md
 Resume file: None
-Next: 06.4-04-PLAN.md
+Next: None
