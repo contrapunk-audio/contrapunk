@@ -61,6 +61,7 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
 
         match msg {
             Message::MidiData(bytes) => {
+                eprintln!("[server] client {} received {} MIDI bytes", peer, bytes.len());
                 if let Err(e) = process_midi(&bytes, &mut engine, &mut stream) {
                     eprintln!("[server] client {} midi error: {}", peer, e);
                 }

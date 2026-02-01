@@ -42,8 +42,8 @@ pub struct PianoKeyboard {
     selectable: bool,
     /// Pitch classes (0-11) that are in the current scale
     in_scale_pcs: HashSet<u8>,
-    /// Whether a note is currently borrowed (modal interchange active and sounding)
-    borrowed_active: bool,
+    /// MIDI note numbers produced via modal interchange
+    borrowed_notes: HashSet<u8>,
 }
 
 impl PianoKeyboard {
@@ -55,7 +55,7 @@ impl PianoKeyboard {
             selected_notes: HashSet::new(),
             selectable: false,
             in_scale_pcs: HashSet::new(),
-            borrowed_active: false,
+            borrowed_notes: HashSet::new(),
         }
     }
 
@@ -67,9 +67,9 @@ impl PianoKeyboard {
     }
 
     /// Sets the in-scale pitch classes for scale tinting and borrowed note state.
-    pub fn with_scale_tint(mut self, in_scale_pcs: HashSet<u8>, borrowed_active: bool) -> Self {
+    pub fn with_scale_tint(mut self, in_scale_pcs: HashSet<u8>, borrowed_notes: HashSet<u8>) -> Self {
         self.in_scale_pcs = in_scale_pcs;
-        self.borrowed_active = borrowed_active;
+        self.borrowed_notes = borrowed_notes;
         self
     }
 
@@ -223,9 +223,9 @@ impl PianoKeyboard {
             return Color32::from_rgb(220, 50, 220); // Magenta - generator selected
         }
 
-        // Borrowed note highlighting: harmony notes when interchange is active
+        // Borrowed note highlighting: only notes actually produced via modal interchange
         // Orange/amber takes priority over normal harmony color but not input
-        if is_harmony && !is_input && self.borrowed_active {
+        if is_harmony && !is_input && self.borrowed_notes.contains(&midi) {
             return Color32::from_rgb(204, 153, 0); // Steampunk amber - borrowed note
         }
 
