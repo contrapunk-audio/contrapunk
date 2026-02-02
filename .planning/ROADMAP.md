@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6.6: Default MIDI Selection** - Persist default MIDI input/output device selections across sessions on both native and WASM (INSERTED)
 - [x] **Phase 6.7: Extended Scale Modes & Barry Harris** - All harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules (INSERTED)
 - [x] **Phase 6.8: CI Fix** - Fix CI pipeline issues (INSERTED)
-- [ ] **Phase 6.9: Repo Cleanup & Documentation** - Remove legacy Python scripts, clean up README, create comprehensive docs (INSERTED)
+- [x] **Phase 6.9: Repo Cleanup & Documentation** - Remove legacy Python scripts, clean up README, create comprehensive docs (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
