@@ -1,84 +1,75 @@
 # Contrapunk
 
-## Description
+Real-time MIDI harmony generator built with Rust.
 
-This is a program that generates counterpoint for a given melody. It supports both MIDI input devices and audio input from your audio interface, converting monophonic audio (like from a guitar or voice) into MIDI data.
+Connect a MIDI controller, pick a scale and harmony mode, and Contrapunk generates live harmonies alongside your playing. Runs as a native desktop app or in the browser via WebAssembly.
+
+## Try It
+
+Browser version: [contrapunk.fly.dev](https://contrapunk.fly.dev/)
+
+## Features
+
+- **9 harmony modes** -- Pass-through, Diatonic 3rds, Diatonic 5ths, Random Diatonic, Contrary Motion, Strict Counterpoint, Barry Harris, and more
+- **28+ scale modes** organized by family (Church modes, Harmonic Minor, Melodic Minor, Exotic, Barry Harris 6th Diminished)
+- **Modal interchange** with visual feedback for chromatic note handling
+- **Chord detection** -- extended chords, slash chords, add chords, roman numeral analysis
+- **Steampunk-themed GUI** with tabbed navigation (Play / Craft / Settings)
+- **11+ musical style presets** with character personas
+- **Humanization engine** -- timing jitter, velocity variation, groove patterns, beat clock
+- **Mirror octaves** for multi-octave harmony spread
+- **Native desktop app** (single binary) and **WASM browser version**
+- **Server/client mode** for remote MIDI processing over the network
+- **Persistent MIDI device selection** across sessions
 
 ## Installation
 
-```bash
-pip install -r requirements.txt
+### From Source
+
 ```
+git clone https://github.com/waveywaves/contrapunk.git
+cd contrapunk
+cargo build --release
+./target/release/contrapunk
+```
+
+### WASM (Browser)
+
+```
+cargo install trunk
+trunk serve
+```
+
+Then open http://localhost:8080
 
 ## Usage
 
-```bash
-python main.py
+1. Select a MIDI input device and one or more output devices
+2. Choose a musical key and scale mode
+3. Pick a harmony mode (Diatonic 3rds, Contrary Motion, etc.)
+4. Play notes on your MIDI controller to hear generated harmonies
+5. Adjust humanization, presets, and other settings via the tabbed GUI
+
+## Development
+
+```
+cargo build          # Debug build
+cargo test           # Run tests
+cargo clippy         # Lint
+trunk build          # WASM build
+trunk serve          # WASM dev server
 ```
 
-When the application starts:
-1. Choose your input type (MIDI or Audio)
-2. Select your input device:
-   - For MIDI: Choose your MIDI input device
-   - For Audio: Choose your audio interface input
-3. Configure your MIDI output devices for melody and harmony
-4. Select a key and mode
-5. Start playing!
+## Architecture
 
-## Modes
+Key modules in `src/`:
 
-1. As is forwarding
-2. Forward Diatonic 3rds
-3. Forward random diatonic intervals
-4. Forward random diatonic intervals (excluding seconds)
-5. Forward contrary motion with random intervals (excluding seconds)
-6. Forward strict counterpoint (following standard rules)
+- **harmony/** -- Harmony engine, scale definitions, modal interchange, chord detection
+- **humanizer/** -- Timing jitter, velocity variation, groove patterns, beat clock
+- **server/** -- TCP server/client for remote MIDI processing
+- **gui/** -- egui/eframe interface with steampunk theme, piano keyboard, preset system
+- **midi/** -- MIDI I/O via midir (native) and Web MIDI API (WASM)
 
-The modes can be changed in real-time while playing using number keys 1-6.
-Press 'q' to quit.
+## Deployment
 
-## Audio Input Settings
-
-When using audio input:
-- Sample Rate: 44100 Hz
-- Buffer Size: 1024 samples
-- Note Detection Threshold: 0.8 (adjustable)
-- Silence Threshold: 0.1 (adjustable)
-- Pitch Range: C2 to C7
-
-## Counterpoint Rules (Mode 6)
-
-The strict counterpoint mode follows these rules:
-1. Prefers contrary motion
-2. Uses consonant intervals (3rds, 6ths, perfect 5ths, octaves)
-3. Avoids parallel fifths and octaves
-4. Properly resolves leading tones
-5. Uses step motion after leaps
-6. Maintains limited range between voices
-
-# Ideas
-
-- start the notes after some time like you are playing a chord naturally
-- notes one to four start at different points in time
-- make the tracks to follow different rhythms
-- counter melodies are always in different rhythms
-- separate configurable drum tracks  
-- Global tempo
-- Dedicated rhythm track annotation
-- Uniqueness factor for each track
-- Plugin hosting support (VST, AU etc.)
-- Plugin build (to use inside DAW)
-- Style annotations
-- MIDI file input
-- Guitar to MIDI using Pitch Detection
-- WebRTC support
-- Candombe rhythm support, swing support for rhythm
-- Is the user playing classical music or jazz music
-- How good of a musician is the user 
-- Short window music classification for the above
-- Tonic identification
-- Melodic motif discovery
-- Onset detection and prediction
-- Meter inference
-- Indian art music: a computational perspective 
-- WIMAGA Workshop April 7 2025
+Deployed to Fly.io at [contrapunk.fly.dev](https://contrapunk.fly.dev/). CI/CD via GitHub Actions (`.github/workflows/ci.yml`).
