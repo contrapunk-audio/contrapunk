@@ -1,43 +1,20 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Rust build artifacts
+target/
 
-# Distribution / packaging
+# WASM build output
 dist/
-build/
-*.egg-info/
 
-# Virtual environments
-venv/
-env/
-.env/
-.venv/
-
-# IDE specific files
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# Environment variables
-.env
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# macOS specific
+# OS
 .DS_Store
+
+# Environment
+.env
 
 # Logs
 *.log
-
-# Local development settings
-local_settings.py
-
-# Coverage reports
-htmlcov/
-.coverage
-.coverage.*
-coverage.xml
-*.cover 
