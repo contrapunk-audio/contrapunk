@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6.6: Default MIDI Selection** - Persist default MIDI input/output device selections across sessions on both native and WASM (INSERTED)
 - [x] **Phase 6.7: Extended Scale Modes & Barry Harris** - All harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules (INSERTED)
 - [x] **Phase 6.8: CI Fix** - Fix CI pipeline issues (INSERTED)
-- [ ] **Phase 6.9: Repo Cleanup & Documentation** - Remove legacy Python scripts, clean up README, create comprehensive docs (INSERTED)
+- [x] **Phase 6.9: Repo Cleanup & Documentation** - Remove legacy Python scripts, clean up README, create comprehensive docs (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
@@ -319,7 +319,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 06.9-01-PLAN.md — Merge ci.yml and deploy.yml into unified CI/CD workflow
+- [x] 06.9-01-PLAN.md — Merge ci.yml and deploy.yml into unified CI/CD workflow
 
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
@@ -390,11 +390,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.6 Default MIDI Selection (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.7 Extended Scale Modes & Barry Harris (INSERTED) | 3/3 | Complete | 2026-02-02 |
 | 6.8 CI Fix (INSERTED) | 1/1 | Complete | 2026-02-02 |
-| 6.9 Repo Cleanup & Documentation (INSERTED) | 0/? | Not started | - |
+| 6.9 Repo Cleanup & Documentation (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-02-02 — Phase 6.8 complete: CI fix, WASM build fix, deploy caching*
+*Last updated: 2026-02-02 — Phase 6.9 complete: Consolidated CI/CD into single workflow*
