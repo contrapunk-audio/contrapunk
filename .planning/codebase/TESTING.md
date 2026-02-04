@@ -1,246 +1,294 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-01-28
+**Analysis Date:** 2026-02-04
 
 ## Test Framework
 
-**Runner:** Not detected
+**Runner:**
+- Rust built-in test framework (no external test runner)
+- Config: None required (uses `cargo test` defaults)
+- Documentation tests supported via `cargo test --doc`
 
-**Assertion Library:** Not detected
+**Assertion Library:**
+- Standard library: `assert!`, `assert_eq!`, `assert_ne!`
+- No external assertion libraries (like `pretty_assertions`) detected
 
-**Current State:** No automated tests present in codebase
-
-**Testing Infrastructure:** None configured
-- No `pytest.ini`, `tox.ini`, `setup.py`, or test configuration files
-- No test directories (`tests/`, `test/`)
-- No test files (`*_test.py`, `test_*.py`, `*.spec.py`)
-
-**Run Commands:** None established
+**Run Commands:**
+```bash
+cargo test              # Run all tests
+cargo test --lib        # Library tests only
+cargo test <name>       # Run specific test by name
+```
 
 ## Test File Organization
 
-**Location:** Not applicable - no tests exist
+**Location:**
+- Co-located: Tests in same file as implementation using `#[cfg(test)] mod tests { ... }`
+- Pattern: Every module with logic has inline tests at bottom of file
+- No separate `tests/` directory detected (all unit tests)
 
-**Naming:** Not applicable - no tests exist
+**Naming:**
+- Test modules always named `tests`
+- Test functions use descriptive snake_case with `test_` prefix
+- Pattern: `test_<what_is_being_tested>_<expected_outcome>`
+- Examples: `test_c_major_scale_degrees`, `test_harmonize_smart_out_of_key`
 
-**Structure:** Not applicable - no tests exist
-
-## Manual Testing Approach
-
-**Current verification methods:**
-- Interactive TUI testing during development (curses-based UI)
-- Manual MIDI port selection and audio device verification
-- Print statements for debug output during execution
-
-**Observed in code:**
-- Debug print statements: `print(f"Device info: {device_info}")`  in `monitor_audio_levels()`
-- Status messages via TUI: `self.show_error(f"Status: {status}")` in audio monitoring
-- Runtime assertions implicit in error handling
-
-## Error Handling as Testing
-
-**Pattern:** Extensive try-except blocks serve as runtime validation
-
-Examples from `main.py`:
-```python
-try:
-    val = int(value)
-    if (min_val is None or val >= min_val) and (max_val is None or val <= max_val):
-        return val
-    else:
-        self.show_error(f"Value must be between {min_val} and {max_val}")
-except ValueError:
-    self.show_error("Please enter a valid number")
+**Structure:**
+```
+src/
+├── chord.rs               # Implementation + #[cfg(test)] mod tests
+├── harmony/
+│   ├── engine.rs          # Implementation + 1523 lines (includes ~600 lines of tests)
+│   ├── scale.rs           # Implementation + extensive tests
+│   └── modes.rs           # Implementation + tests
 ```
 
-Examples from `audio_to_midi.py`:
-```python
-try:
-    audio_data = self.audio_queue.get(timeout=1.0)
-    # processing
-except queue.Empty:
-    continue
+## Test Structure
+
+**Suite Organization:**
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;  // Import all from parent module
+
+    #[test]
+    fn test_specific_behavior() {
+        // Arrange
+        let scale = Scale::major(0);
+
+        // Act
+        let result = scale.transpose_diatonic(Note::C4, 2);
+
+        // Assert
+        assert_eq!(result, Some(Note::E4));
+    }
+}
 ```
 
-**Areas with error handling:**
-- MIDI message processing: 37 try-except blocks in main.py
-- Device initialization and audio streaming
-- Port operations and MIDI communication
-- Queue operations with timeout handling
-- User input validation (integer range checking)
+**Patterns:**
+- Arrange-Act-Assert structure (implicit, not labeled)
+- Each test focuses on one behavior
+- Descriptive test names eliminate need for comments
+- Related tests grouped by functionality (e.g., all chord detection tests together)
 
-## Components Requiring Testing
+**Test Coverage Groups:**
+- Happy path tests first
+- Edge cases (empty input, out of range)
+- Error conditions
+- Regression tests for bugs
+- Integration tests between modules
 
-**High Priority - Audio Processing:**
-- `AudioToMidi.detect_pitch()` - Autocorrelation pitch detection algorithm
-  - Location: `audio_to_midi.py:33-66`
-  - Inputs: audio data as numpy array
-  - Outputs: frequency (float) and confidence (float)
-  - Testable with synthetic audio (sine waves at known frequencies)
+## Mocking
 
-- `AudioToMidi.detect_onset()` - Spectral flux onset detection
-  - Location: `audio_to_midi.py:68-78`
-  - Inputs: magnitude spectrum
-  - Outputs: boolean
-  - Testable with stepped magnitude changes
+**Framework:** None (no mocking library used)
 
-**High Priority - Music Theory:**
-- `generate_harmony()` - Harmony generation with multiple modes
-  - Location: `main.py:414-458`
-  - 7 different harmony modes to test independently
-  - Inputs: melody (list of tuples), key (int), voice number, mode (1-7)
-  - Outputs: harmony (list of tuples)
-  - Each mode needs validation of interval rules
+**Patterns:**
+- Rust's type system eliminates many mocking needs
+- Trait objects not used extensively (concrete types preferred)
+- Test doubles created manually when needed:
+  ```rust
+  // Example: Testing with controlled random behavior not observed
+  // Code uses rand::thread_rng() directly (not injectable)
+  ```
 
-- Interval functions (find_nearest_diatonic_third, find_random_diatonic_below, etc.)
-  - Locations: `main.py:810-1029`
-  - 6+ interval calculation functions
-  - Inputs: MIDI note number, key
-  - Outputs: MIDI note number
-  - Should verify correct intervals within key
+**What to Mock:**
+- External MIDI I/O not mocked in unit tests (tested via integration)
+- Random number generation not mocked (acceptable for these tests)
 
-**Medium Priority - Melody Generation:**
-- `generate_melody()` - Generates melodies following progressions
-  - Location: `main.py:376-412`
-  - Inputs: key, length, tempo, progression, rhythm
-  - Outputs: melody (list of note tuples)
-  - Should verify output respects chord progressions
+**What NOT to Mock:**
+- Core domain logic (Scale, HarmonyEngine) - tested with real implementations
+- Lightweight value objects (Note, Key, Mode enums)
 
-**Medium Priority - UI/TUI:**
-- `ContrapunkTUI` class - Text UI using curses
-  - Location: `main.py:56-347`
-  - Harder to unit test (requires terminal context)
-  - Could test with curses stubs or manual testing
+## Fixtures and Factories
 
-**Low Priority - Utilities:**
-- `get_scale_notes()` - Scale generation
-  - Location: `main.py:804-808`
-  - Simple calculation, unlikely to break
-  - Input validation not critical
-
-- Device listing/selection functions
-  - Location: `main.py:590-777`
-  - Depends on external MIDI/audio devices
-  - Limited automation possible
-
-## Testing Challenges
-
-**Terminal-based UI:**
-- `ContrapunkTUI` uses curses which requires terminal environment
-- Cannot easily unit test without curses mocking
-- Interactive nature makes automated testing difficult
-- Recommendation: Either mock curses or use manual integration testing
-
-**External Dependencies:**
-- MIDI port availability varies by system
-- Audio devices vary per machine
-- Cannot guarantee test reproducibility across environments
-- Recommendation: Mock `mido` and `sounddevice` for unit tests
-
-**Threading/Async:**
-- Audio processing uses threads and queues
-- `process_audio()` runs in separate thread
-- `keyboard_input_thread()` handles user input
-- Recommendation: Use threading.Event and queue.Empty patterns for synchronization in tests
-
-**Real-time Audio:**
-- Audio streaming is real-time
-- Timing-dependent behavior
-- Callback-driven architecture
-- Recommendation: Mock audio stream with pre-recorded data or synthetic signals
-
-## Testable Components Without Dependencies
-
-**Best candidates for unit testing:**
-1. Scale/note calculation functions (pure functions)
-2. Interval calculation functions (pure music theory logic)
-3. Harmony generation algorithms (deterministic with seed)
-4. MIDI message creation/manipulation
-
-**Test approach:**
-```python
-# Example test structure for interval functions
-def test_find_nearest_diatonic_third():
-    # Test in C major
-    key = 0
-    note = 60  # C
-    result = find_nearest_diatonic_third(note, key)
-    # Should be 64 (E, a third above C)
-    assert result == 64
-
-def test_generate_harmony_mode_2():
-    # Test diatonic thirds mode
-    melody = [(60, 1.0, 80), (62, 1.0, 80)]  # C, D
-    harmony = generate_harmony(melody, key=0, voice_number=1, harmony_mode=2)
-    # Should be [E, F#] or similar thirds
-    assert len(harmony) == 2
-    assert harmony[0][0] == 64  # E is third above C
+**Test Data:**
+```rust
+// Common pattern: Inline test data creation
+#[test]
+fn test_c_major() {
+    let notes: HashSet<u8> = [60, 64, 67].into_iter().collect();
+    assert_eq!(detect_chord(&notes), Some("Cmaj".to_string()));
+}
 ```
 
-## Coverage Gaps
+**Location:**
+- Test data created inline within each test
+- No separate fixtures directory
+- Constants used for reusable test values (e.g., `NOTE_NAMES`)
 
-**Not tested (currently untested areas):**
-- `AudioToMidi` pitch detection accuracy
-- Onset detection reliability
-- Counterpoint rule enforcement (mode 7)
-- Complex harmony mode interactions
-- MIDI threading and port communication
-- UI state management under user input
-- Audio monitoring visualization
-- Error recovery under extreme conditions
+**Patterns:**
+- Builder pattern for complex objects: `HarmonyEngine::with_voices(Key::C, mode, 4)`
+- Direct construction for simple cases: `Scale::major(0)`
+- Arrays converted to collections: `[60, 64, 67].into_iter().collect()`
 
-**Risk Assessment:**
-- Audio-to-MIDI conversion has high risk of subtle bugs (pitch/confidence thresholds)
-- Counterpoint rules (mode 7) complex logic without validation
-- Thread safety not verified (shared state between audio/MIDI threads)
-- UI state can become inconsistent under rapid input
+## Coverage
 
-## Recommendations
+**Requirements:** None enforced (no coverage tooling detected)
 
-**Immediate:**
-1. Add unit tests for interval calculation functions (quick wins, pure logic)
-2. Add unit tests for scale generation (trivial but validates music theory)
-3. Add tests for harmony modes 1-5 (deterministic behavior)
+**View Coverage:**
+```bash
+# Using cargo-tarpaulin (if installed)
+cargo tarpaulin --out Html
 
-**Short-term:**
-1. Mock `mido` and `sounddevice` for integration tests
-2. Create test fixtures for MIDI data (preset note sequences)
-3. Test audio processing with synthetic signals (pre-generated numpy arrays)
-
-**Long-term:**
-1. Consider refactoring TUI to separate logic from curses rendering
-2. Add threading tests for AudioToMidi class
-3. Create full integration tests with mock devices
-
-## Test Data Needs
-
-**MIDI data fixtures:**
-- Standard scale sequences (all 12 keys)
-- Chord progressions (pre-generated note sequences)
-- Test melodies in various keys and modes
-
-**Audio data fixtures:**
-- Sine wave samples at known frequencies (100Hz, 440Hz, 1000Hz)
-- Complex audio with overlapping frequencies
-- Silent audio for threshold testing
-- Frequency sweeps for onset detection
-
-**Sample code for test fixtures:**
-```python
-# Generate synthetic audio for testing
-import numpy as np
-
-def generate_sine_wave(frequency, duration=1.0, sample_rate=48000):
-    """Generate test audio: pure sine wave at given frequency."""
-    t = np.linspace(0, duration, int(sample_rate * duration))
-    return np.sin(2 * np.pi * frequency * t).astype(np.float32)
-
-# Test pitch detection
-audio = generate_sine_wave(440)  # A4
-frequency, confidence = detector.detect_pitch(audio)
-assert abs(frequency - 440) < 5  # Within 5Hz tolerance
+# Using cargo-llvm-cov (if installed)
+cargo llvm-cov --html
 ```
+
+**Actual Coverage:**
+- Core modules well-tested: `chord.rs`, `harmony/engine.rs`, `harmony/scale.rs`
+- Tests follow implementation (inline `#[cfg(test)]` modules)
+- Integration scenarios tested via engine-level tests
+- UI code (`app.rs`, `ui.rs`) not unit tested (GUI interaction)
+
+## Test Types
+
+**Unit Tests:**
+- Scope: Individual functions and methods
+- Approach: Test public API of each module
+- Examples in `src/chord.rs`:
+  - `test_c_major`: Basic chord detection
+  - `test_slash_chord_c_over_e`: Slash chord inversion
+  - `test_roman_numeral_iv`: Roman numeral conversion
+  - `test_chord_display_with_analysis`: Complex formatting
+
+**Integration Tests:**
+- Scope: Multiple modules working together
+- Approach: Test HarmonyEngine with various configurations
+- Examples in `src/harmony/engine.rs`:
+  - `test_key_change`: Engine + Scale interaction
+  - `test_note_on_off_tracking`: Engine + active note management
+  - `test_chained_harmonies_with_thirds`: Multi-voice generation
+  - `test_vl_before_octave_mode`: Voice leading + octave transformations
+
+**E2E Tests:**
+- Framework: Not used
+- No end-to-end tests detected (would require MIDI hardware/virtual ports)
+
+## Common Patterns
+
+**Async Testing:**
+Not applicable (no async code in tested modules)
+
+**Error Testing:**
+```rust
+#[test]
+fn test_single_note() {
+    let notes: HashSet<u8> = [60].into_iter().collect();
+    assert_eq!(detect_chord(&notes), None);
+}
+
+#[test]
+fn test_transpose_chromatic() {
+    let scale = Scale::major(0);
+    // In-range
+    assert_eq!(scale.transpose_chromatic(Note::C4, 4), Some(Note::E4));
+    // Out of range test would check None return
+}
+```
+
+**State Testing:**
+```rust
+#[test]
+fn test_stateful_reset_on_key_change() {
+    let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::ContraryMotion);
+
+    // Build up state
+    engine.harmonize(Note::C4);
+    engine.harmonize(Note::E4);
+
+    // Change key - state should reset
+    engine.set_key(Key::G);
+
+    // Verify reset behavior
+    let result = engine.harmonize(Note::G4);
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[1], Note::B4);  // First note behavior expected
+}
+```
+
+**Parameterized Testing:**
+```rust
+#[test]
+fn test_scale_new_with_each_mode() {
+    for &mode in ScaleMode::all() {
+        let scale = Scale::new(0, mode);
+        assert_eq!(scale.degree_of(Note::C4), Some(0),
+            "Tonic should be degree 0 for {:?}", mode);
+    }
+}
+
+#[test]
+fn test_vl_works_with_all_modes() {
+    let modes = HarmonyMode::all();
+    for &mode in modes {
+        let mut engine = HarmonyEngine::with_voices(Key::C, mode, 3);
+        engine.set_voice_leading_enabled(true);
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result[0], Note::C4, "Melody unchanged for mode {:?}", mode);
+    }
+}
+```
+
+**Regression Testing:**
+```rust
+// Example: Testing that voice leading doesn't modify melody (regression guard)
+#[test]
+fn test_vl_melody_never_modified() {
+    let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+    engine.set_voice_leading_enabled(true);
+
+    for note in [Note::C4, Note::D4, Note::E4, Note::F4, Note::G4] {
+        let result = engine.harmonize(note);
+        assert_eq!(result[0], note, "Melody must never be modified by VL");
+    }
+}
+```
+
+**Comprehensive Test Suites:**
+- `src/chord.rs`: 33 tests covering chord detection, slash chords, extended harmonies, roman numerals
+- `src/harmony/engine.rs`: 80+ tests covering all modes, voice counts, octave modes, voice leading
+- `src/harmony/scale.rs`: 40+ tests covering transposition, modal interchange, exotic scales
+
+**Test Naming Conventions:**
+- Format: `test_<component>_<scenario>_<outcome>`
+- Examples:
+  - `test_c_major` (simple case)
+  - `test_harmonize_smart_out_of_key` (specific scenario)
+  - `test_borrowing_range_clamp` (validation behavior)
+  - `test_mirror_note_off_releases_all_duplicates` (complex interaction)
+
+**Assertion Patterns:**
+```rust
+// Exact equality
+assert_eq!(result, expected);
+
+// Inequality
+assert_ne!(result1[1], result1[2], "Chained harmonies should differ");
+
+// Boolean conditions
+assert!(result.is_some(), "Should find harmony via interchange");
+assert!(scale.is_in_scale(Note::C4));
+
+// Range checks
+assert!([3, 4, 5, 7, 8, 9].contains(&interval),
+    "Expected consonant interval, got {} semitones", interval);
+```
+
+## Test Quality Observations
+
+**Strengths:**
+- Comprehensive coverage of core harmony logic
+- Tests document expected behavior clearly
+- Edge cases well-covered (empty input, out-of-range MIDI)
+- Regression prevention (state management, voice leading invariants)
+- Parameterized tests ensure consistency across enums
+
+**Gaps:**
+- No tests for UI components (`ui.rs`, `app.rs`, `piano.rs`)
+- Server/router code minimally tested (protocol parsing has tests)
+- Random behavior not deterministically tested (acceptable trade-off)
+- No performance/benchmark tests detected
 
 ---
 
-*Testing analysis: 2026-01-28*
+*Testing analysis: 2026-02-04*

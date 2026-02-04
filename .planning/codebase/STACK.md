@@ -1,73 +1,93 @@
 # Technology Stack
 
-**Analysis Date:** 2026-01-28
+**Analysis Date:** 2026-02-04
 
 ## Languages
 
 **Primary:**
-- Python 3.12.4 - Entire application codebase for MIDI processing, audio analysis, and UI
+- Rust (Edition 2021) - Core application logic, MIDI processing, harmony generation
+
+**Secondary:**
+- HTML/CSS - WebAssembly UI container (`index.html`)
 
 ## Runtime
 
 **Environment:**
-- Python 3.12.4 (CPython)
+- Rust 1.93.0 (native compilation)
+- WebAssembly (wasm32-unknown-unknown target for browser deployment)
 
 **Package Manager:**
-- pip (Python package manager)
-- Lockfile: requirements.txt (present, minimal)
+- Cargo 1.93.0
+- Lockfile: present (`Cargo.lock`, 113KB)
 
 ## Frameworks
 
-**Core Audio/MIDI:**
-- mido 1.3.3 - MIDI input/output handling and message processing
-- python-rtmidi 1.5.8 - Real-time MIDI interface for device communication
-- sounddevice 0.5.1 - Audio input capturing and streaming from audio interfaces
-- librosa 0.10.2.post1 - Audio signal processing and pitch detection
+**Core:**
+- eframe 0.33 - GUI framework for both native and web builds, features: persistence
+- wmidi 4.0 - MIDI message parsing and generation
 
-**UI Framework:**
-- tkinter (standard library) - GUI for `contrapunk_ui.py` (legacy)
-- curses (standard library) - Terminal UI (TUI) for `main.py` current implementation
+**Testing:**
+- Built-in Rust test framework - Unit tests in `src/server/protocol.rs`
+- cargo test - Test runner (no external framework detected)
 
-**Utilities:**
-- numpy 1.26.4 - Numerical computations for audio processing and pitch detection
+**Build/Dev:**
+- Trunk - WASM bundler and dev server (configured in `Trunk.toml`)
+- wasm-bindgen 0.2 - Rust/JavaScript interop for WebAssembly
+- cargo (native builds)
 
 ## Key Dependencies
 
 **Critical:**
-- mido 1.3.3 - Why it matters: Core dependency for all MIDI communication between input devices and output synthesizers. Handles note_on/note_off messages and channel management
-- python-rtmidi 1.5.8 - Why it matters: Provides low-level MIDI port enumeration and real-time I/O access
-- sounddevice 0.5.1 - Why it matters: Enables audio stream capture from audio interfaces for real-time audio input mode
-- librosa 0.10.2.post1 - Why it matters: Provides pitch detection and onset detection algorithms for converting audio to MIDI
+- wmidi 4.0 - MIDI message encoding/decoding, core to all MIDI operations
+- eframe 0.33 - GUI framework for desktop and web, enables cross-platform UI
+- anyhow 1.0 - Error handling throughout the application
 
-**Audio Processing:**
-- numpy 1.26.4 - Arrays, signal processing, correlation-based pitch detection
+**Infrastructure:**
+- midir 0.10 - Native MIDI device I/O (non-WASM only), used in `src/midi/ports.rs`, `src/midi/input.rs`, `src/midi/output.rs`
+- clap 4.x - CLI argument parsing for native builds (features: derive), used in `src/main.rs`
+- serde 1.0 + serde_json 1.0 - Configuration serialization/deserialization, preset management in `src/preset/storage.rs`
+- rand 0.8 - Randomization for humanization effects in `src/humanize/`
+
+**WASM-Specific:**
+- web-sys 0.3 - Browser API access (Web MIDI API, Canvas, Navigator), used in `src/midi/web.rs`, `src/lib.rs`
+- js-sys 0.3 - JavaScript type bindings
+- wasm-bindgen-futures 0.4 - Async support in WASM
+- console_error_panic_hook 0.1 - Better panic messages in browser console
+- getrandom 0.2 - WASM-compatible random number generation (features: js)
 
 ## Configuration
 
 **Environment:**
 - No environment variables required
-- Configuration is done through interactive TUI menu selection at runtime
-- Device selection, key/mode selection, and output port configuration happen via command-line interface
+- All configuration is runtime-selected (MIDI ports, harmony settings, keys)
+- Server mode uses CLI flags: `--server`, `--client`, `--port` (default: 9900)
 
 **Build:**
-- No build system (interpreted Python)
-- Direct execution via `python main.py`
+- `Cargo.toml` - Rust package manifest with conditional dependencies
+- `Trunk.toml` - WASM build configuration (target: index.html, dist: dist)
+- `index.html` - WASM entry point with Trunk directives
+- Conditional compilation via feature flags: `gui`, `wasm`
+- Target-specific dependencies: `cfg(target_arch = "wasm32")` vs `cfg(not(target_arch = "wasm32"))`
+
+**Release Profile:**
+- Optimization: size (`opt-level = "s"`)
+- LTO: disabled
+- Symbols: stripped
+- Panic strategy: abort
 
 ## Platform Requirements
 
 **Development:**
-- Python 3.12+
-- MIDI drivers installed (varies by OS)
-- Audio drivers for sounddevice support
-- macOS/Linux/Windows compatibility (uses standard cross-platform libraries)
+- Rust toolchain 1.93.0+ with stable channel
+- ALSA development libraries (Linux: libasound2-dev) for native MIDI
+- Trunk for WASM builds: `cargo install trunk`
+- wasm32-unknown-unknown target: `rustup target add wasm32-unknown-unknown`
 
 **Production:**
-- macOS with CoreMIDI support (primary development platform)
-- Linux with ALSA MIDI support
-- Windows with Windows Multimedia MIDI support
-- Python 3.12+ runtime
-- Audio interface drivers for the target OS
+- Native: No external dependencies (standalone binary)
+- Web: Static file hosting (Nginx, Fly.io)
+- WASM deployment: `trunk build --release` generates static files in `dist/`
 
 ---
 
-*Stack analysis: 2026-01-28*
+*Stack analysis: 2026-02-04*

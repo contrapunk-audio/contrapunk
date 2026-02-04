@@ -1,103 +1,117 @@
 # External Integrations
 
-**Analysis Date:** 2026-01-28
+**Analysis Date:** 2026-02-04
 
 ## APIs & External Services
 
-**None Detected**
+**Browser APIs (WASM builds only):**
+- Web MIDI API - MIDI device access in browser
+  - SDK/Client: web-sys crate (MidiAccess, MidiInput, MidiOutput, MidiPort, MidiMessageEvent)
+  - Implementation: `src/midi/web.rs`
+  - Auth: Browser permissions prompt via `navigator.requestMIDIAccess()`
+  - Features used: MIDI input/output enumeration, message handling, device connections
 
-No HTTP-based external APIs or cloud services are integrated. Application is entirely self-contained and runs locally.
+**System APIs (Native builds only):**
+- ALSA/CoreMIDI/Windows MIDI - Platform-native MIDI I/O
+  - SDK/Client: midir 0.10
+  - Implementation: `src/midi/ports.rs`, `src/midi/input.rs`, `src/midi/output.rs`
+  - Auth: Direct system access (no credentials required)
 
 ## Data Storage
 
 **Databases:**
-- Not applicable - No persistent data storage
+- None - No external database
 
 **File Storage:**
 - Local filesystem only
-  - Templates directory: `/templates/` (unused in current implementation)
-  - No file-based data persistence
+- eframe persistence API for GUI state and presets
+  - Storage location: Platform-specific (browser localStorage for WASM, OS-specific for native)
+  - Implementation: `src/preset/storage.rs`
+  - Data format: JSON serialization via serde_json
+  - Stored data: Custom harmony presets, GUI state
 
 **Caching:**
-- None - All operations are real-time in-memory
-
-## Audio Hardware Integration
-
-**Audio Devices:**
-- System audio interface (via sounddevice)
-  - Configuration: Device selected at runtime via TUI
-  - Default sample rate: 48000 Hz (configurable per `AudioToMidi` class)
-  - Buffer size: 512 samples (configurable)
-  - Multiple input channels supported via `input_channel` parameter
-
-**MIDI Hardware:**
-- Local MIDI input devices
-  - Enumerated via mido at startup
-  - Selected via TUI menu
-  - Supports multiple simultaneous input sources
-
-- Local MIDI output devices
-  - Enumerated via mido at startup
-  - Multiple outputs selected (2-8 ports) via TUI
-  - First port: melody pass-through
-  - Ports 2+: Harmony generation output
+- None - No external caching layer
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- Not applicable - No authentication required
+- None - No authentication system
+- Application runs locally or as self-hosted service
+- No user accounts or identity management
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None
+- None - No external error tracking service
+- WASM: console_error_panic_hook for browser console output
+- Native: Standard Rust panic handling
 
 **Logs:**
-- Console output via print statements
-  - Audio status messages from sounddevice
-  - MIDI message processing errors
-  - General exception handling with stderr output
+- Console output only (println!/eprintln! macros)
+- No structured logging framework
+- Debug output in client/server protocol: `[client]` prefixed messages in `src/main.rs` run_client()
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Local/desktop application only
+- Fly.io - Static WASM build hosting
+  - Config: `deploy/fly.toml`
+  - App name: contrapunk
+  - Region: ewr (US East)
+  - Machine: shared-cpu-1x, 256MB memory
+  - Auto-scaling: stop when idle, start on demand
 
 **CI Pipeline:**
-- Not detected
+- GitHub Actions - `.github/workflows/ci.yml`
+  - Jobs: check (cargo check), test (cargo test), wasm-check (WASM target validation)
+  - Deploy: Automatic on main branch push
+  - Build artifact: WASM bundle via Trunk
+  - Deployment: flyctl deploy with FLY_API_TOKEN secret
+
+**Container:**
+- Docker - `deploy/Dockerfile`
+  - Base image: nginx:alpine
+  - Serves static files from `dist/`
+  - Config: `deploy/nginx.conf`
+  - Exposed port: 80
 
 ## Environment Configuration
 
 **Required env vars:**
-- None
+- None for runtime
+- FLY_API_TOKEN - GitHub Actions secret for deployment (CI/CD only)
 
 **Secrets location:**
-- Not applicable
+- GitHub repository secrets (for CI/CD)
+- No application secrets required
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- Not applicable
+- None
 
 **Outgoing:**
-- Not applicable
+- None
 
-## Hardware Communication Details
+## Network Protocols
 
-**MIDI Flow:**
-1. User selects MIDI input device from available ports (enumerated via mido)
-2. Input device sends note_on/note_off messages
-3. Application processes messages based on selected mode (harmony generation)
-4. Harmony notes sent to multiple output MIDI ports simultaneously
-5. Timing: Real-time event-driven processing via mido.open_input().poll()
-
-**Audio Flow:**
-1. User selects audio device from available inputs (enumerated via sounddevice)
-2. Continuous audio stream captured at configured sample rate and buffer size
-3. Pitch detection performed via autocorrelation in `AudioToMidi.detect_pitch()`
-4. Detected pitch converted to MIDI note
-5. Note sent to configured output ports via mido
+**Custom TCP Protocol:**
+- Contrapunk Server Protocol - Real-time MIDI streaming over TCP
+  - Implementation: `src/server/protocol.rs`, `src/server/session.rs`, `src/server/mod.rs`
+  - Port: 9900 (default, configurable via `--port`)
+  - Wire format: Length-prefixed messages `[u16 BE length][u8 type][payload]`
+  - Message types:
+    - 0x01: MidiData - Raw MIDI bytes
+    - 0x02: Configure - Harmony engine settings (key, mode, octave_mode, voice_count)
+    - 0x03: Ack - Acknowledgement
+    - 0x04: Disconnect - Clean connection close
+    - 0x05: Heartbeat - Keep-alive
+  - Client mode: `--client <host:port>` streams local MIDI to remote server
+  - Server mode: `--server` accepts MIDI streams and generates harmony
+  - Connection: TCP with nodelay, 30s read timeout, 5s write timeout
+  - Max clients: 10 (default, configured in `src/server/config.rs`)
 
 ---
 
-*Integration audit: 2026-01-28*
+*Integration audit: 2026-02-04*

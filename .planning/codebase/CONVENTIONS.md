@@ -1,173 +1,221 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-01-28
+**Analysis Date:** 2026-02-04
 
 ## Naming Patterns
 
 **Files:**
-- Module files use lowercase with underscores: `main.py`, `audio_to_midi.py`, `contrapunk_ui.py`
-- No file extension conventions for classes
+- Snake case for module files: `harmony_engine.rs`, `voice_leading.rs`, `midi_defaults.rs`
+- Match module name to directory: `src/harmony/mod.rs` contains `harmony` module
+- Test modules use `mod.rs` or are co-located with implementation
 
 **Functions:**
-- Use snake_case for all function names: `generate_melody()`, `detect_pitch()`, `list_and_choose_input_type()`
-- Prefix helper/utility functions with descriptive action verbs: `find_nearest_diatonic_third()`, `get_scale_notes()`, `clear_terminal()`
-- Callback functions use descriptive suffix: `audio_callback()`, `keyboard_input_thread()`
+- Snake case: `harmonize_note_on()`, `detect_chord()`, `transpose_diatonic()`
+- Predicates use `is_` prefix: `is_in_scale()`, `is_flat_key()`
+- Conversion methods use `from_` or `to_`: `semitones_from_c()`, `to_vec()`
+- Builder pattern uses `with_`: `with_voices()`, `with_analysis()`
 
 **Variables:**
-- Use snake_case for variables and instance attributes: `self.samplerate`, `self.active_notes`, `command_queue`, `output_ports`
-- Use clear, descriptive names: `amplitude`, `prev_magnitudes`, `note_on_threshold` (not abbreviated)
-- Boolean flags use `is_` or action verb prefix: `self.running`, `is_onset`, `show_numbers`
+- Snake case: `pitch_classes`, `current_offset`, `last_borrowed_from`
+- Mutable variables clearly marked with `mut` keyword
+- Iterator variables typically short: `i`, `n`, `pc`
 
-**Classes:**
-- Use PascalCase: `ContrapunkTUI`, `AudioToMidi`
-- Descriptive class names indicating purpose or responsibility
+**Types:**
+- Pascal case for structs/enums: `HarmonyEngine`, `ScaleMode`, `VoiceRegister`
+- Trait names are adjectives when possible: (no custom traits observed)
+- Type aliases rare; prefer explicit types
 
 **Constants:**
-- Use UPPERCASE_WITH_UNDERSCORES for module-level constants: `NOTES`, `BASE_NOTE`, `CHORD_PROGRESSIONS`, `RHYTHM_PATTERNS`
-- Grouped logically with comments above groups
+- SCREAMING_SNAKE_CASE: `NOTE_NAMES`, `CONSONANT_INTERVALS_ABOVE`, `TYPE_MIDI_DATA`
+- Array constants for lookup tables: `CHORD_PATTERNS`, `NOTE_NAMES_FLAT`
 
 ## Code Style
 
 **Formatting:**
-- No explicit formatter configured (no `.prettierrc` or similar)
-- Follows standard Python conventions (PEP 8 style observed)
-- Consistent indentation with 4 spaces
-- One blank line between top-level function definitions
-- Two blank lines between class definition and first method
+- Tool used: rustfmt (default Rust formatter)
+- No custom config detected (using Rust defaults)
+- Line length: appears to respect 100-char soft limit
+- Indentation: 4 spaces (Rust standard)
 
 **Linting:**
-- No linting configuration files present (no `.pylintrc`, `pyproject.toml`, `setup.cfg`)
-- Code follows general PEP 8 style conventions without enforcement
-- Line length varies but generally keeps to reasonable limits (under 120 characters)
-
-**Comments:**
-- Sparse but meaningful comments: `# Lower threshold for faster response`, `# Note tracking`
-- Comments explain WHY, not WHAT: e.g., explaining algorithm choices like onset detection
-
-**Docstrings:**
-- All public functions and classes have docstrings using triple-quote format
-- Docstrings are concise one-liners for simple functions: `"""Clear the terminal screen in a cross-platform way."""`
-- More complex functions have multi-line docstrings with details:
-  ```python
-  def generate_harmony(melody, key, voice_number=1, harmony_mode=7):
-      """Generate harmony for a given melody using selected harmony mode.
-      harmony_mode options:
-      1: Forward melody as-is
-      2: Add diatonic thirds
-      ...
-      """
-  ```
+- Tool used: clippy (Rust's linter)
+- No custom clippy.toml detected (using defaults)
+- Code follows standard Rust idioms
+- Warnings treated seriously (no `#[allow]` attributes observed except for necessary cases)
 
 ## Import Organization
 
 **Order:**
-1. Standard library imports (mido, random, sys, termios, tty, threading, queue, argparse, curses, sounddevice, numpy, time, contextlib, select, os)
-2. Third-party library imports (sd for sounddevice, np for numpy)
-3. Local imports (from audio_to_midi import AudioToMidi)
+1. Standard library (`std::collections::HashMap`, `std::io`)
+2. External crates (`wmidi::Note`, `rand::Rng`, `anyhow::Result`)
+3. Local crate modules (`crate::harmony::config`, `crate::midi::ports`)
 
-**Standard observed in files:**
-- `main.py`: Imports at top, organized stdlib then third-party then local
-- `audio_to_midi.py`: Imports stdlib first, then third-party (sounddevice, numpy, librosa, mido)
-- `contrapunk_ui.py`: Imports stdlib first (tkinter, threading, queue), then local (AudioToMidi)
+**Path Aliases:**
+- Use `crate::` for absolute paths within project
+- Relative imports use `super::` or explicit module paths
+- Common pattern: `use crate::harmony::{Key, HarmonyMode, OctaveMode}`
 
-**No path aliases:** Project uses direct relative imports (`from audio_to_midi import AudioToMidi`)
+**Grouping:**
+- Related imports grouped together
+- Wildcard imports avoided (use explicit item imports)
+- Example from `src/harmony/engine.rs`:
+  ```rust
+  use std::collections::HashMap;
+  use wmidi::Note;
+
+  use crate::harmony::config::{Key, HarmonyMode, OctaveMode, ScaleMode};
+  use crate::harmony::modes;
+  use crate::harmony::scale::Scale;
+  ```
 
 ## Error Handling
 
-**Patterns observed:**
-- Try-except blocks are used extensively (37 instances in main.py) for:
-  - Queue operations: `except queue.Empty: continue`
-  - Device/port operations: `except (ValueError, IndexError) as e:`
-  - General exceptions with recovery: `except Exception as e: print(f"Error: {e}")`
+**Patterns:**
+- Primary: `anyhow::Result<T>` for operations that can fail
+- Fallible operations return `Option<T>` for simple cases (e.g., `transpose_diatonic()` returns `Option<Note>`)
+- Pattern matching on `Result`/`Option` preferred over unwrapping
+- Early returns with `?` operator for error propagation
+- Example from `src/harmony/scale.rs`:
+  ```rust
+  pub fn transpose_diatonic(&self, note: Note, degrees: i8) -> Option<Note> {
+      let current_degree = self.degree_of(note)? as i8;
+      // ... computation ...
+      Note::try_from(new_midi as u8).ok()
+  }
+  ```
 
-**Error reporting:**
-- Errors printed to console with descriptive messages: `print(f"Error sending melody note: {str(e)}")`
-- UI errors shown via `tui.show_error()` for visual feedback
-- Bare except clauses used in cleanup code to ensure resources close
-
-**Exception handling in critical sections:**
-- MIDI port operations wrapped individually to prevent cascade failures
-- Audio streaming wrapped with comprehensive try-except-finally
-- Resource cleanup guaranteed in finally blocks (port closing, stream stopping)
-
-**Graceful degradation:**
-- Errors logged but processing continues: `except Exception as e: continue`
-- Not all errors are fatal; system attempts recovery
+**Fallback Strategy:**
+- Out-of-range MIDI notes return `None` instead of panicking
+- Invalid input falls back to safe defaults (e.g., pass-through mode returns original note)
+- MIDI range checked explicitly: `if !(0..=127).contains(&midi)`
 
 ## Logging
 
-**Framework:** No logging framework - uses `print()` and TUI `show_error()` method
+**Framework:** Standard library `eprintln!` for errors; no structured logging framework
 
 **Patterns:**
-- Status messages printed to console during initialization/setup
-- Error messages use f-strings with error details
-- Debug info printed when needed: `print(f"Device info: {device_info}")`
-- TUI system has dedicated status display via `self.status_message` and `tui.show_error()`
+- Errors printed to stderr with context
+- Debug info uses `#[derive(Debug)]` for struct inspection
+- No verbose logging in production code paths
+- Console output in WASM via `console_error_panic_hook::set_once()`
 
-**When to log:**
-- Device selection/initialization
-- MIDI port status changes
-- Error conditions
-- User actions (mode changes, key changes)
+## Comments
+
+**When to Comment:**
+- Module-level doc comments (`//!`) explain purpose and key concepts
+- Public functions have doc comments (`///`) with Args/Returns sections
+- Complex algorithms explained inline (e.g., chord detection, voice leading)
+- Non-obvious optimizations documented
+
+**Doc Comments:**
+- Full `///` documentation for all public API surfaces
+- Arguments section: `/// # Arguments` with `* name - description` format
+- Returns section: `/// # Returns` describes output
+- Examples included for complex functions
+- Example from `src/chord.rs`:
+  ```rust
+  /// Detects the chord from a set of MIDI note numbers.
+  ///
+  /// Analyzes the pitch classes (ignoring octaves) and attempts to match
+  /// against known chord patterns. Detects slash chords when the lowest
+  /// note differs from the chord root.
+  ///
+  /// # Arguments
+  /// * `notes` - Set of MIDI note numbers (0-127)
+  ///
+  /// # Returns
+  /// The chord name (e.g., "Cmaj", "Am7", "Cmaj/E") or None if no chord detected.
+  pub fn detect_chord(notes: &HashSet<u8>) -> Option<String>
+  ```
+
+**Inline Comments:**
+- Clarify intent, not implementation (unless algorithm is complex)
+- Used sparingly; prefer self-documenting code
+- Mark algorithm steps in complex functions (e.g., `// First pass: try to find...`)
 
 ## Function Design
 
 **Size:**
-- Functions generally 10-50 lines
-- Longer functions (100+ lines) are algorithmic generators or UI loops
-- Examples: `monitor_audio_levels()` is 120 lines (complex audio monitoring), `generate_melody()` is 40 lines
+- Functions typically 20-50 lines
+- Complex functions (like `harmonize()`) reach 100+ lines but are well-structured
+- Helper functions extracted when logic is reused
 
 **Parameters:**
-- Functions accept 3-6 parameters typically
-- Long parameter lists use defaults: `generate_melody(key, length=16, tempo=120, progression='I-IV-V-I', rhythm_pattern=[1.0, 1.0, 1.0])`
-- No *args or **kwargs patterns observed; explicit parameters preferred
+- Pass small types by value (`note: Note`, `degrees: i8`)
+- Pass collections by reference (`notes: &HashSet<u8>`, `scale: &mut Scale`)
+- Mutable references used sparingly and clearly (`&mut self`, `&mut Scale`)
+- Builder pattern for complex initialization (`with_voices()`)
 
-**Return values:**
-- Single return values or tuples: `return frequency, confidence`
-- Some functions return None implicitly: `def setup_colors(self):`
-- Generator functions return sequences: `return melody` (list of tuples)
-- Choice functions return indices: `return self.selected_index`
+**Return Values:**
+- Prefer `Option<T>` for operations that may fail gracefully
+- Use `Result<T>` for operations with detailed error context
+- Return owned `Vec` for generated collections
+- Return references when borrowing from self (`&[usize]` for port maps)
 
 ## Module Design
 
 **Exports:**
-- All public functions and classes available at module level
-- No `__all__` declarations observed
-- Single class per module where applicable: `AudioToMidi` in `audio_to_midi.py`
+- Public API clearly marked with `pub`
+- Internal helpers remain private (module-scoped)
+- Re-export key types in parent modules: `pub use self::scale::Scale;`
 
-**Barrel files:**
-- No barrel files or aggregation modules used
-- Direct imports from specific modules: `from audio_to_midi import AudioToMidi`
+**Barrel Files:**
+- `mod.rs` used to organize submodules
+- Example from `src/harmony/mod.rs`:
+  ```rust
+  pub mod config;
+  pub mod engine;
+  pub mod modes;
+  pub mod scale;
+  pub mod stateful;
+  pub mod voice_leading;
 
-**Class organization:**
-- Related methods grouped by responsibility within class
-- State tracking variables initialized in `__init__`
-- Public methods followed by private helper methods (no leading underscore convention observed)
-- Example in `ContrapunkTUI`: color setup, drawing methods, then interactive methods
+  pub use config::{Key, HarmonyMode, OctaveMode, ScaleMode};
+  pub use engine::HarmonyEngine;
+  pub use scale::Scale;
+  ```
 
-## Type Hints
+**Module Structure:**
+- Flat when possible; nested only when grouping related functionality
+- Example: `src/harmony/voice_leading/` contains `mod.rs`, `rules.rs`, `voicer.rs`, `styles.rs`, `suspension.rs`
+- Each module focused on single responsibility
 
-**Pattern:** Not used in codebase - no type annotations observed
+## Type System Usage
 
-**Return type inference:** Types can be inferred from docstrings and usage
-- MIDI note numbers are int
-- Frequencies are float
-- Confidences are float (0.0-1.0)
-- Harmonies/melodies are lists of tuples
+**Enums:**
+- Used for finite sets of options: `HarmonyMode`, `ScaleMode`, `OctaveMode`
+- Derive traits liberally: `#[derive(Debug, Clone, Copy, PartialEq, Eq)]`
+- Pattern matching exhaustive (no wildcard fallbacks in mode selection)
 
-## Class Patterns
+**Structs:**
+- Organize related state: `HarmonyEngine`, `Scale`, `ContraryMotionState`
+- Private fields with public accessors (getters/setters)
+- Builder pattern for complex types (`HarmonyEngine::with_voices()`)
 
-**Initialization:**
-- Instance attributes set explicitly in `__init__` with comments
-- State variables tracked: `self.running`, `self.current_note`, `self.active_notes`
-- Queue objects for thread-safe communication: `self.audio_queue`, `self.midi_queue`
+**Type Safety:**
+- Newtype pattern not used; rely on semantic naming
+- MIDI note numbers wrapped in `wmidi::Note` type (external crate)
+- Pitch classes represented as `u8` (0-11) by convention
 
-**Method patterns:**
-- Callbacks prefixed with context: `audio_callback()` vs. generic `callback()`
-- Configuration methods: `setup_colors()`
-- State update methods: `update_screen()`
-- User interaction methods: `show_menu()`, `show_value_input()`, `show_error()`
+## Conditional Compilation
+
+**Feature Flags:**
+- `#[cfg(feature = "gui")]` gates GUI-only modules (`app.rs`, `ui.rs`, `piano.rs`)
+- `#[cfg(not(target_arch = "wasm32"))]` excludes native-only code (server, router)
+- `#[cfg(target_arch = "wasm32")]` includes WASM entry point (`lib.rs`)
+
+**Platform-Specific:**
+- MIDI backend selection via target arch
+- Server mode disabled in WASM builds
+- Example from `src/main.rs`:
+  ```rust
+  #[cfg(not(target_arch = "wasm32"))]
+  use clap::Parser;
+
+  #[cfg(target_arch = "wasm32")]
+  use wasm_bindgen::prelude::*;
+  ```
 
 ---
 
-*Convention analysis: 2026-01-28*
+*Convention analysis: 2026-02-04*

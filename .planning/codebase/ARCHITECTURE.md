@@ -1,184 +1,168 @@
 # Architecture
 
-**Analysis Date:** 2026-01-28
+**Analysis Date:** 2026-02-04
 
 ## Pattern Overview
 
-**Overall:** Multi-input harmony generation system with layered processing
+**Overall:** Modular Event-Driven Architecture with Multi-Target Compilation
 
 **Key Characteristics:**
-- Multiple input modes (MIDI, audio, generated music, mode-based processing)
-- Real-time harmony generation using 7 different algorithmic modes
-- TUI-based user interaction via curses library
-- Audio-to-MIDI conversion for non-digital instruments
-- Polyphonic MIDI output to multiple ports simultaneously
+- Domain-driven modules organized by musical and technical concerns
+- Conditional compilation for multiple targets (native CLI, native GUI, WASM)
+- Event-driven MIDI routing with pluggable harmony processing pipeline
+- Stateful and stateless harmony generation modes with voice leading post-processing
 
 ## Layers
 
-**Input Layer:**
-- Purpose: Accept user input from various sources (MIDI devices, audio interface, or generated)
-- Location: `main.py` lines 566-803 (input selection functions), `audio_to_midi.py` (audio conversion)
-- Contains: Device selection, configuration gathering, audio capture
-- Depends on: mido, sounddevice, librosa, numpy
-- Used by: Processing layer
+**MIDI I/O Layer:**
+- Purpose: Abstract platform-specific MIDI communication
+- Location: `src/midi/`
+- Contains: Input/output port management, native (midir) and web (Web MIDI API) implementations
+- Depends on: Platform-specific APIs (midir for native, web-sys for WASM)
+- Used by: Router, Application UI
 
-**TUI/Display Layer:**
-- Purpose: Render terminal-based user interface for configuration and runtime monitoring
-- Location: `main.py` lines 56-348 (ContrapunkTUI class)
-- Contains: Menu rendering, audio level monitoring, status display, active note tracking
-- Depends on: curses library
-- Used by: Main orchestration function
+**Harmony Engine Layer:**
+- Purpose: Core musical transformation logic - converts input notes to harmonized output
+- Location: `src/harmony/`
+- Contains: Scale definitions, mode algorithms (stateless and stateful), voice leading rules, engine coordination
+- Depends on: wmidi for MIDI note representation
+- Used by: Router, Generator, Application
 
-**Processing Layer:**
-- Purpose: Generate and process MIDI note sequences through harmony algorithms
-- Location: `main.py` lines 376-1028 (generation and harmony functions)
-- Contains: Melody generation, harmony generation (7 modes), mode-based MIDI processing
-- Depends on: Input layer, music theory functions
-- Used by: Output layer
+**Router/Orchestration Layer:**
+- Purpose: Connects MIDI input to harmony engine to MIDI output, manages message flow
+- Location: `src/router.rs`
+- Contains: Main event loop, note tracking, humanization scheduling, generator integration
+- Depends on: MIDI I/O layer, Harmony engine, Humanizer, Generator
+- Used by: CLI main (`src/main.rs`), GUI app (`src/app.rs`)
 
-**Music Theory Layer:**
-- Purpose: Provide harmonic calculations and diatonic interval logic
-- Location: `main.py` lines 804-1028 (scale/chord/interval functions)
-- Contains: Scale generation, diatonic interval finding, consonance checking, counterpoint rules
-- Depends on: Python standard library only
-- Used by: Processing layer
+**Presentation Layer:**
+- Purpose: User interfaces for controlling harmony parameters
+- Location: `src/app.rs`, `src/ui.rs`, `src/piano.rs`, `src/theme/`
+- Contains: eframe/egui GUI components, MIDI device selectors, parameter controls, visual feedback
+- Depends on: eframe, Application state, Router state
+- Used by: Main entry points (native and WASM)
 
-**Output Layer:**
-- Purpose: Send generated MIDI messages to output devices
-- Location: `main.py` lines 460-564 (music playback functions), lines 1084-1199 (mode-based processing)
-- Contains: MIDI port management, note-on/note-off sequencing, timing control
-- Depends on: mido, Processing layer
-- Used by: Entry points
+**Supporting Services:**
+- Purpose: Cross-cutting features for generation, timing, persistence
+- Location: `src/generator/`, `src/humanize/`, `src/preset/`, `src/server/`
+- Contains: Note generator, humanization timing, preset storage, TCP server protocol
+- Depends on: Core domain types (harmony, MIDI)
+- Used by: Router, Application
 
 ## Data Flow
 
-**MIDI Input Mode:**
+**Real-time MIDI Flow (Native):**
 
-1. User selects MIDI Input from main menu (TUI)
-2. User selects input device and output ports (TUI)
-3. `curses_main()` opens MIDI input port
-4. Main loop: `inport.poll()` retrieves MIDI messages
-5. Messages forwarded to first output port unmodified
-6. TUI displays incoming messages
-7. User presses 'q' to exit
+1. MIDI hardware → `midi::input::connect_input()` → channel sender
+2. Channel receiver in `router.rs` loop receives raw bytes
+3. Parse bytes into `wmidi::MidiMessage` (NoteOn/NoteOff/etc)
+4. For NoteOn: `HarmonyEngine::harmonize(note, voice_count)` → Vec of harmony notes
+5. Apply humanization: `Humanizer::humanize()` → schedule delayed notes
+6. `DelayQueue::tick()` releases notes when delay expires
+7. Route notes to outputs: `OutputRouter::send_to_port(index, bytes)`
+8. MIDI hardware receives harmonized output
 
-**Audio Input Mode:**
+**Real-time MIDI Flow (WASM):**
 
-1. User selects Audio Input from main menu (TUI)
-2. User selects audio device and channel via TUI
-3. User optionally monitors input levels (curses-based visualization)
-4. AudioToMidi instance created with device configuration
-5. Audio callback streams samples to AudioToMidi.process_audio()
-6. AudioToMidi converts audio to MIDI using pitch detection and onset detection
-7. MIDI messages output to selected ports
-8. TUI displays current activity
+1. Web MIDI API → `midi::web` event handlers → `keyboard_events` queue
+2. Application polls queue in UI update loop
+3. Convert events to `wmidi::Note`, send to simulated harmony pipeline
+4. Output via Web MIDI API (if available) or visual feedback only
 
-**Generated Music Mode:**
+**Configuration Flow:**
 
-1. User selects Generated Music from main menu (TUI)
-2. User configures: key, tempo, output ports, harmony modes, chord progression, rhythm pattern (TUI)
-3. Melody generated via `generate_melody()` following chord progression and rhythm
-4. For each harmony voice: `generate_harmony()` creates counterpoint using selected mode
-5. Both melody and harmonies sent simultaneously to respective output ports
-6. Timing controlled by note duration and tempo
-7. User commands (1-7 for mode change, k for key change, n for new melody, q to quit) processed from queue
-8. New melody generated on user request, same key/progression maintained
-
-**Mode-Based MIDI Processing:**
-
-1. User selects Mode-based MIDI Processing from main menu (TUI)
-2. User configures: input port, output ports, initial key, initial mode (TUI)
-3. Main loop: `inport.poll()` retrieves MIDI messages
-4. Original note sent to first output port
-5. For each additional output port, harmony note calculated using current mode
-6. Harmony note sent to that output port
-7. User can change mode (1-7) and key (k) in real-time via keyboard commands
-8. Motion tracking state reset when mode changes
+1. User selects parameters in GUI (`app.rs`) or CLI prompts (`main.rs`)
+2. Parameters stored in `AppState` (GUI) or directly passed (CLI)
+3. For GUI: Update `GUIRouterState` (Arc<Mutex>) shared with router thread
+4. Router thread polls state, applies `engine.set_key()`, `engine.set_mode()`, etc.
+5. Subsequent harmony generation uses updated configuration
 
 **State Management:**
-- Input tracking: `prev_input_notes` dict maps voice number to previous input note
-- Output tracking: `prev_output_notes` dict maps voice number to previous output note
-- Active notes: `tui.active_notes` dict tracks currently-playing notes for display
-- Configuration: Stored in TUI object and passed to processing functions
-- Harmony state: Mode number and key stored as module-level or function parameters
+- GUI mode: Shared state via `Arc<Mutex<GUIRouterState>>` between UI thread and router thread
+- CLI mode: Direct engine ownership in main thread or router thread
+- WASM mode: `Rc<RefCell>` for single-threaded async state
 
 ## Key Abstractions
 
-**ContrapunkTUI:**
-- Purpose: Encapsulates all terminal-based user interaction
-- Examples: `main.py` lines 56-348
-- Pattern: Class-based stateful wrapper around curses with helper methods for menu, input, display
-- Methods: `show_menu()`, `show_value_input()`, `show_error()`, `draw_title()`, `update_screen()`, `run_audio_monitor()`, `run_mode_based_processor()`, `run_midi_processor()`, `run_music_player()`
+**HarmonyEngine:**
+- Purpose: Encapsulates all harmony generation logic and state
+- Examples: `src/harmony/engine.rs`
+- Pattern: Stateful service with mode strategy pattern - delegates to mode-specific functions in `src/harmony/modes.rs` or stateful processors (`ContraryMotionState`, `CounterpointState`)
 
-**AudioToMidi:**
-- Purpose: Converts audio samples to MIDI note events
-- Examples: `audio_to_midi.py` lines 1-150+
-- Pattern: Thread-safe class with audio callback, pitch detection, and MIDI output queue
-- Key methods: `audio_callback()` (audio stream handler), `detect_pitch()` (autocorrelation-based), `detect_onset()` (spectral flux), `process_audio()` (main worker thread)
+**OutputRouter:**
+- Purpose: Manages multiple MIDI output connections, routes messages to specific ports
+- Examples: `src/midi/output.rs`
+- Pattern: Resource manager with indexed access - holds vector of `MidiOutputConnection`, provides `send_to_port(index, bytes)`
 
-**Harmony Generation Functions:**
-- Purpose: Generate counterpoint notes based on algorithmic rules
-- Examples: `main.py` lines 810-1028
-- Pattern: Pure functions that take input note/key/mode and return harmony note
-- Key functions:
-  - `find_nearest_diatonic_third()`: Returns note 2 scale positions above input
-  - `find_nearest_diatonic_fourth()`: Returns note 3 scale positions above input
-  - `find_random_diatonic_below()`: Random diatonic note below input
-  - `find_random_diatonic_below_no_seconds()`: Random diatonic excluding seconds
-  - `find_contrary_diatonic_below_no_seconds()`: Contrary motion logic
-  - `find_strict_counterpoint_below()`: Complex scoring system for traditional rules
+**VoiceLeadingProcessor:**
+- Purpose: Post-processes harmony output for smooth voice transitions following counterpoint rules
+- Examples: `src/harmony/engine.rs` (internal struct), `src/harmony/voice_leading/`
+- Pattern: Stateful filter with rule-based transformations - tracks previous voicing, applies style-specific rules
 
-**Scale/Chord Helpers:**
-- Purpose: Convert between scale degrees, MIDI notes, and pitch values
-- Examples: `main.py` lines 804-809, 1069-1082
-- Pattern: Pure functions operating on 12-note equal temperament
-- Key functions: `get_scale_notes()`, `get_chord_notes()`
+**NoteGenerator:**
+- Purpose: Generates MIDI notes from patterns (arpeggios, chords, sequences) independently of live input
+- Examples: `src/generator/engine.rs`
+- Pattern: Iterator-like event stream - advances on tick, emits `GeneratorEvent` (NoteOn/NoteOff)
+
+**Humanizer/DelayQueue:**
+- Purpose: Adds timing variation to MIDI output for natural feel
+- Examples: `src/humanize/engine.rs`, `src/humanize/scheduler.rs`
+- Pattern: Priority queue scheduler - notes scheduled with randomized delays, released by tick() calls
+
+**Preset:**
+- Purpose: Serializable snapshot of harmony configuration for save/load
+- Examples: `src/preset/mod.rs`, `src/preset/builtins.rs`
+- Pattern: Data transfer object with builder - contains key, mode, octave mode, voice settings; stored via eframe persistence
 
 ## Entry Points
 
-**`curses_main(stdscr)`:**
-- Location: `main.py` lines 1212-1631
-- Triggers: Called by `curses.wrapper()` in main execution block at end of file
-- Responsibilities: Main orchestration function that presents user menus and dispatches to appropriate mode (MIDI input, audio input, generated music, or mode-based processing)
+**Native CLI Entry:**
+- Location: `src/main.rs` (when compiled without `gui` feature)
+- Triggers: `cargo run` or binary execution
+- Responsibilities: Parse CLI args (clap), prompt for MIDI device selection and harmony config, create `HarmonyEngine`, call `router::run_router()` blocking loop
 
-**`main.py` execution block (end of file):**
-- Location: `main.py` lines 1632+
-- Triggers: When script is run directly
-- Responsibilities: Entry point that initializes curses wrapper and calls `curses_main()`
+**Native GUI Entry:**
+- Location: `src/main.rs` → `run_gui()` → `app::ContrapunkApp` (when compiled with `gui` feature)
+- Triggers: `cargo run --features gui` or GUI binary execution
+- Responsibilities: Initialize eframe window, create `ContrapunkApp`, enter eframe event loop
 
-**`AudioToMidi.process_audio()`:**
-- Location: `audio_to_midi.py` lines 80-120+
-- Triggers: Spawned in separate thread when audio input is selected
-- Responsibilities: Continuously processes audio from queue, detects pitch, converts to MIDI notes
+**WASM Entry:**
+- Location: `src/lib.rs` (WASM-only compilation, automatically included via `#[wasm_bindgen(start)]`)
+- Triggers: Trunk build loads WASM module, calls `main()` via wasm-bindgen bootstrap
+- Responsibilities: Set panic hook, spawn async eframe WebRunner on canvas element
+
+**Server Mode Entry:**
+- Location: `src/main.rs` → `server::run_server()`
+- Triggers: CLI flag `--server`
+- Responsibilities: Bind TCP listener, spawn thread per client running `session::handle_client()`, forward MIDI messages through harmony engine
+
+**Client Mode Entry:**
+- Location: `src/main.rs` → `run_client()`
+- Triggers: CLI flag `--client <addr>`
+- Responsibilities: Connect to server TCP socket, stream local MIDI input to server, route server responses to local outputs
 
 ## Error Handling
 
-**Strategy:** Try-catch blocks with user-friendly error messages displayed in TUI
+**Strategy:** Result-based propagation with anyhow for CLI/server, GUI-specific error display
 
 **Patterns:**
-- MIDI port errors: Caught and displayed via `tui.show_error()`
-- Audio stream errors: Status checked in callbacks, error messages shown in display
-- Pitch detection failures: Gracefully return None confidence scores
-- Thread interruption: KeyboardInterrupt caught, cleanup attempted in finally blocks
-- Invalid user input: ValueError/IndexError caught with retry loops in port selection
+- CLI/Server: Functions return `anyhow::Result<T>`, errors propagate to main with `?`, printed via `eprintln!`
+- GUI: MIDI operations return `Result`, errors captured in `AppState.last_error: Option<String>`, displayed in error panel
+- WASM: Panic hook redirects to browser console via `console_error_panic_hook::set_once()`
+- Router: Errors logged to stderr but loop continues (non-fatal MIDI errors don't crash routing)
 
 ## Cross-Cutting Concerns
 
-**Logging:** No dedicated logging system; debug output via `print()` statements and `tui.show_error()` for UI-level messages
+**Logging:** stderr output via `eprintln!` macro (CLI/server), browser console via panic hook (WASM), no structured logging framework
 
 **Validation:**
-- MIDI port validation: Check port exists in mido.get_input/output_names()
-- Audio device validation: Check device_id against sounddevice.query_devices()
-- User input validation: Integer bounds checking in `show_value_input()`, port number validation in selection loops
+- MIDI port indices validated on selection (check against available ports list)
+- Harmony parameters validated via enum types (Key, HarmonyMode, OctaveMode)
+- Voice count validated in `HarmonyEngine` (min 1, max typically 8)
+- Note ranges validated when parsing MIDI messages (0-127)
 
-**Authentication:** Not applicable; local device/port access only
-
-**Threading:**
-- Audio callback runs in sounddevice's internal thread
-- AudioToMidi.process_audio() runs in user-spawned thread
-- Keyboard input thread spawned for monitoring user commands during playback
-- Thread-safe queues used for inter-thread communication
+**Authentication:** Not applicable - local desktop/WASM application, server has no auth (intended for localhost)
 
 ---
 
-*Architecture analysis: 2026-01-28*
+*Architecture analysis: 2026-02-04*

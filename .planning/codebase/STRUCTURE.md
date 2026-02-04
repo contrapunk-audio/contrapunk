@@ -1,201 +1,233 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-01-28
+**Analysis Date:** 2026-02-04
 
 ## Directory Layout
 
 ```
 contrapunk/
-├── main.py                 # Entry point, orchestration, TUI, processing functions
-├── audio_to_midi.py        # Audio capture and pitch-to-MIDI conversion
-├── contrapunk_ui.py        # Alternative Tkinter-based GUI (not currently used)
-├── requirements.txt        # Python package dependencies
-├── README.md               # Project documentation and usage guide
-├── .gitignore              # Git ignore rules
-├── .planning/              # Planning documents directory
-│   └── codebase/           # Architecture/structure analysis documents
-└── templates/              # (empty) - reserved for future MIDI templates
+├── src/               # Rust source code
+│   ├── harmony/       # Musical harmony generation core
+│   ├── midi/          # MIDI I/O abstraction
+│   ├── generator/     # Pattern-based note generation
+│   ├── humanize/      # Timing humanization
+│   ├── preset/        # Configuration save/load
+│   ├── server/        # TCP server for remote clients
+│   ├── theme/         # GUI visual styling
+│   ├── app.rs         # Main GUI application
+│   ├── router.rs      # MIDI routing orchestration
+│   ├── main.rs        # Native entry point
+│   ├── lib.rs         # WASM entry point
+│   ├── ui.rs          # GUI layout and controls
+│   ├── piano.rs       # Visual piano keyboard widget
+│   ├── chord.rs       # Chord display and analysis
+│   └── midi_defaults.rs  # Default MIDI configurations
+├── assets/            # Static resources
+│   └── fonts/         # Custom fonts for UI
+├── deploy/            # Deployment artifacts
+│   └── dist/          # Built WASM/web files for hosting
+├── dist/              # Local build output for web target
+├── target/            # Cargo build artifacts (gitignored)
+├── .planning/         # GSD planning documents
+├── Cargo.toml         # Rust project manifest
+├── Cargo.lock         # Dependency lock file
+├── index.html         # WASM application shell
+├── Trunk.toml         # Trunk build configuration
+└── README.md          # Project documentation
 ```
 
 ## Directory Purposes
 
-**Project Root:**
-- Purpose: Main application code and documentation
-- Contains: Python source files, package manifest, documentation
-- Key files: `main.py`, `audio_to_midi.py`, `README.md`
+**src/**
+- Purpose: All Rust application source code
+- Contains: Modules, entry points, domain logic
+- Key files: `main.rs` (native), `lib.rs` (WASM), `app.rs` (GUI)
 
-**.planning/codebase/**
-- Purpose: Architecture and structure analysis documents
-- Contains: ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, TESTING.md (as written)
-- Key files: Analysis documents for code navigation and planning
+**src/harmony/**
+- Purpose: Core musical theory and harmony generation algorithms
+- Contains: `engine.rs` (orchestration), `config.rs` (types), `modes.rs` (algorithms), `scale.rs`, `stateful.rs` (stateful modes), `voice_leading/` (counterpoint rules)
+- Key files: `mod.rs` (public API), `engine.rs` (HarmonyEngine)
 
-**templates/**
-- Purpose: Reserved for future MIDI file templates or configuration files
-- Contains: (currently empty)
-- Status: Not yet utilized in current implementation
+**src/harmony/voice_leading/**
+- Purpose: Voice leading rules and chord voicing logic
+- Contains: `rules.rs` (interval checks), `styles.rs` (style presets), `voicer.rs` (revoicing algorithm), `suspension.rs` (suspension tracking)
+- Key files: `mod.rs` (public exports), `voicer.rs` (main revoicing function)
+
+**src/midi/**
+- Purpose: Platform-specific MIDI input/output abstraction
+- Contains: `input.rs`, `output.rs`, `ports.rs` (native via midir), `web.rs` (WASM via Web MIDI API)
+- Key files: `mod.rs` (conditional compilation), `ports.rs` (device enumeration)
+
+**src/generator/**
+- Purpose: Automated note pattern generation (arpeggios, chords, sequences)
+- Contains: `config.rs` (generator settings), `engine.rs` (note generation logic)
+- Key files: `mod.rs` (public API), `engine.rs` (NoteGenerator)
+
+**src/humanize/**
+- Purpose: Timing variation and natural feel for MIDI output
+- Contains: `config.rs`, `engine.rs` (Humanizer), `scheduler.rs` (DelayQueue), `metronome.rs`, `beat_clock.rs`
+- Key files: `engine.rs` (humanization logic), `scheduler.rs` (delay queue)
+
+**src/preset/**
+- Purpose: Save/load harmony configurations as named presets
+- Contains: `mod.rs` (PresetManager), `builtins.rs` (factory presets), `storage.rs` (persistence layer)
+- Key files: `mod.rs` (preset CRUD), `builtins.rs` (default presets)
+
+**src/server/**
+- Purpose: TCP server for remote MIDI streaming and harmony processing
+- Contains: `config.rs`, `protocol.rs` (wire format), `session.rs` (client handler), `mod.rs` (server loop)
+- Key files: `protocol.rs` (message serialization), `session.rs` (client session)
+
+**src/theme/**
+- Purpose: GUI visual styling (colors, widgets, effects)
+- Contains: `colors.rs` (color palette), `widgets.rs` (custom UI elements), `mod.rs` (theme configuration)
+- Key files: `mod.rs` (ContrapunkTheme), `widgets.rs` (ornate frames, scanlines)
+
+**assets/**
+- Purpose: Static files bundled with application
+- Contains: Fonts for UI rendering
+- Generated: No
+- Committed: Yes
+
+**deploy/dist/**
+- Purpose: Production-ready web deployment files
+- Contains: Compiled WASM, JS, HTML for hosting
+- Generated: Yes (via Trunk)
+- Committed: No (deployment artifacts)
+
+**dist/**
+- Purpose: Local development web build output
+- Contains: WASM build artifacts for testing
+- Generated: Yes (via Trunk)
+- Committed: No
+
+**target/**
+- Purpose: Rust build cache and binaries
+- Contains: Compiled artifacts for debug/release/WASM targets
+- Generated: Yes (via Cargo)
+- Committed: No
+
+**.planning/**
+- Purpose: GSD (Getting Stuff Done) workflow planning documents
+- Contains: Roadmaps, phase plans, summaries, codebase analysis
+- Generated: Partially (by GSD commands)
+- Committed: Yes
 
 ## Key File Locations
 
 **Entry Points:**
-- `main.py` (lines 1632+): Python entry point, calls `curses.wrapper(curses_main)`
-- `curses_main()` in `main.py` (lines 1212-1631): Main orchestration function presenting menu and dispatching to modes
+- `src/main.rs`: Native desktop entry (CLI and GUI modes)
+- `src/lib.rs`: WASM browser entry
+- `index.html`: WASM application HTML shell
 
 **Configuration:**
-- `requirements.txt`: Package dependencies (mido, python-rtmidi, sounddevice, numpy, librosa)
-- Hard-coded configuration in `main.py`: Musical constants (BASE_NOTE, NOTES), chord progressions, rhythm patterns
+- `Cargo.toml`: Rust dependencies, features, build settings
+- `Trunk.toml`: WASM build configuration
+- `.gitignore`: Build artifacts exclusion
 
 **Core Logic:**
-- **Harmony/Counterpoint:** `main.py` lines 810-1028
-  - Scale operations: `get_scale_notes()`
-  - Diatonic intervals: `find_nearest_diatonic_third()`, `find_nearest_diatonic_fourth()`, etc.
-  - Strict counterpoint: `find_strict_counterpoint_below()`
-- **Music Generation:** `main.py` lines 376-459
-  - Melody generation: `generate_melody()`
-  - Harmony generation: `generate_harmony()`
-- **Audio-to-MIDI:** `audio_to_midi.py` lines 1-150+
-  - Pitch detection: `detect_pitch()` (autocorrelation)
-  - Onset detection: `detect_onset()` (spectral flux)
-  - Audio processing: `process_audio()` (worker loop)
-- **TUI:** `main.py` lines 56-348
-  - Class: `ContrapunkTUI` with menu, display, and input methods
+- `src/harmony/engine.rs`: Harmony transformation orchestration (1476 lines)
+- `src/router.rs`: MIDI routing and message processing (701 lines)
+- `src/app.rs`: GUI application state and UI (1356 lines)
 
 **Testing:**
-- No dedicated test files; testing is manual through TUI
-
-**Utilities:**
-- Helper functions for MIDI port listing: `list_and_choose_midi_ports()`, `list_and_choose_output_ports()` (lines 590-802)
-- Terminal utilities: `clear_terminal()`, `print_status()`, `print_menu()` (lines 349-374)
-- Keyboard handling: `get_key_nonblocking()`, `keyboard_input_thread()` (lines 1030-1067)
+- No dedicated test directory (tests colocated in source files via `#[cfg(test)]`)
+- Example: `src/harmony/engine.rs` contains `mod tests` at line 793
 
 ## Naming Conventions
 
 **Files:**
-- Snake_case: `audio_to_midi.py`, `contrapunk_ui.py`
-- CamelCase reserved for: `README.md`, class names only
+- Module files: `snake_case.rs` (e.g., `voice_leading.rs`, `midi_defaults.rs`)
+- Module index: `mod.rs` in subdirectories
+- Special entries: `main.rs` (native), `lib.rs` (WASM)
 
-**Functions:**
-- Snake_case for all functions: `generate_melody()`, `find_nearest_diatonic_third()`, `process_mode_based_midi()`
-- Descriptive names starting with verb: `generate_*`, `find_*`, `list_and_choose_*`, `detect_*`, `process_*`
-- Underscore prefix for helper methods: None used; all methods are public
-
-**Classes:**
-- PascalCase: `ContrapunkTUI`, `AudioToMidi`
-- Descriptive names indicating purpose
-
-**Variables:**
-- Local variables: snake_case (note, scale_notes, harmony_note, prev_input_notes)
-- Constants: ALL_CAPS (BASE_NOTE, NOTES, CHORD_PROGRESSIONS, RHYTHM_PATTERNS)
-- Dictionary/list names: descriptive plural or camelCase (active_notes, prev_input_notes, harmony_modes)
-
-**Types:**
-- MIDI note values: Integers 0-127 (type: int)
-- Frequencies: Floats in Hz (type: float)
-- Musical durations: Floats representing beat fractions (e.g., 1.0 = quarter note at tempo)
-- Keys: Integer 0-11 representing chromatic positions from C (type: int)
-- Modes: Integer 1-7 representing harmony algorithm selection (type: int)
+**Directories:**
+- All lowercase `snake_case` (e.g., `harmony`, `voice_leading`, `humanize`)
+- Domain-aligned naming (musical concepts: `harmony`, `chord`; technical: `server`, `midi`)
 
 ## Where to Add New Code
 
 **New Harmony Mode:**
-1. Add new function in `main.py` similar to `find_*` pattern (e.g., `find_new_mode_harmony()`)
-2. Location: `main.py` after line 1028, before `get_key_nonblocking()`
-3. Add mode number to `generate_harmony()` elif chain (lines 434-451)
-4. Add mode number to `process_mode_based_midi()` elif chain (lines 1151-1164)
-5. Update mode selection menus in `curses_main()` (lines 1316-1337, 1516-1524)
-6. Update mode names in mode selection displays (lines 246-254, 318-326, 1330-1337)
+- Algorithm function: `src/harmony/modes.rs` (add function like `harmonize_mode_N`)
+- Mode enum variant: `src/harmony/config.rs` (add to `HarmonyMode` enum)
+- Engine integration: `src/harmony/engine.rs` (add case in `harmonize()` match)
+- Tests: `src/harmony/engine.rs` (add to `mod tests`)
 
-**New Input Type:**
-1. Add new class or functions in separate file if complex (e.g., `midi_file_input.py`)
-2. Implement input device selection logic following pattern in `list_and_choose_midi_ports()`
-3. Add input type option to `curses_main()` menu (line 1223)
-4. Add branch in `curses_main()` to handle new input type
-5. Return MIDI messages as mido.Message objects to maintain compatibility with output layer
+**New GUI Control:**
+- UI layout: `src/ui.rs` (add widget in appropriate section function)
+- State binding: `src/app.rs` (add field to `AppState`, update in `refresh_state()`)
+- Styling: `src/theme/` if custom widget needed
 
-**New Output Feature:**
-1. Add to `play_generated_music()` (lines 460-564) or `process_mode_based_midi()` (lines 1084-1199)
-2. Ensure MIDI port compatibility with mido's port.send(msg) interface
-3. Track state in TUI object (tui.active_notes) or function-local variables
+**New MIDI Processing Feature:**
+- Router integration: `src/router.rs` (modify main loop or add to pipeline)
+- Shared state: `src/router.rs` (add field to `GUIRouterState` if GUI-accessible)
 
-**Utilities/Helpers:**
-- Scale/chord operations: Add near `get_scale_notes()` (line 804)
-- Keyboard/IO helpers: Add near `get_key_nonblocking()` (line 1030)
-- List/selection helpers: Add near `list_and_choose_midi_ports()` (line 590)
+**New Preset:**
+- Built-in preset: `src/preset/builtins.rs` (add to `default_presets()` function)
+- Preset type extension: `src/preset/mod.rs` (modify `Preset` struct)
+
+**Utilities:**
+- Shared helpers: Place in relevant module (e.g., MIDI utilities in `src/midi/`, harmony utilities in `src/harmony/`)
+- Cross-cutting: Create new top-level module in `src/` (e.g., `src/utils.rs` if truly general)
+
+**New Server Feature:**
+- Protocol extension: `src/server/protocol.rs` (add `Message` variant, update serialization)
+- Session handling: `src/server/session.rs` (modify `handle_client()`)
 
 ## Special Directories
 
-**`.git/`:**
-- Purpose: Git version control metadata
-- Generated: Yes (automatically)
-- Committed: Yes (included in repo)
+**target/**
+- Purpose: Cargo compilation artifacts (debug, release, WASM targets)
+- Generated: Yes
+- Committed: No
+- Size: Large (hundreds of MB)
 
-**`__pycache__/`:**
-- Purpose: Python bytecode cache
-- Generated: Yes (automatically by Python)
-- Committed: No (listed in .gitignore)
+**dist/** and **deploy/dist/**
+- Purpose: Trunk web build output (WASM, JS, processed HTML)
+- Generated: Yes (via `trunk build`)
+- Committed: No (dist), deployment decision (deploy/dist)
 
-**`.planning/codebase/`:**
-- Purpose: Architecture and planning documentation
-- Generated: Yes (by GSD tools)
-- Committed: Yes (included in repo)
+**assets/**
+- Purpose: Static resources bundled by Trunk for web build
+- Generated: No (manually placed)
+- Committed: Yes
 
-## Import Organization
+**.planning/**
+- Purpose: GSD planning workflow documentation
+- Generated: Partially (via `/gsd:*` commands)
+- Committed: Yes
+- Structure: `ROADMAP.md`, `STATE.md`, phase folders, `codebase/` analysis
 
-**main.py imports (lines 1-16):**
-```python
-# Standard library - system/OS
-import mido
-import random
-import sys
-import termios
-import tty
-import threading
-import queue
-import argparse
-import curses
-from audio_to_midi import AudioToMidi
-# External packages - audio/MIDI
-import sounddevice as sd
-import numpy as np
-# Standard library - timing
-import time
-import contextlib
-import select
-import os
+## Module Organization Pattern
+
+**Typical module structure:**
+```
+src/module_name/
+├── mod.rs           # Public API, re-exports
+├── config.rs        # Types, enums, configuration
+├── engine.rs        # Main logic/algorithms
+└── submodule/       # Optional sub-organization
+    ├── mod.rs
+    └── feature.rs
 ```
 
-**Order:** Standard library → Local modules → External packages (mido, numpy, librosa)
+**Examples:**
+- `src/harmony/`: Follows pattern (mod.rs, config.rs, engine.rs, scale.rs, etc.)
+- `src/generator/`: Minimal variant (mod.rs, config.rs, engine.rs only)
+- `src/midi/`: Platform-split variant (mod.rs with conditional compilation, separate files per platform)
 
-**audio_to_midi.py imports (lines 1-6):**
-```python
-# External packages
-import sounddevice as sd
-import numpy as np
-import librosa
-import mido
-# Standard library
-import queue
-import threading
-```
+## File Size Distribution
 
-**No import aliases in use except:** `sd` for sounddevice
+**Large files (complexity hotspots):**
+- `src/harmony/engine.rs`: 1476 lines (harmony orchestration)
+- `src/app.rs`: 1356 lines (GUI application)
+- `src/harmony/stateful.rs`: 990 lines (stateful mode algorithms)
+- `src/ui.rs`: 693 lines (UI layout)
+- `src/router.rs`: 701 lines (MIDI routing)
+- `src/harmony/scale.rs`: 543 lines (scale definitions)
 
-## Module Dependencies
-
-**main.py:**
-- Imports: mido, curses, numpy, sounddevice, audio_to_midi (local)
-- Exports: ContrapunkTUI class, multiple functions (no explicit __all__)
-- Purpose: Main orchestration and algorithm implementations
-
-**audio_to_midi.py:**
-- Imports: mido, numpy, librosa, sounddevice, threading, queue
-- Exports: AudioToMidi class
-- Purpose: Audio input abstraction and pitch detection
-
-**contrapunk_ui.py:**
-- Imports: tkinter, mido, threading, queue, audio_to_midi (local)
-- Status: Present but unused (not imported or called from main.py)
-- Purpose: Alternative Tkinter GUI (legacy/experimental)
+**Module total lines:** ~4023 lines in src root files
 
 ---
 
-*Structure analysis: 2026-01-28*
+*Structure analysis: 2026-02-04*
