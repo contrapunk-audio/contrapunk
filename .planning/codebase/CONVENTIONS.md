@@ -1,117 +1,99 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-02-04
+**Analysis Date:** 2026-02-05
 
 ## Naming Patterns
 
 **Files:**
-- Snake case for module files: `harmony_engine.rs`, `voice_leading.rs`, `midi_defaults.rs`
-- Match module name to directory: `src/harmony/mod.rs` contains `harmony` module
-- Test modules use `mod.rs` or are co-located with implementation
+- Modules use snake_case: `voice_leading.rs`, `midi_defaults.rs`, `beat_clock.rs`
+- Main entry points: `main.rs`, `lib.rs`, `app.rs`
+- Config modules: `config.rs` (inside feature subdirectories)
 
 **Functions:**
-- Snake case: `harmonize_note_on()`, `detect_chord()`, `transpose_diatonic()`
-- Predicates use `is_` prefix: `is_in_scale()`, `is_flat_key()`
-- Conversion methods use `from_` or `to_`: `semitones_from_c()`, `to_vec()`
-- Builder pattern uses `with_`: `with_voices()`, `with_analysis()`
+- snake_case for all functions: `detect_chord()`, `revoice_chord()`, `harmonize()`
+- Constructor pattern: `new()` for associated functions
+- Getter pattern: simple name without `get_` prefix (e.g., `key()`, `mode()`, `range()`)
+- Setter pattern: `set_` prefix (e.g., `set_key()`, `set_mode()`)
+- Boolean accessors: no `is_` prefix in method names typically
 
 **Variables:**
-- Snake case: `pitch_classes`, `current_offset`, `last_borrowed_from`
-- Mutable variables clearly marked with `mut` keyword
-- Iterator variables typically short: `i`, `n`, `pc`
+- snake_case for locals and fields: `note_duration_beats`, `last_beat_position`, `harmony_pitch_classes`
+- Abbreviations lowercase: `bpm`, `ms`, `pc` (pitch class)
 
 **Types:**
-- Pascal case for structs/enums: `HarmonyEngine`, `ScaleMode`, `VoiceRegister`
-- Trait names are adjectives when possible: (no custom traits observed)
-- Type aliases rare; prefer explicit types
-
-**Constants:**
-- SCREAMING_SNAKE_CASE: `NOTE_NAMES`, `CONSONANT_INTERVALS_ABOVE`, `TYPE_MIDI_DATA`
-- Array constants for lookup tables: `CHORD_PATTERNS`, `NOTE_NAMES_FLAT`
+- PascalCase for structs and enums: `HarmonyEngine`, `NoteGenerator`, `VoiceRegister`, `StylePreset`
+- Enum variants: PascalCase (e.g., `Key::C`, `HarmonyMode::DiatonicThirds`, `OctaveMode::None`)
+- Trait implementations for Display use `std::fmt::Display`
 
 ## Code Style
 
 **Formatting:**
-- Tool used: rustfmt (default Rust formatter)
-- No custom config detected (using Rust defaults)
-- Line length: appears to respect 100-char soft limit
-- Indentation: 4 spaces (Rust standard)
+- Standard Rust formatting (no custom rustfmt.toml detected)
+- 4-space indentation (Rust default)
+- Line length: appears to follow default 100-character limit
+- Trailing commas in multi-line lists
 
 **Linting:**
-- Tool used: clippy (Rust's linter)
-- No custom clippy.toml detected (using defaults)
+- No custom clippy config detected (uses Rust defaults)
 - Code follows standard Rust idioms
-- Warnings treated seriously (no `#[allow]` attributes observed except for necessary cases)
+- No `#[allow(...)]` attributes observed in sampled code
 
 ## Import Organization
 
 **Order:**
-1. Standard library (`std::collections::HashMap`, `std::io`)
-2. External crates (`wmidi::Note`, `rand::Rng`, `anyhow::Result`)
-3. Local crate modules (`crate::harmony::config`, `crate::midi::ports`)
+1. Standard library imports (e.g., `use std::collections::HashSet;`, `use std::io::{Read, Write};`)
+2. External crate imports (e.g., `use wmidi::{MidiMessage, Note, Channel, Velocity};`, `use rand::Rng;`, `use serde::{Serialize, Deserialize};`)
+3. Internal module imports with `crate::` prefix (e.g., `use crate::harmony::{Key, HarmonyMode};`)
+4. Relative imports with `super::` (e.g., `use super::config::HumanizeConfig;`)
 
 **Path Aliases:**
-- Use `crate::` for absolute paths within project
-- Relative imports use `super::` or explicit module paths
-- Common pattern: `use crate::harmony::{Key, HarmonyMode, OctaveMode}`
-
-**Grouping:**
-- Related imports grouped together
-- Wildcard imports avoided (use explicit item imports)
-- Example from `src/harmony/engine.rs`:
-  ```rust
-  use std::collections::HashMap;
-  use wmidi::Note;
-
-  use crate::harmony::config::{Key, HarmonyMode, OctaveMode, ScaleMode};
-  use crate::harmony::modes;
-  use crate::harmony::scale::Scale;
-  ```
+- No custom path aliases
+- Crate-relative imports use `crate::module::Type`
+- Parent module imports use `super::module`
 
 ## Error Handling
 
 **Patterns:**
-- Primary: `anyhow::Result<T>` for operations that can fail
-- Fallible operations return `Option<T>` for simple cases (e.g., `transpose_diatonic()` returns `Option<Note>`)
-- Pattern matching on `Result`/`Option` preferred over unwrapping
-- Early returns with `?` operator for error propagation
-- Example from `src/harmony/scale.rs`:
+- Uses `anyhow` crate for error handling in application code
+- Result types: `anyhow::Result<T>` for functions that can fail
+- Explicit error context with `anyhow!()` macro for creating errors
+- Propagate errors with `?` operator
+- Example from `src/server/protocol.rs`:
   ```rust
-  pub fn transpose_diatonic(&self, note: Note, degrees: i8) -> Option<Note> {
-      let current_degree = self.degree_of(note)? as i8;
-      // ... computation ...
-      Note::try_from(new_midi as u8).ok()
+  pub fn read_message(stream: &mut impl Read) -> Result<Message> {
+      let mut len_buf = [0u8; 2];
+      stream.read_exact(&mut len_buf)?;
+      let len = u16::from_be_bytes(len_buf) as usize;
+      if len == 0 {
+          return Err(anyhow!("invalid message: zero length"));
+      }
+      // ...
   }
   ```
 
-**Fallback Strategy:**
-- Out-of-range MIDI notes return `None` instead of panicking
-- Invalid input falls back to safe defaults (e.g., pass-through mode returns original note)
-- MIDI range checked explicitly: `if !(0..=127).contains(&midi)`
-
 ## Logging
 
-**Framework:** Standard library `eprintln!` for errors; no structured logging framework
+**Framework:** Standard output (no dedicated logging framework detected)
 
 **Patterns:**
-- Errors printed to stderr with context
-- Debug info uses `#[derive(Debug)]` for struct inspection
-- No verbose logging in production code paths
-- Console output in WASM via `console_error_panic_hook::set_once()`
+- No structured logging observed in core modules
+- Error messages via `anyhow!()` for propagation
+- Console output in CLI portions (`std::io::{self, Write}`)
 
 ## Comments
 
 **When to Comment:**
-- Module-level doc comments (`//!`) explain purpose and key concepts
-- Public functions have doc comments (`///`) with Args/Returns sections
-- Complex algorithms explained inline (e.g., chord detection, voice leading)
-- Non-obvious optimizations documented
+- Module-level documentation for every file using `//!` doc comments
+- Public API functions documented with `///` doc comments
+- Complex algorithms explained inline (e.g., voice leading rules)
+- Intent documented for non-obvious code (e.g., borrowing sources in scales)
 
 **Doc Comments:**
-- Full `///` documentation for all public API surfaces
-- Arguments section: `/// # Arguments` with `* name - description` format
-- Returns section: `/// # Returns` describes output
-- Examples included for complex functions
+- Module docs (`//!`) appear at top of each file with purpose and context
+- Function docs (`///`) include:
+  - Purpose description
+  - `# Arguments` section with parameter descriptions
+  - `# Returns` section for return value
 - Example from `src/chord.rs`:
   ```rust
   /// Detects the chord from a set of MIDI note numbers.
@@ -128,94 +110,90 @@
   pub fn detect_chord(notes: &HashSet<u8>) -> Option<String>
   ```
 
-**Inline Comments:**
-- Clarify intent, not implementation (unless algorithm is complex)
-- Used sparingly; prefer self-documenting code
-- Mark algorithm steps in complex functions (e.g., `// First pass: try to find...`)
-
 ## Function Design
 
-**Size:**
-- Functions typically 20-50 lines
-- Complex functions (like `harmonize()`) reach 100+ lines but are well-structured
-- Helper functions extracted when logic is reused
+**Size:** Functions range from small helpers (~10 lines) to larger complex algorithms (~100-200 lines for voice leading)
 
 **Parameters:**
-- Pass small types by value (`note: Note`, `degrees: i8`)
-- Pass collections by reference (`notes: &HashSet<u8>`, `scale: &mut Scale`)
-- Mutable references used sparingly and clearly (`&mut self`, `&mut Scale`)
-- Builder pattern for complex initialization (`with_voices()`)
+- Borrow by reference for read-only access: `&HashSet<u8>`, `&[u8]`
+- Mutable references for modification: `&mut self`, `&mut impl Write`
+- Owned parameters for consuming: `Vec<u8>`
+- Option types for optional parameters: `Option<&VoiceAnchor>`, `Option<usize>`
 
 **Return Values:**
-- Prefer `Option<T>` for operations that may fail gracefully
-- Use `Result<T>` for operations with detailed error context
-- Return owned `Vec` for generated collections
-- Return references when borrowing from self (`&[usize]` for port maps)
+- Use `Result<T>` for fallible operations
+- Use `Option<T>` for operations that may not produce a value
+- Return `Vec<T>` for collections
+- Return owned types for newly constructed values
 
 ## Module Design
 
 **Exports:**
-- Public API clearly marked with `pub`
-- Internal helpers remain private (module-scoped)
-- Re-export key types in parent modules: `pub use self::scale::Scale;`
-
-**Barrel Files:**
-- `mod.rs` used to organize submodules
+- Public re-exports in `mod.rs` files for clean API surface
 - Example from `src/harmony/mod.rs`:
   ```rust
-  pub mod config;
-  pub mod engine;
-  pub mod modes;
-  pub mod scale;
-  pub mod stateful;
+  mod config;
+  mod engine;
+  mod modes;
+  mod scale;
+  mod stateful;
   pub mod voice_leading;
 
-  pub use config::{Key, HarmonyMode, OctaveMode, ScaleMode};
+  pub use config::{Key, HarmonyMode, OctaveMode, ScaleFamily, ScaleMode};
   pub use engine::HarmonyEngine;
   pub use scale::Scale;
+  pub use stateful::{ContraryMotionState, CounterpointState};
+  pub use voice_leading::VoiceLeadingStyle;
   ```
 
-**Module Structure:**
-- Flat when possible; nested only when grouping related functionality
-- Example: `src/harmony/voice_leading/` contains `mod.rs`, `rules.rs`, `voicer.rs`, `styles.rs`, `suspension.rs`
-- Each module focused on single responsibility
+**Barrel Files:**
+- `mod.rs` serves as barrel file for each module
+- Re-exports primary types for clean imports
+- Submodules remain private unless explicitly made public
 
-## Type System Usage
+## Serialization
 
-**Enums:**
-- Used for finite sets of options: `HarmonyMode`, `ScaleMode`, `OctaveMode`
-- Derive traits liberally: `#[derive(Debug, Clone, Copy, PartialEq, Eq)]`
-- Pattern matching exhaustive (no wildcard fallbacks in mode selection)
+**Pattern:**
+- Use `serde` with derive macros for data structures
+- Enum serialization uses snake_case: `#[serde(rename_all = "snake_case")]`
+- Default values: `#[serde(default)]` or custom default functions
+- Skip fields in serialization: `#[serde(skip)]`
+- Example from `src/harmony/config.rs`:
+  ```rust
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+  #[serde(rename_all = "snake_case")]
+  pub enum Key {
+      C, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B,
+  }
+  ```
 
-**Structs:**
-- Organize related state: `HarmonyEngine`, `Scale`, `ContraryMotionState`
-- Private fields with public accessors (getters/setters)
-- Builder pattern for complex types (`HarmonyEngine::with_voices()`)
+## Constants
 
-**Type Safety:**
-- Newtype pattern not used; rely on semantic naming
-- MIDI note numbers wrapped in `wmidi::Note` type (external crate)
-- Pitch classes represented as `u8` (0-11) by convention
+**Pattern:**
+- SCREAMING_SNAKE_CASE for constants
+- Const arrays for lookup tables and patterns
+- Example from `src/chord.rs`:
+  ```rust
+  const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const NOTE_NAMES_FLAT: [&str; 12] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+  ```
+- Private const for internal use, public const for API exposure
 
-## Conditional Compilation
+## Platform-Specific Code
 
-**Feature Flags:**
-- `#[cfg(feature = "gui")]` gates GUI-only modules (`app.rs`, `ui.rs`, `piano.rs`)
-- `#[cfg(not(target_arch = "wasm32"))]` excludes native-only code (server, router)
-- `#[cfg(target_arch = "wasm32")]` includes WASM entry point (`lib.rs`)
-
-**Platform-Specific:**
-- MIDI backend selection via target arch
-- Server mode disabled in WASM builds
+**Pattern:**
+- Use `#[cfg(target_arch = "wasm32")]` for WASM-specific code
+- Use `#[cfg(not(target_arch = "wasm32"))]` for native-only code
+- Use `#[cfg(feature = "gui")]` for GUI-specific code
 - Example from `src/main.rs`:
   ```rust
   #[cfg(not(target_arch = "wasm32"))]
-  use clap::Parser;
+  mod router;
 
-  #[cfg(target_arch = "wasm32")]
-  use wasm_bindgen::prelude::*;
+  #[cfg(feature = "gui")]
+  mod app;
   ```
 
 ---
 
-*Convention analysis: 2026-02-04*
+*Convention analysis: 2026-02-05*

@@ -1,236 +1,225 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-02-04
+**Analysis Date:** 2026-02-05
 
 ## Tech Debt
 
-**Note Generator Module (Phase 6.5 - Deferred):**
-- Issue: Note generator feature is non-functional. Module exists with config and engine types but doesn't work end-to-end.
-- Files: `src/generator/mod.rs`, `src/generator/config.rs`, `src/generator/engine.rs`
-- Impact: Feature is advertised in roadmap but cannot be used by end users. Dead code remains in codebase. Unused exports trigger compiler warnings.
-- Fix approach: Either complete implementation per Phase 6.5 plans or remove module entirely and update roadmap. Current state is confusing limbo.
+**Extensive use of unwrap() throughout codebase:**
+- Issue: Liberal use of `.unwrap()` on MIDI value conversions, velocity creation, note parsing, and mutex locks without proper error handling
+- Files: `src/app.rs` (lines 635, 1018, 1054, 1061, 1074, 1082), `src/router.rs` (lines 185, 197, 265, 275, 280, 304, 322, 327, 373, 455, 522), `src/humanize/metronome.rs` (lines 17-32), `src/humanize/scheduler.rs` (line 60), `src/server/protocol.rs` (lines 120-162 in tests), `src/harmony/voice_leading/suspension.rs` (line 127), `src/harmony/stateful.rs` (line 915), `src/harmony/scale.rs` (lines 371, 391, 456), `src/chord.rs` (line 98)
+- Impact: Panics possible during MIDI processing if invalid values passed or locks poisoned, causing application crash mid-performance
+- Fix approach: Replace `.unwrap()` with proper Result propagation in hot paths, use `.unwrap_or_default()` or `.expect()` with clear messages in initialization code
 
-**Voice Leading Distinctness (Phase 6.2 Feedback):**
-- Issue: Different voice leading styles don't produce audibly distinct results. VoiceLeadingStyle enum has Palestrina, Bach, Jazz, Free variants but user reports they sound too similar.
-- Files: `src/harmony/voice_leading/styles.rs`, `src/harmony/voice_leading/voicer.rs`, `src/harmony/engine.rs` (lines 1-1523)
-- Impact: Feature complexity doesn't deliver proportional value. Users can't meaningfully choose between styles.
-- Fix approach: Research and implement more aggressive style differentiation (Palestrina = strict dissonance rules, Jazz = extended voicings/chromaticism, Bach = specific SATB spacing). Alternatively, remove style variants and keep single "smooth voice leading" mode.
+**Note Generator module marked as non-functional:**
+- Issue: Phase 6.5 (Note Generator) deferred due to "note generator just doesn't work" according to user feedback and STATE.md
+- Files: `src/generator/engine.rs`, `src/generator/config.rs`, `src/generator/mod.rs`
+- Impact: Entire virtual MIDI input feature (arpeggiator, scale runner, beat-synced patterns) is present in codebase but broken
+- Fix approach: Debug event generation in `tick()` method, verify beat clock integration, test selected_notes flow from UI to engine
 
-**WASM Borrowed Notes Tracking (TODO):**
-- Issue: Borrowed notes from modal interchange are not tracked in WASM build, only in native.
-- Files: `src/app.rs` (line 538-539)
-- Impact: WASM users don't see amber highlights for borrowed notes on piano keyboard. Visual feedback is incomplete compared to native.
-- Fix approach: Add `wasm_borrowed_notes: HashSet<u8>` field to ContrapunkApp, populate it during WASM MIDI processing path similar to native router state. Update `get_router_notes()` to return non-empty third tuple element.
+**Voice Leading implementation unverified:**
+- Issue: Phase 6.2 planning complete (4 plans written) but execution never started, UAT document shows all 8 tests pending
+- Files: `src/harmony/voice_leading/voicer.rs` (704 lines), `src/harmony/voice_leading/rules.rs` (223 lines), `src/harmony/voice_leading/suspension.rs` (241 lines), `src/harmony/voice_leading/styles.rs` (205 lines)
+- Impact: ~1400 lines of voice leading code with complex counterpoint rules, suspension state machines, and register assignments may have bugs or not produce expected musical results
+- Fix approach: Complete Phase 6.2-04 (Human verification checkpoint), test all 8 UAT criteria, verify Palestrina/Bach/Jazz/Free styles produce distinct results
 
-**Unused Imports and Dead Code:**
-- Issue: Multiple unused imports trigger compiler warnings. Generator module exports are unused. Voice leading rule functions unused. ScaleFamily/ScaleMode unused in harmony mod. Stateful types unused.
-- Files: `src/generator/mod.rs` (lines 4-5), `src/harmony/voice_leading/mod.rs` (lines 9-10), `src/harmony/mod.rs` (lines 13, 16)
-- Impact: Code hygiene degrades. Warnings noise makes real issues harder to spot. Suggests incomplete refactoring or feature removal.
-- Fix approach: Remove unused exports and imports. If generator module is truly deferred, gate with `#[cfg(feature = "generator")]` or remove entirely.
+**Unused imports scattered across modules:**
+- Issue: 8+ compiler warnings for unused imports (ScaleFamily, ScaleMode, ContraryMotionState, CounterpointState, VoiceLeadingStyle, BeatClock, Metronome, generator::* functions)
+- Files: `src/generator/mod.rs`, `src/harmony/voice_leading/mod.rs`, `src/harmony/mod.rs`, `src/humanize/mod.rs`, `src/router.rs`
+- Impact: Code maintenance confusion, potential for stale APIs, compile warnings clutter
+- Fix approach: Run `cargo clippy --fix` and audit public API surface, remove dead code or feature-gate conditionally-used imports
 
-**Stuck MIDI Notes on Settings Change:**
-- Issue: Changing settings (voice leading, key, mode) mid-play clears active_notes tracking without sending Note-Off messages, causing stuck notes.
-- Files: State tracking in `src/router.rs`, `src/app.rs` (harmony engine resets)
-- Impact: User must manually silence stuck notes or restart application. Unprofessional behavior. Workarounds exist but proper fix not implemented.
-- Fix approach: Before clearing active_notes, send Note-Off for all tracked notes across all outputs. Requires port routing awareness and careful WASM/native handling.
+**Large monolithic files with high complexity:**
+- Issue: Several files exceed 700-1500 lines with deep nesting and multiple responsibilities
+- Files: `src/harmony/engine.rs` (1523 lines - HarmonyEngine with voice leading processor, octave modes, stateful mode tracking), `src/app.rs` (1278 lines - GUI state + MIDI routing + humanizer for WASM), `src/harmony/stateful.rs` (1070 lines - 3 stateful mode implementations), `src/router.rs` (791 lines - native routing + GUI state sync), `src/harmony/voice_leading/voicer.rs` (704 lines - complex voicing algorithm)
+- Impact: Difficult to understand, test, and modify; high cognitive load for contributors; increased merge conflict risk
+- Fix approach: Extract voice leading into separate VoiceLeadingEngine, split app.rs into app_native.rs and app_wasm.rs, refactor stateful modes into trait-based polymorphism
 
-**Dual MIDI Code Paths (Native vs WASM):**
-- Issue: Significant duplication between native (midir, Arc<Mutex>, background threads) and WASM (Web MIDI API, Rc<RefCell>, frame polling). 45+ `cfg(target_arch = "wasm32")` blocks across 5 files.
-- Files: `src/midi/mod.rs`, `src/app.rs` (39 occurrences), `src/main.rs` (2), `src/ui.rs` (2), `src/lib.rs` (1)
-- Impact: Maintenance burden. Bug fixes must be applied twice. Feature parity hard to verify. Refactoring risky.
-- Fix approach: Extract common MIDI logic into trait-based abstraction (MidiBackend trait). Implement for native and WASM separately. Reduces duplication but increases abstraction complexity. Evaluate cost/benefit.
+**Clone usage (48 occurrences):**
+- Issue: Frequent `.clone()` calls on note collections, state structures, and configuration objects
+- Files: 14 files including `src/app.rs`, `src/ui.rs`, `src/harmony/engine.rs`, `src/generator/engine.rs`, `src/harmony/voice_leading/voicer.rs`
+- Impact: Memory allocation churn in real-time audio path, potential latency spikes during harmony generation
+- Fix approach: Audit hot paths (harmonize, revoice_chord, tick), use references where possible, consider Rc/Arc for immutable shared state
 
-**Large Complex Files:**
-- Issue: Several files exceed 700+ lines with complex logic, making them hard to navigate and test.
-- Files: `src/harmony/engine.rs` (1523 lines), `src/app.rs` (1278 lines), `src/harmony/stateful.rs` (1070 lines), `src/router.rs` (791 lines), `src/harmony/voice_leading/voicer.rs` (704 lines)
-- Impact: Cognitive load for contributors. Testing requires understanding entire file context. Refactoring risk increases.
-- Fix approach: Split harmony/engine.rs into separate modules (engine.rs, voice_leading_processor.rs, note_tracker.rs). Extract app.rs tab rendering into separate files (already started with ui.rs). Break stateful.rs into per-mode files. Requires careful module boundary design.
-
-**Extensive Clone Usage (48 occurrences):**
-- Issue: Heavy reliance on `.clone()` across 14 files suggests value-passing inefficiency, particularly for HashSets and Vecs.
-- Files: `src/app.rs` (17), `src/ui.rs` (10), others
-- Impact: Potential performance overhead, especially in WASM where frame-based polling clones entire note sets every update. Real-time audio requires <5ms latency.
-- Fix approach: Profile hotspots first. Consider borrowing where possible, or use Rc/Arc for shared state instead of cloning. WASM MIDI queue could use slice drain instead of clone-and-clear.
+**2.7GB target directory with no .gitignore entry:**
+- Issue: Build artifacts consume 2.7GB with multiple incremental compilation caches and WASM targets
+- Files: `target/` directory (not in .gitignore but should be)
+- Impact: Slow git operations if accidentally staged, excessive disk usage, confusion for contributors
+- Fix approach: Verify `target/` is in .gitignore (it is on line 2), run `cargo clean` periodically, document cache management in CONTRIBUTING.md
 
 ## Known Bugs
 
-**No Critical Bugs Identified:**
-- No open bugs beyond the stuck MIDI notes issue documented in tech debt.
-- Stuck notes workaround: avoid changing settings mid-play.
+**Stuck MIDI notes on configuration changes:**
+- Symptoms: When changing voice leading settings, key, mode, or other harmony parameters mid-play, active notes may not receive Note-Off messages
+- Files: Noted in `STATE.md` line 133 as pending todo
+- Trigger: User changes key/mode/voice leading style while holding notes on MIDI controller
+- Workaround: Release all keys before changing settings; manually send Note-Off on all channels from external MIDI utility
+
+**Mutex lock unwrap in router could poison on panic:**
+- Symptoms: If one thread panics while holding GUIRouterState mutex, all subsequent lock attempts will unwrap and panic
+- Files: `src/router.rs` (lines 185, 197, 373, 455, 522), `src/app.rs` (lines 497, 528, 551, 593, 1112, 1187)
+- Trigger: Panic during harmony processing or MIDI I/O while lock held
+- Workaround: None; requires application restart if mutex poisoned
 
 ## Security Considerations
 
-**No Secrets in Codebase:**
-- No hardcoded credentials, API keys, or secrets detected in source.
-- Fly.io deployment uses `FLY_API_TOKEN` secret via GitHub Actions (secure).
-- Web MIDI API requires user permission grant (browser-enforced).
+**WASM callback.forget() leaks memory:**
+- Risk: Web MIDI input callback intentionally leaked via `callback.forget()` to remain active
+- Files: `src/midi/web.rs` line 88
+- Current mitigation: Single callback per input device connection, not called repeatedly
+- Recommendations: Track callbacks in app state for explicit cleanup on device disconnect, implement Drop trait for WebMidiInput wrapper
 
-**MIDI Device Access:**
-- Risk: MIDI device enumeration exposes system device names (potential privacy leak).
-- Files: `src/midi/ports.rs`, Web MIDI integration
-- Current mitigation: Standard practice for MIDI applications. Users grant permission explicitly in WASM.
-- Recommendations: Document that device names are visible to application. No further action needed.
+**No MIDI input validation:**
+- Risk: Malformed or malicious MIDI messages from physical devices or network clients processed without validation
+- Files: `src/router.rs` (processes raw MIDI bytes), `src/server/session.rs` (reads network MIDI messages)
+- Current mitigation: wmidi crate provides some parsing safety, protocol.rs uses length-prefixed messages
+- Recommendations: Add bounds checking on velocity/note values, implement rate limiting for network clients, validate message types before processing
 
-**Dependency Trust:**
-- Risk: Third-party crates (midir, wmidi, eframe, web-sys) could contain vulnerabilities.
-- Current mitigation: Using established crates with active maintenance. Locked versions in Cargo.toml.
-- Recommendations: Run `cargo audit` periodically. Update dependencies regularly. Consider adding to CI pipeline.
+**Server mode has no authentication:**
+- Risk: Any client can connect to server mode and send MIDI data
+- Files: `src/server/session.rs` (line 198 - accepts all connections)
+- Current mitigation: Server must be explicitly started with --server flag, not exposed by default
+- Recommendations: Add token-based authentication, implement connection allow-list, rate limit incoming messages per client
 
 ## Performance Bottlenecks
 
-**WASM Frame Polling Overhead:**
-- Problem: WASM build polls MIDI queue every frame (~60Hz), cloning entire Vec<Vec<u8>> each time.
-- Files: `src/app.rs` (WASM update path), `src/midi/web.rs`
-- Cause: Rc<RefCell<Vec>> requires clone to safely iterate. Frame rate tied to MIDI processing rate.
-- Improvement path: Use slice drain pattern to move messages out of queue without cloning. Benchmark if 60Hz polling is bottleneck for latency.
+**Mutex contention on GUIRouterState:**
+- Problem: Every frame update and every MIDI message acquisition locks the same Arc<Mutex<GUIRouterState>>
+- Files: `src/app.rs` update() method, `src/router.rs` routing loop
+- Cause: Shared state between GUI thread and router thread with coarse-grained locking
+- Improvement path: Split state into read-only (using RwLock) and write-heavy portions, use lock-free channels for note event streaming, cache GUI-only state locally
 
-**Voice Leading Algorithm Complexity:**
-- Problem: Voice leading revoice_chord generates all candidate voicings combinatorially, evaluates each against style rules.
-- Files: `src/harmony/voice_leading/voicer.rs` (704 lines)
-- Cause: Exhaustive search for optimal voicing. N voices with M octave possibilities = O(M^N) candidates.
-- Improvement path: Real-time constraint is <5ms per note change. Profile if voice leading exceeds this. Consider pruning strategies (limit octave search range, early termination on good-enough candidate). May be premature optimization if current performance acceptable.
+**Voice leading evaluates all candidate voicings:**
+- Problem: Revoice algorithm generates all valid placements per voice then evaluates cartesian product
+- Files: `src/harmony/voice_leading/voicer.rs` lines 100+ (generates candidates, then scores all combinations)
+- Cause: Holistic chord evaluation for deterministic output quality
+- Improvement path: Implement early pruning of poor candidates, cache scoring results for repeated pitch classes, limit candidate count per register
 
-**No Profiling Data Available:**
-- Problem: Performance assumptions not verified with measurements.
-- Impact: Optimizing wrong areas, or over-engineering solutions to non-problems.
-- Recommendation: Add instrumentation (e.g., instant::Instant timestamps) to measure harmony processing, voice leading, WASM frame overhead. Profile under load (rapid note input).
+**BinaryHeap re-sorting on every delay queue push:**
+- Problem: Humanizer delay queue uses BinaryHeap which has O(log n) push but reallocates frequently
+- Files: `src/humanize/scheduler.rs` (DelayQueue wraps BinaryHeap)
+- Cause: Each humanized note inserted individually during burst harmony generation
+- Improvement path: Pre-allocate capacity based on typical voice count, batch insertions, consider simpler sorted Vec for small (<10) queues
+
+**Clone-heavy chord voicing generation:**
+- Problem: Each harmony voice generation clones previous voicing, registers, and style rules
+- Files: `src/harmony/engine.rs` harmonize() method
+- Cause: Immutable-style API for safety and clarity
+- Improvement path: Pass &mut buffers for reuse, use stack-allocated arrays for small voice counts (<8), profile allocation overhead
 
 ## Fragile Areas
 
-**Generator Module (Non-Functional):**
-- Files: `src/generator/mod.rs`, `src/generator/config.rs`, `src/generator/engine.rs`
-- Why fragile: Partially implemented, not tested, deferred indefinitely. Unknown what works and what doesn't.
-- Safe modification: Don't touch until Phase 6.5 is resumed or module is removed.
-- Test coverage: Zero. No tests exist for generator module.
+**WASM MIDI integration depends on browser API availability:**
+- Files: `src/midi/web.rs` (entire module), `src/app.rs` WASM-specific code paths
+- Why fragile: Assumes Web MIDI API exists and permissions granted; no graceful degradation
+- Safe modification: Always check MidiAccess validity before use, wrap all web_sys calls in Result, add UI feedback for permission denials
+- Test coverage: No automated tests for WASM paths (requires browser environment)
 
-**Modal Interchange Borrowing Logic:**
-- Files: `src/harmony/scale.rs` (harmonize_smart), `src/harmony/engine.rs` (modal interchange integration)
-- Why fragile: Complex logic with borrowing_sources mapping, range-dependent mode selection, last_borrowed_from state tracking. Easy to introduce edge cases.
-- Safe modification: Verify with all scale modes (Ionian, Dorian, Phrygian, etc.) and all borrowing ranges (1-5). Test out-of-key notes extensively.
-- Test coverage: No dedicated tests for modal interchange found. Manual verification only.
+**Voice position interleaving logic in voice leading:**
+- Files: `src/harmony/engine.rs` build_registers_for_position (lines 52-100), VoiceLeadingProcessor register assignment
+- Why fragile: Complex index manipulation to reorder voices from [soprano, alto, tenor, bass] to [user, above, below, above, below...] based on voice_position
+- Safe modification: Add unit tests for all voice_position values (0 through voice_count-1), verify register order matches expected arrangement
+- Test coverage: No dedicated tests for register ordering edge cases
 
-**MIDI Note Tracking (Active Notes):**
-- Files: `src/router.rs` (HashMap<u8, Vec<Note>>), `src/app.rs` (WASM tracking)
-- Why fragile: Note-On/Note-Off pairing must be perfect or stuck notes occur. Port routing complicates Note-Off delivery. Settings changes can orphan tracking.
-- Safe modification: Always test Note-Off delivery. Never clear tracking without sending offs. Use exhaustive manual testing with physical MIDI hardware.
-- Test coverage: No automated tests for note tracking lifecycle. Hardware verification only.
+**Stateful harmony mode state management:**
+- Files: `src/harmony/stateful.rs` (ContraryMotionState, CounterpointState, PalatrinaCounterpointState)
+- Why fragile: Modes track previous melody/harmony notes across calls; state reset on key/mode change can leave inconsistent history
+- Safe modification: Always call reset() before first harmonize after config change, verify state cleared in tests
+- Test coverage: Basic state tracking tests exist but edge cases (rapid mode switching, empty note input) untested
 
-**Web MIDI Integration (WASM):**
-- Files: `src/midi/web.rs`, Web MIDI callbacks
-- Why fragile: JavaScript interop via wasm-bindgen, async promises, closure lifetimes. Browser API differences (Chrome vs Firefox). User permission flows.
-- Safe modification: Test in multiple browsers (Chrome, Firefox, Safari). Verify permission denial handling. Check async callback ordering.
-- Test coverage: Manual browser testing only. No automated WASM tests.
+**Humanizer beat clock wrap-around detection:**
+- Files: `src/generator/engine.rs` tick() line 43 (beat wrap detection: `beat_pos < self.last_beat_position`)
+- Why fragile: Relies on floating-point comparison for beat position, assumes monotonically increasing beats within bar
+- Safe modification: Use integer beat counters, explicit modulo for bar boundaries, add epsilon tolerance for float comparison
+- Test coverage: No tests for beat wrap edge cases or tempo changes
 
 ## Scaling Limits
 
-**Voice Count Limit (8 Outputs):**
-- Current capacity: 8 MIDI output ports maximum.
-- Limit: Hardcoded slot count in UI and router logic.
-- Scaling path: Change output_slots Vec size in `src/app.rs`. Update UI slot rendering loop. Voice leading registers limited to 4 (Soprano/Alto/Tenor/Bass) — would need redesign for >4 harmony voices.
+**Single-threaded harmony processing:**
+- Current capacity: ~10-20 voices before frame drops (estimated based on complexity)
+- Limit: All harmony generation happens synchronously in router thread (native) or GUI frame (WASM)
+- Scaling path: Move harmony engine to dedicated thread pool, parallelize per-voice processing, pre-compute scale lookups
 
-**Preset Storage (JSON Files):**
-- Current capacity: File-based JSON per preset, no database.
-- Limit: Filesystem I/O on every load/save. No multi-user support. WASM uses localStorage (5-10MB browser limit).
-- Scaling path: For large preset libraries, consider SQLite or indexed storage. For multi-user, add server-side storage with sync.
+**No connection limit in server mode:**
+- Current capacity: Unlimited concurrent client connections
+- Limit: Each session spawns thread; OS thread limit reached around 1000-10000 clients depending on system
+- Scaling path: Use async I/O (tokio), implement connection limit with queue, add load shedding
 
-**Single-Threaded Harmony Processing:**
-- Current capacity: All harmony generation on single thread (main thread in WASM, dedicated router thread in native).
-- Limit: Processing latency scales with note count and harmony mode complexity. Voice leading adds overhead.
-- Scaling path: Unlikely bottleneck for typical use (1-4 input notes at a time). If needed, parallelize per-note harmony generation or voice leading per output slot.
+**DelayQueue unbounded growth:**
+- Current capacity: Humanized notes accumulate if processing slower than generation
+- Limit: Memory exhaustion if sustained >1000 notes/sec input rate
+- Scaling path: Add max queue size with oldest-note eviction, warn user on queue depth threshold
 
 ## Dependencies at Risk
 
-**eframe 0.33 (GUI Framework):**
-- Risk: Major version changes in egui/eframe can break UI code. Breaking changes require manual migration.
-- Impact: Entire GUI layer. 1200+ line app.rs relies heavily on eframe APIs.
-- Migration plan: Pin to 0.33.x for stability. Monitor egui changelog for 0.34/1.0 breaking changes. Budget significant refactor time for major version upgrades.
+**midir (MIDI I/O library):**
+- Risk: Depends on platform-specific native MIDI APIs (CoreMIDI, ALSA, Windows MM) which may change
+- Impact: MIDI I/O breaks on OS updates or unsupported platforms
+- Migration plan: Fork and maintain if upstream stalls, abstract MIDI I/O trait for swappable backends
 
-**midir 0.10 (Native MIDI):**
-- Risk: Low. midir is mature and stable. API changes rare.
-- Impact: MIDI I/O on native platforms (macOS, Linux, Windows).
-- Migration plan: Stay current with minor versions. No urgent concerns.
+**eframe/egui (GUI framework):**
+- Risk: Rapid API evolution in egui ecosystem, breaking changes in major versions
+- Impact: GUI code refactor required on updates, WASM backend compatibility issues
+- Migration plan: Pin to stable major version (currently 0.33), evaluate alternatives (Iced, Tauri) for long-term support
 
-**Web MIDI API (WASM):**
-- Risk: Browser API evolution or deprecation. Not a crate, so no version control.
-- Impact: Entire WASM MIDI functionality depends on browser support. Safari historically spotty.
-- Migration plan: Monitor web standards. Test regularly across browsers. No alternative web MIDI solution available.
-
-**Rust Edition 2021:**
-- Risk: Edition 2024 will eventually be required for new language features.
-- Impact: Minimal. Edition migrations usually straightforward.
-- Migration plan: Update `edition = "2021"` in Cargo.toml when ready. Test thoroughly.
+**wmidi (MIDI message parsing):**
+- Risk: Unmaintained crate (last update check needed), limited to standard MIDI 1.0 spec
+- Impact: No MIDI 2.0 support, potential parsing bugs unfixed
+- Migration plan: Consider midi-msg or midir's built-in parsing, implement MIDI 2.0 parser if needed
 
 ## Missing Critical Features
 
-**Stuck Note Emergency Stop:**
-- Problem: No global "panic" button to send Note-Off for all active notes across all outputs.
-- Blocks: Graceful recovery from stuck note bugs or user errors.
-- Priority: High. Common pain point in MIDI applications.
+**No MIDI input merging:**
+- Problem: User can select only one physical MIDI input device at a time
+- Blocks: Multi-keyboard setups, combining Note Generator with physical input simultaneously
+- Priority: Medium (workaround: use virtual MIDI merger utility)
 
-**MIDI Routing Visualization:**
-- Problem: No visual indication of which input note routes to which output port, especially in Mirror Octaves or multi-voice modes.
-- Blocks: Debugging routing issues, understanding complex voice configurations.
-- Priority: Medium. Advanced users only.
+**No preset import/export UI:**
+- Problem: Preset persistence exists but no GUI buttons to load external preset JSON files
+- Blocks: Sharing presets between users, backup/restore of custom presets
+- Priority: Low (presets stored in eframe storage, manually copyable)
 
-**Preset Sharing/Import:**
-- Problem: No way to share presets between users or machines except manual JSON file copy.
-- Blocks: Community preset libraries, collaborative workflows.
-- Priority: Low. Phase 6.3 implemented local preset save/load/export.
+**No latency monitoring:**
+- Problem: No GUI display of current processing latency or buffer health
+- Blocks: Performance tuning, user awareness of system limitations
+- Priority: Medium (critical for live performance use)
 
-**Audio Output (Vocoder):**
-- Problem: Phase 8 (Vocoder) not implemented. No audio synthesis or vocoding capability.
-- Blocks: Self-contained musical instrument use without external MIDI synths.
-- Priority: Deferred. Phase 8 planned but not started.
-
-**Error Reporting/Logging:**
-- Problem: No structured logging or user-facing error messages. Errors silently swallowed in many paths.
-- Blocks: Debugging user issues, understanding failures in production (Fly.io deployment).
-- Priority: Medium. Add tracing/logging crate, emit to console (WASM) or file (native).
+**No undo/redo for settings changes:**
+- Problem: Changing harmony settings is destructive; no way to revert to previous configuration
+- Blocks: Experimentation workflow, recovery from accidental changes
+- Priority: Low (can manually revert settings)
 
 ## Test Coverage Gaps
 
-**No Unit Tests:**
-- What's not tested: Zero test functions in codebase. `cargo test` reports 0 tests.
-- Files: All `src/**/*.rs` files lack `#[cfg(test)]` modules.
-- Risk: Regressions go undetected. Refactoring is dangerous. No confidence in correctness beyond manual verification.
-- Priority: Critical. Add tests for harmony modes, voice leading, chord detection, scale transposition, modal interchange, note routing.
+**WASM-specific code paths:**
+- What's not tested: Web MIDI API integration, frame-based polling, Rc<RefCell<>> message queue handling
+- Files: `src/midi/web.rs`, `src/app.rs` WASM cfg blocks
+- Risk: Browser-specific bugs undetected until deployment, MIDI access permission failures not handled gracefully
+- Priority: High
 
-**No Integration Tests:**
-- What's not tested: End-to-end MIDI flow, router behavior, GUI interactions, preset loading.
-- Files: No `tests/` directory exists.
-- Risk: Breaking changes to public APIs or cross-module contracts go unnoticed.
-- Priority: High. Add integration tests for router startup, MIDI message processing, harmony engine integration.
+**Voice leading voicer algorithm:**
+- What's not tested: Cartesian product candidate generation, deterministic tiebreaking, register constraint filtering
+- Files: `src/harmony/voice_leading/voicer.rs` revoice_chord function
+- Risk: Incorrect voicings under edge cases (empty registers, all candidates invalid, anchor constraints conflict)
+- Priority: High
 
-**No WASM Tests:**
-- What's not tested: WASM build correctness, Web MIDI API integration, localStorage persistence.
-- Files: No wasm-bindgen-test usage.
-- Risk: WASM-specific bugs only found through manual browser testing. CI doesn't catch WASM regressions beyond compilation.
-- Priority: Medium. Add wasm-bindgen-test for basic WASM functionality. CI already runs WASM build check.
+**Mutex poisoning recovery:**
+- What's not tested: Router behavior when GUIRouterState mutex poisoned by panicking thread
+- Files: `src/router.rs`, `src/app.rs` mutex lock sites
+- Risk: Cascading panics, unrecoverable application state
+- Priority: Medium
 
-**Manual Hardware Verification Only:**
-- What's not tested: Physical MIDI device interaction, latency, stuck notes, Note-Off delivery.
-- Files: All MIDI I/O code (`src/midi/*`, `src/router.rs`).
-- Risk: Hardware-specific issues (buffer sizes, timing, device quirks) not caught until user reports.
-- Priority: Medium. Difficult to automate (requires MIDI loopback devices). Consider virtual MIDI port testing.
+**Humanizer timing under load:**
+- What's not tested: DelayQueue behavior with >100 concurrent delayed notes, beat clock accuracy under sustained load
+- Files: `src/humanize/scheduler.rs`, `src/humanize/beat_clock.rs`
+- Risk: Note timing drift, queue overflow, memory leak
+- Priority: Medium
 
-**Voice Leading Correctness:**
-- What's not tested: Parallel fifths/octaves detection, voice crossing prevention, register constraints, suspension resolution.
-- Files: `src/harmony/voice_leading/*.rs`
-- Risk: Counterpoint rules violated, producing musically incorrect output. Users may not notice subtle voice leading errors.
-- Priority: High. Add unit tests with known-good voicing examples from music theory literature (Bach chorales, Palestrina exercises).
-
-**Chord Detection Accuracy:**
-- What's not tested: Extended chord recognition (9th, 11th, 13th), slash chords, roman numeral analysis, edge cases (3+ octaves spanning).
-- Files: `src/chord.rs` (480 lines)
-- Risk: Misidentified chords confuse users or display wrong names.
-- Priority: Medium. Add test suite with comprehensive chord examples (triads, sevenths, extended, altered, slash).
-
-**Modal Interchange Edge Cases:**
-- What's not tested: Borrowing from all 28 scale modes, borrowing range 1-5 variations, scale mode + harmony mode combinations.
-- Files: `src/harmony/scale.rs` (harmonize_smart function), `src/harmony/engine.rs`
-- Risk: Certain scale mode + borrowing range combinations produce unexpected or wrong harmonies.
-- Priority: High. Complex feature with many permutations. Add parameterized tests covering all modes and ranges.
+**Server mode concurrent client stress:**
+- What's not tested: Behavior with 10+ simultaneous clients, connection churn, malformed protocol messages
+- Files: `src/server/session.rs`, `src/server/protocol.rs`
+- Risk: Thread exhaustion, memory leak per dropped connection, protocol desync
+- Priority: Low (server mode rarely used per roadmap)
 
 ---
 
-*Concerns audit: 2026-02-04*
+*Concerns audit: 2026-02-05*

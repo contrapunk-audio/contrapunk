@@ -1,90 +1,91 @@
 # External Integrations
 
-**Analysis Date:** 2026-02-04
+**Analysis Date:** 2026-02-05
 
 ## APIs & External Services
 
-**Browser APIs (WASM builds only):**
-- Web MIDI API - MIDI device access in browser
-  - SDK/Client: web-sys crate (MidiAccess, MidiInput, MidiOutput, MidiPort, MidiMessageEvent)
-  - Implementation: `src/midi/web.rs`
-  - Auth: Browser permissions prompt via `navigator.requestMIDIAccess()`
-  - Features used: MIDI input/output enumeration, message handling, device connections
+**MIDI Devices (Hardware/Virtual):**
+- Native MIDI I/O - Direct system MIDI device access
+  - SDK/Client: `midir` crate (0.10)
+  - Auth: No authentication (OS-level device access permissions)
+  - Location: `src/midi/ports.rs`, `src/midi/input.rs`, `src/midi/output.rs`
+  - Platforms: macOS, Windows, Linux (requires ALSA)
 
-**System APIs (Native builds only):**
-- ALSA/CoreMIDI/Windows MIDI - Platform-native MIDI I/O
-  - SDK/Client: midir 0.10
-  - Implementation: `src/midi/ports.rs`, `src/midi/input.rs`, `src/midi/output.rs`
-  - Auth: Direct system access (no credentials required)
+**Web MIDI API (Browser):**
+- Browser MIDI access for WASM builds
+  - SDK/Client: `web-sys` crate with MIDI features
+  - Auth: Browser permission prompt via `navigator.requestMIDIAccess()`
+  - Location: `src/midi/web.rs`
+  - Sysex: Disabled by default in `MidiOptions`
+
+**No external cloud services or APIs detected.**
 
 ## Data Storage
 
 **Databases:**
-- None - No external database
+- None
 
 **File Storage:**
-- Local filesystem only
-- eframe persistence API for GUI state and presets
-  - Storage location: Platform-specific (browser localStorage for WASM, OS-specific for native)
-  - Implementation: `src/preset/storage.rs`
-  - Data format: JSON serialization via serde_json
-  - Stored data: Custom harmony presets, GUI state
+- Local filesystem only (native builds)
+- Browser localStorage (WASM builds)
+  - Used by eframe persistence feature for app state
+  - Preset storage: `src/preset/storage.rs` uses `eframe::Storage` trait
+  - Keys: "custom_presets" (JSON-serialized preset array)
 
 **Caching:**
-- None - No external caching layer
+- None
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- None - No authentication system
-- Application runs locally or as self-hosted service
-- No user accounts or identity management
+- None (standalone application, no user accounts)
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None - No external error tracking service
-- WASM: console_error_panic_hook for browser console output
-- Native: Standard Rust panic handling
+- None
 
 **Logs:**
-- Console output only (println!/eprintln! macros)
-- No structured logging framework
-- Debug output in client/server protocol: `[client]` prefixed messages in `src/main.rs` run_client()
+- Native: stderr output via `eprintln!` macros
+- WASM: Browser console via `console_error_panic_hook`
+  - Panic handler installed in `src/lib.rs` and `src/main.rs` for WASM builds
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Fly.io - Static WASM build hosting
+- Fly.io (production)
   - Config: `deploy/fly.toml`
-  - App name: contrapunk
+  - App: "contrapunk"
   - Region: ewr (US East)
-  - Machine: shared-cpu-1x, 256MB memory
-  - Auto-scaling: stop when idle, start on demand
+  - Deployment trigger: Push to main branch after CI passes
 
 **CI Pipeline:**
-- GitHub Actions - `.github/workflows/ci.yml`
-  - Jobs: check (cargo check), test (cargo test), wasm-check (WASM target validation)
-  - Deploy: Automatic on main branch push
-  - Build artifact: WASM bundle via Trunk
-  - Deployment: flyctl deploy with FLY_API_TOKEN secret
+- GitHub Actions
+  - Workflow: `.github/workflows/ci.yml`
+  - Jobs:
+    - `check` - Runs `cargo check` on native target
+    - `test` - Runs `cargo test` on native target
+    - `wasm-check` - Verifies WASM compilation with `--target wasm32-unknown-unknown --features wasm`
+    - `deploy` - Builds WASM with Trunk and deploys to Fly.io (main branch only)
+  - Rust cache: Uses `Swatinem/rust-cache@v2` with separate caches for native and WASM
+  - Trunk cache: Caches `~/.cargo/bin/trunk` to avoid reinstalling
+  - Linux dependencies: Installs `libasound2-dev` for ALSA support
 
-**Container:**
-- Docker - `deploy/Dockerfile`
-  - Base image: nginx:alpine
-  - Serves static files from `dist/`
-  - Config: `deploy/nginx.conf`
-  - Exposed port: 80
+**Deployment Process:**
+1. Trunk builds WASM bundle to `dist/`
+2. `dist/` copied to `deploy/dist/`
+3. Docker image built from `deploy/Dockerfile` (nginx:alpine + static files)
+4. `flyctl deploy` pushes to Fly.io
+5. Requires `FLY_API_TOKEN` secret in GitHub repository
 
 ## Environment Configuration
 
 **Required env vars:**
-- None for runtime
-- FLY_API_TOKEN - GitHub Actions secret for deployment (CI/CD only)
+- None for application runtime
+- `FLY_API_TOKEN` - Required for CI/CD deployment to Fly.io (GitHub Actions secret)
 
 **Secrets location:**
-- GitHub repository secrets (for CI/CD)
-- No application secrets required
+- GitHub repository secrets (for deployment only)
 
 ## Webhooks & Callbacks
 
@@ -94,24 +95,33 @@
 **Outgoing:**
 - None
 
-## Network Protocols
+## Network Services
 
-**Custom TCP Protocol:**
-- Contrapunk Server Protocol - Real-time MIDI streaming over TCP
-  - Implementation: `src/server/protocol.rs`, `src/server/session.rs`, `src/server/mod.rs`
-  - Port: 9900 (default, configurable via `--port`)
-  - Wire format: Length-prefixed messages `[u16 BE length][u8 type][payload]`
-  - Message types:
-    - 0x01: MidiData - Raw MIDI bytes
-    - 0x02: Configure - Harmony engine settings (key, mode, octave_mode, voice_count)
-    - 0x03: Ack - Acknowledgement
-    - 0x04: Disconnect - Clean connection close
-    - 0x05: Heartbeat - Keep-alive
-  - Client mode: `--client <host:port>` streams local MIDI to remote server
-  - Server mode: `--server` accepts MIDI streams and generates harmony
-  - Connection: TCP with nodelay, 30s read timeout, 5s write timeout
-  - Max clients: 10 (default, configured in `src/server/config.rs`)
+**TCP Server Mode (Optional):**
+- Custom harmony server for multi-client MIDI processing
+  - Protocol: Custom binary protocol over TCP
+  - Location: `src/server/mod.rs`, `src/server/protocol.rs`, `src/server/session.rs`
+  - Default port: 9900 (configurable via `--port` CLI flag)
+  - Bind address: 0.0.0.0 (all interfaces)
+  - Max clients: Configurable via `ServerConfig` (default in `src/server/config.rs`)
+  - Message types: Configure, MidiData, Heartbeat, Ack, Disconnect
+  - Use case: Run harmony engine on server, connect multiple clients for processing
+  - Enabled by: `--server` CLI flag (native builds only)
+
+**TCP Client Mode (Optional):**
+- Connects to remote Contrapunk server for distributed MIDI processing
+  - Location: `run_client()` function in `src/main.rs`
+  - Protocol: Same custom TCP protocol as server
+  - Flow:
+    1. Connect to server at specified address
+    2. Select local MIDI I/O devices
+    3. Configure remote harmony engine (key, mode, octave, voice count)
+    4. Stream local MIDI input to server
+    5. Route harmonized output from server to local MIDI devices
+  - Enabled by: `--client <host:port>` CLI flag (native builds only, requires non-GUI build)
+  - Timeouts: Read 30s, Write 5s
+  - Keep-alive: Responds to server Heartbeat messages
 
 ---
 
-*Integration audit: 2026-02-04*
+*Integration audit: 2026-02-05*

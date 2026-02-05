@@ -1,168 +1,192 @@
 # Architecture
 
-**Analysis Date:** 2026-02-04
+**Analysis Date:** 2026-02-05
 
 ## Pattern Overview
 
-**Overall:** Modular Event-Driven Architecture with Multi-Target Compilation
+**Overall:** Multi-target layered architecture with platform-specific entry points
 
 **Key Characteristics:**
-- Domain-driven modules organized by musical and technical concerns
-- Conditional compilation for multiple targets (native CLI, native GUI, WASM)
-- Event-driven MIDI routing with pluggable harmony processing pipeline
-- Stateful and stateless harmony generation modes with voice leading post-processing
+- Clean separation between harmony logic, MIDI I/O, and UI
+- Conditional compilation for native vs. WASM targets
+- Message-passing for MIDI routing (channels, threads)
+- Stateful harmony engine with modal transformation
+- Frame-based processing in GUI, event-driven in CLI
 
 ## Layers
 
-**MIDI I/O Layer:**
-- Purpose: Abstract platform-specific MIDI communication
-- Location: `src/midi/`
-- Contains: Input/output port management, native (midir) and web (Web MIDI API) implementations
-- Depends on: Platform-specific APIs (midir for native, web-sys for WASM)
-- Used by: Router, Application UI
+**Entry Points:**
+- Purpose: Platform-specific initialization and runtime setup
+- Location: `src/main.rs`, `src/lib.rs`
+- Contains: CLI arg parsing, GUI/CLI mode selection, WASM bootstrap
+- Depends on: app, router, server modules
+- Used by: Binary executables, WASM loader
 
-**Harmony Engine Layer:**
-- Purpose: Core musical transformation logic - converts input notes to harmonized output
-- Location: `src/harmony/`
-- Contains: Scale definitions, mode algorithms (stateless and stateful), voice leading rules, engine coordination
-- Depends on: wmidi for MIDI note representation
-- Used by: Router, Generator, Application
+**Application Layer:**
+- Purpose: GUI application state and user interaction
+- Location: `src/app.rs`, `src/ui.rs`
+- Contains: eframe/egui GUI, app state, preset management, theme
+- Depends on: harmony, router, MIDI, generator, humanize
+- Used by: main.rs (native), lib.rs (WASM)
 
-**Router/Orchestration Layer:**
-- Purpose: Connects MIDI input to harmony engine to MIDI output, manages message flow
+**Router Layer:**
+- Purpose: MIDI message routing and harmony pipeline orchestration
 - Location: `src/router.rs`
-- Contains: Main event loop, note tracking, humanization scheduling, generator integration
-- Depends on: MIDI I/O layer, Harmony engine, Humanizer, Generator
-- Used by: CLI main (`src/main.rs`), GUI app (`src/app.rs`)
+- Contains: Message forwarding, note-on/off handling, thread spawning
+- Depends on: harmony engine, MIDI I/O, humanizer
+- Used by: app (GUI mode), main (CLI mode)
 
-**Presentation Layer:**
-- Purpose: User interfaces for controlling harmony parameters
-- Location: `src/app.rs`, `src/ui.rs`, `src/piano.rs`, `src/theme/`
-- Contains: eframe/egui GUI components, MIDI device selectors, parameter controls, visual feedback
-- Depends on: eframe, Application state, Router state
-- Used by: Main entry points (native and WASM)
+**Harmony Engine:**
+- Purpose: Core musical transformation logic
+- Location: `src/harmony/`
+- Contains: Scale-aware transposition, mode algorithms, voice leading, modal interchange
+- Depends on: wmidi (note types), internal state
+- Used by: router, app (WASM direct path)
 
-**Supporting Services:**
-- Purpose: Cross-cutting features for generation, timing, persistence
-- Location: `src/generator/`, `src/humanize/`, `src/preset/`, `src/server/`
-- Contains: Note generator, humanization timing, preset storage, TCP server protocol
-- Depends on: Core domain types (harmony, MIDI)
-- Used by: Router, Application
+**MIDI I/O:**
+- Purpose: Platform-specific MIDI device communication
+- Location: `src/midi/`
+- Contains: Port enumeration, input callbacks, output routing
+- Depends on: midir (native), web-sys (WASM)
+- Used by: router, app
+
+**Generator & Humanizer:**
+- Purpose: Note generation and timing variation
+- Location: `src/generator/`, `src/humanize/`
+- Contains: Arpeggiators, delay queues, beat clock, metronome
+- Depends on: harmony engine, MIDI types
+- Used by: router, app
+
+**Server (Native-only):**
+- Purpose: Network-based MIDI processing (client/server mode)
+- Location: `src/server/`
+- Contains: TCP protocol, session management, remote harmonization
+- Depends on: harmony engine, MIDI I/O
+- Used by: main.rs (--server, --client flags)
 
 ## Data Flow
 
-**Real-time MIDI Flow (Native):**
+**Native Desktop (GUI mode):**
 
-1. MIDI hardware → `midi::input::connect_input()` → channel sender
-2. Channel receiver in `router.rs` loop receives raw bytes
-3. Parse bytes into `wmidi::MidiMessage` (NoteOn/NoteOff/etc)
-4. For NoteOn: `HarmonyEngine::harmonize(note, voice_count)` → Vec of harmony notes
-5. Apply humanization: `Humanizer::humanize()` → schedule delayed notes
-6. `DelayQueue::tick()` releases notes when delay expires
-7. Route notes to outputs: `OutputRouter::send_to_port(index, bytes)`
-8. MIDI hardware receives harmonized output
+1. User configures input/output ports in GUI (`app.rs`)
+2. GUI spawns router thread (`router::spawn_gui_router`)
+3. MIDI input callback pushes raw bytes to channel (`midi/input.rs`)
+4. Router thread drains channel, parses MIDI messages (`router.rs`)
+5. Note-on/off → Harmony engine generates harmony notes (`harmony/engine.rs`)
+6. Humanizer applies timing/velocity variation (`humanize/`)
+7. Notes sent to output ports via OutputRouter (`midi/output.rs`)
+8. Router updates shared state (Arc<Mutex<GUIRouterState>>)
+9. GUI polls shared state each frame to display active notes (`app.rs::update`)
 
-**Real-time MIDI Flow (WASM):**
+**WASM Browser:**
 
-1. Web MIDI API → `midi::web` event handlers → `keyboard_events` queue
-2. Application polls queue in UI update loop
-3. Convert events to `wmidi::Note`, send to simulated harmony pipeline
-4. Output via Web MIDI API (if available) or visual feedback only
+1. `lib.rs` initializes Web MIDI access asynchronously
+2. Input callback pushes MIDI bytes to Rc<RefCell<Vec<Vec<u8>>>> queue
+3. Each GUI frame (`app.rs::update`), drain queue and process messages
+4. Direct harmony engine invocation (no separate thread)
+5. Humanized notes pushed to delay queue with timestamps
+6. Delay queue drains ready notes each frame
+7. Web MIDI outputs receive processed messages
 
-**Configuration Flow:**
+**CLI mode:**
 
-1. User selects parameters in GUI (`app.rs`) or CLI prompts (`main.rs`)
-2. Parameters stored in `AppState` (GUI) or directly passed (CLI)
-3. For GUI: Update `GUIRouterState` (Arc<Mutex>) shared with router thread
-4. Router thread polls state, applies `engine.set_key()`, `engine.set_mode()`, etc.
-5. Subsequent harmony generation uses updated configuration
+1. User selects ports interactively via stdin prompts (`main.rs`)
+2. Router loop receives MIDI from channel (`router::run_router`)
+3. Messages processed through harmony engine
+4. Output sent directly to OutputRouter (humanization disabled by default)
+5. Enter key signals stop via separate channel
+
+**Server/Client mode:**
+
+1. Server listens on TCP port, accepts client connections (`server/session.rs`)
+2. Client sends Configure message with harmony settings (`server/protocol.rs`)
+3. Client streams MIDI input to server
+4. Server processes through local harmony engine
+5. Server sends harmonized MIDI back to client
+6. Client routes to local output ports
 
 **State Management:**
-- GUI mode: Shared state via `Arc<Mutex<GUIRouterState>>` between UI thread and router thread
-- CLI mode: Direct engine ownership in main thread or router thread
-- WASM mode: `Rc<RefCell>` for single-threaded async state
+- GUI: Arc<Mutex<GUIRouterState>> for thread communication
+- WASM: Direct engine mutation in update() loop (single-threaded)
+- CLI: Owned HarmonyEngine, no shared state
 
 ## Key Abstractions
 
 **HarmonyEngine:**
-- Purpose: Encapsulates all harmony generation logic and state
+- Purpose: Stateful musical transformation with voice tracking
 - Examples: `src/harmony/engine.rs`
-- Pattern: Stateful service with mode strategy pattern - delegates to mode-specific functions in `src/harmony/modes.rs` or stateful processors (`ContraryMotionState`, `CounterpointState`)
+- Pattern: Builder-style setters (key, mode, octave_mode), stateful note tracking (note_on/note_off pairs)
 
 **OutputRouter:**
-- Purpose: Manages multiple MIDI output connections, routes messages to specific ports
+- Purpose: Manage multiple MIDI output connections, route notes to ports
 - Examples: `src/midi/output.rs`
-- Pattern: Resource manager with indexed access - holds vector of `MidiOutputConnection`, provides `send_to_port(index, bytes)`
+- Pattern: Vec of MidiOutputConnection, indexed send
 
-**VoiceLeadingProcessor:**
-- Purpose: Post-processes harmony output for smooth voice transitions following counterpoint rules
-- Examples: `src/harmony/engine.rs` (internal struct), `src/harmony/voice_leading/`
-- Pattern: Stateful filter with rule-based transformations - tracks previous voicing, applies style-specific rules
+**GUIRouterState (native GUI):**
+- Purpose: Thread-safe communication between router and GUI
+- Examples: `src/router.rs:37`
+- Pattern: Arc<Mutex<T>> with HashSet for active notes, Option fields for config updates
 
 **NoteGenerator:**
-- Purpose: Generates MIDI notes from patterns (arpeggios, chords, sequences) independently of live input
+- Purpose: Virtual MIDI input for arpeggios, chords, scales
 - Examples: `src/generator/engine.rs`
-- Pattern: Iterator-like event stream - advances on tick, emits `GeneratorEvent` (NoteOn/NoteOff)
+- Pattern: Beat-synced event emission, mode-specific algorithms
 
-**Humanizer/DelayQueue:**
-- Purpose: Adds timing variation to MIDI output for natural feel
-- Examples: `src/humanize/engine.rs`, `src/humanize/scheduler.rs`
-- Pattern: Priority queue scheduler - notes scheduled with randomized delays, released by tick() calls
+**Humanizer:**
+- Purpose: Add musical imperfection to harmony notes
+- Examples: `src/humanize/engine.rs`
+- Pattern: BeatClock for timing, DelayQueue for scheduled notes, per-note jitter/velocity variation
 
-**Preset:**
-- Purpose: Serializable snapshot of harmony configuration for save/load
-- Examples: `src/preset/mod.rs`, `src/preset/builtins.rs`
-- Pattern: Data transfer object with builder - contains key, mode, octave mode, voice settings; stored via eframe persistence
+**DelayQueue:**
+- Purpose: Schedule MIDI events for future delivery
+- Examples: `src/humanize/scheduler.rs`
+- Pattern: BinaryHeap of (timestamp, note), drain_ready() for time-based popping
+
+**Scale:**
+- Purpose: Modal note transposition with chromatic fallback
+- Examples: `src/harmony/scale.rs`
+- Pattern: Interval-based transformation, degree calculation, modal interchange borrowing
 
 ## Entry Points
 
-**Native CLI Entry:**
-- Location: `src/main.rs` (when compiled without `gui` feature)
-- Triggers: `cargo run` or binary execution
-- Responsibilities: Parse CLI args (clap), prompt for MIDI device selection and harmony config, create `HarmonyEngine`, call `router::run_router()` blocking loop
+**Native Desktop (main.rs):**
+- Location: `src/main.rs`
+- Triggers: Direct binary execution
+- Responsibilities: CLI arg parsing, mode selection (GUI/CLI/server/client), device enumeration
 
-**Native GUI Entry:**
-- Location: `src/main.rs` → `run_gui()` → `app::ContrapunkApp` (when compiled with `gui` feature)
-- Triggers: `cargo run --features gui` or GUI binary execution
-- Responsibilities: Initialize eframe window, create `ContrapunkApp`, enter eframe event loop
+**WASM (lib.rs):**
+- Location: `src/lib.rs`
+- Triggers: Trunk-generated JS bootstrap calls `#[wasm_bindgen(start)]`
+- Responsibilities: Panic hook setup, canvas acquisition, eframe WebRunner launch
 
-**WASM Entry:**
-- Location: `src/lib.rs` (WASM-only compilation, automatically included via `#[wasm_bindgen(start)]`)
-- Triggers: Trunk build loads WASM module, calls `main()` via wasm-bindgen bootstrap
-- Responsibilities: Set panic hook, spawn async eframe WebRunner on canvas element
+**Server:**
+- Location: `src/server/mod.rs`
+- Triggers: `--server` flag in main.rs
+- Responsibilities: TCP listener, session spawning, heartbeat loop
 
-**Server Mode Entry:**
-- Location: `src/main.rs` → `server::run_server()`
-- Triggers: CLI flag `--server`
-- Responsibilities: Bind TCP listener, spawn thread per client running `session::handle_client()`, forward MIDI messages through harmony engine
-
-**Client Mode Entry:**
-- Location: `src/main.rs` → `run_client()`
-- Triggers: CLI flag `--client <addr>`
-- Responsibilities: Connect to server TCP socket, stream local MIDI input to server, route server responses to local outputs
+**Client:**
+- Location: `src/main.rs::run_client`
+- Triggers: `--client <addr>` flag
+- Responsibilities: TCP connection, config sync, bidirectional MIDI streaming
 
 ## Error Handling
 
-**Strategy:** Result-based propagation with anyhow for CLI/server, GUI-specific error display
+**Strategy:** Result<T> with anyhow::Error for propagation, user-facing strings in GUI
 
 **Patterns:**
-- CLI/Server: Functions return `anyhow::Result<T>`, errors propagate to main with `?`, printed via `eprintln!`
-- GUI: MIDI operations return `Result`, errors captured in `AppState.last_error: Option<String>`, displayed in error panel
-- WASM: Panic hook redirects to browser console via `console_error_panic_hook::set_once()`
-- Router: Errors logged to stderr but loop continues (non-fatal MIDI errors don't crash routing)
+- MIDI errors: Log to stderr (CLI) or set app.state.last_error (GUI)
+- Thread panics: Isolated (router thread failure doesn't crash GUI)
+- WASM: console_error_panic_hook for browser console visibility
+- Server/client: Timeout-based error recovery, graceful disconnect
 
 ## Cross-Cutting Concerns
 
-**Logging:** stderr output via `eprintln!` macro (CLI/server), browser console via panic hook (WASM), no structured logging framework
+**Logging:** `eprintln!` for debug output (CLI), console.log via web-sys (WASM), no structured logging framework
 
-**Validation:**
-- MIDI port indices validated on selection (check against available ports list)
-- Harmony parameters validated via enum types (Key, HarmonyMode, OctaveMode)
-- Voice count validated in `HarmonyEngine` (min 1, max typically 8)
-- Note ranges validated when parsing MIDI messages (0-127)
+**Validation:** Port index bounds checking, MIDI message parsing via wmidi::MidiMessage::try_from
 
-**Authentication:** Not applicable - local desktop/WASM application, server has no auth (intended for localhost)
+**Authentication:** None (local MIDI devices, optional network server has no auth)
 
 ---
 
-*Architecture analysis: 2026-02-04*
+*Architecture analysis: 2026-02-05*
