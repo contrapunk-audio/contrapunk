@@ -344,10 +344,16 @@ Plans:
   3. Raw audio capture provides a signal buffer accessible by the vocoder phase
   4. Pitch detection works with acceptable latency (<50ms) for real-time use
   5. GUI displays detected pitch and confidence level
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
-- [ ] 07-01: TBD (run /gsd:plan-phase 7 to break down)
+- [ ] 07-01-PLAN.md — Audio module foundation with config types, pitch detection types, and note tracker
+- [ ] 07-02-PLAN.md — Native audio capture with cpal and lock-free ring buffer
+- [ ] 07-03-PLAN.md — Pitch detection engine with YIN algorithm
+- [ ] 07-04-PLAN.md — WASM audio capture with Web Audio API (getUserMedia + AnalyserNode)
+- [ ] 07-05-PLAN.md — App integration: MicState, unified IN dropdown, frame processing
+- [ ] 07-06-PLAN.md — UI: Mic Settings, pitch display, level meter, piano coloring
+- [ ] 07-07-PLAN.md — Human verification checkpoint
 
 ### Phase 8: Vocoder
 **Goal**: Apply vocoder effects using mic audio and harmony engine output
@@ -458,7 +464,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.8 CI Fix (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.9 Repo Cleanup & Documentation (INSERTED) | 3/3 | Complete | 2026-02-02 |
 | 6.10 Docs (INSERTED) | 2/2 | Complete | 2026-02-05 |
-| 7. Mic Input | 0/? | Not started | - |
+| 7. Mic Input | 0/7 | Planning complete | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
 | 10. Trackpad Beat Input | 0/? | Not started | - |
@@ -467,4 +473,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-02-05 — Phase 6.10 planned: 2 plans for rustdoc and CONTRIBUTING.md*
+*Last updated: 2026-02-05 — Phase 7 planned: 7 plans for mic input with pitch detection*
