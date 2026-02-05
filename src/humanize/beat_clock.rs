@@ -1,14 +1,79 @@
+//! Musical beat clock for tempo and time tracking.
+//!
+//! The [`BeatClock`] tracks musical time based on BPM and elapsed time,
+//! providing beat position for groove calculations and metronome synchronization.
+//!
+//! # Usage
+//!
+//! ```ignore
+//! use contrapunk::humanize::BeatClock;
+//!
+//! let mut clock = BeatClock::new(120.0, 4, 4); // 120 BPM, 4/4 time
+//! clock.start(current_time_ms);
+//!
+//! // On each frame:
+//! let beat_pos = clock.tick(current_time_ms);
+//!
+//! // Check for beat boundaries (useful for metronome)
+//! if let Some(beat_num) = clock.beat_crossed() {
+//!     // Beat boundary crossed! Play click on beat_num
+//! }
+//!
+//! // Check if current position is off-beat (for swing)
+//! if clock.is_offbeat() {
+//!     // Apply swing delay
+//! }
+//! ```
+//!
+//! # Beat Position
+//!
+//! The beat position is a floating-point value representing the current
+//! position within the bar:
+//!
+//! - `0.0` = Start of bar (beat 1)
+//! - `1.0` = Beat 2
+//! - `2.5` = Halfway between beat 3 and beat 4
+//! - `3.99` = Just before bar wrap-around
+//!
+//! # Cross-Platform
+//!
+//! Uses `f64` milliseconds for time input, which works on both native
+//! (using `std::time::Instant`) and WASM (using `performance.now()`).
+
 /// Tracks beat position from absolute elapsed time.
 ///
 /// Uses f64 milliseconds for time so it works on both native and WASM.
+/// The clock calculates beat position based on BPM and elapsed time since start.
+///
+/// # Fields
+///
+/// - `bpm`: Tempo in beats per minute
+/// - `beats_per_bar`: Time signature numerator (e.g., 4 in 4/4)
+/// - `beat_unit`: Time signature denominator (e.g., 4 in 4/4)
+/// - `running`: Whether the clock is currently advancing
+///
+/// # Beat Calculation
+///
+/// ```text
+/// elapsed_seconds = (now_ms - start_time_ms) / 1000
+/// total_beats = elapsed_seconds * bpm / 60
+/// beat_position = total_beats % beats_per_bar
+/// ```
 #[derive(Clone, Debug)]
 pub struct BeatClock {
+    /// Tempo in beats per minute.
     pub bpm: f64,
+    /// Time signature numerator (beats per bar).
     pub beats_per_bar: u8,
+    /// Time signature denominator (beat unit).
     pub beat_unit: u8,
+    /// Whether the clock is running.
     pub running: bool,
+    /// Timestamp when clock was started (milliseconds).
     start_time_ms: f64,
+    /// Current beat position within the bar (0.0 to beats_per_bar).
     beat_position: f64,
+    /// Previous beat position (for detecting beat crossings).
     prev_beat_position: f64,
 }
 

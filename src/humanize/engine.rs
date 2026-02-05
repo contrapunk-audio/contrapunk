@@ -1,3 +1,30 @@
+//! Humanizer engine that applies timing and velocity variations.
+//!
+//! The [`Humanizer`] is the main processor that takes notes and applies
+//! configured humanization effects. It maintains a [`BeatClock`] for
+//! swing calculations and tracks active notes to match Note-Off events
+//! with their corresponding Note-On humanization.
+//!
+//! # Processing Flow
+//!
+//! ```text
+//! Note-On arrives
+//!     |
+//!     v
+//! +-------------------+
+//! | Humanizer         |
+//! |-------------------|
+//! | 1. Velocity vary  | --> random +/- offset
+//! | 2. Jitter calc    | --> random delay
+//! | 3. Swing calc     | --> off-beat shift (uses BeatClock)
+//! | 4. Duration calc  | --> note extension
+//! | 5. Store record   | --> for matching Note-Off
+//! +-------------------+
+//!     |
+//!     v
+//! HumanizedNote (with computed offsets)
+//! ```
+
 use std::collections::HashMap;
 
 use rand::Rng;
@@ -7,15 +34,61 @@ use super::beat_clock::BeatClock;
 use super::config::{HumanizeConfig, HumanizedNote};
 
 /// Record of humanization applied to a Note-On, so Note-Off can match.
+///
+/// When a Note-On is humanized, its parameters are stored here so that
+/// the corresponding Note-Off receives matching timing characteristics.
 #[derive(Clone, Debug)]
 struct HumanizationRecord {
+    /// The total delay applied to the Note-On.
     delay_ms: u16,
+    /// The humanized velocity (stored but not currently used for Note-Off).
     #[allow(dead_code)]
     velocity: Velocity,
+    /// The duration extension to apply to Note-Off.
     duration_delta_ms: i16,
 }
 
-/// Computes humanization (velocity variation, jitter, swing, duration delta) for notes.
+/// Applies humanization effects to harmony notes.
+///
+/// Takes notes from the harmony engine and adds:
+/// - Timing jitter (random delay 0-N ms)
+/// - Velocity variation (random +/- percentage)
+/// - Groove/swing (off-beat timing shift based on beat position)
+/// - Duration variation (note-off delay for legato)
+///
+/// The humanizer maintains an internal [`BeatClock`] for swing calculations.
+/// Call [`tick`](Self::tick) on each frame to advance the clock.
+///
+/// # Note Tracking
+///
+/// The humanizer tracks active notes in a `HashMap<u8, HumanizationRecord>`.
+/// When a Note-On is humanized, its parameters are stored so the matching
+/// Note-Off can use the same timing characteristics.
+///
+/// # Example
+///
+/// ```ignore
+/// use contrapunk::humanize::{Humanizer, HumanizeConfig};
+/// use wmidi::{Note, Channel, Velocity};
+///
+/// let config = HumanizeConfig::default();
+/// let mut humanizer = Humanizer::new(config);
+///
+/// // Enable humanization
+/// humanizer.config_mut().enabled = true;
+/// humanizer.config_mut().jitter_enabled = true;
+///
+/// // Start the clock
+/// humanizer.clock_mut().start(current_time_ms);
+///
+/// // Humanize a note
+/// let humanized = humanizer.humanize_note_on(
+///     Note::C4,
+///     Channel::Ch1,
+///     Velocity::try_from(100).unwrap(),
+///     0, // port index
+/// );
+/// ```
 pub struct Humanizer {
     config: HumanizeConfig,
     clock: BeatClock,
