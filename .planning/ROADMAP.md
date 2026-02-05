@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5.1: WASM and In-Browser Support** - Compile to WebAssembly for browser-based use with Fly.io deployment (INSERTED)
 - [ ] **Phase 6: Humanization** - Add timing jitter, velocity variation, groove, and internal beat clock/metronome to generated notes
 - [ ] **Phase 6.1: Humanization UI Fix** - Fix humanization controls visibility in browser, ensure effects are audible end-to-end, redesign humanization UI (INSERTED)
-- [ ] **Phase 6.2: Voice Leading** - Improved voice leading with smooth transitions, minimal motion, and voice independence (INSERTED)
+- [x] **Phase 6.2: Voice Leading** - Improved voice leading with smooth transitions, minimal motion, and voice independence (INSERTED)
 - [x] **Phase 6.3: Style Update** - UI visual redesign and musical style presets (jazz, classical, pop, etc.) (INSERTED)
 - [ ] **Phase 6.4: Modal Harmony & Chord Detection** - All church modes + harmonic/melodic minor, modal interchange with visual feedback, comprehensive chord detection (INSERTED)
 - [ ] **Phase 6.5: Note Generator** - Virtual MIDI input source: beat-synced note generation (arpeggiator, scale runner, random, chord player), selectable as IN source alongside physical devices (INSERTED)
@@ -28,9 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6.7: Extended Scale Modes & Barry Harris** - All harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules (INSERTED)
 - [x] **Phase 6.8: CI Fix** - Fix CI pipeline issues (INSERTED)
 - [x] **Phase 6.9: Repo Cleanup & Documentation** - Remove legacy Python scripts, clean up README, create comprehensive docs (INSERTED)
+- [ ] **Phase 6.10: Docs** - Additional documentation work (INSERTED)
 - [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
+- [ ] **Phase 10: Trackpad Beat Input** - Use computer trackpad as a MIDI beat pad for triggering notes and drums
 
 ## Phase Details
 
@@ -198,17 +200,17 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 06.2-01-PLAN.md — Core voice leading types, rules, styles, and voicer algorithm
-- [ ] 06.2-02-PLAN.md — VoiceLeadingProcessor, suspension state machine, and engine integration
-- [ ] 06.2-03-PLAN.md — GUI voice leading controls (native and WASM)
-- [ ] 06.2-04-PLAN.md — Human verification checkpoint
+- [x] 06.2-01-PLAN.md — Core voice leading types, rules, styles, and voicer algorithm
+- [x] 06.2-02-PLAN.md — VoiceLeadingProcessor, suspension state machine, and engine integration
+- [x] 06.2-03-PLAN.md — GUI voice leading controls (native and WASM)
+- [x] 06.2-04-PLAN.md — Human verification checkpoint
 
 ### Phase 6.3: Style Update (INSERTED)
-**Goal**: Modernize GUI appearance with steampunk theme, add musical style presets, tabbed navigation, and ambient animations
+**Goal**: Modernize GUI appearance with retro pixel-art theme, add musical style presets, tabbed navigation, and ambient animations
 **Depends on**: Phase 6 (Humanization), Phase 3 (GUI)
 **Requirements**: STY-01, STY-02, STY-03, STY-04, STY-05
 **Success Criteria** (what must be TRUE):
-  1. GUI has steampunk dark theme (gold/copper/amber colors, custom typography)
+  1. GUI has PICO-8 retro dark theme (green accents, pixel font, sharp corners)
   2. Tabbed navigation (Play/Craft/Settings) with always-visible piano keyboard
   3. Musical style presets selectable from GUI (11+ built-in with character personas)
   4. Each preset configures harmony mode, voice leading, humanization, and octave settings as a bundle
@@ -320,8 +322,17 @@ Plans:
 
 Plans:
 - [x] 06.9-01-PLAN.md — Merge ci.yml and deploy.yml into unified CI/CD workflow
-- [ ] 06.9-02-PLAN.md — Remove legacy Python files and update .gitignore for Rust
-- [ ] 06.9-03-PLAN.md — Rewrite README.md for the Rust project
+- [x] 06.9-02-PLAN.md — Remove legacy Python files and update .gitignore for Rust
+- [x] 06.9-03-PLAN.md — Rewrite README.md for the Rust project
+
+### Phase 6.10: Docs (INSERTED)
+**Goal**: Improve rustdoc coverage for public APIs and add CONTRIBUTING.md for developer onboarding
+**Depends on**: Phase 6.9
+**Plans**: 2 plans
+
+Plans:
+- [ ] 06.10-01-PLAN.md — Enhance harmony module rustdoc (mod.rs, config.rs, engine.rs)
+- [ ] 06.10-02-PLAN.md — Humanize module docs and CONTRIBUTING.md
 
 ### Phase 7: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
@@ -370,10 +381,63 @@ Plans:
 Plans:
 - [ ] 09-01: TBD (run /gsd:plan-phase 9 to break down)
 
+### Phase 10: Trackpad Beat Input
+**Goal**: Use computer trackpad as a MIDI beat pad for triggering notes and drums, similar to hardware MIDI pad controllers
+**Depends on**: Phase 3 (GUI), Phase 6 (Humanization — beat clock)
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. User can enable trackpad as a virtual MIDI pad input
+  2. Trackpad surface divided into configurable grid (e.g., 4x4, 8x2) of trigger zones
+  3. Touch/click in a zone triggers a MIDI note (velocity from pressure if available)
+  4. Zones can be mapped to any MIDI note (drums, melody notes, chord triggers)
+  5. Visual feedback shows which zone is being pressed
+  6. Works in both native and WASM builds
+  7. Triggered notes flow through harmony engine like any other input
+**Plans**: TBD
+
+Plans:
+- [ ] 10-01: TBD (run /gsd:plan-phase 10 to break down)
+
+### Phase 11: Advanced Voice Leading
+**Goal**: Comprehensive voice leading techniques covering jazz voicings, motion control, harmonic techniques, resolution-aware processing, and density control
+**Depends on**: Phase 6.2 (Voice Leading)
+**Requirements**: AVL-01 through AVL-25
+**Success Criteria** (what must be TRUE):
+  1. Jazz voicings available: Drop 2, Drop 3, rootless, shell, upper structure triads, So What/quartal, locked hands, spread triads
+  2. Motion control modes: contrary motion preference, oblique motion, voice exchange, bass-led, tenor-lead
+  3. Harmonic techniques: Neo-Riemannian transforms (P, L, R), negative harmony, linear chromaticism, planing/parallelism, chromatic approach
+  4. Resolution-aware: tension resolution (9→8, ♯11→5, 13→12), cadential voicing (ii-V-I), dominant preparation, avoid doubling leading tone
+  5. Density control: close/open position toggle, register-locked SATB, dynamic density, doubled roots/fifths
+  6. All techniques selectable via GUI dropdown or preset system
+  7. Techniques combine with existing harmony modes and basic voice leading
+  8. Works in both native and WASM builds
+**Plans**: TBD
+
+Plans:
+- [ ] 11-01: TBD (run /gsd:plan-phase 11 to break down)
+
+### Phase 12: Voice Leading Test Suite
+**Goal**: Comprehensive automated tests for voice leading to replace manual UAT and catch regressions
+**Depends on**: Phase 6.2 (Voice Leading)
+**Requirements**: VLT-01 through VLT-08
+**Success Criteria** (what must be TRUE):
+  1. Parallel 5th/octave detection tests verify rules are enforced per style
+  2. Style differentiation tests prove Palestrina/Bach/Jazz/Free produce distinct outputs for same input
+  3. Voice crossing prevention tests confirm voices stay in assigned registers
+  4. Common tone retention tests verify shared notes are held across chord changes
+  5. Suspension resolution tests verify Palestrina-style suspensions resolve stepwise down
+  6. Integration tests confirm voice leading works with all harmony modes (1-8)
+  7. Regression tests for stuck notes on config changes (key, mode, style switches)
+  8. All tests run in CI and block merges on failure
+**Plans**: TBD
+
+Plans:
+- [ ] 12-01: TBD (run /gsd:plan-phase 12 to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 6.7 -> 6.8 -> 6.9 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 6.7 -> 6.8 -> 6.9 -> 6.10 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -385,18 +449,22 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 5.1 WASM & Browser (INSERTED) | 3/3 | Complete | 2026-01-29 |
 | 6. Humanization | 3/3 | Complete | 2026-01-29 |
 | 6.1 Humanization UI Fix (INSERTED) | 2/2 | Complete | 2026-01-30 |
-| 6.2 Voice Leading (INSERTED) | 0/4 | Planning complete | - |
+| 6.2 Voice Leading (INSERTED) | 4/4 | Complete | 2026-01-30 |
 | 6.3 Style Update (INSERTED) | 7/7 | Complete | 2026-01-31 |
 | 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/4 | Planning complete | - |
 | 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
 | 6.6 Default MIDI Selection (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.7 Extended Scale Modes & Barry Harris (INSERTED) | 3/3 | Complete | 2026-02-02 |
 | 6.8 CI Fix (INSERTED) | 1/1 | Complete | 2026-02-02 |
-| 6.9 Repo Cleanup & Documentation (INSERTED) | 1/3 | In progress | - |
+| 6.9 Repo Cleanup & Documentation (INSERTED) | 3/3 | Complete | 2026-02-02 |
+| 6.10 Docs (INSERTED) | 0/2 | Planning complete | - |
 | 7. Mic Input | 0/? | Not started | - |
 | 8. Vocoder | 0/? | Not started | - |
 | 9. Guitar Input | 0/? | Not started | - |
+| 10. Trackpad Beat Input | 0/? | Not started | - |
+| 11. Advanced Voice Leading | 0/? | Not started | - |
+| 12. Voice Leading Test Suite | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-02-02 — Phase 6.9: added plans 02-03 for Python cleanup and README rewrite*
+*Last updated: 2026-02-05 — Phase 6.10 planned: 2 plans for rustdoc and CONTRIBUTING.md*
