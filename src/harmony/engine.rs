@@ -1,4 +1,31 @@
 //! Main harmony engine that routes notes through mode-specific algorithms.
+//!
+//! This module contains [`HarmonyEngine`], the central component that transforms
+//! incoming MIDI notes into harmonized multi-voice output. The engine manages:
+//!
+//! - Scale and key configuration
+//! - Harmony mode selection and execution
+//! - Multi-voice output with configurable voice position
+//! - Note-On/Note-Off tracking for consistent release behavior
+//! - Voice leading post-processing
+//! - Octave mode transformations
+//!
+//! # Processing Pipeline
+//!
+//! ```text
+//! Note-On -> Scale Check -> Mode Algorithm -> Voice Leading -> Octave Mode -> Output
+//!               |                |                 |               |
+//!          [In-scale?]     [Stateful?]      [Revoicing]      [Spread/Mirror]
+//!               |                |                 |
+//!          [Interchange]   [VecDeque]        [Previous]
+//! ```
+//!
+//! # Note Tracking
+//!
+//! The engine maintains a `HashMap<u8, Vec<Note>>` (`active_notes`) that maps
+//! each melody note's MIDI number to the harmony notes produced for it. This
+//! is critical for random modes (4-5) where the harmony interval is chosen
+//! randomly on Note-On and must be released with the same notes on Note-Off.
 
 use std::collections::HashMap;
 use wmidi::Note;
@@ -117,21 +144,64 @@ impl VoiceLeadingProcessor {
     }
 }
 
-/// The harmony engine that transforms incoming MIDI notes.
+/// The harmony engine that transforms incoming MIDI notes into multi-voice harmonies.
 ///
-/// Holds the current key and mode configuration, and provides
-/// a `harmonize()` method that processes notes through the
-/// selected mode's algorithm.
+/// `HarmonyEngine` is the central component of Contrapunk's harmony system. It holds
+/// the current musical configuration (key, scale mode, harmony mode) and transforms
+/// input notes through the selected algorithm to produce harmonized output.
 ///
-/// For stateless modes (1-5), each note is processed independently.
-/// For stateful modes (6-7), the engine tracks previous notes.
+/// # Core Concepts
 ///
-/// For Note-Off handling (especially important in random modes),
-/// the engine tracks active notes so that Note-Off releases the
-/// same harmony notes that were produced by the corresponding Note-On.
+/// - **Voice Count**: Number of output voices (1 = melody only, 2-8 = melody + harmonies)
+/// - **Voice Position**: Which slot the user plays (0 = soprano, voice_count-1 = bass)
+/// - **Chained Harmonies**: Each voice is derived from the previous (harm2 = harmony_of(harm1))
+/// - **Note Tracking**: Active notes are tracked for consistent Note-Off behavior
 ///
-/// Supports chained harmonies where each harmony voice is derived
-/// from the previous one (e.g., harmony2 is harmony of harmony1).
+/// # Stateless vs Stateful Modes
+///
+/// - **Stateless (1-5, 8)**: Each note processed independently
+/// - **Stateful (6-7)**: Track previous notes for context-aware harmony
+///
+/// Stateful modes use sliding window history (via [`std::collections::VecDeque`]):
+/// - Mode 6 (Contrary Motion): Tracks `last_melody` and `last_harmony`
+/// - Mode 7 (Counterpoint): Uses `interval_history` (size 4) and `melody_contour` (size 3)
+///
+/// # Processing Flow
+///
+/// 1. **Scale Check**: Determine if note is in current scale
+/// 2. **Mode Algorithm**: Apply selected harmony algorithm
+/// 3. **Voice Position**: Generate chains above and below user position
+/// 4. **Voice Leading**: Optional revoicing for smooth transitions
+/// 5. **Octave Mode**: Apply spread/split/mirror transformations
+/// 6. **Port Mapping**: Assign output ports for MIDI routing
+///
+/// # Example
+///
+/// ```ignore
+/// use contrapunk::harmony::{HarmonyEngine, Key, HarmonyMode};
+/// use wmidi::Note;
+///
+/// // Create engine with 4 voices in C major using diatonic thirds
+/// let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+///
+/// // Harmonize a note
+/// let result = engine.harmonize(Note::C4);
+/// // result = [C4, E4, G4, B4] (melody + 3 chained thirds)
+///
+/// // For MIDI routing, use note_on/note_off tracking
+/// let notes_on = engine.harmonize_note_on(Note::C4);
+/// // ... send notes_on to outputs ...
+/// let notes_off = engine.harmonize_note_off(Note::C4);
+/// // notes_off contains the same notes as notes_on
+/// ```
+///
+/// # Note-Off Tracking
+///
+/// For consistent behavior (especially with random modes), use
+/// [`harmonize_note_on`](Self::harmonize_note_on) and
+/// [`harmonize_note_off`](Self::harmonize_note_off) instead of
+/// [`harmonize`](Self::harmonize). This ensures the same harmony notes
+/// are released that were pressed.
 #[derive(Debug)]
 pub struct HarmonyEngine {
     key: Key,
