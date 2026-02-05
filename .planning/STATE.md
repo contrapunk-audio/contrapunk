@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 6.9 complete — Repo Cleanup & Documentation
+**Current focus:** Phase 6.10 in progress — Documentation
 
 ## Current Position
 
-Phase: 6.9 of 9 (Repo Cleanup & Documentation)
-Plan: 3 of 3 in current phase (01, 02, 03 complete)
-Status: Phase complete
-Last activity: 2026-02-02 - Completed 06.9-03-PLAN.md (Rewrite README)
+Phase: 6.10 of 9 (Docs)
+Plan: 2 of ? in current phase (02 complete)
+Status: In progress
+Last activity: 2026-02-05 - Completed 06.10-02-PLAN.md (Humanize Docs + CONTRIBUTING.md)
 
-Progress: [██████████] (44 of 44 phase plans complete)
+Progress: [██████████] (45 of 45+ phase plans complete)
 
 ## Performance Metrics
 
@@ -127,10 +127,17 @@ Recent decisions affecting current work:
 - [06.8-01]: Cache Trunk binary with version-keyed key (trunk-OS-v0.21)
 - [06.8-01]: Three parallel CI jobs: check, test, wasm-check
 - [06.9-01]: Unified CI/CD in single ci.yml with deploy gated behind all checks, main-only
+- [06.10-02]: Include harmony algorithm deep dive in CONTRIBUTING.md per user request
+- [06.10-02]: Document VecDeque sliding windows for counterpoint/contrary motion
+- [06.10-02]: Use ignore attribute for doc examples (private modules in binary crate)
 
 ### Pending Todos
 
 - Stuck MIDI notes when changing settings mid-play (voice leading, key, mode, etc.) — active_notes tracking cleared without sending Note-Offs. Needs a proper fix that doesn't introduce new stuck notes.
+
+### Recent Fixes
+
+- [2026-02-04] Theme is PICO-8 retro pixel art (green accents), not steampunk gold/copper — user preference
 
 ### Blockers/Concerns
 
@@ -153,6 +160,10 @@ None.
 - Phase 6.7 inserted after Phase 6.6: Extended Scale Modes & Barry Harris — all harmonic/melodic minor modes, exotic scales, Barry Harris 6th diminished scales and movement rules
 - Phase 6.8 inserted after Phase 6.7: CI Fix (URGENT)
 - Phase 6.9 inserted after Phase 6.8: Repo Cleanup & Documentation — remove Python scripts, clean README, comprehensive docs
+- Phase 6.10 inserted after Phase 6.9: Docs (URGENT)
+- Phase 10 added: Trackpad Beat Input — use trackpad as MIDI beat pad
+- Phase 11 added: Advanced Voice Leading — comprehensive jazz voicings, Neo-Riemannian, negative harmony, motion control, resolution-aware processing
+- Phase 12 added: Voice Leading Test Suite — automated tests for parallel motion, style differentiation, voice crossing, suspensions, integration with harmony modes
 
 ## Phase 1 Completion Summary
 
@@ -264,7 +275,7 @@ Human-verified: approved
 
 ## Session Continuity
 
-Last session: 2026-02-02
-Stopped at: Phase 6.9 complete — verified 11/11 must-haves
+Last session: 2026-02-05
+Stopped at: Completed 06.10-02-PLAN.md (Humanize Docs + CONTRIBUTING.md)
 Resume file: None
-Next: Phase 7 (Mic Input) or incomplete phases (6, 6.1, 6.2, 6.4, 6.5)
+Next: Continue Phase 6.10 docs if more plans, or Phase 7 (Mic Input) / incomplete phases (6, 6.1, 6.2, 6.4, 6.5)
