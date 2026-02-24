@@ -29,10 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6.8: CI Fix** - Fix CI pipeline issues (INSERTED)
 - [x] **Phase 6.9: Repo Cleanup & Documentation** - Remove legacy Python scripts, clean up README, create comprehensive docs (INSERTED)
 - [ ] **Phase 6.10: Docs** - Additional documentation work (INSERTED)
-- [ ] **Phase 7: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
-- [ ] **Phase 8: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
-- [ ] **Phase 9: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
-- [ ] **Phase 10: Trackpad Beat Input** - Use computer trackpad as a MIDI beat pad for triggering notes and drums
+- [ ] **Phase 6.10.1: UI Modernization** - Move from egui to a more sophisticated GUI framework (INSERTED)
+- [ ] **Phase 7: Performance Mode** - Beat-aware performance where Contrapunk accumulates played notes over bars and generates context-aware responses
+- [ ] **Phase 8: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
+- [ ] **Phase 9: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
+- [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
+- [ ] **Phase 11: Trackpad Beat Input** - Use computer trackpad as a MIDI beat pad for triggering notes and drums
 
 ## Phase Details
 
@@ -334,7 +336,47 @@ Plans:
 - [ ] 06.10-01-PLAN.md — Enhance harmony module rustdoc (mod.rs, config.rs, engine.rs)
 - [ ] 06.10-02-PLAN.md — Humanize module docs and CONTRIBUTING.md
 
-### Phase 7: Mic Input
+### Phase 06.10.1: UI Modernization (INSERTED)
+
+**Goal:** Replace egui with Tauri v2 + Svelte 5 for a polished Hyper Light Drifter-inspired DAW interface, with equal desktop and browser support
+**Depends on:** Phase 6.10 (Docs), Phase 3 (GUI)
+**Plans:** 9 plans
+
+Plans:
+- [ ] 06.10.1-01-PLAN.md — Cargo workspace + Tauri v2 backend with commands and state
+- [ ] 06.10.1-02-PLAN.md — SvelteKit project scaffolding + HLD design system
+- [ ] 06.10.1-03-PLAN.md — Platform adapter layer + Svelte 5 rune stores + WASM bridge
+- [ ] 06.10.1-04-PLAN.md — 88-key piano keyboard + control panel + Ableton layout
+- [ ] 06.10.1-05-PLAN.md — MIDI device selection + preset management panels
+- [ ] 06.10.1-06-PLAN.md — Humanization + generator + active notes panels
+- [ ] 06.10.1-07-PLAN.md — HLD atmospheric effects (particles, glow, beat indicator)
+- [ ] 06.10.1-08-PLAN.md — WASM build pipeline + Fly.io deployment + CI update
+- [ ] 06.10.1-09-PLAN.md — Remove egui/CLI/Trunk + human verification
+
+### Phase 7: Performance Mode
+**Goal**: Beat-aware performance mode where Contrapunk accumulates played notes over bars (using BeatClock) and generates musically-contextual responses based on phrase-level state, rather than harmonizing note-by-note
+**Depends on**: Phase 6 (Humanization — BeatClock), Phase 2 (Harmony Engine)
+**Requirements**: PERF-01, PERF-02, PERF-03
+**Research-heavy**: This phase requires deep research into:
+  - Temporal MIDI buffering tied to BeatClock (accumulating notes across bars)
+  - Phrase-level state management (what the user played in last N bars)
+  - Generative algorithms that respond to musical context vs individual notes
+  - How performance state interacts with existing harmony modes, voice leading, humanization
+  - Real-time constraints on bar-aware processing
+**Success Criteria** (what must be TRUE):
+  1. Metronome runs in background and Contrapunk tracks bar boundaries
+  2. System accumulates user-played notes across configurable bar windows (1-4 bars)
+  3. Generated notes respond to the musical context of recent performance (not just current note)
+  4. Performance mode produces musically distinct output from standard harmony modes
+  5. Works with existing voice leading, humanization, and octave variation settings
+  6. GUI displays performance state (current bar, accumulated context)
+  7. Works in both native and WASM builds
+**Plans**: 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 7 to break down)
+
+### Phase 8: Mic Input
 **Goal**: Capture audio from microphone for pitch-to-MIDI conversion and raw audio passthrough for vocoder
 **Depends on**: Phase 1 (MIDI Foundation)
 **Requirements**: MIC-01, MIC-02, MIC-03
@@ -344,20 +386,21 @@ Plans:
   3. Raw audio capture provides a signal buffer accessible by the vocoder phase
   4. Pitch detection works with acceptable latency (<50ms) for real-time use
   5. GUI displays detected pitch and confidence level
-**Plans**: 7 plans
+**Plans**: 8 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Audio module foundation with config types, pitch detection types, and note tracker
-- [ ] 07-02-PLAN.md — Native audio capture with cpal and lock-free ring buffer
-- [ ] 07-03-PLAN.md — Pitch detection engine with YIN algorithm
-- [ ] 07-04-PLAN.md — WASM audio capture with Web Audio API (getUserMedia + AnalyserNode)
-- [ ] 07-05-PLAN.md — App integration: MicState, unified IN dropdown, frame processing
-- [ ] 07-06-PLAN.md — UI: Mic Settings, pitch display, level meter, piano coloring
-- [ ] 07-07-PLAN.md — Human verification checkpoint
+- [ ] 08-01-PLAN.md — Audio module foundation with config types, pitch detection types, and note tracker
+- [ ] 08-02-PLAN.md — Native audio capture with cpal and lock-free ring buffer
+- [ ] 08-03-PLAN.md — Pitch detection engine with YIN algorithm
+- [ ] 08-04-PLAN.md — WASM audio capture with Web Audio API (getUserMedia + AnalyserNode)
+- [ ] 08-05-PLAN.md — App integration: MicState, unified IN dropdown, frame processing
+- [ ] 08-05b-PLAN.md — WASM app integration: WebAudioCapture wiring, permissions
+- [ ] 08-06-PLAN.md — UI: Mic Settings, pitch display, level meter, piano coloring
+- [ ] 08-07-PLAN.md — Human verification checkpoint
 
-### Phase 8: Vocoder
+### Phase 9: Vocoder
 **Goal**: Apply vocoder effects using mic audio and harmony engine output
-**Depends on**: Phase 7 (Mic Input), Phase 2 (Harmony Engine)
+**Depends on**: Phase 8 (Mic Input), Phase 2 (Harmony Engine)
 **Requirements**: VOC-01, VOC-02, VOC-03, VOC-04
 **Success Criteria** (what must be TRUE):
   1. Classic vocoder: Synth/harmony carrier signal modulated by voice input produces robot-voice effect
@@ -369,11 +412,11 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 08-01: TBD (run /gsd:plan-phase 8 to break down)
+- [ ] TBD (run /gsd:plan-phase 9 to break down)
 
-### Phase 9: Guitar Input
+### Phase 10: Guitar Input
 **Goal**: Accept guitar audio input with pitch detection optimized for guitar frequency range and playing styles
-**Depends on**: Phase 7 (Mic Input — shares audio capture infrastructure)
+**Depends on**: Phase 8 (Mic Input — shares audio capture infrastructure)
 **Requirements**: GTR-01, GTR-02, GTR-03
 **Success Criteria** (what must be TRUE):
   1. User can select audio input for guitar (direct-in or mic'd amp)
@@ -385,9 +428,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 09-01: TBD (run /gsd:plan-phase 9 to break down)
+- [ ] TBD (run /gsd:plan-phase 10 to break down)
 
-### Phase 10: Trackpad Beat Input
+### Phase 11: Trackpad Beat Input
 **Goal**: Use computer trackpad as a MIDI beat pad for triggering notes and drums, similar to hardware MIDI pad controllers
 **Depends on**: Phase 3 (GUI), Phase 6 (Humanization — beat clock)
 **Requirements**: TBD
@@ -402,9 +445,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 10-01: TBD (run /gsd:plan-phase 10 to break down)
+- [ ] TBD (run /gsd:plan-phase 11 to break down)
 
-### Phase 11: Advanced Voice Leading
+### Phase 12: Advanced Voice Leading
 **Goal**: Comprehensive voice leading techniques covering jazz voicings, motion control, harmonic techniques, resolution-aware processing, and density control
 **Depends on**: Phase 6.2 (Voice Leading)
 **Requirements**: AVL-01 through AVL-25
@@ -420,9 +463,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 11-01: TBD (run /gsd:plan-phase 11 to break down)
+- [ ] TBD (run /gsd:plan-phase 12 to break down)
 
-### Phase 12: Voice Leading Test Suite
+### Phase 13: Voice Leading Test Suite
 **Goal**: Comprehensive automated tests for voice leading to replace manual UAT and catch regressions
 **Depends on**: Phase 6.2 (Voice Leading)
 **Requirements**: VLT-01 through VLT-08
@@ -438,12 +481,12 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 12-01: TBD (run /gsd:plan-phase 12 to break down)
+- [ ] TBD (run /gsd:plan-phase 13 to break down)
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 6.7 -> 6.8 -> 6.9 -> 6.10 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 6.7 -> 6.8 -> 6.9 -> 6.10 -> 6.10.1 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12 -> 13
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -464,13 +507,15 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.8 CI Fix (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.9 Repo Cleanup & Documentation (INSERTED) | 3/3 | Complete | 2026-02-02 |
 | 6.10 Docs (INSERTED) | 2/2 | Complete | 2026-02-05 |
-| 7. Mic Input | 0/7 | Planning complete | - |
-| 8. Vocoder | 0/? | Not started | - |
-| 9. Guitar Input | 0/? | Not started | - |
-| 10. Trackpad Beat Input | 0/? | Not started | - |
-| 11. Advanced Voice Leading | 0/? | Not started | - |
-| 12. Voice Leading Test Suite | 0/? | Not started | - |
+| 6.10.1 UI Modernization (INSERTED) | 0/9 | Planning complete | - |
+| 7. Performance Mode | 0/? | Not started | - |
+| 8. Mic Input | 0/8 | Planning complete | - |
+| 9. Vocoder | 0/? | Not started | - |
+| 10. Guitar Input | 0/? | Not started | - |
+| 11. Trackpad Beat Input | 0/? | Not started | - |
+| 12. Advanced Voice Leading | 0/? | Not started | - |
+| 13. Voice Leading Test Suite | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-02-05 — Phase 7 planned: 7 plans for mic input with pitch detection*
+*Last updated: 2026-02-25 — Renumbered: Performance Mode is Phase 7, Mic Input pushed to Phase 8, all subsequent phases shifted +1*
