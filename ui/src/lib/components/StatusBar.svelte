@@ -1,5 +1,33 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
+	import { ui } from '$lib/stores/ui.svelte';
+	import BeatIndicator from '$lib/components/BeatIndicator.svelte';
+
+	/**
+	 * Toggle animations on/off. Persists the preference in localStorage.
+	 */
+	function toggleFx() {
+		ui.toggleAnimations();
+		try {
+			localStorage.setItem('contrapunk-fx', ui.animationsEnabled ? 'on' : 'off');
+		} catch {
+			// localStorage unavailable (SSR or privacy mode)
+		}
+	}
+
+	// Restore FX preference from localStorage on mount
+	$effect(() => {
+		try {
+			const saved = localStorage.getItem('contrapunk-fx');
+			if (saved === 'off') {
+				ui.animationsEnabled = false;
+				ui.reducedMotion = true;
+				ui.applyMotionPreference();
+			}
+		} catch {
+			// localStorage unavailable
+		}
+	});
 </script>
 
 <div class="status-bar">
@@ -20,6 +48,9 @@
 		{engine.isRunning ? 'ACTIVE' : 'STOPPED'}
 	</span>
 
+	<!-- Beat indicator (near status) -->
+	<BeatIndicator />
+
 	<!-- Chord display -->
 	<div class="chord-info">
 		{#if engine.chordName}
@@ -27,13 +58,23 @@
 		{:else}
 			<span class="chord-name font-pixel dim">---</span>
 		{/if}
-		{#if engine.interchangeEnabled && engine.borrowedFrom}
-			<span class="borrowed-label font-pixel">from {engine.borrowedFrom}</span>
+		{#if engine.interchangeEnabled && engine.lastBorrowedFrom}
+			<span class="borrowed-label font-pixel">from {engine.lastBorrowedFrom}</span>
 		{/if}
 	</div>
 
 	<!-- Spacer -->
 	<div class="spacer"></div>
+
+	<!-- FX toggle -->
+	<button
+		class="fx-btn pixel-btn font-pixel"
+		class:fx-off={!ui.animationsEnabled}
+		onclick={toggleFx}
+		title={ui.animationsEnabled ? 'Disable visual effects' : 'Enable visual effects'}
+	>
+		FX
+	</button>
 
 	<!-- Brand -->
 	<span class="brand font-pixel">Contrapunk</span>
@@ -118,6 +159,28 @@
 
 	.spacer {
 		flex: 1;
+	}
+
+	/* FX Toggle Button */
+	.fx-btn {
+		padding: 2px 6px;
+		font-size: 7px;
+		min-width: 24px;
+		background: var(--color-accent-teal);
+		border: 1px solid var(--color-accent-cyan-dim);
+		color: #ffffff;
+		box-shadow: var(--glow-teal);
+	}
+
+	.fx-btn:hover {
+		border-color: var(--color-accent-cyan);
+	}
+
+	.fx-btn.fx-off {
+		background: var(--color-widget-inactive);
+		border-color: var(--color-border);
+		color: var(--color-text-dim);
+		box-shadow: none;
 	}
 
 	.brand {

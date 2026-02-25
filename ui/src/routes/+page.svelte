@@ -7,6 +7,16 @@
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import HumanizePanel from '$lib/components/HumanizePanel.svelte';
 	import GeneratorPanel from '$lib/components/GeneratorPanel.svelte';
+	import { engine } from '$lib/stores/engine.svelte';
+	import { ui } from '$lib/stores/ui.svelte';
+
+	// Music-reactive: detect when notes are actively sounding
+	let hasActiveNotes = $derived(
+		engine.inputNotes.length > 0 || engine.harmonyNotes.length > 0
+	);
+	let manyNotesActive = $derived(
+		engine.inputNotes.length + engine.harmonyNotes.length >= 4
+	);
 </script>
 
 <!--
@@ -25,6 +35,15 @@
 -->
 
 <div class="app-layout">
+	<!-- Music-reactive vignette overlay (CSS-only, no JS cost) -->
+	{#if ui.animationsEnabled && hasActiveNotes}
+		<div
+			class="vignette-overlay"
+			class:intense={manyNotesActive}
+			aria-hidden="true"
+		></div>
+	{/if}
+
 	<!-- Top: Status bar -->
 	<StatusBar />
 
@@ -97,6 +116,36 @@
 	.piano-area {
 		border-top: 1px solid var(--color-border);
 		background: var(--color-bg-deep);
+	}
+
+	/* === Music-reactive vignette === */
+	.vignette-overlay {
+		position: fixed;
+		inset: 0;
+		pointer-events: none;
+		z-index: 100;
+		background: radial-gradient(
+			ellipse at center,
+			transparent 50%,
+			rgba(255, 51, 136, 0.04) 80%,
+			rgba(255, 51, 136, 0.08) 100%
+		);
+		animation: vignette-pulse 2s ease-in-out infinite;
+	}
+
+	.vignette-overlay.intense {
+		background: radial-gradient(
+			ellipse at center,
+			transparent 40%,
+			rgba(255, 51, 136, 0.06) 70%,
+			rgba(51, 221, 255, 0.06) 85%,
+			rgba(255, 51, 136, 0.1) 100%
+		);
+	}
+
+	@keyframes vignette-pulse {
+		0%, 100% { opacity: 0.5; }
+		50% { opacity: 1; }
 	}
 
 </style>
