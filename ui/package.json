@@ -3,6 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "build:wasm": "sh scripts/build-wasm.sh",
+    "prebuild": "npm run build:wasm",
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",

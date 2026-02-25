@@ -29,14 +29,17 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private _isRunning = false;
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;
 	private pollingHandle: number | null = null;
+	private midiAccess: MIDIAccess | null = null;
+	private activeInput: MIDIInput | null = null;
+	private activeOutputs: MIDIOutput[] = [];
 
 	async init(): Promise<void> {
 		if (this.initialized) return;
 
 		try {
-			// Dynamic import of wasm-pack output
-			// The path will be resolved by Vite's WASM plugin
-			wasmModule = await import('contrapunk-wasm');
+			// Dynamic import of wasm-pack output from $lib/wasm-pkg
+			// wasm-pack builds to ui/src/lib/wasm-pkg/ which is under $lib
+			wasmModule = await import('$lib/wasm-pkg');
 			if (wasmModule.default && typeof wasmModule.default === 'function') {
 				await wasmModule.default();
 			}
@@ -163,55 +166,125 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// Silently accept to avoid errors in shared UI code
 	}
 
-	async listMidiInputs(): Promise<MidiDevice[]> {
-		// Browser MIDI: use Web MIDI API if available
-		if (typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator) {
-			try {
-				const access = await navigator.requestMIDIAccess();
-				const devices: MidiDevice[] = [];
-				let index = 0;
-				access.inputs.forEach((input) => {
-					devices.push({ index: index++, name: input.name ?? `Input ${index}` });
-				});
-				return devices;
-			} catch {
-				return [];
-			}
+	/**
+	 * Ensure Web MIDI Access is available. Caches the MIDIAccess instance.
+	 */
+	private async ensureMidiAccess(): Promise<MIDIAccess | null> {
+		if (this.midiAccess) return this.midiAccess;
+		if (typeof navigator === 'undefined' || !('requestMIDIAccess' in navigator)) {
+			return null;
 		}
-		return [];
+		try {
+			this.midiAccess = await navigator.requestMIDIAccess();
+			return this.midiAccess;
+		} catch {
+			return null;
+		}
+	}
+
+	async listMidiInputs(): Promise<MidiDevice[]> {
+		const access = await this.ensureMidiAccess();
+		if (!access) return [];
+		const devices: MidiDevice[] = [];
+		let index = 0;
+		access.inputs.forEach((input) => {
+			devices.push({ index: index++, name: input.name ?? `Input ${index}` });
+		});
+		return devices;
 	}
 
 	async listMidiOutputs(): Promise<MidiDevice[]> {
-		if (typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator) {
-			try {
-				const access = await navigator.requestMIDIAccess();
-				const devices: MidiDevice[] = [];
-				let index = 0;
-				access.outputs.forEach((output) => {
-					devices.push({ index: index++, name: output.name ?? `Output ${index}` });
-				});
-				return devices;
-			} catch {
-				return [];
-			}
-		}
-		return [];
+		const access = await this.ensureMidiAccess();
+		if (!access) return [];
+		const devices: MidiDevice[] = [];
+		let index = 0;
+		access.outputs.forEach((output) => {
+			devices.push({ index: index++, name: output.name ?? `Output ${index}` });
+		});
+		return devices;
 	}
 
 	async refreshMidiDevices(): Promise<void> {
-		// Web MIDI devices are refreshed on each listMidiInputs/listMidiOutputs call
+		// Clear cached access so next list call re-enumerates
+		this.midiAccess = null;
 	}
 
-	async startRouting(_inputIdx: number, _outputIndices: number[]): Promise<void> {
+	async startRouting(inputIdx: number, outputIndices: number[]): Promise<void> {
 		this.ensureInit();
-		// In WASM mode, routing is handled differently:
-		// We connect Web MIDI input events to the WASM engine and output
-		// the results to Web MIDI outputs. This is a simplified placeholder
-		// that will be fully implemented when the MIDI routing bridge is built.
+		const access = await this.ensureMidiAccess();
+		if (!access) {
+			// No Web MIDI: still allow "running" for virtual/keyboard input
+			this._isRunning = true;
+			return;
+		}
+
+		// Resolve input device
+		const inputs = Array.from(access.inputs.values());
+		if (inputIdx >= 0 && inputIdx < inputs.length) {
+			this.activeInput = inputs[inputIdx];
+		}
+
+		// Resolve output devices
+		const outputs = Array.from(access.outputs.values());
+		this.activeOutputs = outputIndices
+			.filter((i) => i >= 0 && i < outputs.length)
+			.map((i) => outputs[i]);
+
+		// Wire up MIDI message handler
+		if (this.activeInput) {
+			this.activeInput.onmidimessage = (event: MIDIMessageEvent) => {
+				if (!event.data || event.data.length < 2) return;
+				const status = event.data[0] & 0xf0;
+				const note = event.data[1];
+				const velocity = event.data.length > 2 ? event.data[2] : 0;
+
+				let resultNotes: number[] = [];
+
+				if (status === 0x90 && velocity > 0) {
+					// Note On
+					try {
+						resultNotes = engine.note_on(note);
+					} catch {
+						resultNotes = [note];
+					}
+					// Send Note On for each harmonized note to all outputs
+					for (const output of this.activeOutputs) {
+						for (const n of resultNotes) {
+							output.send([0x90, n, velocity]);
+						}
+					}
+				} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
+					// Note Off
+					try {
+						resultNotes = engine.note_off(note);
+					} catch {
+						resultNotes = [note];
+					}
+					// Send Note Off for each released note to all outputs
+					for (const output of this.activeOutputs) {
+						for (const n of resultNotes) {
+							output.send([0x80, n, 0]);
+						}
+					}
+				} else {
+					// Pass through other MIDI messages (CC, pitch bend, etc.)
+					for (const output of this.activeOutputs) {
+						output.send(Array.from(event.data));
+					}
+				}
+			};
+		}
+
 		this._isRunning = true;
 	}
 
 	async stopRouting(): Promise<void> {
+		// Disconnect MIDI input handler
+		if (this.activeInput) {
+			this.activeInput.onmidimessage = null;
+			this.activeInput = null;
+		}
+		this.activeOutputs = [];
 		this._isRunning = false;
 		this.stopNotePolling();
 	}

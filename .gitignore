@@ -3,6 +3,7 @@ target/
 
 # WASM build output
 dist/
+ui/src/lib/wasm-pkg/
 
 # IDE
 .idea/

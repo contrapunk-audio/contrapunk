@@ -84,23 +84,23 @@ pub mod router;
 // WASM-specific modules (egui browser app)
 // =============================================================================
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 mod app;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 mod ui;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 mod theme;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 use wasm_bindgen::JsCast;
 
 /// Auto-start entry point called by Trunk's generated JS bootstrap.
 ///
 /// Initializes the panic hook for better error messages and spawns the
 /// eframe application in the browser canvas.
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 #[wasm_bindgen(start)]
 pub fn main() {
     console_error_panic_hook::set_once();

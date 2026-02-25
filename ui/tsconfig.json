@@ -10,5 +10,9 @@
 		"sourceMap": true,
 		"strict": true,
 		"moduleResolution": "bundler"
-	}
+	},
+	"exclude": [
+		"node_modules/**",
+		"src/lib/wasm-pkg/**"
+	]
 }
