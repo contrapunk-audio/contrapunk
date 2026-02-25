@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { midi } from '$lib/stores/midi.svelte';
+	import PixelSelect from './PixelSelect.svelte';
 
 	// Virtual input sentinel values (matching existing INPUT_NOTE_GENERATOR / INPUT_COMPUTER_KEYBOARD from app.rs)
 	const VIRTUAL_NOTE_GENERATOR = Number.MAX_SAFE_INTEGER;
@@ -10,14 +11,22 @@
 	// Derived: is Computer Keyboard selected as input?
 	let isComputerKeyboard = $derived(midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD);
 
-	function handleInputChange(event: Event) {
-		const value = (event.target as HTMLSelectElement).value;
+	let inputOptions = $derived([
+		...midi.inputs.map((d) => ({ value: String(d.index), label: d.name })),
+		{ value: String(VIRTUAL_NOTE_GENERATOR), label: 'Note Generator' },
+		{ value: String(VIRTUAL_COMPUTER_KEYBOARD), label: 'Computer Keyboard' }
+	]);
+
+	let outputOptions = $derived(
+		midi.outputs.map((d) => ({ value: String(d.index), label: d.name }))
+	);
+
+	function handleInputChange(value: string) {
 		if (value === '') {
 			midi.clearInput();
 		} else {
 			const idx = parseInt(value, 10);
 			if (idx === VIRTUAL_NOTE_GENERATOR || idx === VIRTUAL_COMPUTER_KEYBOARD) {
-				// Virtual inputs: set directly (they bypass physical MIDI)
 				midi.selectedInput = idx;
 			} else {
 				midi.selectInput(idx);
@@ -25,25 +34,21 @@
 		}
 	}
 
-	function handleOutputChange(slotIndex: number, event: Event) {
-		const value = (event.target as HTMLSelectElement).value;
+	function handleOutputChange(slotIndex: number, value: string) {
 		const newOutputs = [...midi.selectedOutputs];
 
 		if (value === '') {
-			// Set slot to None -- remove this slot's value
 			if (slotIndex < newOutputs.length) {
 				newOutputs.splice(slotIndex, 1);
 			}
 		} else {
 			const idx = parseInt(value, 10);
-			// Ensure the array is long enough
 			while (newOutputs.length <= slotIndex) {
 				newOutputs.push(-1);
 			}
 			newOutputs[slotIndex] = idx;
 		}
 
-		// Filter out invalid entries
 		midi.selectedOutputs = newOutputs.filter((v) => v >= 0);
 	}
 
@@ -65,22 +70,12 @@
 	<div class="section-header font-pixel">INPUT</div>
 
 	<div class="input-row">
-		<select
-			class="midi-select font-pixel"
+		<PixelSelect
+			options={inputOptions}
 			value={midi.selectedInput !== null ? String(midi.selectedInput) : ''}
+			placeholder="Select..."
 			onchange={handleInputChange}
-		>
-			<option value="">Select...</option>
-
-			<!-- Physical MIDI inputs -->
-			{#each midi.inputs as device}
-				<option value={String(device.index)}>{device.name}</option>
-			{/each}
-
-			<!-- Virtual inputs -->
-			<option value={String(VIRTUAL_NOTE_GENERATOR)}>Note Generator</option>
-			<option value={String(VIRTUAL_COMPUTER_KEYBOARD)}>Computer Keyboard</option>
-		</select>
+		/>
 
 		<button
 			class="refresh-btn pixel-btn"
@@ -109,16 +104,13 @@
 		{#each Array.from({ length: MAX_OUTPUT_SLOTS }, (_, i) => i) as slotIdx}
 			<div class="output-slot">
 				<span class="slot-label font-pixel">{slotLabel(slotIdx)}</span>
-				<select
-					class="midi-select midi-select-sm font-pixel"
+				<PixelSelect
+					options={outputOptions}
 					value={getSlotValue(slotIdx)}
-					onchange={(e) => handleOutputChange(slotIdx, e)}
-				>
-					<option value="">None</option>
-					{#each midi.outputs as device}
-						<option value={String(device.index)}>{device.name}</option>
-					{/each}
-				</select>
+					placeholder="None"
+					small={true}
+					onchange={(val) => handleOutputChange(slotIdx, val)}
+				/>
 			</div>
 		{/each}
 	</div>
@@ -142,36 +134,6 @@
 		display: flex;
 		gap: 4px;
 		align-items: center;
-	}
-
-	.midi-select {
-		flex: 1;
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
-		color: var(--color-text-primary);
-		font-size: 7px;
-		padding: 3px 4px;
-		border-radius: 0;
-		outline: none;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-		cursor: pointer;
-		appearance: none;
-		-webkit-appearance: none;
-	}
-
-	.midi-select:focus {
-		border-color: var(--color-accent-cyan);
-	}
-
-	.midi-select option {
-		background: var(--color-widget-bg);
-		color: var(--color-text-primary);
-	}
-
-	.midi-select-sm {
-		font-size: 6px;
-		padding: 2px 3px;
 	}
 
 	.refresh-btn {
