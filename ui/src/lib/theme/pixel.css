@@ -1,1 +1,99 @@
-/* Pixel Art CSS Rules (placeholder, populated in Task 2) */
+/* =================================================================
+   Pixel Art CSS Rules
+   Force nearest-neighbor scaling, disable antialiasing,
+   sharp corners, and HLD-style neon effects.
+   ================================================================= */
+
+/* === Pixel Art Image Rendering === */
+.pixel-art,
+[data-pixel] {
+	image-rendering: pixelated;
+	image-rendering: -moz-crisp-edges; /* Firefox fallback */
+	image-rendering: crisp-edges;
+}
+
+/* === Pixel Font Rendering — disable antialiasing === */
+.font-pixel {
+	font-family: var(--font-pixel);
+	-webkit-font-smoothing: none;
+	-moz-osx-font-smoothing: unset;
+	font-smooth: never;
+	text-rendering: optimizeSpeed;
+}
+
+/* === Sharp corners everywhere — no border-radius === */
+.pixel-card {
+	border-radius: 0;
+	background: var(--color-widget-bg);
+	border: 1px solid var(--color-border);
+}
+
+/* === Pixel Button — base style === */
+.pixel-btn {
+	font-family: var(--font-pixel);
+	font-size: var(--font-size-xs);
+	padding: 4px 8px;
+	background: var(--color-widget-inactive);
+	border: 1px solid var(--color-border);
+	color: var(--color-text-primary);
+	cursor: pointer;
+	transition: none; /* No smooth transitions — pixel art snaps */
+	border-radius: 0;
+	outline: none;
+	-webkit-font-smoothing: none;
+	text-rendering: optimizeSpeed;
+}
+
+.pixel-btn:hover {
+	background: var(--color-bg-panel);
+	border-color: var(--color-accent-cyan-dim);
+}
+
+.pixel-btn.active {
+	background: var(--color-accent-magenta);
+	border-color: var(--color-accent-cyan);
+	box-shadow: var(--glow-magenta);
+	color: #ffffff;
+}
+
+/* === Neon Glow Pulse (HLD atmosphere) === */
+@keyframes glow-pulse {
+	0%,
+	100% {
+		opacity: 0.7;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+.neon-glow {
+	animation: glow-pulse 3s ease-in-out infinite;
+}
+
+/* === Scan Line Effect (optional atmosphere) === */
+@keyframes scan-line {
+	0% {
+		transform: translateY(-100%);
+	}
+	100% {
+		transform: translateY(100vh);
+	}
+}
+
+.scan-line-overlay {
+	pointer-events: none;
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 2px;
+	background: linear-gradient(
+		to bottom,
+		transparent,
+		rgba(51, 221, 255, 0.03),
+		transparent
+	);
+	animation: scan-line 8s linear infinite;
+	z-index: 9999;
+}

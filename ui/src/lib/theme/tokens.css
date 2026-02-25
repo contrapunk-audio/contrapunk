@@ -1,7 +1,66 @@
-/* HLD Design System — Color Tokens (placeholder, populated in Task 2) */
+/* =================================================================
+   HLD Design System — Color Tokens
+   Hyper Light Drifter + Ableton Live Session View
+   "A DAW that feels like exploring a neon-lit dungeon"
+   ================================================================= */
+
 :root {
-	--color-bg-deep: #0a0a1a;
-	--color-bg-base: #0f0e1a;
-	--color-text-primary: #e8e0f0;
+	/* === Background Layers (deep to shallow) === */
+	--color-bg-deep: #0a0a1a;           /* Deepest void — full-screen background */
+	--color-bg-base: #0f0e1a;           /* Primary background — deep indigo/navy */
+	--color-bg-panel: #151428;          /* Panel backgrounds — raised surfaces */
+	--color-widget-bg: #1a1833;         /* Widget containers */
+	--color-widget-inactive: #25223d;   /* Inactive widget state */
+
+	/* === HLD Accent Colors (Neon-on-Dark) === */
+	--color-accent-magenta: #ff3388;       /* Primary accent — HLD signature pink/magenta */
+	--color-accent-magenta-dim: #cc2266;   /* Dimmed magenta for subtle uses */
+	--color-accent-cyan: #33ddff;          /* Secondary accent — electric cyan */
+	--color-accent-cyan-dim: #2299cc;      /* Dimmed cyan */
+	--color-accent-teal: #00ccaa;          /* Tertiary — deep teal */
+	--color-accent-pink: #ff77aa;          /* Soft pink for highlights */
+	--color-accent-amber: #ffaa33;         /* Warm accent (interchange/borrowed) */
+	--color-accent-gold: #ffdd44;          /* Bright gold for emphasis */
+
+	/* === Sacred Piano Key Colors (PRESERVED from egui) === */
+	--color-piano-input: #00e436;       /* Green — input notes (melody) */
+	--color-piano-harmony: #ff9933;     /* Orange — harmony notes (generated) */
+	--color-piano-generator: #ff3388;   /* Magenta — generator selected notes */
+	--color-piano-borrowed: #ffaa33;    /* Amber — interchange borrowed notes */
+	--color-piano-in-scale: #1a1844;    /* Subtle tint for in-scale keys */
+
+	/* === Text === */
+	--color-text-primary: #e8e0f0;      /* Light lavender — easier on eyes than pure white */
+	--color-text-secondary: #8888aa;    /* Muted purple-gray */
+	--color-text-dim: #555577;          /* Very muted — labels, placeholders */
+
+	/* === Borders === */
+	--color-border: #2a2848;            /* Subtle purple border */
+	--color-border-active: #ff3388;     /* Magenta glow on active elements */
+
+	/* === Glow Effects (toggled by .reduced-motion) === */
+	--glow-magenta: 0 0 8px #ff338855, 0 0 20px #ff338822;
+	--glow-cyan: 0 0 8px #33ddff55, 0 0 20px #33ddff22;
+	--glow-teal: 0 0 8px #00ccaa55, 0 0 20px #00ccaa22;
+
+	/* === Typography === */
 	--font-pixel: 'Press Start 2P', monospace;
+	--font-size-xs: 8px;    /* Pixel font base size — use at 8px multiples */
+	--font-size-sm: 10px;
+	--font-size-md: 12px;
+	--font-size-lg: 16px;
+	--font-size-xl: 24px;
+}
+
+/* === Performance Toggle ===
+   Add .reduced-motion to <html> or <body> to disable all glow and animations.
+   Intended for lower-powered machines or user preference.
+*/
+.reduced-motion,
+.reduced-motion * {
+	--glow-magenta: none;
+	--glow-cyan: none;
+	--glow-teal: none;
+	animation: none !important;
+	transition: none !important;
 }
