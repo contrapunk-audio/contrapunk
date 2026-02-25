@@ -12,16 +12,16 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 Phase: 06.10.1 of 13 (UI Modernization)
 Plan: 4 of 9 in current phase (01, 02, 03, 04 complete)
 Status: In progress
-Last activity: 2026-02-25 - Completed 06.10.1-04-PLAN.md (Piano keyboard + control panel + Ableton layout)
+Last activity: 2026-02-25 - Completed 06.10.1-03-PLAN.md (Platform adapter + Svelte 5 stores + WASM bridge)
 
 Progress: [█████████░░░░░░░░░░░] (06.10.1 plan 4/9 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 32
+- Total plans completed: 33
 - Average duration: 3.3 min
-- Total execution time: 106.5 min
+- Total execution time: 110.5 min
 
 **By Phase:**
 
@@ -37,7 +37,7 @@ Progress: [█████████░░░░░░░░░░░] (06.10.
 | 06.8-ci-fix | 1 | 3 min | 3 min |
 | 06.9-repo-cleanup | 2 | 2.5 min | 1.3 min |
 | 06.10-docs | 2 | 12 min | 6 min |
-| 06.10.1-ui-modernization | 4 | 30 min | 7.5 min |
+| 06.10.1-ui-modernization | 5 | 34 min | 6.8 min |
 
 *Updated after each plan completion*
 
@@ -144,6 +144,10 @@ Recent decisions affecting current work:
 - [06.10.1-02]: Press Start 2P via Google Fonts CDN, body background anti-flash in app.html
 - [06.10.1-02]: CSS custom properties for all HLD colors, TypeScript constants mirror CSS tokens
 - [06.10.1-02]: Pixel art CSS: image-rendering pixelated, font-smoothing none, .reduced-motion toggle
+- [06.10.1-03]: Externalize contrapunk-wasm in Vite config (wasm-pack output not available at build time)
+- [06.10.1-03]: Optimistic state updates with rollback on error in engine store
+- [06.10.1-03]: WASM Engine wrapper tracks note state internally for get_note_state() polling
+- [06.10.1-03]: String-based API in WASM bridge (parse_key/parse_mode) for JS interop simplicity
 - [06.10.1-04]: Piano keyboard 90px height, black keys absolute-positioned from white key index
 - [06.10.1-04]: Scale selector uses expandable family accordion (Church expanded by default)
 - [06.10.1-04]: Ableton layout uses CSS Grid 3-row (auto 1fr auto), content area 3-column (1fr 1.4fr 1fr)
@@ -314,6 +318,6 @@ Verified: 13/13 must-haves passed.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 06.10.1-04-PLAN.md (Piano keyboard + control panel + Ableton layout)
+Stopped at: Completed 06.10.1-03-PLAN.md (Platform adapter + Svelte 5 stores + WASM bridge)
 Resume file: None
 Next: 06.10.1-05-PLAN.md (MIDI device selection + preset management panels)
