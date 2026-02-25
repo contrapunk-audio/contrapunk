@@ -1,9 +1,21 @@
+[workspace]
+members = [".", "src-tauri"]
+resolver = "2"
+
 [package]
 name = "contrapunk"
 version = "0.1.0"
 edition = "2021"
 description = "Real-time MIDI harmony generation"
 authors = ["Contrapunk Team"]
+
+[lib]
+name = "contrapunk"
+path = "src/lib.rs"
+
+[[bin]]
+name = "contrapunk"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"

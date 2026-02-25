@@ -1,0 +1,8 @@
+[package]
+name = "contrapunk-tauri"
+version = "0.1.0"
+edition = "2021"
+description = "Tauri v2 backend for Contrapunk"
+
+# Placeholder — full dependencies added in Plan 01 Task 2
+[dependencies]

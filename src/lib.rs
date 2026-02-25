@@ -11,6 +11,7 @@
 //!
 //! - **Native (macOS/Windows/Linux)**: Full GUI with hardware MIDI via `midir`
 //! - **WebAssembly**: Browser-based GUI with Web MIDI API
+//! - **Tauri desktop**: Svelte frontend with Rust backend via Tauri IPC
 //!
 //! # Harmony Module
 //!
@@ -41,33 +42,65 @@
 //! // engine.harmonize(Note::C4) would return [C4, E4]
 //! ```
 //!
-//! # WASM Entry Point
+//! # Library Usage
 //!
-//! This crate's library target is primarily for WebAssembly. The native application
-//! uses a binary target (`main.rs`). For WASM builds, this module provides the
-//! entry point via `wasm_bindgen`.
+//! This crate is both a library (used by `src-tauri` and WASM builds) and a
+//! binary (the legacy egui native app). Core modules are always available.
+//! GUI-specific modules are gated behind `#[cfg(target_arch = "wasm32")]` or
+//! `#[cfg(feature = "gui")]`.
 
-#![cfg(target_arch = "wasm32")]
+// =============================================================================
+// Core modules — always available on all platforms
+// =============================================================================
 
+pub mod harmony;
+pub mod humanize;
+pub mod generator;
+pub mod chord;
+pub mod midi;
+pub mod preset;
+
+// =============================================================================
+// GUI-dependent modules (require eframe/egui feature)
+// =============================================================================
+
+/// Piano keyboard widget (requires gui feature for egui types).
+#[cfg(feature = "gui")]
+pub mod piano;
+
+/// MIDI device default persistence (WASM-only, depends on app module and eframe::Storage).
+#[cfg(all(feature = "gui", target_arch = "wasm32"))]
+pub mod midi_defaults;
+
+// =============================================================================
+// Native-only modules
+// =============================================================================
+
+/// MIDI routing module (native-only, requires midir).
+#[cfg(not(target_arch = "wasm32"))]
+pub mod router;
+
+// =============================================================================
+// WASM-specific modules (egui browser app)
+// =============================================================================
+
+#[cfg(target_arch = "wasm32")]
 mod app;
-mod chord;
-mod midi_defaults;
-mod generator;
-mod harmony;
-mod humanize;
-mod midi;
-mod piano;
-mod preset;
+#[cfg(target_arch = "wasm32")]
 mod ui;
+#[cfg(target_arch = "wasm32")]
 mod theme;
 
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
 /// Auto-start entry point called by Trunk's generated JS bootstrap.
 ///
 /// Initializes the panic hook for better error messages and spawns the
 /// eframe application in the browser canvas.
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn main() {
     console_error_panic_hook::set_once();
