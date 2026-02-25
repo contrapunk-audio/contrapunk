@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 06.10.1 of 13 (UI Modernization)
-Plan: 6 of 9 in current phase (01, 02, 03, 04, 05, 06 complete)
+Plan: 7 of 9 in current phase (01, 02, 03, 04, 05, 06, 07 complete)
 Status: In progress
-Last activity: 2026-02-25 - Completed 06.10.1-06-PLAN.md (Humanize, generator, and active notes panels)
+Last activity: 2026-02-25 - Completed 06.10.1-07-PLAN.md (HLD atmospheric effects: particles, glow, beat indicator, FX toggle)
 
-Progress: [█████████████░░░░░░░] (06.10.1 plan 6/9 complete)
+Progress: [███████████████░░░░░] (06.10.1 plan 7/9 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 35
+- Total plans completed: 36
 - Average duration: 3.3 min
-- Total execution time: 115.5 min
+- Total execution time: 119.5 min
 
 **By Phase:**
 
@@ -37,7 +37,7 @@ Progress: [█████████████░░░░░░░] (06.10.
 | 06.8-ci-fix | 1 | 3 min | 3 min |
 | 06.9-repo-cleanup | 2 | 2.5 min | 1.3 min |
 | 06.10-docs | 2 | 12 min | 6 min |
-| 06.10.1-ui-modernization | 7 | 39 min | 5.6 min |
+| 06.10.1-ui-modernization | 8 | 43 min | 5.4 min |
 
 *Updated after each plan completion*
 
@@ -158,6 +158,10 @@ Recent decisions affecting current work:
 - [06.10.1-05]: Virtual input sentinel values use Number.MAX_SAFE_INTEGER matching Rust app.rs usize::MAX pattern
 - [06.10.1-05]: Preset delete uses inline toggle confirmation rather than browser confirm() dialog
 - [06.10.1-05]: Svelte 5 event modifiers use inline e.stopPropagation() (pipe syntax removed in Svelte 5)
+- [06.10.1-07]: Canvas particle system instead of @tsparticles/svelte for zero-dependency 30-particle ambient animation
+- [06.10.1-07]: FX toggle persists to localStorage under 'contrapunk-fx' key; restored on mount
+- [06.10.1-07]: BeatIndicator in StatusBar with 4-pip display (magenta downbeats, cyan others)
+- [06.10.1-07]: GlowEffects uses display:contents; CSS classes (.glow-magenta, .glow-cyan, .glow-teal) usable standalone
 
 ### Pending Todos
 
@@ -324,6 +328,6 @@ Verified: 13/13 must-haves passed.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 06.10.1-06-PLAN.md (Humanize, generator, and active notes panels)
+Stopped at: Completed 06.10.1-07-PLAN.md (HLD atmospheric effects: particles, glow, beat indicator, FX toggle)
 Resume file: None
-Next: 06.10.1-07-PLAN.md
+Next: 06.10.1-08-PLAN.md
