@@ -99,37 +99,4 @@
 		background: var(--color-bg-deep);
 	}
 
-	/* Placeholder cards for future panels */
-	.placeholder-card {
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
-		padding: 8px;
-		margin-bottom: 4px;
-		border-radius: 0;
-	}
-
-	.placeholder-header {
-		color: var(--color-accent-gold);
-		font-size: var(--font-size-xs);
-		margin-bottom: 6px;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-	}
-
-	.placeholder-text {
-		color: var(--color-text-dim);
-		font-size: 7px;
-		margin: 0 0 4px 0;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-	}
-
-	.placeholder-hint {
-		color: var(--color-text-dim);
-		font-size: 6px;
-		margin: 0;
-		opacity: 0.5;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-	}
 </style>
