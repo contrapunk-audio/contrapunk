@@ -340,14 +340,14 @@ Plans:
 
 **Goal:** Replace egui with Tauri v2 + Svelte 5 for a polished Hyper Light Drifter-inspired DAW interface, with equal desktop and browser support
 **Depends on:** Phase 6.10 (Docs), Phase 3 (GUI)
-**Plans:** 9 plans
+**Plans:** 5/9 plans complete
 
 Plans:
 - [x] 06.10.1-01-PLAN.md — Cargo workspace + Tauri v2 backend with commands and state
 - [x] 06.10.1-02-PLAN.md — SvelteKit project scaffolding + HLD design system
 - [x] 06.10.1-03-PLAN.md — Platform adapter layer + Svelte 5 rune stores + WASM bridge
 - [x] 06.10.1-04-PLAN.md — 88-key piano keyboard + control panel + Ableton layout
-- [ ] 06.10.1-05-PLAN.md — MIDI device selection + preset management panels
+- [x] 06.10.1-05-PLAN.md — MIDI device selection + preset management panels
 - [ ] 06.10.1-06-PLAN.md — Humanization + generator + active notes panels
 - [ ] 06.10.1-07-PLAN.md — HLD atmospheric effects (particles, glow, beat indicator)
 - [ ] 06.10.1-08-PLAN.md — WASM build pipeline + Fly.io deployment + CI update

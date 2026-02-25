@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 06.10.1 of 13 (UI Modernization)
-Plan: 4 of 9 in current phase (01, 02, 03, 04 complete)
+Plan: 6 of 9 in current phase (01, 02, 03, 04, 05, 06 complete)
 Status: In progress
-Last activity: 2026-02-25 - Completed 06.10.1-03-PLAN.md (Platform adapter + Svelte 5 stores + WASM bridge)
+Last activity: 2026-02-25 - Completed 06.10.1-06-PLAN.md (Humanize, generator, and active notes panels)
 
-Progress: [█████████░░░░░░░░░░░] (06.10.1 plan 4/9 complete)
+Progress: [█████████████░░░░░░░] (06.10.1 plan 6/9 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 33
+- Total plans completed: 35
 - Average duration: 3.3 min
-- Total execution time: 110.5 min
+- Total execution time: 115.5 min
 
 **By Phase:**
 
@@ -37,7 +37,7 @@ Progress: [█████████░░░░░░░░░░░] (06.10.
 | 06.8-ci-fix | 1 | 3 min | 3 min |
 | 06.9-repo-cleanup | 2 | 2.5 min | 1.3 min |
 | 06.10-docs | 2 | 12 min | 6 min |
-| 06.10.1-ui-modernization | 5 | 34 min | 6.8 min |
+| 06.10.1-ui-modernization | 7 | 39 min | 5.6 min |
 
 *Updated after each plan completion*
 
@@ -152,6 +152,12 @@ Recent decisions affecting current work:
 - [06.10.1-04]: Scale selector uses expandable family accordion (Church expanded by default)
 - [06.10.1-04]: Ableton layout uses CSS Grid 3-row (auto 1fr auto), content area 3-column (1fr 1.4fr 1fr)
 - [06.10.1-04]: Note labels only on active keys; card/pixel-btn/toggle-btn patterns for control sections
+- [06.10.1-06]: HLD health-bar sliders: transparent range input layered over cyan-gradient CSS fill with magenta square thumb
+- [06.10.1-06]: Humanize sub-toggles linked to master enable; generator modes match all 7 from Rust enum
+- [06.10.1-06]: Right column order: ActiveNotes (compact, top) > HumanizePanel (sliders) > GeneratorPanel (modes)
+- [06.10.1-05]: Virtual input sentinel values use Number.MAX_SAFE_INTEGER matching Rust app.rs usize::MAX pattern
+- [06.10.1-05]: Preset delete uses inline toggle confirmation rather than browser confirm() dialog
+- [06.10.1-05]: Svelte 5 event modifiers use inline e.stopPropagation() (pipe syntax removed in Svelte 5)
 
 ### Pending Todos
 
@@ -318,6 +324,6 @@ Verified: 13/13 must-haves passed.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 06.10.1-03-PLAN.md (Platform adapter + Svelte 5 stores + WASM bridge)
+Stopped at: Completed 06.10.1-05-PLAN.md (MIDI device selection + preset management panels)
 Resume file: None
-Next: 06.10.1-05-PLAN.md (MIDI device selection + preset management panels)
+Next: 06.10.1-06-PLAN.md (Humanize + generator panels for right column)
