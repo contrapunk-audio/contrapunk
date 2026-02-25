@@ -340,7 +340,7 @@ Plans:
 
 **Goal:** Replace egui with Tauri v2 + Svelte 5 for a polished Hyper Light Drifter-inspired DAW interface, with equal desktop and browser support
 **Depends on:** Phase 6.10 (Docs), Phase 3 (GUI)
-**Plans:** 8/9 plans complete
+**Plans:** 9/9 plans complete (human verification pending)
 
 Plans:
 - [x] 06.10.1-01-PLAN.md — Cargo workspace + Tauri v2 backend with commands and state
@@ -351,7 +351,7 @@ Plans:
 - [x] 06.10.1-06-PLAN.md — Humanization + generator + active notes panels
 - [x] 06.10.1-07-PLAN.md — HLD atmospheric effects (particles, glow, beat indicator)
 - [x] 06.10.1-08-PLAN.md — WASM build pipeline + Fly.io deployment + CI update
-- [ ] 06.10.1-09-PLAN.md — Remove egui/CLI/Trunk + human verification
+- [x] 06.10.1-09-PLAN.md — Remove egui/CLI/Trunk + human verification
 
 ### Phase 7: Performance Mode
 **Goal**: Beat-aware performance mode where Contrapunk accumulates played notes over bars (using BeatClock) and generates musically-contextual responses based on phrase-level state, rather than harmonizing note-by-note
@@ -507,7 +507,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.8 CI Fix (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.9 Repo Cleanup & Documentation (INSERTED) | 3/3 | Complete | 2026-02-02 |
 | 6.10 Docs (INSERTED) | 2/2 | Complete | 2026-02-05 |
-| 6.10.1 UI Modernization (INSERTED) | 8/9 | In progress | - |
+| 6.10.1 UI Modernization (INSERTED) | 9/9 | Human verification pending | - |
 | 7. Performance Mode | 0/? | Not started | - |
 | 8. Mic Input | 0/8 | Planning complete | - |
 | 9. Vocoder | 0/? | Not started | - |

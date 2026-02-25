@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 06.10.1 of 13 (UI Modernization)
-Plan: 8 of 9 in current phase (01, 02, 03, 04, 05, 06, 07, 08 complete)
-Status: In progress
-Last activity: 2026-02-25 - Completed 06.10.1-08-PLAN.md (WASM build pipeline + Fly.io deployment + CI update)
+Plan: 9 of 9 in current phase (01, 02, 03, 04, 05, 06, 07, 08, 09-task1 complete)
+Status: In progress (Task 2 human verification pending)
+Last activity: 2026-02-25 - Completed 06.10.1-09-PLAN.md Task 1 (remove egui/eframe, CLI mode, Trunk, old theme)
 
-Progress: [█████████████████░░░] (06.10.1 plan 8/9 complete)
+Progress: [████████████████████] (06.10.1 plan 9/9 code complete, human verification pending)
 
 ## Performance Metrics
 
@@ -37,7 +37,7 @@ Progress: [█████████████████░░░] (06.10.
 | 06.8-ci-fix | 1 | 3 min | 3 min |
 | 06.9-repo-cleanup | 2 | 2.5 min | 1.3 min |
 | 06.10-docs | 2 | 12 min | 6 min |
-| 06.10.1-ui-modernization | 9 | 50 min | 5.6 min |
+| 06.10.1-ui-modernization | 10 | 55 min | 5.5 min |
 
 *Updated after each plan completion*
 
@@ -166,6 +166,9 @@ Recent decisions affecting current work:
 - [06.10.1-08]: build-wasm.sh creates dev stub when wasm-pack unavailable, enabling builds without Rust toolchain
 - [06.10.1-08]: Docker build from repo root with flyctl -c flag; nginx on port 8080
 - [06.10.1-08]: Gate old egui WASM modules behind feature='wasm' for contrapunk-wasm crate isolation
+- [06.10.1-09]: Keep server/client modes in main.rs binary (useful for network MIDI)
+- [06.10.1-09]: Remove all egui GUI router code from router.rs, keep CLI router for potential future use
+- [06.10.1-09]: Remove WASM-specific deps from root Cargo.toml (contrapunk-wasm crate has its own)
 
 ### Pending Todos
 
@@ -332,6 +335,6 @@ Verified: 13/13 must-haves passed.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 06.10.1-08-PLAN.md (WASM build pipeline + Fly.io deployment + CI update)
+Stopped at: Completed 06.10.1-09-PLAN.md Task 1 (remove egui/eframe, CLI mode, Trunk, old theme)
 Resume file: None
-Next: 06.10.1-09-PLAN.md
+Next: 06.10.1-09-PLAN.md Task 2 (human verification of complete UI migration)
