@@ -2,6 +2,11 @@
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import ControlPanel from '$lib/components/ControlPanel.svelte';
 	import Piano from '$lib/components/Piano.svelte';
+	import MidiDevices from '$lib/components/MidiDevices.svelte';
+	import PresetManager from '$lib/components/PresetManager.svelte';
+	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
+	import HumanizePanel from '$lib/components/HumanizePanel.svelte';
+	import GeneratorPanel from '$lib/components/GeneratorPanel.svelte';
 </script>
 
 <!--
@@ -25,18 +30,10 @@
 
 	<!-- Middle: 3-column content area -->
 	<div class="content-area">
-		<!-- Left column: MIDI / Presets (placeholder) -->
+		<!-- Left column: MIDI devices + Presets -->
 		<div class="column column-left">
-			<div class="placeholder-card">
-				<div class="placeholder-header font-pixel">MIDI I/O</div>
-				<p class="placeholder-text font-pixel">Input/Output selection</p>
-				<p class="placeholder-hint font-pixel">Plan 05</p>
-			</div>
-			<div class="placeholder-card">
-				<div class="placeholder-header font-pixel">Presets</div>
-				<p class="placeholder-text font-pixel">Save/Load presets</p>
-				<p class="placeholder-hint font-pixel">Plan 06</p>
-			</div>
+			<MidiDevices />
+			<PresetManager />
 		</div>
 
 		<!-- Center column: Harmony controls -->
@@ -44,18 +41,11 @@
 			<ControlPanel />
 		</div>
 
-		<!-- Right column: Humanize / Generator (placeholder) -->
+		<!-- Right column: Active Notes / Humanize / Generator -->
 		<div class="column column-right">
-			<div class="placeholder-card">
-				<div class="placeholder-header font-pixel">Humanize</div>
-				<p class="placeholder-text font-pixel">Jitter, Velocity, Swing</p>
-				<p class="placeholder-hint font-pixel">Plan 05</p>
-			</div>
-			<div class="placeholder-card">
-				<div class="placeholder-header font-pixel">Generator</div>
-				<p class="placeholder-text font-pixel">Note patterns</p>
-				<p class="placeholder-hint font-pixel">Plan 06</p>
-			</div>
+			<ActiveNotes />
+			<HumanizePanel />
+			<GeneratorPanel />
 		</div>
 	</div>
 
