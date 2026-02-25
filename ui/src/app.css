@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@import "$lib/theme/tokens.css";
+@import "$lib/theme/pixel.css";
+
+body {
+	background: var(--color-bg-deep);
+	color: var(--color-text-primary);
+	font-family: var(--font-pixel);
+	margin: 0;
+	overflow: hidden;
+}

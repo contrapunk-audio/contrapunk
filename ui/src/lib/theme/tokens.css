@@ -1,0 +1,7 @@
+/* HLD Design System — Color Tokens (placeholder, populated in Task 2) */
+:root {
+	--color-bg-deep: #0a0a1a;
+	--color-bg-base: #0f0e1a;
+	--color-text-primary: #e8e0f0;
+	--font-pixel: 'Press Start 2P', monospace;
+}
