@@ -8,6 +8,7 @@ on:
 
 jobs:
   check:
+    name: Cargo Check (native)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +20,7 @@ jobs:
       - run: cargo check
 
   test:
+    name: Cargo Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +32,7 @@ jobs:
       - run: cargo test
 
   wasm-check:
+    name: WASM Check (contrapunk-wasm crate)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,46 +42,46 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: wasm
-      - run: cargo check --target wasm32-unknown-unknown --features wasm
+      - run: cargo check -p contrapunk-wasm --target wasm32-unknown-unknown
+
+  tauri-check:
+    name: Tauri Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: tauri
+      - run: cargo check -p contrapunk-tauri
+
+  frontend:
+    name: Frontend Build (SvelteKit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: cd ui && npm ci
+      - run: cd ui && npm run check
+      - run: cd ui && npm run build
 
   deploy:
-    name: Build WASM & Deploy
-    needs: [check, test, wasm-check]
+    name: Build & Deploy to Fly.io
+    needs: [check, test, wasm-check, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: wasm
-
-      - name: Cache Trunk
-        id: trunk-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/trunk
-          key: trunk-${{ runner.os }}-v0.21
-
-      - name: Install Trunk
-        if: steps.trunk-cache.outputs.cache-hit != 'true'
-        run: cargo install trunk --locked
-
-      - name: Build WASM
-        run: trunk build --release
-
-      - name: Copy dist to deploy
-        run: rm -rf deploy/dist && cp -r dist deploy/dist
-
       - name: Deploy to Fly.io
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Run flyctl deploy
-        run: cd deploy && flyctl deploy
+        run: flyctl deploy -c deploy/fly.toml
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

@@ -7,9 +7,10 @@ app = 'contrapunk'
 primary_region = 'ewr'
 
 [build]
+  dockerfile = "deploy/Dockerfile"
 
 [http_service]
-  internal_port = 80
+  internal_port = 8080
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
@@ -17,4 +18,4 @@ primary_region = 'ewr'
 
 [[vm]]
   size = 'shared-cpu-1x'
-  memory = '256mb'
+  memory = '512mb'
