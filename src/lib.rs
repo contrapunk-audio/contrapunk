@@ -6,12 +6,12 @@
 //!
 //! # Architecture
 //!
-//! The core harmony engine is available on all platforms. The GUI and MIDI I/O
-//! are platform-specific:
+//! The core harmony engine is available on all platforms. Platform-specific
+//! frontends consume it as a library:
 //!
-//! - **Native (macOS/Windows/Linux)**: Full GUI with hardware MIDI via `midir`
-//! - **WebAssembly**: Browser-based GUI with Web MIDI API
-//! - **Tauri desktop**: Svelte frontend with Rust backend via Tauri IPC
+//! - **Tauri desktop**: Svelte frontend with Rust backend via Tauri IPC (`src-tauri/`)
+//! - **Browser WASM**: SvelteKit app with contrapunk-wasm bridge (`wasm/`, `ui/`)
+//! - **Server/Client**: Network-based MIDI harmony processing (`--server`, `--client`)
 //!
 //! # Harmony Module
 //!
@@ -41,16 +41,9 @@
 //! let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
 //! // engine.harmonize(Note::C4) would return [C4, E4]
 //! ```
-//!
-//! # Library Usage
-//!
-//! This crate is both a library (used by `src-tauri` and WASM builds) and a
-//! binary (the legacy egui native app). Core modules are always available.
-//! GUI-specific modules are gated behind `#[cfg(target_arch = "wasm32")]` or
-//! `#[cfg(feature = "gui")]`.
 
 // =============================================================================
-// Core modules — always available on all platforms
+// Core modules -- always available on all platforms
 // =============================================================================
 
 pub mod harmony;
@@ -61,69 +54,13 @@ pub mod midi;
 pub mod preset;
 
 // =============================================================================
-// GUI-dependent modules (require eframe/egui feature)
-// =============================================================================
-
-/// Piano keyboard widget (requires gui feature for egui types).
-#[cfg(feature = "gui")]
-pub mod piano;
-
-/// MIDI device default persistence (WASM-only, depends on app module and eframe::Storage).
-#[cfg(all(feature = "gui", target_arch = "wasm32"))]
-pub mod midi_defaults;
-
-// =============================================================================
-// Native-only modules
+// Native-only modules (require midir, networking, etc.)
 // =============================================================================
 
 /// MIDI routing module (native-only, requires midir).
 #[cfg(not(target_arch = "wasm32"))]
 pub mod router;
 
-// =============================================================================
-// WASM-specific modules (egui browser app)
-// =============================================================================
-
-#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
-mod app;
-#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
-mod ui;
-#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
-mod theme;
-
-#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
-use wasm_bindgen::prelude::*;
-#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
-use wasm_bindgen::JsCast;
-
-/// Auto-start entry point called by Trunk's generated JS bootstrap.
-///
-/// Initializes the panic hook for better error messages and spawns the
-/// eframe application in the browser canvas.
-#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
-#[wasm_bindgen(start)]
-pub fn main() {
-    console_error_panic_hook::set_once();
-
-    wasm_bindgen_futures::spawn_local(async {
-        let document = web_sys::window()
-            .expect("no window")
-            .document()
-            .expect("no document");
-        let canvas = document
-            .get_element_by_id("contrapunk_canvas")
-            .expect("canvas not found")
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .expect("element is not a canvas");
-
-        let web_options = eframe::WebOptions::default();
-        eframe::WebRunner::new()
-            .start(
-                canvas,
-                web_options,
-                Box::new(|cc| Ok(Box::new(app::ContrapunkApp::new(cc)))),
-            )
-            .await
-            .expect("failed to start eframe");
-    });
-}
+/// Server module for network-based MIDI harmony processing (native-only).
+#[cfg(not(target_arch = "wasm32"))]
+pub mod server;
