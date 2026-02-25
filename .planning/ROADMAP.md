@@ -343,8 +343,8 @@ Plans:
 **Plans:** 9 plans
 
 Plans:
-- [ ] 06.10.1-01-PLAN.md — Cargo workspace + Tauri v2 backend with commands and state
-- [ ] 06.10.1-02-PLAN.md — SvelteKit project scaffolding + HLD design system
+- [x] 06.10.1-01-PLAN.md — Cargo workspace + Tauri v2 backend with commands and state
+- [x] 06.10.1-02-PLAN.md — SvelteKit project scaffolding + HLD design system
 - [ ] 06.10.1-03-PLAN.md — Platform adapter layer + Svelte 5 rune stores + WASM bridge
 - [ ] 06.10.1-04-PLAN.md — 88-key piano keyboard + control panel + Ableton layout
 - [ ] 06.10.1-05-PLAN.md — MIDI device selection + preset management panels
@@ -507,7 +507,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.8 CI Fix (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.9 Repo Cleanup & Documentation (INSERTED) | 3/3 | Complete | 2026-02-02 |
 | 6.10 Docs (INSERTED) | 2/2 | Complete | 2026-02-05 |
-| 6.10.1 UI Modernization (INSERTED) | 1/9 | In progress | - |
+| 6.10.1 UI Modernization (INSERTED) | 2/9 | In progress | - |
 | 7. Performance Mode | 0/? | Not started | - |
 | 8. Mic Input | 0/8 | Planning complete | - |
 | 9. Vocoder | 0/? | Not started | - |

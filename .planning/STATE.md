@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 06.10.1 of 13 (UI Modernization)
-Plan: 2 of 9 in current phase (02 complete)
+Plan: 2 of 9 in current phase (01 and 02 complete)
 Status: In progress
-Last activity: 2026-02-25 - Completed 06.10.1-02-PLAN.md (SvelteKit + HLD Design System)
+Last activity: 2026-02-25 - Completed 06.10.1-01-PLAN.md (Cargo workspace + Tauri v2 backend)
 
 Progress: [████████░░░░░░░░░░░░] (06.10.1 plan 2/9 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 31
-- Average duration: 3.1 min
-- Total execution time: 96.5 min
+- Total plans completed: 32
+- Average duration: 3.3 min
+- Total execution time: 106.5 min
 
 **By Phase:**
 
@@ -37,7 +37,7 @@ Progress: [████████░░░░░░░░░░░░] (06.10.
 | 06.8-ci-fix | 1 | 3 min | 3 min |
 | 06.9-repo-cleanup | 2 | 2.5 min | 1.3 min |
 | 06.10-docs | 2 | 12 min | 6 min |
-| 06.10.1-ui-modernization | 1 | 5 min | 5 min |
+| 06.10.1-ui-modernization | 2 | 15 min | 7.5 min |
 
 *Updated after each plan completion*
 
@@ -135,6 +135,11 @@ Recent decisions affecting current work:
 - [06.10-02]: Include harmony algorithm deep dive in CONTRIBUTING.md per user request
 - [06.10-02]: Document VecDeque sliding windows for counterpoint/contrary motion
 - [06.10-02]: Use ignore attribute for doc examples (private modules in binary crate)
+- [06.10.1-01]: Gate midi_defaults behind cfg(all(gui, wasm32)) since it depends on app module
+- [06.10.1-01]: Gate piano behind cfg(gui) since it depends on eframe::egui
+- [06.10.1-01]: Use Mutex for all AppState fields (simple correctness over performance)
+- [06.10.1-01]: Router thread spawned per start_routing call with Arc-shared note state
+- [06.10.1-01]: Note-update events emitted at ~30fps from router thread
 - [06.10.1-02]: Used @sveltejs/vite-plugin-svelte v5.x for Vite 6 compatibility
 - [06.10.1-02]: Press Start 2P via Google Fonts CDN, body background anti-flash in app.html
 - [06.10.1-02]: CSS custom properties for all HLD colors, TypeScript constants mirror CSS tokens
@@ -305,6 +310,6 @@ Verified: 13/13 must-haves passed.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 06.10.1-02-PLAN.md (SvelteKit + HLD Design System)
+Stopped at: Completed 06.10.1-01-PLAN.md (Cargo workspace + Tauri v2 backend)
 Resume file: None
 Next: 06.10.1-03-PLAN.md (Platform adapter layer + Svelte 5 rune stores + WASM bridge)
