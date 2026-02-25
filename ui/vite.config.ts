@@ -10,5 +10,16 @@ export default defineConfig({
 		sveltekit(),
 		wasm(),
 		topLevelAwait()
-	]
+	],
+	build: {
+		rollupOptions: {
+			// contrapunk-wasm is built by wasm-pack and loaded at runtime;
+			// it is not available as an npm package during the Vite build.
+			external: ['contrapunk-wasm']
+		}
+	},
+	ssr: {
+		// Prevent SSR from trying to bundle the WASM module
+		external: ['contrapunk-wasm']
+	}
 });

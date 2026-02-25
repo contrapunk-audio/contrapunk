@@ -1,0 +1,382 @@
+//! WASM Bridge for Contrapunk Harmony Engine
+//!
+//! Exposes the core harmony engine to JavaScript/TypeScript via wasm-bindgen.
+//! This crate wraps `contrapunk::harmony::HarmonyEngine` and provides
+//! string-based APIs suitable for the Svelte UI adapter layer.
+
+use wasm_bindgen::prelude::*;
+
+use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode};
+use contrapunk::harmony::VoiceLeadingStyle;
+
+// Initialize panic hook for better error messages in the browser console.
+#[wasm_bindgen(start)]
+pub fn init_panic_hook() {
+    console_error_panic_hook::set_once();
+}
+
+// === Helper: string-to-enum conversions ===
+
+fn parse_key(s: &str) -> Result<Key, JsValue> {
+    match s {
+        "C" => Ok(Key::C),
+        "Db" | "C#" => Ok(Key::Db),
+        "D" => Ok(Key::D),
+        "Eb" | "D#" => Ok(Key::Eb),
+        "E" => Ok(Key::E),
+        "F" => Ok(Key::F),
+        "Gb" | "F#" => Ok(Key::Gb),
+        "G" => Ok(Key::G),
+        "Ab" | "G#" => Ok(Key::Ab),
+        "A" => Ok(Key::A),
+        "Bb" | "A#" => Ok(Key::Bb),
+        "B" => Ok(Key::B),
+        _ => Err(JsValue::from_str(&format!("Unknown key: {}", s))),
+    }
+}
+
+fn parse_mode(s: &str) -> Result<HarmonyMode, JsValue> {
+    match s {
+        "PassThrough" => Ok(HarmonyMode::PassThrough),
+        "DiatonicThirds" => Ok(HarmonyMode::DiatonicThirds),
+        "DiatonicFourths" => Ok(HarmonyMode::DiatonicFourths),
+        "RandomBelow" => Ok(HarmonyMode::RandomBelow),
+        "RandomBelowNoSeconds" => Ok(HarmonyMode::RandomBelowNoSeconds),
+        "ContraryMotion" => Ok(HarmonyMode::ContraryMotion),
+        "StrictCounterpoint" => Ok(HarmonyMode::StrictCounterpoint),
+        "BarryHarris" => Ok(HarmonyMode::BarryHarris),
+        _ => Err(JsValue::from_str(&format!("Unknown mode: {}", s))),
+    }
+}
+
+fn parse_scale_mode(s: &str) -> Result<ScaleMode, JsValue> {
+    match s {
+        // Church
+        "Ionian" => Ok(ScaleMode::Ionian),
+        "Dorian" => Ok(ScaleMode::Dorian),
+        "Phrygian" => Ok(ScaleMode::Phrygian),
+        "Lydian" => Ok(ScaleMode::Lydian),
+        "Mixolydian" => Ok(ScaleMode::Mixolydian),
+        "Aeolian" => Ok(ScaleMode::Aeolian),
+        "Locrian" => Ok(ScaleMode::Locrian),
+        // Harmonic Minor
+        "HarmonicMinor" => Ok(ScaleMode::HarmonicMinor),
+        "LocrianNat6" => Ok(ScaleMode::LocrianNat6),
+        "IonianAug" => Ok(ScaleMode::IonianAug),
+        "DorianSharp4" => Ok(ScaleMode::DorianSharp4),
+        "PhrygianDominant" => Ok(ScaleMode::PhrygianDominant),
+        "LydianSharp2" => Ok(ScaleMode::LydianSharp2),
+        "SuperLocrianDim" => Ok(ScaleMode::SuperLocrianDim),
+        // Melodic Minor
+        "MelodicMinor" => Ok(ScaleMode::MelodicMinor),
+        "DorianFlat2" => Ok(ScaleMode::DorianFlat2),
+        "LydianAug" => Ok(ScaleMode::LydianAug),
+        "LydianDominant" => Ok(ScaleMode::LydianDominant),
+        "MixolydianFlat6" => Ok(ScaleMode::MixolydianFlat6),
+        "LocrianNat2" => Ok(ScaleMode::LocrianNat2),
+        "SuperLocrian" => Ok(ScaleMode::SuperLocrian),
+        // Exotic
+        "DoubleHarmonic" => Ok(ScaleMode::DoubleHarmonic),
+        "HungarianMinor" => Ok(ScaleMode::HungarianMinor),
+        "Enigmatic" => Ok(ScaleMode::Enigmatic),
+        "NeapolitanMinor" => Ok(ScaleMode::NeapolitanMinor),
+        "NeapolitanMajor" => Ok(ScaleMode::NeapolitanMajor),
+        // Barry Harris
+        "BHMajor6thDim" => Ok(ScaleMode::BHMajor6thDim),
+        "BHMinor6thDim" => Ok(ScaleMode::BHMinor6thDim),
+        _ => Err(JsValue::from_str(&format!("Unknown scale mode: {}", s))),
+    }
+}
+
+fn parse_octave_mode(s: &str) -> Result<OctaveMode, JsValue> {
+    match s {
+        "None" => Ok(OctaveMode::None),
+        "Spread" => Ok(OctaveMode::Spread),
+        "BassTrebleSplit" => Ok(OctaveMode::BassTrebleSplit),
+        "Mirror" => Ok(OctaveMode::Mirror),
+        _ => Err(JsValue::from_str(&format!("Unknown octave mode: {}", s))),
+    }
+}
+
+fn parse_voice_leading_style(s: &str) -> Result<VoiceLeadingStyle, JsValue> {
+    match s {
+        "Free" => Ok(VoiceLeadingStyle::Free),
+        "Palestrina" => Ok(VoiceLeadingStyle::Palestrina),
+        "BachChorale" => Ok(VoiceLeadingStyle::BachChorale),
+        "Jazz" => Ok(VoiceLeadingStyle::Jazz),
+        _ => Err(JsValue::from_str(&format!("Unknown voice leading style: {}", s))),
+    }
+}
+
+// === Enum-to-string helpers ===
+
+fn key_to_string(key: Key) -> &'static str {
+    match key {
+        Key::C => "C",
+        Key::Db => "Db",
+        Key::D => "D",
+        Key::Eb => "Eb",
+        Key::E => "E",
+        Key::F => "F",
+        Key::Gb => "Gb",
+        Key::G => "G",
+        Key::Ab => "Ab",
+        Key::A => "A",
+        Key::Bb => "Bb",
+        Key::B => "B",
+    }
+}
+
+fn mode_to_string(mode: HarmonyMode) -> &'static str {
+    match mode {
+        HarmonyMode::PassThrough => "PassThrough",
+        HarmonyMode::DiatonicThirds => "DiatonicThirds",
+        HarmonyMode::DiatonicFourths => "DiatonicFourths",
+        HarmonyMode::RandomBelow => "RandomBelow",
+        HarmonyMode::RandomBelowNoSeconds => "RandomBelowNoSeconds",
+        HarmonyMode::ContraryMotion => "ContraryMotion",
+        HarmonyMode::StrictCounterpoint => "StrictCounterpoint",
+        HarmonyMode::BarryHarris => "BarryHarris",
+    }
+}
+
+fn scale_mode_to_string(mode: ScaleMode) -> &'static str {
+    match mode {
+        ScaleMode::Ionian => "Ionian",
+        ScaleMode::Dorian => "Dorian",
+        ScaleMode::Phrygian => "Phrygian",
+        ScaleMode::Lydian => "Lydian",
+        ScaleMode::Mixolydian => "Mixolydian",
+        ScaleMode::Aeolian => "Aeolian",
+        ScaleMode::Locrian => "Locrian",
+        ScaleMode::HarmonicMinor => "HarmonicMinor",
+        ScaleMode::LocrianNat6 => "LocrianNat6",
+        ScaleMode::IonianAug => "IonianAug",
+        ScaleMode::DorianSharp4 => "DorianSharp4",
+        ScaleMode::PhrygianDominant => "PhrygianDominant",
+        ScaleMode::LydianSharp2 => "LydianSharp2",
+        ScaleMode::SuperLocrianDim => "SuperLocrianDim",
+        ScaleMode::MelodicMinor => "MelodicMinor",
+        ScaleMode::DorianFlat2 => "DorianFlat2",
+        ScaleMode::LydianAug => "LydianAug",
+        ScaleMode::LydianDominant => "LydianDominant",
+        ScaleMode::MixolydianFlat6 => "MixolydianFlat6",
+        ScaleMode::LocrianNat2 => "LocrianNat2",
+        ScaleMode::SuperLocrian => "SuperLocrian",
+        ScaleMode::DoubleHarmonic => "DoubleHarmonic",
+        ScaleMode::HungarianMinor => "HungarianMinor",
+        ScaleMode::Enigmatic => "Enigmatic",
+        ScaleMode::NeapolitanMinor => "NeapolitanMinor",
+        ScaleMode::NeapolitanMajor => "NeapolitanMajor",
+        ScaleMode::BHMajor6thDim => "BHMajor6thDim",
+        ScaleMode::BHMinor6thDim => "BHMinor6thDim",
+    }
+}
+
+fn octave_mode_to_string(mode: OctaveMode) -> &'static str {
+    match mode {
+        OctaveMode::None => "None",
+        OctaveMode::Spread => "Spread",
+        OctaveMode::BassTrebleSplit => "BassTrebleSplit",
+        OctaveMode::Mirror => "Mirror",
+    }
+}
+
+fn voice_leading_style_to_string(style: VoiceLeadingStyle) -> &'static str {
+    match style {
+        VoiceLeadingStyle::Free => "Free",
+        VoiceLeadingStyle::Palestrina => "Palestrina",
+        VoiceLeadingStyle::BachChorale => "BachChorale",
+        VoiceLeadingStyle::Jazz => "Jazz",
+    }
+}
+
+// === State type for serialization ===
+
+#[derive(serde::Serialize)]
+struct EngineStateJs {
+    key: &'static str,
+    mode: &'static str,
+    mode_number: u8,
+    scale_mode: &'static str,
+    octave_mode: &'static str,
+    voice_leading_enabled: bool,
+    voice_leading_style: &'static str,
+    interchange_enabled: bool,
+    borrowing_range: u8,
+    voice_position: usize,
+    voice_count: usize,
+}
+
+#[derive(serde::Serialize)]
+struct NoteStateJs {
+    input_notes: Vec<u8>,
+    harmony_notes: Vec<u8>,
+    borrowed_notes: Vec<u8>,
+    chord_name: String,
+    last_borrowed_from: String,
+}
+
+// === WASM-exported Engine wrapper ===
+
+#[wasm_bindgen]
+pub struct Engine {
+    inner: HarmonyEngine,
+    /// Track notes that were played through note_on for note state reporting
+    last_input_notes: Vec<u8>,
+    last_harmony_notes: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl Engine {
+    /// Create a new Engine with default settings (C major, PassThrough).
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            inner: HarmonyEngine::new(Key::C, HarmonyMode::PassThrough),
+            last_input_notes: Vec::new(),
+            last_harmony_notes: Vec::new(),
+        }
+    }
+
+    /// Set the musical key (e.g. "C", "Db", "F#").
+    pub fn set_key(&mut self, key: &str) -> Result<(), JsValue> {
+        let k = parse_key(key)?;
+        self.inner.set_key(k);
+        Ok(())
+    }
+
+    /// Set the harmony mode (e.g. "PassThrough", "DiatonicThirds").
+    pub fn set_mode(&mut self, mode: &str) -> Result<(), JsValue> {
+        let m = parse_mode(mode)?;
+        self.inner.set_mode(m);
+        Ok(())
+    }
+
+    /// Set the scale mode (e.g. "Ionian", "Dorian", "HarmonicMinor").
+    pub fn set_scale_mode(&mut self, mode: &str) -> Result<(), JsValue> {
+        let sm = parse_scale_mode(mode)?;
+        self.inner.set_scale_mode(sm);
+        Ok(())
+    }
+
+    /// Set the octave mode (e.g. "None", "Spread", "Mirror").
+    pub fn set_octave_mode(&mut self, mode: &str) -> Result<(), JsValue> {
+        let om = parse_octave_mode(mode)?;
+        self.inner.set_octave_mode(om);
+        Ok(())
+    }
+
+    /// Configure voice leading (enabled flag + style string).
+    pub fn set_voice_leading(&mut self, enabled: bool, style: &str) -> Result<(), JsValue> {
+        let vl_style = parse_voice_leading_style(style)?;
+        self.inner.set_voice_leading_enabled(enabled);
+        self.inner.set_voice_leading_style(vl_style);
+        Ok(())
+    }
+
+    /// Configure modal interchange (enabled flag + borrowing range 1-5).
+    pub fn set_interchange(&mut self, enabled: bool, range: u8) -> Result<(), JsValue> {
+        self.inner.set_interchange_enabled(enabled);
+        self.inner.set_borrowing_range(range);
+        Ok(())
+    }
+
+    /// Set the voice position (which output slot carries the melody).
+    pub fn set_voice_position(&mut self, position: usize) -> Result<(), JsValue> {
+        self.inner.set_voice_position(position);
+        Ok(())
+    }
+
+    /// Harmonize a single MIDI note number.
+    /// Returns a JS array of MIDI note numbers (u8).
+    pub fn harmonize(&mut self, note: u8) -> Result<Vec<u8>, JsValue> {
+        let wmidi_note = wmidi::Note::from_u8_lossy(note);
+        let results = self.inner.harmonize(wmidi_note);
+        Ok(results.iter().map(|n| u8::from(*n)).collect())
+    }
+
+    /// Process a MIDI Note-On event.
+    /// Returns a JS array of MIDI note numbers to sound.
+    pub fn note_on(&mut self, note: u8) -> Result<Vec<u8>, JsValue> {
+        let wmidi_note = wmidi::Note::from_u8_lossy(note);
+        let results = self.inner.harmonize_note_on(wmidi_note);
+        let result_u8: Vec<u8> = results.iter().map(|n| u8::from(*n)).collect();
+
+        // Track for note state reporting
+        if !self.last_input_notes.contains(&note) {
+            self.last_input_notes.push(note);
+        }
+        // All notes beyond the first are harmony
+        for &n in &result_u8[1..] {
+            if !self.last_harmony_notes.contains(&n) {
+                self.last_harmony_notes.push(n);
+            }
+        }
+
+        Ok(result_u8)
+    }
+
+    /// Process a MIDI Note-Off event.
+    /// Returns a JS array of MIDI note numbers to release.
+    pub fn note_off(&mut self, note: u8) -> Result<Vec<u8>, JsValue> {
+        let wmidi_note = wmidi::Note::from_u8_lossy(note);
+        let results = self.inner.harmonize_note_off(wmidi_note);
+        let result_u8: Vec<u8> = results.iter().map(|n| u8::from(*n)).collect();
+
+        // Remove from tracked state
+        self.last_input_notes.retain(|&n| n != note);
+        for &n in &result_u8 {
+            self.last_harmony_notes.retain(|&h| h != n);
+        }
+
+        Ok(result_u8)
+    }
+
+    /// Get the current engine state as a JS object.
+    pub fn get_state(&self) -> Result<JsValue, JsValue> {
+        let state = EngineStateJs {
+            key: key_to_string(self.inner.key()),
+            mode: mode_to_string(self.inner.mode()),
+            mode_number: self.inner.mode().number(),
+            scale_mode: scale_mode_to_string(self.inner.scale_mode()),
+            octave_mode: octave_mode_to_string(self.inner.octave_mode()),
+            voice_leading_enabled: self.inner.voice_leading_enabled(),
+            voice_leading_style: voice_leading_style_to_string(self.inner.voice_leading_style()),
+            interchange_enabled: self.inner.interchange_enabled(),
+            borrowing_range: self.inner.borrowing_range(),
+            voice_position: self.inner.voice_position(),
+            voice_count: self.inner.voice_count(),
+        };
+
+        serde_wasm_bindgen::to_value(&state)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Get the current note state as a JS object.
+    pub fn get_note_state(&self) -> Result<JsValue, JsValue> {
+        let borrowed_from = self.inner.last_borrowed_from()
+            .map(|sm| scale_mode_to_string(sm).to_string())
+            .unwrap_or_default();
+
+        let state = NoteStateJs {
+            input_notes: self.last_input_notes.clone(),
+            harmony_notes: self.last_harmony_notes.clone(),
+            borrowed_notes: Vec::new(), // Populated by routing layer
+            chord_name: String::new(),  // Populated by chord detection
+            last_borrowed_from: borrowed_from,
+        };
+
+        serde_wasm_bindgen::to_value(&state)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+}
+
+/// Convert a MIDI note number (0-127) to its note name (e.g. 60 -> "C4").
+#[wasm_bindgen]
+pub fn midi_to_name(midi: u8) -> String {
+    let note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let octave = (midi as i8 / 12) - 1;
+    let name_idx = (midi % 12) as usize;
+    format!("{}{}", note_names[name_idx], octave)
+}
