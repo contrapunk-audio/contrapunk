@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 ## Current Position
 
 Phase: 06.10.1 of 13 (UI Modernization)
-Plan: 7 of 9 in current phase (01, 02, 03, 04, 05, 06, 07 complete)
+Plan: 8 of 9 in current phase (01, 02, 03, 04, 05, 06, 07, 08 complete)
 Status: In progress
-Last activity: 2026-02-25 - Completed 06.10.1-07-PLAN.md (HLD atmospheric effects: particles, glow, beat indicator, FX toggle)
+Last activity: 2026-02-25 - Completed 06.10.1-08-PLAN.md (WASM build pipeline + Fly.io deployment + CI update)
 
-Progress: [███████████████░░░░░] (06.10.1 plan 7/9 complete)
+Progress: [█████████████████░░░] (06.10.1 plan 8/9 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 36
-- Average duration: 3.3 min
-- Total execution time: 119.5 min
+- Total plans completed: 37
+- Average duration: 3.4 min
+- Total execution time: 126.5 min
 
 **By Phase:**
 
@@ -37,7 +37,7 @@ Progress: [███████████████░░░░░] (06.10.
 | 06.8-ci-fix | 1 | 3 min | 3 min |
 | 06.9-repo-cleanup | 2 | 2.5 min | 1.3 min |
 | 06.10-docs | 2 | 12 min | 6 min |
-| 06.10.1-ui-modernization | 8 | 43 min | 5.4 min |
+| 06.10.1-ui-modernization | 9 | 50 min | 5.6 min |
 
 *Updated after each plan completion*
 
@@ -162,6 +162,10 @@ Recent decisions affecting current work:
 - [06.10.1-07]: FX toggle persists to localStorage under 'contrapunk-fx' key; restored on mount
 - [06.10.1-07]: BeatIndicator in StatusBar with 4-pip display (magenta downbeats, cyan others)
 - [06.10.1-07]: GlowEffects uses display:contents; CSS classes (.glow-magenta, .glow-cyan, .glow-teal) usable standalone
+- [06.10.1-08]: wasm-pack output to ui/src/lib/wasm-pkg/ under $lib for native SvelteKit resolution
+- [06.10.1-08]: build-wasm.sh creates dev stub when wasm-pack unavailable, enabling builds without Rust toolchain
+- [06.10.1-08]: Docker build from repo root with flyctl -c flag; nginx on port 8080
+- [06.10.1-08]: Gate old egui WASM modules behind feature='wasm' for contrapunk-wasm crate isolation
 
 ### Pending Todos
 
@@ -328,6 +332,6 @@ Verified: 13/13 must-haves passed.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 06.10.1-07-PLAN.md (HLD atmospheric effects: particles, glow, beat indicator, FX toggle)
+Stopped at: Completed 06.10.1-08-PLAN.md (WASM build pipeline + Fly.io deployment + CI update)
 Resume file: None
-Next: 06.10.1-08-PLAN.md
+Next: 06.10.1-09-PLAN.md
