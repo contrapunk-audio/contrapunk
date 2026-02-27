@@ -99,6 +99,9 @@ export interface ContrapunkAdapter {
 	/** Set the voice position (which output slot carries the melody). */
 	setVoicePosition(position: number): Promise<void>;
 
+	/** Set the number of output voices (1 = melody only, 2+ = melody + harmonies). */
+	setVoiceCount(count: number): Promise<void>;
+
 	// -- Humanization --
 
 	/** Get the current humanization configuration. */

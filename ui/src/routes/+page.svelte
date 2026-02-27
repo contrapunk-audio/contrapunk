@@ -134,31 +134,35 @@
 	<!-- Top: Status bar -->
 	<StatusBar />
 
-	<!-- Middle: 3-column content area -->
-	<div class="content-area">
-		<!-- Left column: MIDI devices + Presets -->
-		<div class="column column-left">
-			<MidiDevices />
-			<PresetManager />
+	{#if initDone}
+		<!-- Middle: 3-column content area -->
+		<div class="content-area">
+			<!-- Left column: MIDI devices + Presets -->
+			<div class="column column-left">
+				<MidiDevices />
+				<PresetManager />
+			</div>
+
+			<!-- Center column: Harmony controls -->
+			<div class="column column-center">
+				<ControlPanel />
+			</div>
+
+			<!-- Right column: Active Notes / Humanize / Generator -->
+			<div class="column column-right">
+				<ActiveNotes />
+				<HumanizePanel />
+				<GeneratorPanel />
+			</div>
 		</div>
 
-		<!-- Center column: Harmony controls -->
-		<div class="column column-center">
-			<ControlPanel />
+		<!-- Bottom: Sacred piano keyboard -->
+		<div class="piano-area">
+			<Piano />
 		</div>
-
-		<!-- Right column: Active Notes / Humanize / Generator -->
-		<div class="column column-right">
-			<ActiveNotes />
-			<HumanizePanel />
-			<GeneratorPanel />
-		</div>
-	</div>
-
-	<!-- Bottom: Sacred piano keyboard -->
-	<div class="piano-area">
-		<Piano />
-	</div>
+	{:else if !initError}
+		<div class="init-loading font-pixel">Initializing engine...</div>
+	{/if}
 </div>
 
 <style>
@@ -241,5 +245,13 @@
 		font-size: 7px;
 		padding: 4px 8px;
 		text-align: center;
+	}
+
+	.init-loading {
+		color: var(--color-text-dim);
+		font-size: 8px;
+		text-align: center;
+		padding: 40px 8px;
+		-webkit-font-smoothing: none;
 	}
 </style>

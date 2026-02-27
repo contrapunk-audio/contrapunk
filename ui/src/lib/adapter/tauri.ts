@@ -123,6 +123,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async setVoiceCount(count: number): Promise<void> {
+		try {
+			await invoke('set_voice_count', { count });
+		} catch (e) {
+			throw new Error(`Failed to set voice count: ${e}`);
+		}
+	}
+
 	async getHumanizeState(): Promise<HumanizeState> {
 		try {
 			const raw = (await invoke('get_humanize_state')) as Record<string, unknown>;

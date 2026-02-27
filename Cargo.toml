@@ -23,16 +23,35 @@ wmidi = "4.0"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+[features]
+default = []
+web-midi = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "getrandom"]
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 midir = "0.10"
 clap = { version = "4", features = ["derive"] }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Window", "Navigator", "MidiAccess", "MidiOptions", "MidiInput", "MidiOutput", "MidiPort", "MidiMessageEvent"] }
-getrandom = { version = "0.2", features = ["js"] }
+[dependencies.wasm-bindgen]
+version = "0.2"
+optional = true
+
+[dependencies.wasm-bindgen-futures]
+version = "0.4"
+optional = true
+
+[dependencies.js-sys]
+version = "0.3"
+optional = true
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["Window", "Navigator", "MidiAccess", "MidiOptions", "MidiInput", "MidiOutput", "MidiPort", "MidiMessageEvent"]
+optional = true
+
+[dependencies.getrandom]
+version = "0.2"
+features = ["js"]
+optional = true
 
 [profile.release]
 opt-level = "s"

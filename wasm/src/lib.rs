@@ -8,6 +8,7 @@ use wasm_bindgen::prelude::*;
 
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode};
 use contrapunk::harmony::VoiceLeadingStyle;
+use contrapunk::preset::PresetManager;
 
 // Initialize panic hook for better error messages in the browser console.
 #[wasm_bindgen(start)]
@@ -217,11 +218,20 @@ struct NoteStateJs {
     last_borrowed_from: String,
 }
 
+#[derive(serde::Serialize)]
+struct PresetJs {
+    name: String,
+    persona: String,
+    genre: String,
+    is_builtin: bool,
+}
+
 // === WASM-exported Engine wrapper ===
 
 #[wasm_bindgen]
 pub struct Engine {
     inner: HarmonyEngine,
+    presets: PresetManager,
     /// Track notes that were played through note_on for note state reporting
     last_input_notes: Vec<u8>,
     last_harmony_notes: Vec<u8>,
@@ -233,7 +243,8 @@ impl Engine {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
-            inner: HarmonyEngine::new(Key::C, HarmonyMode::PassThrough),
+            inner: HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 4),
+            presets: PresetManager::new(),
             last_input_notes: Vec::new(),
             last_harmony_notes: Vec::new(),
         }
@@ -285,6 +296,12 @@ impl Engine {
     /// Set the voice position (which output slot carries the melody).
     pub fn set_voice_position(&mut self, position: usize) -> Result<(), JsValue> {
         self.inner.set_voice_position(position);
+        Ok(())
+    }
+
+    /// Set the number of output voices (1 = melody only, 2+ = melody + harmonies).
+    pub fn set_voice_count(&mut self, count: usize) -> Result<(), JsValue> {
+        self.inner.set_voice_count(count);
         Ok(())
     }
 
@@ -369,6 +386,78 @@ impl Engine {
 
         serde_wasm_bindgen::to_value(&state)
             .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// List all available presets (builtins + custom).
+    pub fn list_presets(&self) -> Result<JsValue, JsValue> {
+        let presets: Vec<PresetJs> = self.presets.all_presets().iter().map(|p| PresetJs {
+            name: p.name.clone(),
+            persona: p.persona.clone(),
+            genre: p.genre.clone(),
+            is_builtin: p.is_builtin,
+        }).collect();
+
+        serde_wasm_bindgen::to_value(&presets)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Load a preset by name, applying its settings to the engine.
+    pub fn load_preset(&mut self, name: &str) -> Result<(), JsValue> {
+        let all = self.presets.all_presets();
+        let preset = all.iter().find(|p| p.name == name)
+            .ok_or_else(|| JsValue::from_str(&format!("Preset not found: {}", name)))?;
+
+        self.inner.set_key(preset.key);
+        self.inner.set_mode(preset.harmony_mode);
+        self.inner.set_scale_mode(preset.scale_mode);
+        self.inner.set_octave_mode(preset.octave_mode);
+        self.inner.set_voice_leading_enabled(preset.voice_leading_enabled);
+        self.inner.set_voice_leading_style(preset.voice_leading_style);
+        self.inner.set_interchange_enabled(preset.interchange_enabled);
+        self.inner.set_borrowing_range(preset.borrowing_range);
+
+        // Set active index
+        if let Some(idx) = all.iter().position(|p| p.name == name) {
+            self.presets.set_active(idx);
+        }
+
+        Ok(())
+    }
+
+    /// Save current engine settings as a custom preset.
+    pub fn save_preset(&mut self, name: &str) -> Result<(), JsValue> {
+        use contrapunk::preset::StylePreset;
+        use contrapunk::humanize::HumanizeConfig;
+
+        let preset = StylePreset {
+            name: name.to_string(),
+            persona: String::new(),
+            genre: "Custom".to_string(),
+            harmony_mode: self.inner.mode(),
+            key: self.inner.key(),
+            voice_leading_enabled: self.inner.voice_leading_enabled(),
+            voice_leading_style: self.inner.voice_leading_style(),
+            octave_mode: self.inner.octave_mode(),
+            humanize_config: HumanizeConfig::default(),
+            scale_mode: self.inner.scale_mode(),
+            interchange_enabled: self.inner.interchange_enabled(),
+            borrowing_range: self.inner.borrowing_range(),
+            is_builtin: false,
+        };
+
+        self.presets.add_custom(preset);
+        Ok(())
+    }
+
+    /// Delete a custom preset by name.
+    pub fn delete_preset(&mut self, name: &str) -> Result<(), JsValue> {
+        let custom = self.presets.custom_presets();
+        if let Some(idx) = custom.iter().position(|p| p.name == name) {
+            self.presets.remove_custom(idx);
+            Ok(())
+        } else {
+            Err(JsValue::from_str(&format!("Custom preset not found: {}", name)))
+        }
     }
 }
 
