@@ -137,6 +137,14 @@ export interface ContrapunkAdapter {
 	 */
 	onNoteUpdate(callback: (state: NoteState) => void): () => void;
 
+	// -- Virtual Input (keyboard, generator) --
+
+	/** Inject a Note On event directly (for virtual inputs like computer keyboard). */
+	injectNoteOn(note: number, velocity?: number): Promise<number[]>;
+
+	/** Inject a Note Off event directly (for virtual inputs). */
+	injectNoteOff(note: number): Promise<number[]>;
+
 	// -- Presets --
 
 	/** List all available presets (builtins + custom). */

@@ -1,7 +1,20 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
+	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import BeatIndicator from '$lib/components/BeatIndicator.svelte';
+
+	/**
+	 * Toggle MIDI routing on/off.
+	 * Start requires an input device and at least one output from the midi store.
+	 */
+	async function toggleTransport() {
+		if (engine.isRunning) {
+			await engine.stop();
+		} else if (midi.selectedInput !== null) {
+			await engine.start(midi.selectedInput, midi.selectedOutputs);
+		}
+	}
 
 	/**
 	 * Toggle animations on/off. Persists the preference in localStorage.
@@ -35,7 +48,9 @@
 	<button
 		class="transport-btn font-pixel"
 		class:running={engine.isRunning}
-		onclick={() => engine.toggle()}
+		disabled={!engine.isRunning && midi.selectedInput === null}
+		onclick={toggleTransport}
+		title={!engine.isRunning && midi.selectedInput === null ? 'Select an input device first' : ''}
 	>
 		{engine.isRunning ? 'Stop' : 'Start'}
 	</button>

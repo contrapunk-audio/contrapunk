@@ -216,6 +216,22 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async injectNoteOn(note: number, velocity?: number): Promise<number[]> {
+		try {
+			return (await invoke('inject_note_on', { note, velocity: velocity ?? 100 })) as number[];
+		} catch {
+			return [note];
+		}
+	}
+
+	async injectNoteOff(note: number): Promise<number[]> {
+		try {
+			return (await invoke('inject_note_off', { note })) as number[];
+		} catch {
+			return [note];
+		}
+	}
+
 	async getNoteState(): Promise<NoteState> {
 		try {
 			const raw = (await invoke('get_note_state')) as Record<string, unknown>;

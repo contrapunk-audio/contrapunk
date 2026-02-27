@@ -232,6 +232,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 		// Wire up MIDI message handler
 		if (this.activeInput) {
+			const outputs = this.activeOutputs;
 			this.activeInput.onmidimessage = (event: MIDIMessageEvent) => {
 				if (!event.data || event.data.length < 2) return;
 				const status = event.data[0] & 0xf0;
@@ -247,11 +248,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 					} catch {
 						resultNotes = [note];
 					}
-					// Send Note On for each harmonized note to all outputs
-					for (const output of this.activeOutputs) {
-						for (const n of resultNotes) {
-							output.send([0x90, n, velocity]);
-						}
+					// Voice-per-port routing: resultNotes[i] → outputs[i]
+					// Melody (index 0) to first output, harmony voices to subsequent outputs
+					for (let i = 0; i < resultNotes.length && i < outputs.length; i++) {
+						outputs[i].send([0x90, resultNotes[i], velocity]);
 					}
 				} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
 					// Note Off
@@ -260,15 +260,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 					} catch {
 						resultNotes = [note];
 					}
-					// Send Note Off for each released note to all outputs
-					for (const output of this.activeOutputs) {
-						for (const n of resultNotes) {
-							output.send([0x80, n, 0]);
-						}
+					// Voice-per-port routing for Note Off
+					for (let i = 0; i < resultNotes.length && i < outputs.length; i++) {
+						outputs[i].send([0x80, resultNotes[i], 0]);
 					}
 				} else {
 					// Pass through other MIDI messages (CC, pitch bend, etc.)
-					for (const output of this.activeOutputs) {
+					for (const output of outputs) {
 						output.send(Array.from(event.data));
 					}
 				}
@@ -287,6 +285,26 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.activeOutputs = [];
 		this._isRunning = false;
 		this.stopNotePolling();
+	}
+
+	async injectNoteOn(note: number, _velocity?: number): Promise<number[]> {
+		this.ensureInit();
+		try {
+			const result = engine.note_on(note);
+			return result ?? [note];
+		} catch {
+			return [note];
+		}
+	}
+
+	async injectNoteOff(note: number): Promise<number[]> {
+		this.ensureInit();
+		try {
+			const result = engine.note_off(note);
+			return result ?? [note];
+		} catch {
+			return [note];
+		}
 	}
 
 	async getNoteState(): Promise<NoteState> {

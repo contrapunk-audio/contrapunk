@@ -149,13 +149,14 @@
 	</div>
 	{#if engine.interchangeEnabled}
 		<div class="range-row">
-			<span class="range-label font-pixel">Range: {engine.borrowingRange}</span>
+			<span class="range-label font-pixel">Range: {engine.interchangeRange}</span>
 			<input
 				type="range"
 				min="1"
 				max="5"
 				step="1"
-				bind:value={engine.borrowingRange}
+				value={engine.interchangeRange}
+				oninput={(e) => engine.setInterchange(true, parseInt((e.target as HTMLInputElement).value, 10))}
 				class="pixel-range"
 			/>
 		</div>

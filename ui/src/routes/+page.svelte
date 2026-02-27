@@ -7,8 +7,91 @@
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import HumanizePanel from '$lib/components/HumanizePanel.svelte';
 	import GeneratorPanel from '$lib/components/GeneratorPanel.svelte';
+	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
+	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+
+	// Virtual input sentinel (must match MidiDevices.svelte)
+	const VIRTUAL_COMPUTER_KEYBOARD = Number.MAX_SAFE_INTEGER - 1;
+
+	// QWERTY → MIDI note mapping (standard DAW layout)
+	// Z-M: C3-B3 (MIDI 48-59), Q-U: C4-B4 (MIDI 60-71)
+	const KEY_TO_MIDI: Record<string, number> = {
+		'z': 48, 'x': 49, 'c': 50, 'v': 51, 'b': 52, 'n': 53, 'm': 54,
+		',': 55, '.': 56, '/': 57,
+		'a': 55, 's': 56, 'd': 57, 'f': 58, 'g': 59, 'h': 60, 'j': 61,
+		'k': 62, 'l': 63, ';': 64,
+		'q': 60, 'w': 61, 'e': 62, 'r': 63, 't': 64, 'y': 65, 'u': 66,
+		'i': 67, 'o': 68, 'p': 69,
+	};
+
+	// Track held keys to prevent repeat events
+	const heldKeys = new Set<string>();
+
+	// Initialize adapter, sync engine state, and enumerate MIDI devices on mount
+	let initError = $state<string | null>(null);
+	let initDone = $state(false);
+	let initStarted = false;
+
+	$effect(() => {
+		if (initStarted) return;
+		initStarted = true;
+
+		(async () => {
+			try {
+				await adapter.init();
+				await engine.syncFromBackend();
+				await midi.refresh();
+				initDone = true;
+			} catch (e) {
+				initError = `Init failed: ${e}`;
+				console.error('[contrapunk] Initialization error:', e);
+			}
+		})();
+	});
+
+	// Computer keyboard input handler
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+
+		function handleKeyDown(e: KeyboardEvent) {
+			// Skip if typing in an input field
+			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+			// Skip if not in Computer Keyboard mode or not running
+			if (midi.selectedInput !== VIRTUAL_COMPUTER_KEYBOARD) return;
+			if (!engine.isRunning) return;
+
+			const key = e.key.toLowerCase();
+			if (!(key in KEY_TO_MIDI)) return;
+			if (heldKeys.has(key)) return; // Ignore key repeat
+
+			heldKeys.add(key);
+			const midiNote = KEY_TO_MIDI[key];
+			adapter.injectNoteOn(midiNote, 100);
+			e.preventDefault();
+		}
+
+		function handleKeyUp(e: KeyboardEvent) {
+			const key = e.key.toLowerCase();
+			if (!(key in KEY_TO_MIDI)) return;
+			if (!heldKeys.has(key)) return;
+
+			heldKeys.delete(key);
+			const midiNote = KEY_TO_MIDI[key];
+			adapter.injectNoteOff(midiNote);
+			e.preventDefault();
+		}
+
+		window.addEventListener('keydown', handleKeyDown);
+		window.addEventListener('keyup', handleKeyUp);
+
+		return () => {
+			window.removeEventListener('keydown', handleKeyDown);
+			window.removeEventListener('keyup', handleKeyUp);
+			heldKeys.clear();
+		};
+	});
 
 	// Music-reactive: detect when notes are actively sounding
 	let hasActiveNotes = $derived(
@@ -42,6 +125,10 @@
 			class:intense={manyNotesActive}
 			aria-hidden="true"
 		></div>
+	{/if}
+
+	{#if initError}
+		<div class="init-error font-pixel">{initError}</div>
 	{/if}
 
 	<!-- Top: Status bar -->
@@ -148,4 +235,11 @@
 		50% { opacity: 1; }
 	}
 
+	.init-error {
+		background: #cc0044;
+		color: #ffffff;
+		font-size: 7px;
+		padding: 4px 8px;
+		text-align: center;
+	}
 </style>
