@@ -190,6 +190,41 @@ export const VOICE_LEADING_STYLES: { name: VoiceLeadingStyleName; label: string 
 	{ name: 'Jazz', label: 'Jazz' }
 ];
 
+// === Settings Persistence ===
+
+const SETTINGS_KEY = 'contrapunk-settings';
+
+interface PersistedSettings {
+	key: KeyName;
+	mode: HarmonyModeName;
+	scaleMode: ScaleModeName;
+	octaveMode: OctaveModeName;
+	voiceLeadingEnabled: boolean;
+	voiceLeadingStyle: VoiceLeadingStyleName;
+	interchangeEnabled: boolean;
+	interchangeRange: number;
+	voicePosition: number;
+	voiceCount: number;
+}
+
+function loadSettings(): PersistedSettings | null {
+	try {
+		const raw = localStorage.getItem(SETTINGS_KEY);
+		if (!raw) return null;
+		return JSON.parse(raw) as PersistedSettings;
+	} catch {
+		return null;
+	}
+}
+
+function saveSettings(s: PersistedSettings) {
+	try {
+		localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+	} catch {
+		// localStorage full or unavailable — silently ignore
+	}
+}
+
 // === Engine Store (Svelte 5 runes) ===
 
 class EngineStore {
@@ -229,6 +264,46 @@ class EngineStore {
 	// -- Internal --
 	private unsubNotes: (() => void) | null = null;
 
+	/** Persist current config settings to localStorage. */
+	private persist() {
+		saveSettings({
+			key: this.key,
+			mode: this.mode,
+			scaleMode: this.scaleMode,
+			octaveMode: this.octaveMode,
+			voiceLeadingEnabled: this.voiceLeadingEnabled,
+			voiceLeadingStyle: this.voiceLeadingStyle,
+			interchangeEnabled: this.interchangeEnabled,
+			interchangeRange: this.interchangeRange,
+			voicePosition: this.voicePosition,
+			voiceCount: this.voiceCount
+		});
+	}
+
+	/**
+	 * Restore saved settings from localStorage and apply to backend.
+	 * Call after adapter.init() and syncFromBackend().
+	 */
+	async restoreSettings() {
+		const saved = loadSettings();
+		if (!saved) return;
+
+		try {
+			await adapter.setKey(saved.key);
+			await adapter.setMode(saved.mode);
+			await adapter.setScaleMode(saved.scaleMode);
+			await adapter.setOctaveMode(saved.octaveMode);
+			await adapter.setVoiceLeading(saved.voiceLeadingEnabled, saved.voiceLeadingStyle);
+			await adapter.setInterchange(saved.interchangeEnabled, saved.interchangeRange);
+			await adapter.setVoicePosition(saved.voicePosition);
+			await adapter.setVoiceCount(saved.voiceCount);
+			// Sync back to pick up any clamped/validated values from the backend
+			await this.syncFromBackend();
+		} catch (e) {
+			console.warn('[contrapunk] Failed to restore saved settings:', e);
+		}
+	}
+
 	// === Adapter-wired actions (optimistic update with rollback) ===
 
 	async setKey(newKey: KeyName) {
@@ -236,6 +311,7 @@ class EngineStore {
 		this.key = newKey;
 		try {
 			await adapter.setKey(newKey);
+			this.persist();
 		} catch (e) {
 			this.key = prev;
 			throw e;
@@ -247,6 +323,7 @@ class EngineStore {
 		this.mode = newMode;
 		try {
 			await adapter.setMode(newMode);
+			this.persist();
 		} catch (e) {
 			this.mode = prev;
 			throw e;
@@ -258,6 +335,7 @@ class EngineStore {
 		this.scaleMode = newMode;
 		try {
 			await adapter.setScaleMode(newMode);
+			this.persist();
 		} catch (e) {
 			this.scaleMode = prev;
 			throw e;
@@ -269,6 +347,7 @@ class EngineStore {
 		this.octaveMode = newMode;
 		try {
 			await adapter.setOctaveMode(newMode);
+			this.persist();
 		} catch (e) {
 			this.octaveMode = prev;
 			throw e;
@@ -282,6 +361,7 @@ class EngineStore {
 		if (style) this.voiceLeadingStyle = style;
 		try {
 			await adapter.setVoiceLeading(enabled, style ?? this.voiceLeadingStyle);
+			this.persist();
 		} catch (e) {
 			this.voiceLeadingEnabled = prevEnabled;
 			this.voiceLeadingStyle = prevStyle;
@@ -296,6 +376,7 @@ class EngineStore {
 		if (range !== undefined) this.interchangeRange = range;
 		try {
 			await adapter.setInterchange(enabled, range ?? this.interchangeRange);
+			this.persist();
 		} catch (e) {
 			this.interchangeEnabled = prevEnabled;
 			this.interchangeRange = prevRange;
@@ -308,6 +389,7 @@ class EngineStore {
 		this.voicePosition = position;
 		try {
 			await adapter.setVoicePosition(position);
+			this.persist();
 		} catch (e) {
 			this.voicePosition = prev;
 			throw e;

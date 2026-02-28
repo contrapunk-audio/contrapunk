@@ -15,19 +15,34 @@
 	// Virtual input sentinel (must match MidiDevices.svelte)
 	const VIRTUAL_COMPUTER_KEYBOARD = Number.MAX_SAFE_INTEGER - 1;
 
-	// QWERTY → MIDI note mapping (standard DAW layout)
-	// Z-M: C3-B3 (MIDI 48-59), Q-U: C4-B4 (MIDI 60-71)
-	const KEY_TO_MIDI: Record<string, number> = {
-		'z': 48, 'x': 49, 'c': 50, 'v': 51, 'b': 52, 'n': 53, 'm': 54,
-		',': 55, '.': 56, '/': 57,
-		'a': 55, 's': 56, 'd': 57, 'f': 58, 'g': 59, 'h': 60, 'j': 61,
-		'k': 62, 'l': 63, ';': 64,
-		'q': 60, 'w': 61, 'e': 62, 'r': 63, 't': 64, 'y': 65, 'u': 66,
-		'i': 67, 'o': 68, 'p': 69,
+	// Piano-style QWERTY mapping:
+	// Lower octave — Z row = white keys, S/D/G/H/J = black keys
+	// Upper octave — Q row = white keys, 2/3/5/6/7 = black keys
+	// Offsets are semitones from C of that octave
+	const LOWER_KEYS: Record<string, number> = {
+		'z': 0, 's': 1, 'x': 2, 'd': 3, 'c': 4,       // C C# D D# E
+		'v': 5, 'g': 6, 'b': 7, 'h': 8, 'n': 9,        // F F# G G# A
+		'j': 10, 'm': 11                                  // A# B
+	};
+	const UPPER_KEYS: Record<string, number> = {
+		'q': 0, '2': 1, 'w': 2, '3': 3, 'e': 4,         // C C# D D# E
+		'r': 5, '5': 6, 't': 7, '6': 8, 'y': 9,         // F F# G G# A
+		'7': 10, 'u': 11, 'i': 12                         // A# B C(+1)
 	};
 
-	// Track held keys to prevent repeat events
-	const heldKeys = new Set<string>();
+	// Octave state: lower row starts at this MIDI octave, upper row = +1
+	let baseOctave = $state(3); // C3 = MIDI 48
+	const MIN_OCTAVE = 1;
+	const MAX_OCTAVE = 7;
+
+	function keyToMidi(key: string): number | null {
+		if (key in LOWER_KEYS) return (baseOctave + 1) * 12 + LOWER_KEYS[key]; // octave 3 → MIDI 48+
+		if (key in UPPER_KEYS) return (baseOctave + 2) * 12 + UPPER_KEYS[key]; // octave 4 → MIDI 60+
+		return null;
+	}
+
+	// Track held keys → MIDI note they triggered (for correct Note-Off after octave change)
+	const heldKeys = new Map<string, number>();
 
 	// Initialize adapter, sync engine state, and enumerate MIDI devices on mount
 	let initError = $state<string | null>(null);
@@ -42,6 +57,7 @@
 			try {
 				await adapter.init();
 				await engine.syncFromBackend();
+				await engine.restoreSettings();
 				await midi.refresh();
 				initDone = true;
 			} catch (e) {
@@ -63,22 +79,34 @@
 			if (!engine.isRunning) return;
 
 			const key = e.key.toLowerCase();
-			if (!(key in KEY_TO_MIDI)) return;
+
+			// Octave shift with +/- (= key is + on US keyboards)
+			if (key === '=' || key === '+') {
+				if (baseOctave < MAX_OCTAVE) baseOctave++;
+				e.preventDefault();
+				return;
+			}
+			if (key === '-') {
+				if (baseOctave > MIN_OCTAVE) baseOctave--;
+				e.preventDefault();
+				return;
+			}
+
+			const midiNote = keyToMidi(key);
+			if (midiNote === null) return;
 			if (heldKeys.has(key)) return; // Ignore key repeat
 
-			heldKeys.add(key);
-			const midiNote = KEY_TO_MIDI[key];
+			heldKeys.set(key, midiNote);
 			adapter.injectNoteOn(midiNote, 100);
 			e.preventDefault();
 		}
 
 		function handleKeyUp(e: KeyboardEvent) {
 			const key = e.key.toLowerCase();
-			if (!(key in KEY_TO_MIDI)) return;
-			if (!heldKeys.has(key)) return;
+			const midiNote = heldKeys.get(key);
+			if (midiNote === undefined) return;
 
 			heldKeys.delete(key);
-			const midiNote = KEY_TO_MIDI[key];
 			adapter.injectNoteOff(midiNote);
 			e.preventDefault();
 		}
