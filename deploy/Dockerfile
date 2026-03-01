@@ -1,7 +1,7 @@
 # Multi-stage build: WASM -> SvelteKit frontend -> nginx
 
 # Stage 1: Build WASM module with wasm-pack
-FROM rust:1.85 AS wasm-builder
+FROM rust:1.88 AS wasm-builder
 RUN cargo install wasm-pack
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
