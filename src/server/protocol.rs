@@ -74,7 +74,10 @@ pub fn parse_message(buf: &[u8]) -> Result<Message> {
         TYPE_MIDI_DATA => Ok(Message::MidiData(payload.to_vec())),
         TYPE_CONFIGURE => {
             if payload.len() < 4 {
-                return Err(anyhow!("configure message too short: {} bytes", payload.len()));
+                return Err(anyhow!(
+                    "configure message too short: {} bytes",
+                    payload.len()
+                ));
             }
             Ok(Message::Configure {
                 key: payload[0],
@@ -99,7 +102,12 @@ pub fn serialize_message(msg: &Message) -> Vec<u8> {
             buf.extend_from_slice(data);
             buf
         }
-        Message::Configure { key, mode, octave_mode, voice_count } => {
+        Message::Configure {
+            key,
+            mode,
+            octave_mode,
+            voice_count,
+        } => {
             vec![TYPE_CONFIGURE, *key, *mode, *octave_mode, *voice_count]
         }
         Message::Ack => vec![TYPE_ACK],
@@ -125,7 +133,12 @@ mod tests {
 
     #[test]
     fn test_roundtrip_configure() {
-        let msg = Message::Configure { key: 0, mode: 2, octave_mode: 1, voice_count: 4 };
+        let msg = Message::Configure {
+            key: 0,
+            mode: 2,
+            octave_mode: 1,
+            voice_count: 4,
+        };
         let mut buf = Vec::new();
         write_message(&mut buf, &msg).unwrap();
         let mut cursor = Cursor::new(buf);

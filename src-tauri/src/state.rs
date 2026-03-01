@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
-use contrapunk::harmony::{HarmonyEngine, Key, HarmonyMode};
+use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key};
 use contrapunk::humanize::HumanizeConfig;
 use contrapunk::preset::PresetManager;
 

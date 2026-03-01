@@ -256,7 +256,9 @@ mod tests {
         assert_eq!(gen.active_notes.len(), 1);
 
         let events = gen.set_mode(GeneratorMode::ScaleRunner);
-        assert!(events.iter().any(|e| matches!(e, GeneratorEvent::NoteOff(_))));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, GeneratorEvent::NoteOff(_))));
         assert!(gen.active_notes.is_empty());
     }
 
@@ -268,7 +270,9 @@ mod tests {
         gen.tick(0.0, 120.0);
 
         let events = gen.set_enabled(false);
-        assert!(events.iter().any(|e| matches!(e, GeneratorEvent::NoteOff(_))));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, GeneratorEvent::NoteOff(_))));
     }
 
     #[test]

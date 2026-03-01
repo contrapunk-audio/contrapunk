@@ -2,6 +2,9 @@
 	import { adapter } from '$lib/adapter';
 	import type { HumanizeState } from '$lib/adapter';
 
+	// Detect if running in WASM (browser) mode where humanization isn't available
+	let isBrowserMode = $state(true);
+
 	// Local reactive state for humanize config
 	let enabled = $state(false);
 	let jitterMs = $state(10);
@@ -19,6 +22,8 @@
 	async function loadHumanizeState() {
 		try {
 			const state = await adapter.getHumanizeState();
+			// If we get real non-default values, we're in Tauri mode
+			isBrowserMode = !state.jitterEnabled && !state.velocityEnabled && !state.durationEnabled && !state.swingEnabled && state.bpm === 120;
 			enabled = state.enabled;
 			jitterMs = state.jitterMaxMs;
 			velocityVariation = state.velocityVariation;
@@ -91,6 +96,9 @@
 <!-- Humanize Section -->
 <div class="card">
 	<div class="card-header font-pixel">Humanize</div>
+	{#if isBrowserMode}
+		<div class="unavailable font-pixel">Desktop only</div>
+	{:else}
 	<div class="toggle-row">
 		<button
 			class="pixel-btn toggle-btn"
@@ -176,8 +184,10 @@
 			</div>
 		</div>
 	{/if}
+	{/if}
 </div>
 
+{#if !isBrowserMode}
 <!-- Tempo Section -->
 <div class="card">
 	<div class="card-header font-pixel">Tempo</div>
@@ -216,6 +226,7 @@
 		{/if}
 	</div>
 </div>
+{/if}
 
 <style>
 	.card {
@@ -224,6 +235,14 @@
 		padding: 6px;
 		margin-bottom: 4px;
 		border-radius: 0;
+	}
+
+	.unavailable {
+		color: var(--color-text-dim);
+		font-size: 6px;
+		padding: 2px 0;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
 	}
 
 	.card-header {

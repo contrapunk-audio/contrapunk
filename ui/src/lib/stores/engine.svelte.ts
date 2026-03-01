@@ -193,8 +193,10 @@ export const VOICE_LEADING_STYLES: { name: VoiceLeadingStyleName; label: string 
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
+const SETTINGS_VERSION = 1;
 
 interface PersistedSettings {
+	version: number;
 	key: KeyName;
 	mode: HarmonyModeName;
 	scaleMode: ScaleModeName;
@@ -207,19 +209,87 @@ interface PersistedSettings {
 	voiceCount: number;
 }
 
+const SETTINGS_DEFAULTS: PersistedSettings = {
+	version: SETTINGS_VERSION,
+	key: 'C',
+	mode: 'PassThrough',
+	scaleMode: 'Ionian',
+	octaveMode: 'None',
+	voiceLeadingEnabled: false,
+	voiceLeadingStyle: 'Free',
+	interchangeEnabled: false,
+	interchangeRange: 3,
+	voicePosition: 0,
+	voiceCount: 2
+};
+
+// Enum validation sets
+const VALID_KEYS = new Set(ALL_KEYS);
+const VALID_MODES = new Set(ALL_MODES.map((m) => m.name));
+const VALID_SCALE_MODES = new Set(SCALE_FAMILIES.flatMap((f) => f.modes.map((m) => m.name)));
+const VALID_OCTAVE_MODES = new Set(OCTAVE_MODES.map((m) => m.name));
+const VALID_VL_STYLES = new Set(VOICE_LEADING_STYLES.map((s) => s.name));
+
 function loadSettings(): PersistedSettings | null {
 	try {
 		const raw = localStorage.getItem(SETTINGS_KEY);
 		if (!raw) return null;
-		return JSON.parse(raw) as PersistedSettings;
+		const parsed = JSON.parse(raw);
+
+		// Schema migration: discard if version mismatch or missing
+		if (!parsed || parsed.version !== SETTINGS_VERSION) {
+			localStorage.removeItem(SETTINGS_KEY);
+			return null;
+		}
+
+		// Validate each field, falling back to defaults for invalid values
+		return {
+			version: SETTINGS_VERSION,
+			key: VALID_KEYS.has(parsed.key) ? parsed.key : SETTINGS_DEFAULTS.key,
+			mode: VALID_MODES.has(parsed.mode) ? parsed.mode : SETTINGS_DEFAULTS.mode,
+			scaleMode: VALID_SCALE_MODES.has(parsed.scaleMode)
+				? parsed.scaleMode
+				: SETTINGS_DEFAULTS.scaleMode,
+			octaveMode: VALID_OCTAVE_MODES.has(parsed.octaveMode)
+				? parsed.octaveMode
+				: SETTINGS_DEFAULTS.octaveMode,
+			voiceLeadingEnabled:
+				typeof parsed.voiceLeadingEnabled === 'boolean'
+					? parsed.voiceLeadingEnabled
+					: SETTINGS_DEFAULTS.voiceLeadingEnabled,
+			voiceLeadingStyle: VALID_VL_STYLES.has(parsed.voiceLeadingStyle)
+				? parsed.voiceLeadingStyle
+				: SETTINGS_DEFAULTS.voiceLeadingStyle,
+			interchangeEnabled:
+				typeof parsed.interchangeEnabled === 'boolean'
+					? parsed.interchangeEnabled
+					: SETTINGS_DEFAULTS.interchangeEnabled,
+			interchangeRange:
+				typeof parsed.interchangeRange === 'number' &&
+				parsed.interchangeRange >= 1 &&
+				parsed.interchangeRange <= 5
+					? parsed.interchangeRange
+					: SETTINGS_DEFAULTS.interchangeRange,
+			voicePosition:
+				typeof parsed.voicePosition === 'number' && parsed.voicePosition >= 0
+					? parsed.voicePosition
+					: SETTINGS_DEFAULTS.voicePosition,
+			voiceCount:
+				typeof parsed.voiceCount === 'number' &&
+				parsed.voiceCount >= 1 &&
+				parsed.voiceCount <= 8
+					? parsed.voiceCount
+					: SETTINGS_DEFAULTS.voiceCount
+		};
 	} catch {
+		localStorage.removeItem(SETTINGS_KEY);
 		return null;
 	}
 }
 
-function saveSettings(s: PersistedSettings) {
+function saveSettings(s: Omit<PersistedSettings, 'version'>) {
 	try {
-		localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+		localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...s, version: SETTINGS_VERSION }));
 	} catch {
 		// localStorage full or unavailable — silently ignore
 	}
@@ -288,19 +358,37 @@ class EngineStore {
 		const saved = loadSettings();
 		if (!saved) return;
 
+		// Apply each setting independently so one failure doesn't block the rest
+		const ops: [string, () => Promise<void>][] = [
+			['key', () => adapter.setKey(saved.key)],
+			['mode', () => adapter.setMode(saved.mode)],
+			['scaleMode', () => adapter.setScaleMode(saved.scaleMode)],
+			['octaveMode', () => adapter.setOctaveMode(saved.octaveMode)],
+			[
+				'voiceLeading',
+				() => adapter.setVoiceLeading(saved.voiceLeadingEnabled, saved.voiceLeadingStyle)
+			],
+			[
+				'interchange',
+				() => adapter.setInterchange(saved.interchangeEnabled, saved.interchangeRange)
+			],
+			['voicePosition', () => adapter.setVoicePosition(saved.voicePosition)],
+			['voiceCount', () => adapter.setVoiceCount(saved.voiceCount)]
+		];
+
+		for (const [name, op] of ops) {
+			try {
+				await op();
+			} catch (e) {
+				console.warn(`[contrapunk] Failed to restore ${name}:`, e);
+			}
+		}
+
+		// Sync back to pick up any clamped/validated values from the backend
 		try {
-			await adapter.setKey(saved.key);
-			await adapter.setMode(saved.mode);
-			await adapter.setScaleMode(saved.scaleMode);
-			await adapter.setOctaveMode(saved.octaveMode);
-			await adapter.setVoiceLeading(saved.voiceLeadingEnabled, saved.voiceLeadingStyle);
-			await adapter.setInterchange(saved.interchangeEnabled, saved.interchangeRange);
-			await adapter.setVoicePosition(saved.voicePosition);
-			await adapter.setVoiceCount(saved.voiceCount);
-			// Sync back to pick up any clamped/validated values from the backend
 			await this.syncFromBackend();
 		} catch (e) {
-			console.warn('[contrapunk] Failed to restore saved settings:', e);
+			console.warn('[contrapunk] Failed to sync after restore:', e);
 		}
 	}
 
@@ -392,6 +480,18 @@ class EngineStore {
 			this.persist();
 		} catch (e) {
 			this.voicePosition = prev;
+			throw e;
+		}
+	}
+
+	async setVoiceCount(count: number) {
+		const prev = this.voiceCount;
+		this.voiceCount = count;
+		try {
+			await adapter.setVoiceCount(count);
+			this.persist();
+		} catch (e) {
+			this.voiceCount = prev;
 			throw e;
 		}
 	}

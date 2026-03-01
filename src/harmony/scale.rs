@@ -13,19 +13,42 @@ const CONSONANT_INTERVALS_BELOW: [i8; 6] = [-3, -4, -8, -9, -5, -7]; // m3, M3, 
 fn borrowing_sources(range: u8) -> &'static [ScaleMode] {
     match range {
         1 => &[ScaleMode::Aeolian, ScaleMode::HarmonicMinor],
-        2 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::HarmonicMinor,
-               ScaleMode::MelodicMinor],
-        3 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian,
-               ScaleMode::Phrygian, ScaleMode::HarmonicMinor, ScaleMode::MelodicMinor],
-        4 => &[ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian,
-               ScaleMode::Phrygian, ScaleMode::Lydian,
-               ScaleMode::HarmonicMinor, ScaleMode::MelodicMinor,
-               ScaleMode::PhrygianDominant],
+        2 => &[
+            ScaleMode::Aeolian,
+            ScaleMode::Dorian,
+            ScaleMode::HarmonicMinor,
+            ScaleMode::MelodicMinor,
+        ],
+        3 => &[
+            ScaleMode::Aeolian,
+            ScaleMode::Dorian,
+            ScaleMode::Mixolydian,
+            ScaleMode::Phrygian,
+            ScaleMode::HarmonicMinor,
+            ScaleMode::MelodicMinor,
+        ],
+        4 => &[
+            ScaleMode::Aeolian,
+            ScaleMode::Dorian,
+            ScaleMode::Mixolydian,
+            ScaleMode::Phrygian,
+            ScaleMode::Lydian,
+            ScaleMode::HarmonicMinor,
+            ScaleMode::MelodicMinor,
+            ScaleMode::PhrygianDominant,
+        ],
         _ => &[
-            ScaleMode::Aeolian, ScaleMode::Dorian, ScaleMode::Mixolydian,
-            ScaleMode::Phrygian, ScaleMode::Lydian, ScaleMode::Locrian, ScaleMode::Ionian,
-            ScaleMode::HarmonicMinor, ScaleMode::MelodicMinor,
-            ScaleMode::PhrygianDominant, ScaleMode::LydianDominant,
+            ScaleMode::Aeolian,
+            ScaleMode::Dorian,
+            ScaleMode::Mixolydian,
+            ScaleMode::Phrygian,
+            ScaleMode::Lydian,
+            ScaleMode::Locrian,
+            ScaleMode::Ionian,
+            ScaleMode::HarmonicMinor,
+            ScaleMode::MelodicMinor,
+            ScaleMode::PhrygianDominant,
+            ScaleMode::LydianDominant,
         ],
     }
 }
@@ -118,7 +141,7 @@ impl Scale {
         let total_degrees = current_degree + degrees;
         let len = self.scale_len() as i8;
         let octave_shift = if total_degrees < 0 {
-            (total_degrees - (len - 1)) / len  // Floor division for negative
+            (total_degrees - (len - 1)) / len // Floor division for negative
         } else {
             total_degrees / len
         };
@@ -167,7 +190,7 @@ impl Scale {
             }
         }
 
-        note  // Fallback (shouldn't happen with proper scale)
+        note // Fallback (shouldn't happen with proper scale)
     }
 
     /// Returns true if the note is in the scale.
@@ -201,7 +224,12 @@ impl Scale {
     ///
     /// # Returns
     /// The harmony note, or None if out of MIDI range
-    pub fn harmonize_smart(&mut self, note: Note, diatonic_degrees: i8, prefer_above: bool) -> Option<Note> {
+    pub fn harmonize_smart(
+        &mut self,
+        note: Note,
+        diatonic_degrees: i8,
+        prefer_above: bool,
+    ) -> Option<Note> {
         if self.is_in_scale(note) {
             // In-key: clear any previous borrowed mode indicator
             self.last_borrowed_from = None;
@@ -280,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_c_major_scale_degrees() {
-        let scale = Scale::major(0);  // C major
+        let scale = Scale::major(0); // C major
 
         // C4 = 60 should be degree 0
         assert_eq!(scale.degree_of(Note::C4), Some(0));
@@ -294,7 +322,7 @@ mod tests {
 
     #[test]
     fn test_diatonic_third_up() {
-        let scale = Scale::major(0);  // C major
+        let scale = Scale::major(0); // C major
 
         // C4 + 2 degrees = E4 (major third)
         let result = scale.transpose_diatonic(Note::C4, 2);
@@ -307,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_diatonic_interval_down() {
-        let scale = Scale::major(0);  // C major
+        let scale = Scale::major(0); // C major
 
         // E4 - 2 degrees = C4
         let result = scale.transpose_diatonic(Note::E4, -2);
@@ -316,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_g_major_scale() {
-        let scale = Scale::major(7);  // G major (7 semitones from C)
+        let scale = Scale::major(7); // G major (7 semitones from C)
 
         // G4 = 67 should be degree 0 (tonic)
         assert_eq!(scale.degree_of(Note::G4), Some(0));
@@ -330,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_is_in_scale() {
-        let scale = Scale::major(0);  // C major
+        let scale = Scale::major(0); // C major
 
         assert!(scale.is_in_scale(Note::C4));
         assert!(scale.is_in_scale(Note::D4));
@@ -351,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_harmonize_smart_in_key() {
-        let mut scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0); // C major
 
         // In-key note should use diatonic transposition
         // C4 + 2 degrees = E4
@@ -361,7 +389,7 @@ mod tests {
 
     #[test]
     fn test_harmonize_smart_out_of_key() {
-        let mut scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0); // C major
 
         // C#4 is out of key - should get consonant chromatic harmony
         let result = scale.harmonize_smart(Note::Db4, 2, true);
@@ -376,13 +404,14 @@ mod tests {
         // Should be a 3rd, 4th, 5th, or 6th (3, 4, 5, 7, 8, or 9 semitones)
         assert!(
             [3, 4, 5, 7, 8, 9].contains(&interval),
-            "Expected consonant interval, got {} semitones", interval
+            "Expected consonant interval, got {} semitones",
+            interval
         );
     }
 
     #[test]
     fn test_chromatic_harmony_prefers_scale_tones() {
-        let mut scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0); // C major
 
         // F#4 is out of key
         let result = scale.harmonize_smart(Note::Gb4, -2, false);
@@ -394,7 +423,8 @@ mod tests {
         let interval = (melody_midi as i8 - harmony_midi as i8).abs();
         assert!(
             [3, 4, 5, 7, 8, 9].contains(&interval),
-            "Expected consonant interval below, got {} semitones", interval
+            "Expected consonant interval below, got {} semitones",
+            interval
         );
     }
 
@@ -405,12 +435,17 @@ mod tests {
         // Verify all 9 modes produce scales with correct degrees
         for &mode in ScaleMode::all() {
             let scale = Scale::new(0, mode); // C as tonic
-            // Tonic (C) should always be degree 0
-            assert_eq!(scale.degree_of(Note::C4), Some(0),
-                "Tonic should be degree 0 for {:?}", mode);
+                                             // Tonic (C) should always be degree 0
+            assert_eq!(
+                scale.degree_of(Note::C4),
+                Some(0),
+                "Tonic should be degree 0 for {:?}",
+                mode
+            );
             // Should have exactly 7 scale degrees
             let mut count = 0;
-            for midi in 60..72 { // C4 through B4
+            for midi in 60..72 {
+                // C4 through B4
                 if let Ok(note) = Note::try_from(midi) {
                     if scale.degree_of(note).is_some() {
                         count += 1;
@@ -418,7 +453,11 @@ mod tests {
                 }
             }
             let expected = mode.intervals().len();
-            assert_eq!(count, expected, "Mode {:?} should have {} degrees in an octave", mode, expected);
+            assert_eq!(
+                count, expected,
+                "Mode {:?} should have {} degrees in an octave",
+                mode, expected
+            );
         }
     }
 
@@ -450,14 +489,21 @@ mod tests {
 
         // Eb4 is not in C Ionian, but IS in C Aeolian and C Dorian
         let result = scale.harmonize_with_interchange(Note::Eb4, true);
-        assert!(result.is_some(), "Should find harmony via interchange for Eb");
-        assert!(scale.last_borrowed_from().is_some(), "Should record borrowed mode");
+        assert!(
+            result.is_some(),
+            "Should find harmony via interchange for Eb"
+        );
+        assert!(
+            scale.last_borrowed_from().is_some(),
+            "Should record borrowed mode"
+        );
 
         let borrowed = scale.last_borrowed_from().unwrap();
         // Eb is in both Aeolian and Dorian; Aeolian is checked first at range >= 1
         assert!(
             borrowed == ScaleMode::Aeolian || borrowed == ScaleMode::Dorian,
-            "Should borrow from Aeolian or Dorian, got {:?}", borrowed
+            "Should borrow from Aeolian or Dorian, got {:?}",
+            borrowed
         );
     }
 
@@ -557,7 +603,7 @@ mod tests {
         // C Phrygian Dominant: C Db E F G Ab Bb
         assert_eq!(scale.degree_of(Note::C4), Some(0));
         assert_eq!(scale.degree_of(Note::Db4), Some(1));
-        assert_eq!(scale.degree_of(Note::E4), Some(2));  // E natural, not Eb
+        assert_eq!(scale.degree_of(Note::E4), Some(2)); // E natural, not Eb
         assert_eq!(scale.degree_of(Note::Eb4), None);
         assert_eq!(scale.degree_of(Note::G4), Some(4));
         assert_eq!(scale.degree_of(Note::Ab4), Some(5));

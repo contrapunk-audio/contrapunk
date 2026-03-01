@@ -36,9 +36,13 @@
 	const MAX_OCTAVE = 7;
 
 	function keyToMidi(key: string): number | null {
-		if (key in LOWER_KEYS) return (baseOctave + 1) * 12 + LOWER_KEYS[key]; // octave 3 → MIDI 48+
-		if (key in UPPER_KEYS) return (baseOctave + 2) * 12 + UPPER_KEYS[key]; // octave 4 → MIDI 60+
-		return null;
+		let midi: number;
+		if (key in LOWER_KEYS) midi = (baseOctave + 1) * 12 + LOWER_KEYS[key];
+		else if (key in UPPER_KEYS) midi = (baseOctave + 2) * 12 + UPPER_KEYS[key];
+		else return null;
+		// Clamp to valid MIDI range
+		if (midi < 0 || midi > 127) return null;
+		return midi;
 	}
 
 	// Track held keys → MIDI note they triggered (for correct Note-Off after octave change)

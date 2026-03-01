@@ -196,7 +196,7 @@ mod scale;
 mod stateful;
 pub mod voice_leading;
 
-pub use config::{Key, HarmonyMode, OctaveMode, ScaleFamily, ScaleMode};
+pub use config::{HarmonyMode, Key, OctaveMode, ScaleFamily, ScaleMode};
 pub use engine::HarmonyEngine;
 pub use scale::Scale;
 pub use stateful::{ContraryMotionState, CounterpointState};

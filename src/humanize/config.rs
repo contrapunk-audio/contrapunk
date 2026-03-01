@@ -3,7 +3,7 @@
 //! This module defines the configuration structure for humanization effects
 //! and the wrapper type for humanized notes with their computed offsets.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use wmidi::{Channel, Note, Velocity};
 
 /// Master configuration for all humanization parameters.

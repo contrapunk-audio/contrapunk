@@ -215,7 +215,9 @@ impl Humanizer {
         let note_num = u8::from(note);
         if let Some(record) = self.active_humanization.remove(&note_num) {
             // Note-Off delay = original jitter + duration extension
-            let total_delay = record.delay_ms.saturating_add(record.duration_delta_ms as u16);
+            let total_delay = record
+                .delay_ms
+                .saturating_add(record.duration_delta_ms as u16);
             HumanizedNote {
                 note,
                 channel,

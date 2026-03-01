@@ -1,5 +1,5 @@
 use super::StylePreset;
-use crate::harmony::{Key, HarmonyMode, OctaveMode, ScaleMode, VoiceLeadingStyle};
+use crate::harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
 use crate::humanize::HumanizeConfig;
 
 /// Returns all built-in presets with character personas.

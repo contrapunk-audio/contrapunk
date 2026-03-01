@@ -6,8 +6,8 @@
 
 use wasm_bindgen::prelude::*;
 
-use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode};
 use contrapunk::harmony::VoiceLeadingStyle;
+use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode};
 use contrapunk::preset::PresetManager;
 
 // Initialize panic hook for better error messages in the browser console.
@@ -105,7 +105,10 @@ fn parse_voice_leading_style(s: &str) -> Result<VoiceLeadingStyle, JsValue> {
         "Palestrina" => Ok(VoiceLeadingStyle::Palestrina),
         "BachChorale" => Ok(VoiceLeadingStyle::BachChorale),
         "Jazz" => Ok(VoiceLeadingStyle::Jazz),
-        _ => Err(JsValue::from_str(&format!("Unknown voice leading style: {}", s))),
+        _ => Err(JsValue::from_str(&format!(
+            "Unknown voice leading style: {}",
+            s
+        ))),
     }
 }
 
@@ -250,10 +253,17 @@ impl Engine {
         }
     }
 
+    /// Clear tracked note state (call after config changes that invalidate active harmonies).
+    pub fn clear_notes(&mut self) {
+        self.last_input_notes.clear();
+        self.last_harmony_notes.clear();
+    }
+
     /// Set the musical key (e.g. "C", "Db", "F#").
     pub fn set_key(&mut self, key: &str) -> Result<(), JsValue> {
         let k = parse_key(key)?;
         self.inner.set_key(k);
+        self.clear_notes();
         Ok(())
     }
 
@@ -261,6 +271,7 @@ impl Engine {
     pub fn set_mode(&mut self, mode: &str) -> Result<(), JsValue> {
         let m = parse_mode(mode)?;
         self.inner.set_mode(m);
+        self.clear_notes();
         Ok(())
     }
 
@@ -268,6 +279,7 @@ impl Engine {
     pub fn set_scale_mode(&mut self, mode: &str) -> Result<(), JsValue> {
         let sm = parse_scale_mode(mode)?;
         self.inner.set_scale_mode(sm);
+        self.clear_notes();
         Ok(())
     }
 
@@ -275,6 +287,7 @@ impl Engine {
     pub fn set_octave_mode(&mut self, mode: &str) -> Result<(), JsValue> {
         let om = parse_octave_mode(mode)?;
         self.inner.set_octave_mode(om);
+        self.clear_notes();
         Ok(())
     }
 
@@ -283,6 +296,7 @@ impl Engine {
         let vl_style = parse_voice_leading_style(style)?;
         self.inner.set_voice_leading_enabled(enabled);
         self.inner.set_voice_leading_style(vl_style);
+        self.clear_notes();
         Ok(())
     }
 
@@ -290,6 +304,7 @@ impl Engine {
     pub fn set_interchange(&mut self, enabled: bool, range: u8) -> Result<(), JsValue> {
         self.inner.set_interchange_enabled(enabled);
         self.inner.set_borrowing_range(range);
+        self.clear_notes();
         Ok(())
     }
 
@@ -372,7 +387,9 @@ impl Engine {
 
     /// Get the current note state as a JS object.
     pub fn get_note_state(&self) -> Result<JsValue, JsValue> {
-        let borrowed_from = self.inner.last_borrowed_from()
+        let borrowed_from = self
+            .inner
+            .last_borrowed_from()
             .map(|sm| scale_mode_to_string(sm).to_string())
             .unwrap_or_default();
 
@@ -390,12 +407,17 @@ impl Engine {
 
     /// List all available presets (builtins + custom).
     pub fn list_presets(&self) -> Result<JsValue, JsValue> {
-        let presets: Vec<PresetJs> = self.presets.all_presets().iter().map(|p| PresetJs {
-            name: p.name.clone(),
-            persona: p.persona.clone(),
-            genre: p.genre.clone(),
-            is_builtin: p.is_builtin,
-        }).collect();
+        let presets: Vec<PresetJs> = self
+            .presets
+            .all_presets()
+            .iter()
+            .map(|p| PresetJs {
+                name: p.name.clone(),
+                persona: p.persona.clone(),
+                genre: p.genre.clone(),
+                is_builtin: p.is_builtin,
+            })
+            .collect();
 
         serde_wasm_bindgen::to_value(&presets)
             .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
@@ -404,16 +426,21 @@ impl Engine {
     /// Load a preset by name, applying its settings to the engine.
     pub fn load_preset(&mut self, name: &str) -> Result<(), JsValue> {
         let all = self.presets.all_presets();
-        let preset = all.iter().find(|p| p.name == name)
+        let preset = all
+            .iter()
+            .find(|p| p.name == name)
             .ok_or_else(|| JsValue::from_str(&format!("Preset not found: {}", name)))?;
 
         self.inner.set_key(preset.key);
         self.inner.set_mode(preset.harmony_mode);
         self.inner.set_scale_mode(preset.scale_mode);
         self.inner.set_octave_mode(preset.octave_mode);
-        self.inner.set_voice_leading_enabled(preset.voice_leading_enabled);
-        self.inner.set_voice_leading_style(preset.voice_leading_style);
-        self.inner.set_interchange_enabled(preset.interchange_enabled);
+        self.inner
+            .set_voice_leading_enabled(preset.voice_leading_enabled);
+        self.inner
+            .set_voice_leading_style(preset.voice_leading_style);
+        self.inner
+            .set_interchange_enabled(preset.interchange_enabled);
         self.inner.set_borrowing_range(preset.borrowing_range);
 
         // Set active index
@@ -426,8 +453,8 @@ impl Engine {
 
     /// Save current engine settings as a custom preset.
     pub fn save_preset(&mut self, name: &str) -> Result<(), JsValue> {
-        use contrapunk::preset::StylePreset;
         use contrapunk::humanize::HumanizeConfig;
+        use contrapunk::preset::StylePreset;
 
         let preset = StylePreset {
             name: name.to_string(),
@@ -456,7 +483,10 @@ impl Engine {
             self.presets.remove_custom(idx);
             Ok(())
         } else {
-            Err(JsValue::from_str(&format!("Custom preset not found: {}", name)))
+            Err(JsValue::from_str(&format!(
+                "Custom preset not found: {}",
+                name
+            )))
         }
     }
 }
@@ -464,7 +494,9 @@ impl Engine {
 /// Convert a MIDI note number (0-127) to its note name (e.g. 60 -> "C4").
 #[wasm_bindgen]
 pub fn midi_to_name(midi: u8) -> String {
-    let note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let note_names = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
     let octave = (midi as i8 / 12) - 1;
     let name_idx = (midi % 12) as usize;
     format!("{}{}", note_names[name_idx], octave)

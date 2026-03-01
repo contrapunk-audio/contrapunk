@@ -6,9 +6,7 @@
 use serde::Serialize;
 use tauri::State;
 
-use contrapunk::harmony::{
-    HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle,
-};
+use contrapunk::harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
 
 use crate::state::AppState;
 
@@ -99,11 +97,7 @@ pub fn set_voice_leading(
 
 /// Configures modal interchange.
 #[tauri::command]
-pub fn set_interchange(
-    enabled: bool,
-    range: u8,
-    state: State<AppState>,
-) -> Result<(), String> {
+pub fn set_interchange(enabled: bool, range: u8, state: State<AppState>) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     engine.set_interchange_enabled(enabled);
     engine.set_borrowing_range(range);
@@ -150,9 +144,7 @@ fn parse_harmony_mode(s: &str) -> Result<HarmonyMode, String> {
             Ok(HarmonyMode::RandomBelowNoSeconds)
         }
         "ContraryMotion" | "contrary_motion" | "6" => Ok(HarmonyMode::ContraryMotion),
-        "StrictCounterpoint" | "strict_counterpoint" | "7" => {
-            Ok(HarmonyMode::StrictCounterpoint)
-        }
+        "StrictCounterpoint" | "strict_counterpoint" | "7" => Ok(HarmonyMode::StrictCounterpoint),
         "BarryHarris" | "barry_harris" | "8" => Ok(HarmonyMode::BarryHarris),
         other => Err(format!("Unknown harmony mode: {}", other)),
     }

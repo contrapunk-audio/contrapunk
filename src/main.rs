@@ -9,7 +9,7 @@
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
-use contrapunk::harmony::{Key, HarmonyMode, OctaveMode};
+use contrapunk::harmony::{HarmonyMode, Key, OctaveMode};
 
 /// Contrapunk - Real-time MIDI harmony generation
 #[derive(Parser)]
@@ -67,20 +67,22 @@ fn main() -> Result<()> {
 /// harmony configuration, then streams local MIDI input to the server
 /// and routes harmonized output back to local MIDI output ports.
 fn run_client(addr: &str) -> Result<()> {
+    use std::io;
     use std::net::TcpStream;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
-    use std::io;
 
     use contrapunk::midi::input::connect_input;
     use contrapunk::midi::output::OutputRouter;
-    use contrapunk::midi::ports::{list_input_ports, list_output_ports, select_input_port, select_output_ports};
+    use contrapunk::midi::ports::{
+        list_input_ports, list_output_ports, select_input_port, select_output_ports,
+    };
     use contrapunk::server::protocol::{self, Message};
 
     // Connect to server
-    let mut stream = TcpStream::connect(addr)
-        .map_err(|e| anyhow!("Failed to connect to {}: {}", addr, e))?;
+    let mut stream =
+        TcpStream::connect(addr).map_err(|e| anyhow!("Failed to connect to {}: {}", addr, e))?;
     stream.set_nodelay(true)?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
@@ -93,7 +95,10 @@ fn run_client(addr: &str) -> Result<()> {
         return Err(anyhow!("No MIDI input ports available"));
     }
     let selected_input = select_input_port(&input_ports)?;
-    println!("\nSelected input: {} - {}\n", selected_input, input_ports[selected_input].1);
+    println!(
+        "\nSelected input: {} - {}\n",
+        selected_input, input_ports[selected_input].1
+    );
 
     let output_ports = list_output_ports()?;
     if output_ports.is_empty() {
@@ -111,7 +116,11 @@ fn run_client(addr: &str) -> Result<()> {
     println!("\nSelected key: {}\n", key);
 
     let mode = select_mode()?;
-    println!("\nSelected mode: {} - {}\n", mode.number(), mode.description());
+    println!(
+        "\nSelected mode: {} - {}\n",
+        mode.number(),
+        mode.description()
+    );
 
     let octave_mode = select_octave_mode()?;
     println!("\nSelected octave mode: {}\n", octave_mode.description());
@@ -120,15 +129,24 @@ fn run_client(addr: &str) -> Result<()> {
 
     // Send Configure message
     let key_index = Key::all().iter().position(|k| *k == key).unwrap_or(0) as u8;
-    let mode_index = HarmonyMode::all().iter().position(|m| *m == mode).unwrap_or(0) as u8;
-    let octave_index = OctaveMode::all().iter().position(|o| *o == octave_mode).unwrap_or(0) as u8;
+    let mode_index = HarmonyMode::all()
+        .iter()
+        .position(|m| *m == mode)
+        .unwrap_or(0) as u8;
+    let octave_index = OctaveMode::all()
+        .iter()
+        .position(|o| *o == octave_mode)
+        .unwrap_or(0) as u8;
 
-    protocol::write_message(&mut stream, &Message::Configure {
-        key: key_index,
-        mode: mode_index,
-        octave_mode: octave_index,
-        voice_count,
-    })?;
+    protocol::write_message(
+        &mut stream,
+        &Message::Configure {
+            key: key_index,
+            mode: mode_index,
+            octave_mode: octave_index,
+            voice_count,
+        },
+    )?;
 
     // Wait for Ack
     match protocol::read_message(&mut stream)? {
@@ -149,7 +167,8 @@ fn run_client(addr: &str) -> Result<()> {
     let vc_count = voice_count as usize;
 
     // Spawn reader thread for server responses
-    let mut read_stream = stream.try_clone()
+    let mut read_stream = stream
+        .try_clone()
         .map_err(|e| anyhow!("Failed to clone stream: {}", e))?;
 
     let (response_tx, response_rx) = std::sync::mpsc::channel::<Vec<u8>>();
@@ -158,7 +177,11 @@ fn run_client(addr: &str) -> Result<()> {
         loop {
             match protocol::read_message(&mut read_stream) {
                 Ok(Message::MidiData(bytes)) => {
-                    eprintln!("[client] received {} bytes from server: {:?}", bytes.len(), &bytes);
+                    eprintln!(
+                        "[client] received {} bytes from server: {:?}",
+                        bytes.len(),
+                        &bytes
+                    );
                     if response_tx.send(bytes).is_err() {
                         break;
                     }
@@ -234,7 +257,11 @@ fn run_client(addr: &str) -> Result<()> {
         // Route server responses to local outputs
         while let Ok(bytes) = response_rx.try_recv() {
             let output_index = vc_reader.fetch_add(1, Ordering::Relaxed) % vc_count;
-            eprintln!("[client] routing {} bytes to output {}", bytes.len(), output_index);
+            eprintln!(
+                "[client] routing {} bytes to output {}",
+                bytes.len(),
+                output_index
+            );
             if let Err(e) = output_router.send_to_port(output_index, &bytes) {
                 eprintln!("[client] Failed to send to output {}: {}", output_index, e);
             }
@@ -267,7 +294,8 @@ fn select_key() -> Result<Key> {
         return Ok(Key::C);
     }
 
-    let index: usize = input.parse()
+    let index: usize = input
+        .parse()
         .map_err(|_| anyhow!("Invalid number: {}", input))?;
 
     Key::all()
@@ -296,7 +324,8 @@ fn select_mode() -> Result<HarmonyMode> {
         return Ok(HarmonyMode::PassThrough);
     }
 
-    let number: u8 = input.parse()
+    let number: u8 = input
+        .parse()
         .map_err(|_| anyhow!("Invalid number: {}", input))?;
 
     HarmonyMode::all()
@@ -327,7 +356,8 @@ fn select_octave_mode() -> Result<OctaveMode> {
         return Ok(OctaveMode::None);
     }
 
-    let number: u8 = input.parse()
+    let number: u8 = input
+        .parse()
         .map_err(|_| anyhow!("Invalid number: {}", input))?;
 
     match number {

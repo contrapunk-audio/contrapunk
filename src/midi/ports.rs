@@ -20,7 +20,9 @@ pub fn list_input_ports() -> Result<Vec<(usize, String)>> {
 
     let mut port_list = Vec::new();
     for (i, port) in ports.iter().enumerate() {
-        let name = midi_in.port_name(port).unwrap_or_else(|_| "Unknown".to_string());
+        let name = midi_in
+            .port_name(port)
+            .unwrap_or_else(|_| "Unknown".to_string());
         port_list.push((i, name));
     }
 
@@ -40,7 +42,9 @@ pub fn list_output_ports() -> Result<Vec<(usize, String)>> {
 
     let mut port_list = Vec::new();
     for (i, port) in ports.iter().enumerate() {
-        let name = midi_out.port_name(port).unwrap_or_else(|_| "Unknown".to_string());
+        let name = midi_out
+            .port_name(port)
+            .unwrap_or_else(|_| "Unknown".to_string());
         port_list.push((i, name));
     }
 
@@ -75,7 +79,10 @@ pub fn select_input_port(ports: &[(usize, String)]) -> Result<usize> {
                 return Ok(idx);
             }
             _ => {
-                println!("Invalid selection. Please enter a number between 0 and {}.", ports.len() - 1);
+                println!(
+                    "Invalid selection. Please enter a number between 0 and {}.",
+                    ports.len() - 1
+                );
             }
         }
     }
@@ -88,7 +95,11 @@ pub fn select_input_port(ports: &[(usize, String)]) -> Result<usize> {
 /// Validates that the selection count is within min/max bounds.
 ///
 /// Returns a vector of selected port indices.
-pub fn select_output_ports(ports: &[(usize, String)], min: usize, max: usize) -> Result<Vec<usize>> {
+pub fn select_output_ports(
+    ports: &[(usize, String)],
+    min: usize,
+    max: usize,
+) -> Result<Vec<usize>> {
     if ports.is_empty() {
         return Err(anyhow!("No MIDI output ports available"));
     }
@@ -107,7 +118,10 @@ pub fn select_output_ports(ports: &[(usize, String)], min: usize, max: usize) ->
     }
 
     loop {
-        print!("Select output ports (comma-separated, {}-{} ports): ", min, max);
+        print!(
+            "Select output ports (comma-separated, {}-{} ports): ",
+            min, max
+        );
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -126,7 +140,9 @@ pub fn select_output_ports(ports: &[(usize, String)], min: usize, max: usize) ->
                 if indices.len() < min || indices.len() > max {
                     println!(
                         "Please select between {} and {} ports. You selected {}.",
-                        min, max, indices.len()
+                        min,
+                        max,
+                        indices.len()
                     );
                     continue;
                 }

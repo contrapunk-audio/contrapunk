@@ -71,6 +71,13 @@
 
 <div class="card">
 	<div class="card-header font-pixel">Generator</div>
+	<div class="unavailable font-pixel">Desktop only</div>
+</div>
+
+<!-- Full generator UI (hidden in browser mode, no backend support yet) -->
+{#if false}
+<div class="card">
+	<div class="card-header font-pixel">Generator</div>
 	<div class="toggle-row">
 		<button
 			class="pixel-btn toggle-btn"
@@ -144,8 +151,17 @@
 		{/if}
 	{/if}
 </div>
+{/if}
 
 <style>
+	.unavailable {
+		color: var(--color-text-dim);
+		font-size: 6px;
+		padding: 2px 0;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
 	.card {
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);

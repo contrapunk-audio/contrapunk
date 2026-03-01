@@ -61,7 +61,11 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
 
         match msg {
             Message::MidiData(bytes) => {
-                eprintln!("[server] client {} received {} MIDI bytes", peer, bytes.len());
+                eprintln!(
+                    "[server] client {} received {} MIDI bytes",
+                    peer,
+                    bytes.len()
+                );
                 if let Err(e) = process_midi(&bytes, &mut engine, &mut stream) {
                     eprintln!("[server] client {} midi error: {}", peer, e);
                 }
@@ -98,11 +102,7 @@ pub fn handle_client(mut stream: TcpStream) -> Result<()> {
 
 /// Process a MIDI data message through the harmony engine and write
 /// resulting messages back to the client stream.
-fn process_midi(
-    bytes: &[u8],
-    engine: &mut HarmonyEngine,
-    stream: &mut TcpStream,
-) -> Result<()> {
+fn process_midi(bytes: &[u8], engine: &mut HarmonyEngine, stream: &mut TcpStream) -> Result<()> {
     let midi_msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
         Err(_) => {

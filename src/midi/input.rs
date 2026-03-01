@@ -43,33 +43,37 @@ pub fn connect_input(
         .get(port_index)
         .ok_or_else(|| anyhow!("Invalid input port index: {}", port_index))?;
 
-    let port_name = midi_in.port_name(port).unwrap_or_else(|_| "Unknown".to_string());
+    let port_name = midi_in
+        .port_name(port)
+        .unwrap_or_else(|_| "Unknown".to_string());
 
     println!("Connecting to input: {} (port {})", port_name, port_index);
 
     // Connect with callback that forwards messages via channel
-    let conn = midi_in.connect(
-        port,
-        "contrapunk-read",
-        move |timestamp, message, _| {
-            // Clone message bytes (message is a borrowed slice)
-            let msg_vec = message.to_vec();
+    let conn = midi_in
+        .connect(
+            port,
+            "contrapunk-read",
+            move |timestamp, message, _| {
+                // Clone message bytes (message is a borrowed slice)
+                let msg_vec = message.to_vec();
 
-            // Debug output
-            println!(
-                "[IN] t={:>10} | {:?} (len={})",
-                timestamp,
-                message,
-                message.len()
-            );
+                // Debug output
+                println!(
+                    "[IN] t={:>10} | {:?} (len={})",
+                    timestamp,
+                    message,
+                    message.len()
+                );
 
-            // Forward through channel
-            if let Err(e) = tx.send(msg_vec) {
-                eprintln!("Error sending MIDI message through channel: {}", e);
-            }
-        },
-        (),
-    ).map_err(|e| anyhow!("Failed to connect to input port: {}", e))?;
+                // Forward through channel
+                if let Err(e) = tx.send(msg_vec) {
+                    eprintln!("Error sending MIDI message through channel: {}", e);
+                }
+            },
+            (),
+        )
+        .map_err(|e| anyhow!("Failed to connect to input port: {}", e))?;
 
     println!("Input connected successfully.");
 

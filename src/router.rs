@@ -62,7 +62,11 @@ pub fn run_router(
         engine.mode().number(),
         engine.mode().description()
     );
-    println!("Voices: {} (melody + {} chained harmonies)", num_outputs, num_outputs.saturating_sub(1));
+    println!(
+        "Voices: {} (melody + {} chained harmonies)",
+        num_outputs,
+        num_outputs.saturating_sub(1)
+    );
     println!("Press Enter to stop.");
     println!("========================================\n");
 
@@ -100,7 +104,14 @@ pub fn run_router(
         match rx.recv_timeout(Duration::from_millis(5)) {
             Ok(message) => {
                 let current_ms = now_ms();
-                if let Err(e) = process_midi_message(&message, engine, &mut output_router, &mut humanizer, &mut delay_queue, current_ms) {
+                if let Err(e) = process_midi_message(
+                    &message,
+                    engine,
+                    &mut output_router,
+                    &mut humanizer,
+                    &mut delay_queue,
+                    current_ms,
+                ) {
                     eprintln!("Error processing message: {}", e);
                 }
             }
@@ -138,13 +149,40 @@ fn process_midi_message(
     match msg {
         MidiMessage::NoteOn(channel, note, velocity) => {
             if velocity == Velocity::MIN {
-                handle_note_off(channel, note, velocity, engine, output, humanizer, delay_queue, now_ms)?;
+                handle_note_off(
+                    channel,
+                    note,
+                    velocity,
+                    engine,
+                    output,
+                    humanizer,
+                    delay_queue,
+                    now_ms,
+                )?;
             } else {
-                handle_note_on(channel, note, velocity, engine, output, humanizer, delay_queue, now_ms)?;
+                handle_note_on(
+                    channel,
+                    note,
+                    velocity,
+                    engine,
+                    output,
+                    humanizer,
+                    delay_queue,
+                    now_ms,
+                )?;
             }
         }
         MidiMessage::NoteOff(channel, note, velocity) => {
-            handle_note_off(channel, note, velocity, engine, output, humanizer, delay_queue, now_ms)?;
+            handle_note_off(
+                channel,
+                note,
+                velocity,
+                engine,
+                output,
+                humanizer,
+                delay_queue,
+                now_ms,
+            )?;
         }
         _ => {
             output.send_to_first(bytes)?;
@@ -194,7 +232,8 @@ fn handle_note_on(
 
     // Debug output
     if notes.len() > 1 {
-        let note_strs: Vec<String> = notes.iter()
+        let note_strs: Vec<String> = notes
+            .iter()
             .zip(port_map.iter().chain(std::iter::repeat(&0)))
             .map(|(n, p)| format!("{:?}->p{}", n, p))
             .collect();

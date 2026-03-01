@@ -46,10 +46,10 @@
 // Core modules -- always available on all platforms
 // =============================================================================
 
+pub mod chord;
+pub mod generator;
 pub mod harmony;
 pub mod humanize;
-pub mod generator;
-pub mod chord;
 pub mod midi;
 pub mod preset;
 

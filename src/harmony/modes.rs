@@ -92,7 +92,7 @@ pub fn pass_through(note: Note, _scale: &mut Scale) -> Vec<Note> {
 pub fn diatonic_thirds(note: Note, scale: &mut Scale) -> Vec<Note> {
     match scale.harmonize_smart(note, 2, true) {
         Some(harmony) => vec![note, harmony],
-        None => vec![note],  // Out of range, just pass through
+        None => vec![note], // Out of range, just pass through
     }
 }
 
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_diatonic_thirds() {
-        let mut scale = Scale::major(0);  // C major
+        let mut scale = Scale::major(0); // C major
 
         // C4 + third = E4
         let result = diatonic_thirds(Note::C4, &mut scale);

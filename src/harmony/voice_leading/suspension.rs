@@ -155,7 +155,11 @@ mod tests {
         state.process(&mut voicing4, Some(&voicing3), &scale);
 
         // G4 (67) resolves stepwise down to F4 (65) in C major
-        assert_eq!(u8::from(voicing4[2]), 65, "Suspended G4 should resolve to F4");
+        assert_eq!(
+            u8::from(voicing4[2]),
+            65,
+            "Suspended G4 should resolve to F4"
+        );
         assert_eq!(state.phase, SuspensionPhase::None);
     }
 

@@ -289,6 +289,24 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async stopRouting(): Promise<void> {
+		// Send All-Notes-Off (CC 123) to every active output to prevent stuck notes
+		for (const output of this.activeOutputs) {
+			try {
+				output.send([0xb0, 123, 0]); // CC#123 = All Notes Off
+			} catch {
+				// Output may already be disconnected
+			}
+		}
+
+		// Clear engine's tracked note state
+		if (engine) {
+			try {
+				engine.clear_notes();
+			} catch {
+				// Engine may not be initialized
+			}
+		}
+
 		// Disconnect MIDI input handler
 		if (this.activeInput) {
 			this.activeInput.onmidimessage = null;

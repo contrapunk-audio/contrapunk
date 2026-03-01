@@ -112,10 +112,13 @@
 	<!-- Preset list -->
 	<div class="preset-list">
 		{#each presets as preset}
-			<button
+			<div
 				class="preset-item font-pixel"
 				class:preset-active={activePreset === preset.name}
 				onclick={() => handleLoadPreset(preset.name)}
+				onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') handleLoadPreset(preset.name); }}
+				role="button"
+				tabindex="0"
 				title="{preset.persona} - {preset.genre}"
 			>
 				<span class="preset-name">{preset.name}</span>
@@ -139,7 +142,7 @@
 						</button>
 					{/if}
 				</span>
-			</button>
+			</div>
 		{/each}
 	</div>
 

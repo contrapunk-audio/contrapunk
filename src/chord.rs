@@ -7,10 +7,14 @@
 use std::collections::HashSet;
 
 /// Note names for display (C, C#, D, ..., B).
-const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const NOTE_NAMES: [&str; 12] = [
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+];
 
 /// Flat-key note names for context-aware enharmonic spelling.
-const NOTE_NAMES_FLAT: [&str; 12] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+const NOTE_NAMES_FLAT: [&str; 12] = [
+    "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B",
+];
 
 /// Common chord types defined by intervals from root (in semitones).
 struct ChordPattern {
@@ -21,61 +25,163 @@ struct ChordPattern {
 /// Known chord patterns ordered by specificity (longer patterns first).
 const CHORD_PATTERNS: &[ChordPattern] = &[
     // 13th chords (6 notes)
-    ChordPattern { name: "maj13", intervals: &[0, 2, 4, 7, 9, 11] },
-    ChordPattern { name: "13", intervals: &[0, 2, 4, 7, 9, 10] },
-    ChordPattern { name: "min13", intervals: &[0, 2, 3, 7, 9, 10] },
-
+    ChordPattern {
+        name: "maj13",
+        intervals: &[0, 2, 4, 7, 9, 11],
+    },
+    ChordPattern {
+        name: "13",
+        intervals: &[0, 2, 4, 7, 9, 10],
+    },
+    ChordPattern {
+        name: "min13",
+        intervals: &[0, 2, 3, 7, 9, 10],
+    },
     // 11th chords (5 notes)
-    ChordPattern { name: "maj9#11", intervals: &[0, 2, 4, 6, 7, 11] },
-    ChordPattern { name: "11", intervals: &[0, 2, 4, 5, 7, 10] },
-    ChordPattern { name: "min11", intervals: &[0, 2, 3, 5, 7, 10] },
-
+    ChordPattern {
+        name: "maj9#11",
+        intervals: &[0, 2, 4, 6, 7, 11],
+    },
+    ChordPattern {
+        name: "11",
+        intervals: &[0, 2, 4, 5, 7, 10],
+    },
+    ChordPattern {
+        name: "min11",
+        intervals: &[0, 2, 3, 5, 7, 10],
+    },
     // 6/9 chord (5 notes)
-    ChordPattern { name: "6/9", intervals: &[0, 2, 4, 7, 9] },
-
+    ChordPattern {
+        name: "6/9",
+        intervals: &[0, 2, 4, 7, 9],
+    },
     // 9th chords (5 notes)
-    ChordPattern { name: "maj9", intervals: &[0, 2, 4, 7, 11] },
-    ChordPattern { name: "9", intervals: &[0, 2, 4, 7, 10] },
-    ChordPattern { name: "min9", intervals: &[0, 2, 3, 7, 10] },
-    ChordPattern { name: "7b9", intervals: &[0, 1, 4, 7, 10] },
-    ChordPattern { name: "7#9", intervals: &[0, 3, 4, 7, 10] },
-
+    ChordPattern {
+        name: "maj9",
+        intervals: &[0, 2, 4, 7, 11],
+    },
+    ChordPattern {
+        name: "9",
+        intervals: &[0, 2, 4, 7, 10],
+    },
+    ChordPattern {
+        name: "min9",
+        intervals: &[0, 2, 3, 7, 10],
+    },
+    ChordPattern {
+        name: "7b9",
+        intervals: &[0, 1, 4, 7, 10],
+    },
+    ChordPattern {
+        name: "7#9",
+        intervals: &[0, 3, 4, 7, 10],
+    },
     // Altered dominants (4-5 notes)
-    ChordPattern { name: "7#11", intervals: &[0, 4, 6, 7, 10] },
-    ChordPattern { name: "7b13", intervals: &[0, 4, 7, 8, 10] },
-    ChordPattern { name: "7alt", intervals: &[0, 1, 4, 8, 10] },
-
+    ChordPattern {
+        name: "7#11",
+        intervals: &[0, 4, 6, 7, 10],
+    },
+    ChordPattern {
+        name: "7b13",
+        intervals: &[0, 4, 7, 8, 10],
+    },
+    ChordPattern {
+        name: "7alt",
+        intervals: &[0, 1, 4, 8, 10],
+    },
     // 6th chords (4 notes)
-    ChordPattern { name: "maj6", intervals: &[0, 4, 7, 9] },
-    ChordPattern { name: "min6", intervals: &[0, 3, 7, 9] },
-
+    ChordPattern {
+        name: "maj6",
+        intervals: &[0, 4, 7, 9],
+    },
+    ChordPattern {
+        name: "min6",
+        intervals: &[0, 3, 7, 9],
+    },
     // Add chords (4 notes)
-    ChordPattern { name: "add9", intervals: &[0, 2, 4, 7] },
-    ChordPattern { name: "madd9", intervals: &[0, 2, 3, 7] },
-    ChordPattern { name: "add11", intervals: &[0, 4, 5, 7] },
-
+    ChordPattern {
+        name: "add9",
+        intervals: &[0, 2, 4, 7],
+    },
+    ChordPattern {
+        name: "madd9",
+        intervals: &[0, 2, 3, 7],
+    },
+    ChordPattern {
+        name: "add11",
+        intervals: &[0, 4, 5, 7],
+    },
     // Seventh chords (4 notes)
-    ChordPattern { name: "maj7", intervals: &[0, 4, 7, 11] },
-    ChordPattern { name: "7", intervals: &[0, 4, 7, 10] },
-    ChordPattern { name: "min7", intervals: &[0, 3, 7, 10] },
-    ChordPattern { name: "dim7", intervals: &[0, 3, 6, 9] },
-    ChordPattern { name: "m7b5", intervals: &[0, 3, 6, 10] },
-    ChordPattern { name: "minmaj7", intervals: &[0, 3, 7, 11] },
-    ChordPattern { name: "aug7", intervals: &[0, 4, 8, 10] },
-    ChordPattern { name: "augmaj7", intervals: &[0, 4, 8, 11] },
-    ChordPattern { name: "7sus4", intervals: &[0, 5, 7, 10] },
-    ChordPattern { name: "7sus2", intervals: &[0, 2, 7, 10] },
-
+    ChordPattern {
+        name: "maj7",
+        intervals: &[0, 4, 7, 11],
+    },
+    ChordPattern {
+        name: "7",
+        intervals: &[0, 4, 7, 10],
+    },
+    ChordPattern {
+        name: "min7",
+        intervals: &[0, 3, 7, 10],
+    },
+    ChordPattern {
+        name: "dim7",
+        intervals: &[0, 3, 6, 9],
+    },
+    ChordPattern {
+        name: "m7b5",
+        intervals: &[0, 3, 6, 10],
+    },
+    ChordPattern {
+        name: "minmaj7",
+        intervals: &[0, 3, 7, 11],
+    },
+    ChordPattern {
+        name: "aug7",
+        intervals: &[0, 4, 8, 10],
+    },
+    ChordPattern {
+        name: "augmaj7",
+        intervals: &[0, 4, 8, 11],
+    },
+    ChordPattern {
+        name: "7sus4",
+        intervals: &[0, 5, 7, 10],
+    },
+    ChordPattern {
+        name: "7sus2",
+        intervals: &[0, 2, 7, 10],
+    },
     // Triads (3 notes)
-    ChordPattern { name: "maj", intervals: &[0, 4, 7] },
-    ChordPattern { name: "min", intervals: &[0, 3, 7] },
-    ChordPattern { name: "dim", intervals: &[0, 3, 6] },
-    ChordPattern { name: "aug", intervals: &[0, 4, 8] },
-    ChordPattern { name: "sus4", intervals: &[0, 5, 7] },
-    ChordPattern { name: "sus2", intervals: &[0, 2, 7] },
-
+    ChordPattern {
+        name: "maj",
+        intervals: &[0, 4, 7],
+    },
+    ChordPattern {
+        name: "min",
+        intervals: &[0, 3, 7],
+    },
+    ChordPattern {
+        name: "dim",
+        intervals: &[0, 3, 6],
+    },
+    ChordPattern {
+        name: "aug",
+        intervals: &[0, 4, 8],
+    },
+    ChordPattern {
+        name: "sus4",
+        intervals: &[0, 5, 7],
+    },
+    ChordPattern {
+        name: "sus2",
+        intervals: &[0, 2, 7],
+    },
     // Power chord (2 notes)
-    ChordPattern { name: "5", intervals: &[0, 7] },
+    ChordPattern {
+        name: "5",
+        intervals: &[0, 7],
+    },
 ];
 
 /// Detects the chord from a set of MIDI note numbers.
@@ -112,9 +218,7 @@ pub fn detect_chord(notes: &HashSet<u8>) -> Option<String> {
     let mut best: Option<(usize, bool, usize, u8, &str)> = None; // (interval_count desc, root_is_bass, pattern_idx, root, name)
 
     for &root in &pcs {
-        let intervals: HashSet<u8> = pcs.iter()
-            .map(|&pc| (pc + 12 - root) % 12)
-            .collect();
+        let intervals: HashSet<u8> = pcs.iter().map(|&pc| (pc + 12 - root) % 12).collect();
 
         for (pidx, pattern) in CHORD_PATTERNS.iter().enumerate() {
             let pattern_set: HashSet<u8> = pattern.intervals.iter().copied().collect();
@@ -123,12 +227,20 @@ pub fn detect_chord(notes: &HashSet<u8>) -> Option<String> {
                 let ilen = pattern.intervals.len();
                 // Compare: prefer more intervals, then root==bass, then earlier pattern
                 let dominated = if let Some((best_ilen, best_rib, best_pidx, _, _)) = best {
-                    if ilen > best_ilen { false }
-                    else if ilen < best_ilen { true }
-                    else if root_is_bass && !best_rib { false }
-                    else if !root_is_bass && best_rib { true }
-                    else { pidx >= best_pidx }
-                } else { false };
+                    if ilen > best_ilen {
+                        false
+                    } else if ilen < best_ilen {
+                        true
+                    } else if root_is_bass && !best_rib {
+                        false
+                    } else if !root_is_bass && best_rib {
+                        true
+                    } else {
+                        pidx >= best_pidx
+                    }
+                } else {
+                    false
+                };
                 if !dominated || best.is_none() {
                     best = Some((ilen, root_is_bass, pidx, root, pattern.name));
                 }
@@ -190,7 +302,8 @@ pub fn roman_numeral(root_pc: u8, key_tonic: u8) -> String {
         10 => "bVII",
         11 => "VII",
         _ => "?",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Returns chord name with roman numeral analysis in a given key.
@@ -231,12 +344,17 @@ pub fn chord_display_with_analysis(notes: &HashSet<u8>, key_tonic: Option<u8>) -
 fn parse_root_from_chord(chord: &str) -> Option<u8> {
     if chord.len() >= 2 && (chord.as_bytes()[1] == b'#' || chord.as_bytes()[1] == b'b') {
         let root_str = &chord[..2];
-        NOTE_NAMES.iter().position(|&n| n == root_str)
+        NOTE_NAMES
+            .iter()
+            .position(|&n| n == root_str)
             .or_else(|| NOTE_NAMES_FLAT.iter().position(|&n| n == root_str))
             .map(|i| i as u8)
     } else {
         let root_str = &chord[..1];
-        NOTE_NAMES.iter().position(|&n| n == root_str).map(|i| i as u8)
+        NOTE_NAMES
+            .iter()
+            .position(|&n| n == root_str)
+            .map(|i| i as u8)
     }
 }
 

@@ -138,7 +138,10 @@ impl OutputRouter {
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(anyhow!("Failed to send to some ports: {}", errors.join(", ")))
+            Err(anyhow!(
+                "Failed to send to some ports: {}",
+                errors.join(", ")
+            ))
         }
     }
 

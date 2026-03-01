@@ -3,7 +3,7 @@
 //! This module defines the enums used to configure the harmony engine:
 //! musical keys, harmony modes, octave modes, and scale modes.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Musical keys (C through B, 12 options).
 ///
@@ -26,7 +26,18 @@ use serde::{Serialize, Deserialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Key {
-    C, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B,
+    C,
+    Db,
+    D,
+    Eb,
+    E,
+    F,
+    Gb,
+    G,
+    Ab,
+    A,
+    Bb,
+    B,
 }
 
 impl Key {
@@ -35,10 +46,18 @@ impl Key {
     /// This value is used as the tonic pitch class when constructing scales.
     pub fn semitones_from_c(&self) -> u8 {
         match self {
-            Key::C  => 0,  Key::Db => 1,  Key::D  => 2,
-            Key::Eb => 3,  Key::E  => 4,  Key::F  => 5,
-            Key::Gb => 6,  Key::G  => 7,  Key::Ab => 8,
-            Key::A  => 9,  Key::Bb => 10, Key::B  => 11,
+            Key::C => 0,
+            Key::Db => 1,
+            Key::D => 2,
+            Key::Eb => 3,
+            Key::E => 4,
+            Key::F => 5,
+            Key::Gb => 6,
+            Key::G => 7,
+            Key::Ab => 8,
+            Key::A => 9,
+            Key::Bb => 10,
+            Key::B => 11,
         }
     }
 
@@ -54,8 +73,20 @@ impl Key {
     /// assert_eq!(keys[0], Key::C);
     /// ```
     pub fn all() -> &'static [Key] {
-        &[Key::C, Key::Db, Key::D, Key::Eb, Key::E, Key::F,
-          Key::Gb, Key::G, Key::Ab, Key::A, Key::Bb, Key::B]
+        &[
+            Key::C,
+            Key::Db,
+            Key::D,
+            Key::Eb,
+            Key::E,
+            Key::F,
+            Key::Gb,
+            Key::G,
+            Key::Ab,
+            Key::A,
+            Key::Bb,
+            Key::B,
+        ]
     }
 }
 
@@ -307,38 +338,38 @@ impl ScaleMode {
     pub fn intervals(&self) -> Vec<u8> {
         match self {
             // Church modes
-            ScaleMode::Ionian       => vec![0, 2, 4, 5, 7, 9, 11],
-            ScaleMode::Dorian       => vec![0, 2, 3, 5, 7, 9, 10],
-            ScaleMode::Phrygian     => vec![0, 1, 3, 5, 7, 8, 10],
-            ScaleMode::Lydian       => vec![0, 2, 4, 6, 7, 9, 11],
-            ScaleMode::Mixolydian   => vec![0, 2, 4, 5, 7, 9, 10],
-            ScaleMode::Aeolian      => vec![0, 2, 3, 5, 7, 8, 10],
-            ScaleMode::Locrian      => vec![0, 1, 3, 5, 6, 8, 10],
+            ScaleMode::Ionian => vec![0, 2, 4, 5, 7, 9, 11],
+            ScaleMode::Dorian => vec![0, 2, 3, 5, 7, 9, 10],
+            ScaleMode::Phrygian => vec![0, 1, 3, 5, 7, 8, 10],
+            ScaleMode::Lydian => vec![0, 2, 4, 6, 7, 9, 11],
+            ScaleMode::Mixolydian => vec![0, 2, 4, 5, 7, 9, 10],
+            ScaleMode::Aeolian => vec![0, 2, 3, 5, 7, 8, 10],
+            ScaleMode::Locrian => vec![0, 1, 3, 5, 6, 8, 10],
             // Harmonic minor modes
-            ScaleMode::HarmonicMinor    => vec![0, 2, 3, 5, 7, 8, 11],
-            ScaleMode::LocrianNat6      => vec![0, 1, 3, 5, 6, 9, 10],
-            ScaleMode::IonianAug        => vec![0, 2, 4, 5, 8, 9, 11],
-            ScaleMode::DorianSharp4     => vec![0, 2, 3, 6, 7, 9, 10],
+            ScaleMode::HarmonicMinor => vec![0, 2, 3, 5, 7, 8, 11],
+            ScaleMode::LocrianNat6 => vec![0, 1, 3, 5, 6, 9, 10],
+            ScaleMode::IonianAug => vec![0, 2, 4, 5, 8, 9, 11],
+            ScaleMode::DorianSharp4 => vec![0, 2, 3, 6, 7, 9, 10],
             ScaleMode::PhrygianDominant => vec![0, 1, 4, 5, 7, 8, 10],
-            ScaleMode::LydianSharp2     => vec![0, 3, 4, 6, 7, 9, 11],
-            ScaleMode::SuperLocrianDim  => vec![0, 1, 3, 4, 6, 8, 9],
+            ScaleMode::LydianSharp2 => vec![0, 3, 4, 6, 7, 9, 11],
+            ScaleMode::SuperLocrianDim => vec![0, 1, 3, 4, 6, 8, 9],
             // Melodic minor modes
-            ScaleMode::MelodicMinor     => vec![0, 2, 3, 5, 7, 9, 11],
-            ScaleMode::DorianFlat2      => vec![0, 1, 3, 5, 7, 9, 10],
-            ScaleMode::LydianAug        => vec![0, 2, 4, 6, 8, 9, 11],
-            ScaleMode::LydianDominant   => vec![0, 2, 4, 6, 7, 9, 10],
-            ScaleMode::MixolydianFlat6  => vec![0, 2, 4, 5, 7, 8, 10],
-            ScaleMode::LocrianNat2      => vec![0, 2, 3, 5, 6, 8, 10],
-            ScaleMode::SuperLocrian     => vec![0, 1, 3, 4, 6, 8, 10],
+            ScaleMode::MelodicMinor => vec![0, 2, 3, 5, 7, 9, 11],
+            ScaleMode::DorianFlat2 => vec![0, 1, 3, 5, 7, 9, 10],
+            ScaleMode::LydianAug => vec![0, 2, 4, 6, 8, 9, 11],
+            ScaleMode::LydianDominant => vec![0, 2, 4, 6, 7, 9, 10],
+            ScaleMode::MixolydianFlat6 => vec![0, 2, 4, 5, 7, 8, 10],
+            ScaleMode::LocrianNat2 => vec![0, 2, 3, 5, 6, 8, 10],
+            ScaleMode::SuperLocrian => vec![0, 1, 3, 4, 6, 8, 10],
             // Exotic
-            ScaleMode::DoubleHarmonic   => vec![0, 1, 4, 5, 7, 8, 11],
-            ScaleMode::HungarianMinor   => vec![0, 2, 3, 6, 7, 8, 11],
-            ScaleMode::Enigmatic        => vec![0, 1, 4, 6, 8, 10, 11],
-            ScaleMode::NeapolitanMinor  => vec![0, 1, 3, 5, 7, 8, 11],
-            ScaleMode::NeapolitanMajor  => vec![0, 1, 3, 5, 7, 9, 11],
+            ScaleMode::DoubleHarmonic => vec![0, 1, 4, 5, 7, 8, 11],
+            ScaleMode::HungarianMinor => vec![0, 2, 3, 6, 7, 8, 11],
+            ScaleMode::Enigmatic => vec![0, 1, 4, 6, 8, 10, 11],
+            ScaleMode::NeapolitanMinor => vec![0, 1, 3, 5, 7, 8, 11],
+            ScaleMode::NeapolitanMajor => vec![0, 1, 3, 5, 7, 9, 11],
             // Barry Harris 6th Diminished (8-note)
-            ScaleMode::BHMajor6thDim    => vec![0, 2, 4, 5, 7, 8, 9, 11],
-            ScaleMode::BHMinor6thDim    => vec![0, 2, 3, 5, 7, 8, 9, 11],
+            ScaleMode::BHMajor6thDim => vec![0, 2, 4, 5, 7, 8, 9, 11],
+            ScaleMode::BHMinor6thDim => vec![0, 2, 3, 5, 7, 8, 9, 11],
         }
     }
 
@@ -347,21 +378,35 @@ impl ScaleMode {
     /// Used for grouping modes in the UI and determining related scales.
     pub fn family(&self) -> ScaleFamily {
         match self {
-            ScaleMode::Ionian | ScaleMode::Dorian | ScaleMode::Phrygian |
-            ScaleMode::Lydian | ScaleMode::Mixolydian | ScaleMode::Aeolian |
-            ScaleMode::Locrian => ScaleFamily::Church,
+            ScaleMode::Ionian
+            | ScaleMode::Dorian
+            | ScaleMode::Phrygian
+            | ScaleMode::Lydian
+            | ScaleMode::Mixolydian
+            | ScaleMode::Aeolian
+            | ScaleMode::Locrian => ScaleFamily::Church,
 
-            ScaleMode::HarmonicMinor | ScaleMode::LocrianNat6 | ScaleMode::IonianAug |
-            ScaleMode::DorianSharp4 | ScaleMode::PhrygianDominant |
-            ScaleMode::LydianSharp2 | ScaleMode::SuperLocrianDim => ScaleFamily::HarmonicMinor,
+            ScaleMode::HarmonicMinor
+            | ScaleMode::LocrianNat6
+            | ScaleMode::IonianAug
+            | ScaleMode::DorianSharp4
+            | ScaleMode::PhrygianDominant
+            | ScaleMode::LydianSharp2
+            | ScaleMode::SuperLocrianDim => ScaleFamily::HarmonicMinor,
 
-            ScaleMode::MelodicMinor | ScaleMode::DorianFlat2 | ScaleMode::LydianAug |
-            ScaleMode::LydianDominant | ScaleMode::MixolydianFlat6 |
-            ScaleMode::LocrianNat2 | ScaleMode::SuperLocrian => ScaleFamily::MelodicMinor,
+            ScaleMode::MelodicMinor
+            | ScaleMode::DorianFlat2
+            | ScaleMode::LydianAug
+            | ScaleMode::LydianDominant
+            | ScaleMode::MixolydianFlat6
+            | ScaleMode::LocrianNat2
+            | ScaleMode::SuperLocrian => ScaleFamily::MelodicMinor,
 
-            ScaleMode::DoubleHarmonic | ScaleMode::HungarianMinor |
-            ScaleMode::Enigmatic | ScaleMode::NeapolitanMinor |
-            ScaleMode::NeapolitanMajor => ScaleFamily::Exotic,
+            ScaleMode::DoubleHarmonic
+            | ScaleMode::HungarianMinor
+            | ScaleMode::Enigmatic
+            | ScaleMode::NeapolitanMinor
+            | ScaleMode::NeapolitanMajor => ScaleFamily::Exotic,
 
             ScaleMode::BHMajor6thDim | ScaleMode::BHMinor6thDim => ScaleFamily::BarryHarris,
         }
@@ -373,23 +418,38 @@ impl ScaleMode {
     pub fn all() -> &'static [ScaleMode] {
         &[
             // Church
-            ScaleMode::Ionian, ScaleMode::Dorian, ScaleMode::Phrygian,
-            ScaleMode::Lydian, ScaleMode::Mixolydian, ScaleMode::Aeolian,
+            ScaleMode::Ionian,
+            ScaleMode::Dorian,
+            ScaleMode::Phrygian,
+            ScaleMode::Lydian,
+            ScaleMode::Mixolydian,
+            ScaleMode::Aeolian,
             ScaleMode::Locrian,
             // Harmonic Minor
-            ScaleMode::HarmonicMinor, ScaleMode::LocrianNat6, ScaleMode::IonianAug,
-            ScaleMode::DorianSharp4, ScaleMode::PhrygianDominant,
-            ScaleMode::LydianSharp2, ScaleMode::SuperLocrianDim,
+            ScaleMode::HarmonicMinor,
+            ScaleMode::LocrianNat6,
+            ScaleMode::IonianAug,
+            ScaleMode::DorianSharp4,
+            ScaleMode::PhrygianDominant,
+            ScaleMode::LydianSharp2,
+            ScaleMode::SuperLocrianDim,
             // Melodic Minor
-            ScaleMode::MelodicMinor, ScaleMode::DorianFlat2, ScaleMode::LydianAug,
-            ScaleMode::LydianDominant, ScaleMode::MixolydianFlat6,
-            ScaleMode::LocrianNat2, ScaleMode::SuperLocrian,
+            ScaleMode::MelodicMinor,
+            ScaleMode::DorianFlat2,
+            ScaleMode::LydianAug,
+            ScaleMode::LydianDominant,
+            ScaleMode::MixolydianFlat6,
+            ScaleMode::LocrianNat2,
+            ScaleMode::SuperLocrian,
             // Exotic
-            ScaleMode::DoubleHarmonic, ScaleMode::HungarianMinor,
-            ScaleMode::Enigmatic, ScaleMode::NeapolitanMinor,
+            ScaleMode::DoubleHarmonic,
+            ScaleMode::HungarianMinor,
+            ScaleMode::Enigmatic,
+            ScaleMode::NeapolitanMinor,
             ScaleMode::NeapolitanMajor,
             // Barry Harris
-            ScaleMode::BHMajor6thDim, ScaleMode::BHMinor6thDim,
+            ScaleMode::BHMajor6thDim,
+            ScaleMode::BHMinor6thDim,
         ]
     }
 
@@ -405,7 +465,11 @@ impl ScaleMode {
     /// assert!(church_modes.contains(&ScaleMode::Dorian));
     /// ```
     pub fn all_in_family(family: ScaleFamily) -> Vec<ScaleMode> {
-        ScaleMode::all().iter().filter(|m| m.family() == family).copied().collect()
+        ScaleMode::all()
+            .iter()
+            .filter(|m| m.family() == family)
+            .copied()
+            .collect()
     }
 }
 

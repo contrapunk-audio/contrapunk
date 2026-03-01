@@ -177,8 +177,8 @@ type EngineConfig = (
     bool, // voice_leading_enabled
     contrapunk::harmony::VoiceLeadingStyle,
     contrapunk::harmony::ScaleMode,
-    bool, // interchange_enabled
-    u8,   // borrowing_range
+    bool,  // interchange_enabled
+    u8,    // borrowing_range
     usize, // voice_position
 );
 

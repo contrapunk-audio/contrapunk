@@ -1,9 +1,9 @@
 pub mod builtins;
 pub mod storage;
 
-use serde::{Serialize, Deserialize};
-use crate::harmony::{Key, HarmonyMode, OctaveMode, ScaleMode, VoiceLeadingStyle};
+use crate::harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
 use crate::humanize::HumanizeConfig;
+use serde::{Deserialize, Serialize};
 
 /// A complete musical style preset bundling harmony, voice leading,
 /// humanization, and octave settings into a selectable style.

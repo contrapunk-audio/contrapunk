@@ -136,7 +136,9 @@ pub fn revoice_chord(
                             (anc.midi.saturating_sub(18), anc.midi)
                         };
                         let mut note = lo + ((12 + pc - (lo % 12)) % 12);
-                        if note < lo { note += 12; }
+                        if note < lo {
+                            note += 12;
+                        }
                         while note <= hi {
                             valid.push(note);
                             note += 12;
@@ -178,11 +180,21 @@ pub fn revoice_chord(
                         if harm_arr < anc.arrangement_pos {
                             // Must be above: place just above user
                             let base = anc.midi + ((12 + (pc % 12) - (anc.midi % 12)) % 12);
-                            return if base > anc.midi { base.min(127) } else { (base + 12).min(127) };
+                            return if base > anc.midi {
+                                base.min(127)
+                            } else {
+                                (base + 12).min(127)
+                            };
                         } else if harm_arr > anc.arrangement_pos {
                             // Must be below: place just below user
-                            let base = anc.midi.saturating_sub((anc.midi % 12 + 12 - (pc % 12)) % 12);
-                            return if base < anc.midi { base } else { base.saturating_sub(12) };
+                            let base = anc
+                                .midi
+                                .saturating_sub((anc.midi % 12 + 12 - (pc % 12)) % 12);
+                            return if base < anc.midi {
+                                base
+                            } else {
+                                base.saturating_sub(12)
+                            };
                         }
                     }
                 }
@@ -202,7 +214,8 @@ pub fn revoice_chord(
     }
 
     // Build full voicing (with user's note at index 0) for rule checking
-    let melody_note = anchor.map(|a| a.midi)
+    let melody_note = anchor
+        .map(|a| a.midi)
         .or_else(|| prev_voicing.map(|p| p[0]))
         .unwrap_or(72);
 
@@ -241,17 +254,29 @@ pub fn revoice_chord(
                 // Enforce ordering between harmony voices themselves
                 for i in 0..n {
                     for j in (i + 1)..n {
-                        let arr_i = if i < anc.harmony_arrangement_positions.len() { anc.harmony_arrangement_positions[i] } else { continue };
-                        let arr_j = if j < anc.harmony_arrangement_positions.len() { anc.harmony_arrangement_positions[j] } else { continue };
+                        let arr_i = if i < anc.harmony_arrangement_positions.len() {
+                            anc.harmony_arrangement_positions[i]
+                        } else {
+                            continue;
+                        };
+                        let arr_j = if j < anc.harmony_arrangement_positions.len() {
+                            anc.harmony_arrangement_positions[j]
+                        } else {
+                            continue;
+                        };
                         if arr_i < arr_j && candidate[i] < candidate[j] {
                             anchor_rejected = true;
                         }
                         if arr_i > arr_j && candidate[i] > candidate[j] {
                             anchor_rejected = true;
                         }
-                        if anchor_rejected { break; }
+                        if anchor_rejected {
+                            break;
+                        }
                     }
-                    if anchor_rejected { break; }
+                    if anchor_rejected {
+                        break;
+                    }
                 }
             }
         }
@@ -278,7 +303,11 @@ pub fn revoice_chord(
 
             // Check max leap
             for i in 0..n {
-                let prev_note = if i + 1 < prev.len() { prev[i + 1] } else { continue };
+                let prev_note = if i + 1 < prev.len() {
+                    prev[i + 1]
+                } else {
+                    continue;
+                };
                 let curr_note = candidate[i];
                 let leap = if curr_note >= prev_note {
                     curr_note - prev_note
@@ -339,7 +368,11 @@ pub fn revoice_chord(
 
             // Stepwise and common tone bonuses, leap penalties
             for i in 0..n {
-                let prev_note = if i + 1 < prev.len() { prev[i + 1] } else { continue };
+                let prev_note = if i + 1 < prev.len() {
+                    prev[i + 1]
+                } else {
+                    continue;
+                };
                 let curr_note = candidate[i];
                 let movement = if curr_note >= prev_note {
                     curr_note - prev_note
@@ -361,7 +394,11 @@ pub fn revoice_chord(
                 let melody_dir = full_voicing[0] as i32 - prev[0] as i32;
                 if melody_dir != 0 {
                     for i in 0..n {
-                        let prev_note = if i + 1 < prev.len() { prev[i + 1] } else { continue };
+                        let prev_note = if i + 1 < prev.len() {
+                            prev[i + 1]
+                        } else {
+                            continue;
+                        };
                         let curr_note = candidate[i];
                         let voice_dir = curr_note as i32 - prev_note as i32;
                         // Contrary: melody up, voice down (or vice versa)
@@ -406,10 +443,20 @@ pub fn revoice_chord(
                     if let Some(&harm_arr) = anc.harmony_arrangement_positions.get(i) {
                         if harm_arr < anc.arrangement_pos {
                             let base = anc.midi + ((12 + (pc % 12) - (anc.midi % 12)) % 12);
-                            return if base > anc.midi { base.min(127) } else { (base + 12).min(127) };
+                            return if base > anc.midi {
+                                base.min(127)
+                            } else {
+                                (base + 12).min(127)
+                            };
                         } else if harm_arr > anc.arrangement_pos {
-                            let base = anc.midi.saturating_sub((anc.midi % 12 + 12 - (pc % 12)) % 12);
-                            return if base < anc.midi { base } else { base.saturating_sub(12) };
+                            let base = anc
+                                .midi
+                                .saturating_sub((anc.midi % 12 + 12 - (pc % 12)) % 12);
+                            return if base < anc.midi {
+                                base
+                            } else {
+                                base.saturating_sub(12)
+                            };
                         }
                     }
                 }

@@ -30,7 +30,7 @@
 use std::collections::HashMap;
 use wmidi::Note;
 
-use crate::harmony::config::{Key, HarmonyMode, OctaveMode, ScaleMode};
+use crate::harmony::config::{HarmonyMode, Key, OctaveMode, ScaleMode};
 use crate::harmony::modes;
 use crate::harmony::scale::Scale;
 use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
@@ -76,7 +76,10 @@ impl VoiceLeadingProcessor {
     /// Assigns registers to the full voice arrangement (0=top to N-1=bass),
     /// then reorders to match final_result layout: [user, closest-above,
     /// closest-below, next-above, next-below, ...].
-    fn build_registers_for_position(voice_count: usize, voice_position: usize) -> Vec<VoiceRegister> {
+    fn build_registers_for_position(
+        voice_count: usize,
+        voice_position: usize,
+    ) -> Vec<VoiceRegister> {
         if voice_count <= 1 {
             return vec![VoiceRegister::Soprano];
         }
@@ -96,10 +99,15 @@ impl VoiceLeadingProcessor {
                 } else {
                     // For 5+ voices, spread evenly
                     let fraction = i as f32 / (voice_count - 1) as f32;
-                    if fraction < 0.25 { VoiceRegister::Soprano }
-                    else if fraction < 0.5 { VoiceRegister::Alto }
-                    else if fraction < 0.75 { VoiceRegister::Tenor }
-                    else { VoiceRegister::Bass }
+                    if fraction < 0.25 {
+                        VoiceRegister::Soprano
+                    } else if fraction < 0.5 {
+                        VoiceRegister::Alto
+                    } else if fraction < 0.75 {
+                        VoiceRegister::Tenor
+                    } else {
+                        VoiceRegister::Bass
+                    }
                 }
             })
             .collect();
@@ -109,17 +117,27 @@ impl VoiceLeadingProcessor {
         let mut regs = vec![arrangement_regs[vp]]; // user's register
 
         let mut above_idx = if vp > 0 { Some(vp - 1) } else { None };
-        let mut below_idx = if vp < voice_count - 1 { Some(vp + 1) } else { None };
+        let mut below_idx = if vp < voice_count - 1 {
+            Some(vp + 1)
+        } else {
+            None
+        };
 
         loop {
-            if above_idx.is_none() && below_idx.is_none() { break; }
+            if above_idx.is_none() && below_idx.is_none() {
+                break;
+            }
             if let Some(ai) = above_idx {
                 regs.push(arrangement_regs[ai]);
                 above_idx = if ai > 0 { Some(ai - 1) } else { None };
             }
             if let Some(bi) = below_idx {
                 regs.push(arrangement_regs[bi]);
-                below_idx = if bi < voice_count - 1 { Some(bi + 1) } else { None };
+                below_idx = if bi < voice_count - 1 {
+                    Some(bi + 1)
+                } else {
+                    None
+                };
             }
         }
 
@@ -339,7 +357,8 @@ impl HarmonyEngine {
         self.voice_position = position;
         self.active_notes.clear();
         self.active_port_maps.clear();
-        self.voice_leading.rebuild_for_voices(self.voice_count, position);
+        self.voice_leading
+            .rebuild_for_voices(self.voice_count, position);
     }
 
     /// Sets the number of output voices.
@@ -367,7 +386,8 @@ impl HarmonyEngine {
             .collect();
         self.active_notes.clear();
         self.active_port_maps.clear();
-        self.voice_leading.rebuild_for_voices(count, self.voice_position);
+        self.voice_leading
+            .rebuild_for_voices(count, self.voice_position);
     }
 
     /// Sets the musical key, rebuilding the scale.
@@ -558,13 +578,23 @@ impl HarmonyEngine {
         let mut arrangement_indices = vec![self.voice_position];
 
         // Interleave above and below chains, closest first
-        let mut above_idx = if self.voice_position > 0 { Some(self.voice_position - 1) } else { None };
-        let mut below_idx = if self.voice_position < self.voice_count - 1 { Some(self.voice_position + 1) } else { None };
+        let mut above_idx = if self.voice_position > 0 {
+            Some(self.voice_position - 1)
+        } else {
+            None
+        };
+        let mut below_idx = if self.voice_position < self.voice_count - 1 {
+            Some(self.voice_position + 1)
+        } else {
+            None
+        };
 
         loop {
             let has_above = above_idx.is_some();
             let has_below = below_idx.is_some();
-            if !has_above && !has_below { break; }
+            if !has_above && !has_below {
+                break;
+            }
 
             if let Some(ai) = above_idx {
                 if let Some(n) = result[ai] {
@@ -578,7 +608,11 @@ impl HarmonyEngine {
                     final_result.push(n);
                     arrangement_indices.push(bi);
                 }
-                below_idx = if bi < self.voice_count - 1 { Some(bi + 1) } else { None };
+                below_idx = if bi < self.voice_count - 1 {
+                    Some(bi + 1)
+                } else {
+                    None
+                };
             }
         }
 
@@ -619,9 +653,11 @@ impl HarmonyEngine {
             }
             // Apply suspension if style requires it
             let prev_notes = self.voice_leading.previous_voicing.clone();
-            self.voice_leading
-                .suspension_state
-                .process(&mut final_result, prev_notes.as_deref(), &self.scale);
+            self.voice_leading.suspension_state.process(
+                &mut final_result,
+                prev_notes.as_deref(),
+                &self.scale,
+            );
 
             // Store current voicing for next call
             self.voice_leading.previous_voicing = Some(final_result.clone());
@@ -738,13 +774,24 @@ impl HarmonyEngine {
     /// Harmonizes a single note in a specific direction using the mode's algorithm.
     /// `above`: if true, generate harmony above; if false, generate below.
     /// Used for bidirectional voice position generation.
-    fn harmonize_single_directed(&mut self, note: Note, state_index: usize, above: bool) -> Vec<Note> {
+    fn harmonize_single_directed(
+        &mut self,
+        note: Note,
+        state_index: usize,
+        above: bool,
+    ) -> Vec<Note> {
         match self.mode {
             HarmonyMode::PassThrough => modes::pass_through(note, &mut self.scale),
-            HarmonyMode::DiatonicThirds => modes::diatonic_thirds_directed(note, &mut self.scale, above),
-            HarmonyMode::DiatonicFourths => modes::diatonic_fourths_directed(note, &mut self.scale, above),
+            HarmonyMode::DiatonicThirds => {
+                modes::diatonic_thirds_directed(note, &mut self.scale, above)
+            }
+            HarmonyMode::DiatonicFourths => {
+                modes::diatonic_fourths_directed(note, &mut self.scale, above)
+            }
             HarmonyMode::RandomBelow => modes::random_directed(note, &mut self.scale, above),
-            HarmonyMode::RandomBelowNoSeconds => modes::random_no_seconds_directed(note, &mut self.scale, above),
+            HarmonyMode::RandomBelowNoSeconds => {
+                modes::random_no_seconds_directed(note, &mut self.scale, above)
+            }
             HarmonyMode::ContraryMotion => {
                 if let Some(state) = self.contrary_motion_states.get_mut(state_index) {
                     state.process_directed(&mut self.scale, note, above)
@@ -771,7 +818,9 @@ impl HarmonyEngine {
             HarmonyMode::DiatonicThirds => modes::diatonic_thirds(note, &mut self.scale),
             HarmonyMode::DiatonicFourths => modes::diatonic_fourths(note, &mut self.scale),
             HarmonyMode::RandomBelow => modes::random_below(note, &mut self.scale),
-            HarmonyMode::RandomBelowNoSeconds => modes::random_below_no_seconds(note, &mut self.scale),
+            HarmonyMode::RandomBelowNoSeconds => {
+                modes::random_below_no_seconds(note, &mut self.scale)
+            }
             HarmonyMode::ContraryMotion => {
                 if let Some(state) = self.contrary_motion_states.get_mut(state_index) {
                     state.process(&mut self.scale, note)
@@ -815,7 +864,8 @@ impl HarmonyEngine {
         let midi = u8::from(note);
         if result.len() > 1 {
             self.active_notes.insert(midi, result[1..].to_vec());
-            self.active_port_maps.insert(midi, self.last_port_map.clone());
+            self.active_port_maps
+                .insert(midi, self.last_port_map.clone());
         }
         result
     }
@@ -925,7 +975,7 @@ mod tests {
         let result = engine.harmonize(Note::E4);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Note::E4);
-        assert_eq!(result[1], Note::G4);  // Third above E = G
+        assert_eq!(result[1], Note::G4); // Third above E = G
     }
 
     #[test]
@@ -937,7 +987,7 @@ mod tests {
         let result = engine.harmonize(Note::C4);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Note::C4);
-        assert_eq!(result[1], Note::E4);  // Third above C = E
+        assert_eq!(result[1], Note::E4); // Third above C = E
     }
 
     #[test]
@@ -956,7 +1006,7 @@ mod tests {
         let result = engine.harmonize(Note::G4);
         assert_eq!(result.len(), 2);
         // First note in contrary motion (directed above) gets third above
-        assert_eq!(result[1], Note::B4);  // G + 2 degrees in G major = B
+        assert_eq!(result[1], Note::B4); // G + 2 degrees in G major = B
     }
 
     // Note-On/Off tracking tests
@@ -1216,9 +1266,9 @@ mod tests {
         // C4 + third = E4 (+1 octave = E5), E4 + third = G4 (+2 octaves = G6)
         let result = engine.harmonize(Note::C4);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0], Note::C4);  // Melody unchanged
-        assert_eq!(result[1], Note::E5);  // First harmony +1 octave
-        assert_eq!(result[2], Note::G6);  // Second harmony +2 octaves
+        assert_eq!(result[0], Note::C4); // Melody unchanged
+        assert_eq!(result[1], Note::E5); // First harmony +1 octave
+        assert_eq!(result[2], Note::G6); // Second harmony +2 octaves
     }
 
     #[test]
@@ -1230,14 +1280,17 @@ mod tests {
         // C4 -> harmony below (e.g., A3) -> shifted down to A2
         let result = engine.harmonize(Note::C4);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], Note::C4);  // Melody unchanged
-        // Harmony should be shifted (down if below C4, up if above)
+        assert_eq!(result[0], Note::C4); // Melody unchanged
+                                         // Harmony should be shifted (down if below C4, up if above)
         let harmony_midi = u8::from(result[1]);
         let c4_midi = u8::from(Note::C4);
         // Due to bass/treble split, harmony should be shifted away from melody
-        assert!(harmony_midi < c4_midi - 11 || harmony_midi > c4_midi + 11,
+        assert!(
+            harmony_midi < c4_midi - 11 || harmony_midi > c4_midi + 11,
             "Harmony {} should be shifted at least one octave from melody {}",
-            harmony_midi, c4_midi);
+            harmony_midi,
+            c4_midi
+        );
     }
 
     #[test]
@@ -1250,7 +1303,12 @@ mod tests {
         engine.set_octave_mode(OctaveMode::Mirror);
 
         let result = engine.harmonize(Note::C4);
-        assert_eq!(result.len(), 5, "Mirror should skip copies that cross anchor: {:?}", result);
+        assert_eq!(
+            result.len(),
+            5,
+            "Mirror should skip copies that cross anchor: {:?}",
+            result
+        );
         assert_eq!(result[0], Note::C4); // melody unchanged
         assert_eq!(result[1], Note::E4); // original harmony 1
         assert_eq!(result[2], Note::G4); // original harmony 2
@@ -1295,7 +1353,11 @@ mod tests {
         assert_eq!(on_result.len(), 5); // anchor-aware: only +12 copies survive
 
         let off_result = engine.harmonize_note_off(Note::C4);
-        assert_eq!(off_result.len(), 5, "Note-Off should release all notes from Note-On");
+        assert_eq!(
+            off_result.len(),
+            5,
+            "Note-Off should release all notes from Note-On"
+        );
         // The harmony notes stored should match
         assert_eq!(on_result[1..], off_result[1..]);
     }
@@ -1312,7 +1374,10 @@ mod tests {
         engine.harmonize_note_off(Note::C4);
         let off_port_map: Vec<usize> = engine.last_port_map().to_vec();
 
-        assert_eq!(on_port_map, off_port_map, "Port map should be restored on Note-Off");
+        assert_eq!(
+            on_port_map, off_port_map,
+            "Port map should be restored on Note-Off"
+        );
     }
 
     #[test]
@@ -1446,7 +1511,7 @@ mod tests {
 
         let result = engine.harmonize(Note::C4);
         assert_eq!(result[0], Note::C4); // Melody unchanged
-        // With Spread, harmony voices get +1/+2 octave shifts applied AFTER VL
+                                         // With Spread, harmony voices get +1/+2 octave shifts applied AFTER VL
         assert!(result.len() == 3);
     }
 
@@ -1564,7 +1629,11 @@ mod tests {
             engine.set_scale_mode(ScaleMode::BHMajor6thDim);
 
             let result = engine.harmonize(Note::C4);
-            assert!(!result.is_empty(), "Mode {:?} with BH scale should produce output", mode);
+            assert!(
+                !result.is_empty(),
+                "Mode {:?} with BH scale should produce output",
+                mode
+            );
             assert_eq!(result[0], Note::C4);
         }
     }
@@ -1576,7 +1645,11 @@ mod tests {
             engine.set_scale_mode(ScaleMode::DoubleHarmonic);
 
             let result = engine.harmonize(Note::C4);
-            assert!(!result.is_empty(), "Mode {:?} with DoubleHarmonic should not panic", mode);
+            assert!(
+                !result.is_empty(),
+                "Mode {:?} with DoubleHarmonic should not panic",
+                mode
+            );
         }
     }
 

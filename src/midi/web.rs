@@ -74,15 +74,18 @@ pub fn connect_input(
     midi_queue: Rc<RefCell<Vec<Vec<u8>>>>,
 ) -> Result<(), JsValue> {
     let input_map = access.inputs();
-    let input: web_sys::MidiInput = input_map.get(id)
+    let input: web_sys::MidiInput = input_map
+        .get(id)
         .ok_or_else(|| JsValue::from_str("input port not found"))?;
 
     let queue = midi_queue.clone();
-    let callback = Closure::<dyn FnMut(web_sys::MidiMessageEvent)>::new(move |event: web_sys::MidiMessageEvent| {
-        if let Ok(data) = event.data() {
-            queue.borrow_mut().push(data);
-        }
-    });
+    let callback = Closure::<dyn FnMut(web_sys::MidiMessageEvent)>::new(
+        move |event: web_sys::MidiMessageEvent| {
+            if let Ok(data) = event.data() {
+                queue.borrow_mut().push(data);
+            }
+        },
+    );
 
     input.set_onmidimessage(Some(callback.as_ref().unchecked_ref()));
     callback.forget();
@@ -91,13 +94,10 @@ pub fn connect_input(
 }
 
 /// Sends MIDI data to an output device by ID.
-pub fn send_to_output(
-    access: &MidiAccess,
-    id: &str,
-    data: &[u8],
-) -> Result<(), JsValue> {
+pub fn send_to_output(access: &MidiAccess, id: &str, data: &[u8]) -> Result<(), JsValue> {
     let output_map = access.outputs();
-    let output: web_sys::MidiOutput = output_map.get(id)
+    let output: web_sys::MidiOutput = output_map
+        .get(id)
         .ok_or_else(|| JsValue::from_str("output port not found"))?;
 
     let js_data = js_sys::Uint8Array::from(data);

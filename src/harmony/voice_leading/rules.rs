@@ -136,7 +136,7 @@ mod tests {
         // Both intervals are 5 semitones... wait, C-G = 7, D-A = 7. Yes, parallel fifths.
         let prev = vec![72, 60, 53]; // melody, C4, F3
         let curr = vec![74, 62, 55]; // melody, D4, G3
-        // interval_class(60, 53) = 7, interval_class(62, 55) = 7 — parallel fifths
+                                     // interval_class(60, 53) = 7, interval_class(62, 55) = 7 — parallel fifths
         let result = check_parallel_fifths(&prev, &curr);
         assert_eq!(result, vec![(1, 2)]);
     }

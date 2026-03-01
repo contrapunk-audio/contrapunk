@@ -1,6 +1,6 @@
 //! Voice leading style presets with hard vs soft constraint distinction.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Voice leading style presets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
