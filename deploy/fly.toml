@@ -7,7 +7,7 @@ app = 'contrapunk'
 primary_region = 'ewr'
 
 [build]
-  dockerfile = "deploy/Dockerfile"
+  dockerfile = "Dockerfile"
 
 [http_service]
   internal_port = 8080
