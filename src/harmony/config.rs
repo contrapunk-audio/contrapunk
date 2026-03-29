@@ -162,7 +162,7 @@ impl std::fmt::Display for OctaveMode {
 ///
 /// # Families
 ///
-/// - **Church**: The 7 modes of the major scale (Ionian, Dorian, etc.)
+/// - **Diatonic**: The 7 modes of the major scale (Ionian, Dorian, etc.)
 /// - **HarmonicMinor**: The 7 modes of the harmonic minor scale
 /// - **MelodicMinor**: The 7 modes of the melodic minor (ascending) scale
 /// - **Exotic**: Non-Western scales (Double Harmonic, Hungarian Minor, etc.)
@@ -174,7 +174,7 @@ impl std::fmt::Display for OctaveMode {
 /// use contrapunk::harmony::{ScaleFamily, ScaleMode};
 ///
 /// let dorian = ScaleMode::Dorian;
-/// assert_eq!(dorian.family(), ScaleFamily::Church);
+/// assert_eq!(dorian.family(), ScaleFamily::Diatonic);
 ///
 /// let phrygian_dom = ScaleMode::PhrygianDominant;
 /// assert_eq!(phrygian_dom.family(), ScaleFamily::HarmonicMinor);
@@ -182,8 +182,9 @@ impl std::fmt::Display for OctaveMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScaleFamily {
-    /// Church modes (Ionian through Locrian) - the 7 modes of the major scale.
-    Church,
+    /// Diatonic modes (Ionian through Locrian) - the 7 modes of the major scale.
+    #[serde(alias = "church")]
+    Diatonic,
     /// Harmonic minor modes - characterized by the augmented 2nd interval.
     HarmonicMinor,
     /// Melodic minor modes - also known as jazz minor modes.
@@ -198,7 +199,7 @@ impl ScaleFamily {
     /// Returns all scale families.
     pub fn all() -> &'static [ScaleFamily] {
         &[
-            ScaleFamily::Church,
+            ScaleFamily::Diatonic,
             ScaleFamily::HarmonicMinor,
             ScaleFamily::MelodicMinor,
             ScaleFamily::Exotic,
@@ -210,7 +211,7 @@ impl ScaleFamily {
 impl std::fmt::Display for ScaleFamily {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ScaleFamily::Church => write!(f, "Church Modes"),
+            ScaleFamily::Diatonic => write!(f, "Diatonic Modes"),
             ScaleFamily::HarmonicMinor => write!(f, "Harmonic Minor"),
             ScaleFamily::MelodicMinor => write!(f, "Melodic Minor"),
             ScaleFamily::Exotic => write!(f, "Exotic"),
@@ -384,7 +385,7 @@ impl ScaleMode {
             | ScaleMode::Lydian
             | ScaleMode::Mixolydian
             | ScaleMode::Aeolian
-            | ScaleMode::Locrian => ScaleFamily::Church,
+            | ScaleMode::Locrian => ScaleFamily::Diatonic,
 
             ScaleMode::HarmonicMinor
             | ScaleMode::LocrianNat6
@@ -460,7 +461,7 @@ impl ScaleMode {
     /// ```
     /// use contrapunk::harmony::{ScaleFamily, ScaleMode};
     ///
-    /// let church_modes = ScaleMode::all_in_family(ScaleFamily::Church);
+    /// let church_modes = ScaleMode::all_in_family(ScaleFamily::Diatonic);
     /// assert_eq!(church_modes.len(), 7);
     /// assert!(church_modes.contains(&ScaleMode::Dorian));
     /// ```

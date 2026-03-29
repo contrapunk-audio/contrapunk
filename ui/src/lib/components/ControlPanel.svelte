@@ -14,7 +14,7 @@
 	} from '$lib/stores/engine.svelte';
 
 	// Track which scale family section is expanded
-	let expandedFamily = $state<string | null>('Church');
+	let expandedFamily = $state<string | null>('Diatonic');
 
 	function toggleFamily(family: string) {
 		expandedFamily = expandedFamily === family ? null : family;

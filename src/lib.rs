@@ -27,7 +27,7 @@
 //!
 //! - **8 Harmony Modes**: Pass-through, thirds, fourths, random, contrary motion,
 //!   counterpoint, Barry Harris
-//! - **28 Scale Modes**: Church modes, harmonic/melodic minor, exotic scales,
+//! - **28 Scale Modes**: Diatonic modes, harmonic/melodic minor, exotic scales,
 //!   Barry Harris 8-note scales
 //! - **Modal Interchange**: Borrow notes from parallel modes for chromatic color
 //! - **Voice Leading**: Optional post-processing for smooth voice transitions

@@ -48,7 +48,7 @@
 //!
 //! | Family | Modes | Notes |
 //! |--------|-------|-------|
-//! | Church | Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, Locrian | 7-note scales |
+//! | Diatonic | Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, Locrian | 7-note scales |
 //! | Harmonic Minor | HarmonicMinor, LocrianNat6, IonianAug, DorianSharp4, PhrygianDominant, LydianSharp2, SuperLocrianDim | 7-note scales |
 //! | Melodic Minor | MelodicMinor, DorianFlat2, LydianAug, LydianDominant, MixolydianFlat6, LocrianNat2, SuperLocrian | 7-note scales |
 //! | Exotic | DoubleHarmonic, HungarianMinor, Enigmatic, NeapolitanMinor, NeapolitanMajor | 7-note scales |

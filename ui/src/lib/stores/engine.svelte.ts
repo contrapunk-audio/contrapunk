@@ -36,7 +36,7 @@ export type HarmonyModeName =
 	| 'BarryHarris';
 
 export type ScaleFamilyName =
-	| 'Church'
+	| 'Diatonic'
 	| 'HarmonicMinor'
 	| 'MelodicMinor'
 	| 'Exotic'
@@ -117,8 +117,8 @@ export const ALL_MODES: { name: HarmonyModeName; label: string; shortLabel: stri
 
 export const SCALE_FAMILIES: ScaleFamilyGroup[] = [
 	{
-		family: 'Church',
-		label: 'Church Modes',
+		family: 'Diatonic',
+		label: 'Diatonic Modes',
 		modes: [
 			{ name: 'Ionian', label: 'Ionian (Major)' },
 			{ name: 'Dorian', label: 'Dorian' },

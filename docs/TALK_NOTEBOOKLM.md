@@ -140,7 +140,7 @@ Play a note on your MIDI keyboard. Contrapunk generates harmony notes that follo
 
 ## 28 Scale Modes Across 5 Families
 
-**Church Modes (7):** Ionian (Major), Dorian, Phrygian, Lydian, Mixolydian, Aeolian (Minor), Locrian
+**Diatonic Modes (7):** Ionian (Major), Dorian, Phrygian, Lydian, Mixolydian, Aeolian (Minor), Locrian
 
 **Harmonic Minor Modes (7):** Harmonic Minor, Locrian Nat6, Ionian Aug, Dorian #4, Phrygian Dominant, Lydian #2, Super Locrian Dim
 
