@@ -2,6 +2,7 @@
 	import {
 		engine,
 		ALL_KEYS,
+		KEY_DISPLAY,
 		ALL_MODES,
 		SCALE_FAMILIES,
 		OCTAVE_MODES,
@@ -40,7 +41,7 @@
 				class:active={engine.key === key}
 				onclick={() => engine.setKey(key)}
 			>
-				{key}
+				{KEY_DISPLAY[key]}
 			</button>
 		{/each}
 	</div>

@@ -104,6 +104,22 @@ export const ALL_KEYS: KeyName[] = [
 	'B'
 ];
 
+/** Display labels for keys — uses flats where musicians expect them. */
+export const KEY_DISPLAY: Record<KeyName, string> = {
+	'C': 'C',
+	'C#': 'C#/Db',
+	'D': 'D',
+	'D#': 'Eb',
+	'E': 'E',
+	'F': 'F',
+	'F#': 'F#/Gb',
+	'G': 'G',
+	'G#': 'Ab',
+	'A': 'A',
+	'A#': 'Bb',
+	'B': 'B',
+};
+
 export const ALL_MODES: { name: HarmonyModeName; label: string; shortLabel: string }[] = [
 	{ name: 'PassThrough', label: 'Pass Through', shortLabel: 'Pass' },
 	{ name: 'DiatonicThirds', label: 'Diatonic Thirds', shortLabel: '3rds' },
