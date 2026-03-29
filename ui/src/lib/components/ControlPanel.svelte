@@ -181,6 +181,29 @@
 	</div>
 {/if}
 
+<!-- Detune -->
+<div class="card">
+	<div class="card-header font-pixel">Detune</div>
+	<div class="range-row">
+		<span class="range-label font-pixel">{engine.detuneCents > 0 ? '+' : ''}{engine.detuneCents}¢</span>
+		<input
+			type="range"
+			min="-100"
+			max="100"
+			step="1"
+			value={engine.detuneCents}
+			oninput={(e) => engine.setDetune(parseInt((e.target as HTMLInputElement).value, 10))}
+			class="pixel-range"
+		/>
+	</div>
+	<div class="detune-presets">
+		<button class="pixel-btn" class:active={engine.detuneCents === 0} onclick={() => engine.setDetune(0)}>0</button>
+		<button class="pixel-btn" class:active={engine.detuneCents === 33} onclick={() => engine.setDetune(33)}>+33</button>
+		<button class="pixel-btn" class:active={engine.detuneCents === -33} onclick={() => engine.setDetune(-33)}>-33</button>
+		<button class="pixel-btn" class:active={engine.detuneCents === 50} onclick={() => engine.setDetune(50)}>+50</button>
+	</div>
+</div>
+
 <style>
 	.card {
 		background: var(--color-widget-bg);
@@ -333,6 +356,13 @@
 		border: 1px solid var(--color-accent-gold);
 		border-radius: 0;
 		cursor: pointer;
+	}
+
+	.detune-presets {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 2px;
+		margin-top: 4px;
 	}
 
 	.pixel-range::-moz-range-thumb {

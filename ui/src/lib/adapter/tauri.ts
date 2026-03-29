@@ -310,4 +310,15 @@ export class TauriAdapter implements ContrapunkAdapter {
 			throw new Error(`Failed to delete preset: ${e}`);
 		}
 	}
+
+	private _detuneCents = 0;
+
+	setDetune(cents: number): void {
+		this._detuneCents = cents;
+		// Tauri: pitch bend would be handled by the Rust backend
+	}
+
+	getDetune(): number {
+		return this._detuneCents;
+	}
 }

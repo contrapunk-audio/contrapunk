@@ -27,7 +27,7 @@ export const PIANO_INPUT = '#00e436';
 export const PIANO_HARMONY = '#ff9933';
 export const PIANO_GENERATOR = '#ff3388';
 export const PIANO_BORROWED = '#ffaa33';
-export const PIANO_IN_SCALE = '#1a1844';
+export const PIANO_IN_SCALE = 'rgba(255, 253, 180, 0.35)';
 
 // === Text ===
 export const TEXT_PRIMARY = '#e8e0f0';
@@ -69,7 +69,6 @@ export function getPianoKeyColor(
 	if (harmonyNotes.includes(midi)) return PIANO_HARMONY;
 	if (borrowedNotes.includes(midi)) return PIANO_BORROWED;
 	if (generatorNotes.includes(midi)) return PIANO_GENERATOR;
-	if (inScaleNotes.includes(midi)) return PIANO_IN_SCALE;
 	return '';
 }
 

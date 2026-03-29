@@ -190,6 +190,61 @@ export const VOICE_LEADING_STYLES: { name: VoiceLeadingStyleName; label: string 
 	{ name: 'Jazz', label: 'Jazz' }
 ];
 
+// === Scale Intervals (mirrors Rust ScaleMode::intervals) ===
+
+const SCALE_INTERVALS: Record<ScaleModeName, number[]> = {
+	// Church modes
+	Ionian: [0, 2, 4, 5, 7, 9, 11],
+	Dorian: [0, 2, 3, 5, 7, 9, 10],
+	Phrygian: [0, 1, 3, 5, 7, 8, 10],
+	Lydian: [0, 2, 4, 6, 7, 9, 11],
+	Mixolydian: [0, 2, 4, 5, 7, 9, 10],
+	Aeolian: [0, 2, 3, 5, 7, 8, 10],
+	Locrian: [0, 1, 3, 5, 6, 8, 10],
+	// Harmonic minor modes
+	HarmonicMinor: [0, 2, 3, 5, 7, 8, 11],
+	LocrianNat6: [0, 1, 3, 5, 6, 9, 10],
+	IonianAug: [0, 2, 4, 5, 8, 9, 11],
+	DorianSharp4: [0, 2, 3, 6, 7, 9, 10],
+	PhrygianDominant: [0, 1, 4, 5, 7, 8, 10],
+	LydianSharp2: [0, 3, 4, 6, 7, 9, 11],
+	SuperLocrianDim: [0, 1, 3, 4, 6, 8, 9],
+	// Melodic minor modes
+	MelodicMinor: [0, 2, 3, 5, 7, 9, 11],
+	DorianFlat2: [0, 1, 3, 5, 7, 9, 10],
+	LydianAug: [0, 2, 4, 6, 8, 9, 11],
+	LydianDominant: [0, 2, 4, 6, 7, 9, 10],
+	MixolydianFlat6: [0, 2, 4, 5, 7, 8, 10],
+	LocrianNat2: [0, 2, 3, 5, 6, 8, 10],
+	SuperLocrian: [0, 1, 3, 4, 6, 8, 10],
+	// Exotic
+	DoubleHarmonic: [0, 1, 4, 5, 7, 8, 11],
+	HungarianMinor: [0, 2, 3, 6, 7, 8, 11],
+	Enigmatic: [0, 1, 4, 6, 8, 10, 11],
+	NeapolitanMinor: [0, 1, 3, 5, 7, 8, 11],
+	NeapolitanMajor: [0, 1, 3, 5, 7, 9, 11],
+	// Barry Harris 6th Diminished (8-note)
+	BHMajor6thDim: [0, 2, 4, 5, 7, 8, 9, 11],
+	BHMinor6thDim: [0, 2, 3, 5, 7, 8, 9, 11]
+};
+
+const KEY_TO_PITCH_CLASS: Record<KeyName, number> = {
+	C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5,
+	'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11
+};
+
+/** Compute all MIDI note numbers (0-127) that belong to the given key + scale. */
+function computeScaleNotes(key: KeyName, scaleMode: ScaleModeName): number[] {
+	const tonic = KEY_TO_PITCH_CLASS[key];
+	const intervals = SCALE_INTERVALS[scaleMode];
+	const pitchClasses = new Set(intervals.map((i) => (tonic + i) % 12));
+	const notes: number[] = [];
+	for (let midi = 0; midi <= 127; midi++) {
+		if (pitchClasses.has(midi % 12)) notes.push(midi);
+	}
+	return notes;
+}
+
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
@@ -317,6 +372,9 @@ class EngineStore {
 	voicePosition = $state(0);
 	voiceCount = $state(2);
 
+	// -- Detune --
+	detuneCents = $state(0);
+
 	// -- Transport --
 	isRunning = $state(false);
 
@@ -325,7 +383,7 @@ class EngineStore {
 	harmonyNotes = $state<number[]>([]);
 	borrowedNotes = $state<number[]>([]);
 	generatorNotes = $state<number[]>([]);
-	inScaleNotes = $state<number[]>([]);
+	inScaleNotes = $derived(computeScaleNotes(this.key, this.scaleMode));
 
 	// -- Display --
 	chordName = $state('');
@@ -494,6 +552,11 @@ class EngineStore {
 			this.voiceCount = prev;
 			throw e;
 		}
+	}
+
+	setDetune(cents: number) {
+		this.detuneCents = cents;
+		adapter.setDetune(cents);
 	}
 
 	/**

@@ -77,6 +77,11 @@
 		);
 	}
 
+	/** Check if a note is in the current scale. */
+	function isInScale(midi: number): boolean {
+		return engine.inScaleNotes.includes(midi);
+	}
+
 	const NUM_WHITE_KEYS = whiteKeys.length; // 52
 </script>
 
@@ -90,12 +95,17 @@
 			{@const color = keyColor(midi)}
 			{@const glow = keyGlow(midi)}
 			{@const active = isActive(midi)}
+			{@const inScale = isInScale(midi)}
 			<div
 				class="white-key"
+				class:in-scale={inScale && !active}
 				data-midi={midi}
 				style:background={color || 'var(--color-text-primary)'}
 				style:box-shadow={glow}
 			>
+				{#if inScale && !active}
+					<div class="scale-overlay"></div>
+				{/if}
 				{#if active}
 					<span class="key-label font-pixel">{midiToName(midi)}</span>
 				{/if}
@@ -106,14 +116,19 @@
 			{@const color = keyColor(midi)}
 			{@const glow = keyGlow(midi)}
 			{@const active = isActive(midi)}
+			{@const inScale = isInScale(midi)}
 			<div
 				class="black-key"
+				class:in-scale={inScale && !active}
 				data-midi={midi}
 				style:left="calc({getBlackKeyPosition(midi, 1)} * (100% / {NUM_WHITE_KEYS}))"
 				style:width="calc(0.6 * (100% / {NUM_WHITE_KEYS}))"
 				style:background={color || '#111'}
 				style:box-shadow={glow}
 			>
+				{#if inScale && !active}
+					<div class="scale-overlay"></div>
+				{/if}
 				{#if active}
 					<span class="key-label font-pixel">{midiToName(midi)}</span>
 				{/if}
@@ -187,5 +202,20 @@
 	.black-key .key-label {
 		color: var(--color-text-primary);
 		font-size: 4px;
+	}
+
+	.scale-overlay {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		border-radius: inherit;
+	}
+
+	.white-key .scale-overlay {
+		background: rgba(255, 253, 140, 0.3);
+	}
+
+	.black-key .scale-overlay {
+		background: rgba(255, 253, 140, 0.2);
 	}
 </style>

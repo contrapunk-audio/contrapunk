@@ -46,6 +46,7 @@
 // Core modules -- always available on all platforms
 // =============================================================================
 
+pub mod audio;
 pub mod chord;
 pub mod generator;
 pub mod harmony;

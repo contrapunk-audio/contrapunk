@@ -32,6 +32,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private midiAccess: MIDIAccess | null = null;
 	private activeInput: MIDIInput | null = null;
 	private activeOutputs: MIDIOutput[] = [];
+	private _detuneCents = 0;
+	/** Pitch bend range in semitones (standard MIDI default). */
+	private pitchBendRangeSemitones = 2;
 
 	async init(): Promise<void> {
 		if (this.initialized) return;
@@ -242,6 +245,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 		// Wire up MIDI message handler
 		if (this.activeInput) {
+			const self = this;
 			const outs = this.activeOutputs;
 			this.activeInput.onmidimessage = (event: MIDIMessageEvent) => {
 				if (!event.data || event.data.length < 2) return;
@@ -258,10 +262,11 @@ export class WasmAdapter implements ContrapunkAdapter {
 					} catch {
 						resultNotes = [note];
 					}
-					// Voice-per-port routing: resultNotes[i] → outputs[i % outputs.length]
-					for (let i = 0; i < resultNotes.length; i++) {
+					// Sort so lowest note → output 0 (bass), voices stay consistent
+					const sorted = self.sortVoices(resultNotes);
+					for (let i = 0; i < sorted.length; i++) {
 						if (outs.length > 0) {
-							outs[i % outs.length].send([0x90, resultNotes[i], velocity]);
+							outs[i % outs.length].send([0x90, sorted[i], velocity]);
 						}
 					}
 				} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
@@ -271,9 +276,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 					} catch {
 						resultNotes = [note];
 					}
-					for (let i = 0; i < resultNotes.length; i++) {
+					const sorted = self.sortVoices(resultNotes);
+					for (let i = 0; i < sorted.length; i++) {
 						if (outs.length > 0) {
-							outs[i % outs.length].send([0x80, resultNotes[i], 0]);
+							outs[i % outs.length].send([0x80, sorted[i], 0]);
 						}
 					}
 				} else {
@@ -286,6 +292,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 
 		this._isRunning = true;
+		// Apply current detune on start
+		if (this._detuneCents !== 0) {
+			this.sendPitchBend();
+		}
 	}
 
 	async stopRouting(): Promise<void> {
@@ -317,11 +327,18 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.stopNotePolling();
 	}
 
-	async injectNoteOn(note: number, _velocity?: number): Promise<number[]> {
+	async injectNoteOn(note: number, velocity?: number): Promise<number[]> {
 		this.ensureInit();
 		try {
 			const result = engine.note_on(note);
-			return result ?? [note];
+			const sorted = this.sortVoices(result ?? [note]);
+			const vel = velocity ?? 100;
+			for (let i = 0; i < sorted.length; i++) {
+				if (this.activeOutputs.length > 0) {
+					this.activeOutputs[i % this.activeOutputs.length].send([0x90, sorted[i], vel]);
+				}
+			}
+			return sorted;
 		} catch {
 			return [note];
 		}
@@ -331,7 +348,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			const result = engine.note_off(note);
-			return result ?? [note];
+			const sorted = this.sortVoices(result ?? [note]);
+			for (let i = 0; i < sorted.length; i++) {
+				if (this.activeOutputs.length > 0) {
+					this.activeOutputs[i % this.activeOutputs.length].send([0x80, sorted[i], 0]);
+				}
+			}
+			return sorted;
 		} catch {
 			return [note];
 		}
@@ -394,6 +417,51 @@ export class WasmAdapter implements ContrapunkAdapter {
 		};
 
 		this.pollingHandle = requestAnimationFrame(poll);
+	}
+
+	/**
+	 * Sort notes ascending so lowest note always routes to output 0 (bass),
+	 * and each higher voice stays on its consistent output slot.
+	 */
+	private sortVoices(notes: number[]): number[] {
+		return [...notes].sort((a, b) => a - b);
+	}
+
+	/**
+	 * Convert cents offset to a 14-bit MIDI pitch bend value.
+	 * Center = 8192, range depends on pitchBendRangeSemitones (default ±2 = 200 cents).
+	 */
+	private centsToPitchBend(cents: number): number {
+		const maxCents = this.pitchBendRangeSemitones * 100;
+		const normalized = Math.max(-1, Math.min(1, cents / maxCents));
+		return Math.round(8192 + normalized * 8191);
+	}
+
+	/**
+	 * Send pitch bend to all active outputs on channel 0.
+	 */
+	private sendPitchBend(): void {
+		const bend = this.centsToPitchBend(this._detuneCents);
+		const lsb = bend & 0x7f;
+		const msb = (bend >> 7) & 0x7f;
+		for (const output of this.activeOutputs) {
+			output.send([0xe0, lsb, msb]);
+		}
+	}
+
+	/**
+	 * Set global detune in cents and send pitch bend to all outputs.
+	 * Assumes standard ±2 semitone pitch bend range in your DAW.
+	 */
+	setDetune(cents: number): void {
+		this._detuneCents = cents;
+		if (this._isRunning) {
+			this.sendPitchBend();
+		}
+	}
+
+	getDetune(): number {
+		return this._detuneCents;
 	}
 
 	private stopNotePolling(): void {

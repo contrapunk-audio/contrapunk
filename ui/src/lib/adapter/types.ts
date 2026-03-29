@@ -161,4 +161,12 @@ export interface ContrapunkAdapter {
 
 	/** Delete a custom preset by name. */
 	deletePreset(name: string): Promise<void>;
+
+	// -- Detune --
+
+	/** Set global detune in cents (sends pitch bend to all outputs). */
+	setDetune(cents: number): void;
+
+	/** Get the current detune value in cents. */
+	getDetune(): number;
 }
