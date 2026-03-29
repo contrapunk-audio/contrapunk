@@ -433,7 +433,7 @@ Each style defines these parameters (`src/harmony/voice_leading/styles.rs`):
 
 ### 28 Modes Across 5 Families (`src/harmony/config.rs`)
 
-**Family: Church Modes (7)** -- modes of the major scale
+**Family: Diatonic Modes (7)** -- modes of the major scale
 | Mode | Intervals | Character |
 |------|-----------|-----------|
 | Ionian (Major) | 0-2-4-5-7-9-11 | Bright, happy |

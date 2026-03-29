@@ -14,7 +14,7 @@ Browser version: [contrapunk.fly.dev](https://contrapunk.fly.dev/)
 
 ### Harmony Engine
 - **8 harmony modes** — Pass Through, Diatonic Thirds, Diatonic Fourths, Random Below, Random (No Seconds), Contrary Motion, Strict Counterpoint, Barry Harris
-- **28 scale modes** across 5 families: Church Modes, Harmonic Minor, Melodic Minor, Exotic, Barry Harris 6th Diminished
+- **28 scale modes** across 5 families: Diatonic Modes, Harmonic Minor, Melodic Minor, Exotic, Barry Harris 6th Diminished
 - **4 voice leading styles** — Palestrina (Renaissance), Bach Chorale (Baroque), Jazz (Modern), Free
 - **Modal interchange** — out-of-scale notes harmonized by borrowing from parallel modes (5 configurable range levels)
 - **Deterministic voicing** — 6-tier tiebreaking ensures identical output for identical context, verified by 100x determinism tests
