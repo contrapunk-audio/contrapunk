@@ -2,12 +2,37 @@
  * MIDI Store -- Reactive MIDI Device State (Svelte 5 Runes)
  *
  * Tracks available MIDI input/output devices, selected devices,
- * and connection state. All device operations delegate to the
- * platform adapter (Tauri IPC or WASM Web MIDI).
+ * and connection state. Persists device selections by NAME to
+ * localStorage so they survive page reloads.
  */
 
 import { adapter } from '$lib/adapter';
 import type { MidiDevice } from '$lib/adapter';
+
+const MIDI_SETTINGS_KEY = 'contrapunk-midi';
+
+interface MidiSettings {
+	inputName: string | null;
+	outputNames: string[];
+}
+
+function loadMidiSettings(): MidiSettings | null {
+	try {
+		const raw = localStorage.getItem(MIDI_SETTINGS_KEY);
+		if (!raw) return null;
+		return JSON.parse(raw);
+	} catch {
+		return null;
+	}
+}
+
+function saveMidiSettings(settings: MidiSettings) {
+	try {
+		localStorage.setItem(MIDI_SETTINGS_KEY, JSON.stringify(settings));
+	} catch {
+		// localStorage unavailable
+	}
+}
 
 // === MIDI Store (Svelte 5 runes) ===
 
@@ -26,7 +51,7 @@ class MidiStore {
 
 	/**
 	 * Refresh the list of available MIDI devices from the backend.
-	 * Resets error state on success.
+	 * After refreshing, restores previously selected devices by name.
 	 */
 	async refresh() {
 		this.isLoading = true;
@@ -43,22 +68,51 @@ class MidiStore {
 			this.inputs = newInputs;
 			this.outputs = newOutputs;
 
-			// Clear selections if the previously selected device no longer exists
-			if (
-				this.selectedInput !== null &&
-				!newInputs.some((d) => d.index === this.selectedInput)
-			) {
-				this.selectedInput = null;
-			}
+			// Try to restore saved selections by name
+			const saved = loadMidiSettings();
+			if (saved) {
+				// Restore input by name
+				if (saved.inputName) {
+					const match = newInputs.find((d) => d.name === saved.inputName);
+					if (match) {
+						this.selectedInput = match.index;
+					} else {
+						this.selectedInput = null;
+					}
+				}
 
-			this.selectedOutputs = this.selectedOutputs.filter((idx) =>
-				newOutputs.some((d) => d.index === idx)
-			);
+				// Restore outputs by name
+				if (saved.outputNames.length > 0) {
+					this.selectedOutputs = saved.outputNames
+						.map((name) => newOutputs.find((d) => d.name === name))
+						.filter((d): d is MidiDevice => d !== undefined)
+						.map((d) => d.index);
+				}
+			} else {
+				// No saved settings — clear selections if devices changed
+				if (
+					this.selectedInput !== null &&
+					!newInputs.some((d) => d.index === this.selectedInput)
+				) {
+					this.selectedInput = null;
+				}
+				this.selectedOutputs = this.selectedOutputs.filter((idx) =>
+					newOutputs.some((d) => d.index === idx)
+				);
+			}
 		} catch (e) {
 			this.error = `Failed to refresh MIDI devices: ${e}`;
 		} finally {
 			this.isLoading = false;
 		}
+	}
+
+	/** Persist current selections by device name. */
+	private persist() {
+		saveMidiSettings({
+			inputName: this.selectedInputName,
+			outputNames: this.selectedOutputNames,
+		});
 	}
 
 	/**
@@ -67,6 +121,7 @@ class MidiStore {
 	selectInput(index: number) {
 		if (this.inputs.some((d) => d.index === index)) {
 			this.selectedInput = index;
+			this.persist();
 		}
 	}
 
@@ -75,6 +130,7 @@ class MidiStore {
 	 */
 	clearInput() {
 		this.selectedInput = null;
+		this.persist();
 	}
 
 	/**
@@ -90,6 +146,7 @@ class MidiStore {
 		} else {
 			this.selectedOutputs = [...this.selectedOutputs, index];
 		}
+		this.persist();
 	}
 
 	/**
@@ -97,6 +154,7 @@ class MidiStore {
 	 */
 	setOutputs(indices: number[]) {
 		this.selectedOutputs = indices.filter((idx) => this.outputs.some((d) => d.index === idx));
+		this.persist();
 	}
 
 	/**

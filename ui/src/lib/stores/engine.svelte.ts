@@ -278,6 +278,7 @@ interface PersistedSettings {
 	interchangeRange: number;
 	voicePosition: number;
 	voiceCount: number;
+	detuneCents: number;
 }
 
 const SETTINGS_DEFAULTS: PersistedSettings = {
@@ -291,7 +292,8 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	interchangeEnabled: false,
 	interchangeRange: 3,
 	voicePosition: 0,
-	voiceCount: 2
+	voiceCount: 2,
+	detuneCents: 0,
 };
 
 // Enum validation sets
@@ -350,7 +352,13 @@ function loadSettings(): PersistedSettings | null {
 				parsed.voiceCount >= 1 &&
 				parsed.voiceCount <= 8
 					? parsed.voiceCount
-					: SETTINGS_DEFAULTS.voiceCount
+					: SETTINGS_DEFAULTS.voiceCount,
+			detuneCents:
+				typeof parsed.detuneCents === 'number' &&
+				parsed.detuneCents >= -100 &&
+				parsed.detuneCents <= 100
+					? parsed.detuneCents
+					: SETTINGS_DEFAULTS.detuneCents,
 		};
 	} catch {
 		localStorage.removeItem(SETTINGS_KEY);
@@ -420,7 +428,8 @@ class EngineStore {
 			interchangeEnabled: this.interchangeEnabled,
 			interchangeRange: this.interchangeRange,
 			voicePosition: this.voicePosition,
-			voiceCount: this.voiceCount
+			voiceCount: this.voiceCount,
+			detuneCents: this.detuneCents
 		});
 	}
 
@@ -447,7 +456,8 @@ class EngineStore {
 				() => adapter.setInterchange(saved.interchangeEnabled, saved.interchangeRange)
 			],
 			['voicePosition', () => adapter.setVoicePosition(saved.voicePosition)],
-			['voiceCount', () => adapter.setVoiceCount(saved.voiceCount)]
+			['voiceCount', () => adapter.setVoiceCount(saved.voiceCount)],
+			['detune', () => { adapter.setDetune(saved.detuneCents); return Promise.resolve(); }]
 		];
 
 		for (const [name, op] of ops) {
@@ -573,6 +583,7 @@ class EngineStore {
 	setDetune(cents: number) {
 		this.detuneCents = cents;
 		adapter.setDetune(cents);
+		this.persist();
 	}
 
 	/**
