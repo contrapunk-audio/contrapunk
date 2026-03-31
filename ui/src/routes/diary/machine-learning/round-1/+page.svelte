@@ -7,6 +7,9 @@
 	import ModelDiagram from '$lib/components/diary/ModelDiagram.svelte';
 	import SpectrogramViewer from '$lib/components/diary/SpectrogramViewer.svelte';
 	import SpectrogramComparison from '$lib/components/diary/SpectrogramComparison.svelte';
+	import PerStringBars from '$lib/components/diary/PerStringBars.svelte';
+	import FretHeatmap from '$lib/components/diary/FretHeatmap.svelte';
+	import StringConfusion from '$lib/components/diary/StringConfusion.svelte';
 
 	type SpectrogramJson = {
 		label: string;
@@ -37,6 +40,30 @@
 
 	const stringNames = ['E2 (low)', 'A2', 'D3', 'G3', 'B3', 'E4 (high)'];
 
+	// Maps selectedModel index to JSON keys in fret_accuracy.json / confusion_data.json
+	const modelKeys = ['random_forest', 'hybrid_cnn', 'pure_cnn'];
+
+	type FretAccuracyData = {
+		models: Record<string, { grid: number[][]; counts: number[][] }>;
+	};
+
+	type ConfusionData = {
+		models: Record<string, { string_confusion: number[][] }>;
+	};
+
+	let fretData: FretAccuracyData | null = $state(null);
+	let confusionData: ConfusionData | null = $state(null);
+
+	let currentFretGrid: number[][] = $derived(
+		fretData?.models[modelKeys[selectedModel]]?.grid ?? []
+	);
+	let currentFretCounts: number[][] = $derived(
+		fretData?.models[modelKeys[selectedModel]]?.counts ?? []
+	);
+	let currentStringConfusion: number[][] = $derived(
+		confusionData?.models[modelKeys[selectedModel]]?.string_confusion ?? []
+	);
+
 	$effect(() => {
 		fetch('/training/round_01/results.json')
 			.then(r => r.json())
@@ -45,6 +72,20 @@
 				loading = false;
 			})
 			.catch(() => { loading = false; });
+	});
+
+	$effect(() => {
+		fetch('/training/round_01/fret_accuracy.json')
+			.then(r => r.json())
+			.then(data => { fretData = data; })
+			.catch(() => { /* silent */ });
+	});
+
+	$effect(() => {
+		fetch('/training/round_01/confusion_data.json')
+			.then(r => r.json())
+			.then(data => { confusionData = data; })
+			.catch(() => { /* silent */ });
 	});
 
 	function pct(n: number): string {
@@ -592,19 +633,7 @@
 			<!-- Per-string accuracy bars -->
 			<div class="string-bars">
 				<div class="bars-title">Per-String Accuracy -- {results[selectedModel].name}</div>
-				{#each stringNames as name, i}
-					{@const acc = results[selectedModel].per_string[i]}
-					<div class="bar-row">
-						<span class="bar-label">{name}</span>
-						<div class="bar-track">
-							<div
-								class="bar-fill"
-								style="width: {(acc * 100).toFixed(1)}%; background: {barColor(acc)}"
-							></div>
-						</div>
-						<span class="bar-value" style:color={barColor(acc)}>{pct(acc)}</span>
-					</div>
-				{/each}
+				<PerStringBars data={results[selectedModel].per_string} />
 			</div>
 
 			<!-- Overall comparison -->
@@ -670,27 +699,34 @@
 			<div class="station-label">STATION 5</div>
 			<h2>Visualizations</h2>
 			<p>
-				Training artifacts generated from the {results[selectedModel].name} model.
+				Interactive charts for the {results[selectedModel].name} model.
 				Select a model above to switch between them.
 			</p>
 
 			<div class="viz-grid">
 				<div class="viz-item">
-					<div class="viz-label">Per-String Accuracy Chart</div>
-					<img
-						src="/training/round_01/per_string_{results[selectedModel].name.toLowerCase().replace(/ /g, '_')}.png"
-						alt="{results[selectedModel].name} per-string accuracy chart"
-						class="viz-img"
-					/>
+					<div class="viz-label">Per-String Accuracy</div>
+					<PerStringBars data={results[selectedModel].per_string} height={180} />
 				</div>
-				<div class="viz-item">
-					<div class="viz-label">Per-Fret Accuracy Heatmap</div>
-					<img
-						src="/training/round_01/fret_heatmap_{results[selectedModel].name.toLowerCase().replace(/ /g, '_')}.png"
-						alt="{results[selectedModel].name} fret accuracy heatmap"
-						class="viz-img"
-					/>
-				</div>
+				{#if currentFretGrid.length > 0}
+					<div class="viz-item">
+						<div class="viz-label">Fret Accuracy Heatmap</div>
+						<FretHeatmap
+							grid={currentFretGrid}
+							counts={currentFretCounts.length > 0 ? currentFretCounts : undefined}
+						/>
+					</div>
+				{/if}
+				{#if currentStringConfusion.length > 0}
+					<div class="viz-item">
+						<div class="viz-label">String Confusion Matrix</div>
+						<p class="viz-desc">
+							Which strings get confused with which? Diagonal (teal) = correct predictions.
+							Off-diagonal (magenta) = misclassifications.
+						</p>
+						<StringConfusion matrix={currentStringConfusion} />
+					</div>
+				{/if}
 			</div>
 		</section>
 
@@ -1079,10 +1115,11 @@
 		letter-spacing: 1px;
 		margin-bottom: 8px;
 	}
-	.viz-img {
-		width: 100%;
-		border: 1px solid var(--color-border);
-		display: block;
+	.viz-desc {
+		font-size: 12px;
+		color: var(--color-text-dim);
+		line-height: 1.5;
+		margin: 0 0 12px 0;
 	}
 
 	/* Hear the Data section */

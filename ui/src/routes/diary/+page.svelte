@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DiaryNav from '$lib/components/diary/DiaryNav.svelte';
 	import StatBar from '$lib/components/diary/StatBar.svelte';
+	import DemoAnimation from '$lib/components/diary/DemoAnimation.svelte';
 
 	const chapters = [
 		{ phase: '01-03', title: 'MIDI Foundation', desc: 'Input, harmony engine, multi-port output', complete: true },
@@ -34,6 +35,10 @@
 			a tool that understands your instrument and harmonizes with you live.
 		</p>
 	</header>
+
+	<div class="demo-section">
+		<DemoAnimation />
+	</div>
 
 	<StatBar {stats} />
 
@@ -97,6 +102,9 @@
 		margin-left: auto;
 		margin-right: auto;
 		line-height: 1.7;
+	}
+	.demo-section {
+		padding: 0 24px 16px;
 	}
 	.chapters {
 		padding: 32px 24px;

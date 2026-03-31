@@ -12,15 +12,18 @@
 
 	let r1Results: ModelResult[] = $state([]);
 	let r2Results: ModelResult[] = $state([]);
+	let r3Results: ModelResult[] = $state([]);
 	let loading = $state(true);
 
 	$effect(() => {
 		Promise.all([
 			fetch('/training/round_01/results.json').then(r => r.json()),
 			fetch('/training/round_02/results.json').then(r => r.json()),
-		]).then(([r1, r2]) => {
+			fetch('/training/round_03/results.json').then(r => r.json()),
+		]).then(([r1, r2, r3]) => {
 			r1Results = r1;
 			r2Results = r2;
+			r3Results = r3;
 			loading = false;
 		}).catch(() => { loading = false; });
 	});
@@ -96,11 +99,12 @@
 			<RoundCard
 				number={3}
 				title="Quality Cleanup"
-				accuracy={0}
-				description="Remove 32 clipped + 7 silent samples."
-				date=""
-				complete={false}
-				href=""
+				accuracy={bestAccuracy(r3Results)}
+				delta={bestAccuracy(r3Results) - bestAccuracy(r2Results)}
+				description="Removed 32 clipped + 7 silent samples. First measurable improvement: +0.9% Pure CNN, +1.5% Random Forest."
+				date="Apr 1, 2026"
+				complete={true}
+				href="/diary/machine-learning/round-3"
 			/>
 
 			<RoundCard
