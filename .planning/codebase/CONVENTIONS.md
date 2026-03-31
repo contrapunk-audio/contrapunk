@@ -1,199 +1,210 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-02-05
+**Analysis Date:** 2026-03-31
 
 ## Naming Patterns
 
-**Files:**
-- Modules use snake_case: `voice_leading.rs`, `midi_defaults.rs`, `beat_clock.rs`
-- Main entry points: `main.rs`, `lib.rs`, `app.rs`
-- Config modules: `config.rs` (inside feature subdirectories)
+**Files (TypeScript/Svelte):**
+- Svelte components: PascalCase (`ControlPanel.svelte`, `MidiDevices.svelte`, `HumanizePanel.svelte`)
+- Store files: camelCase with `.svelte.ts` suffix (`engine.svelte.ts`, `midi.svelte.ts`, `ui.svelte.ts`)
+- Adapter files: camelCase (`tauri.ts`, `wasm.ts`, `types.ts`, `index.ts`)
+- Route files: SvelteKit file-based routing (`+page.svelte`, `+layout.svelte`, `+layout.ts`)
 
-**Functions:**
-- snake_case for all functions: `detect_chord()`, `revoice_chord()`, `harmonize()`
-- Constructor pattern: `new()` for associated functions
-- Getter pattern: simple name without `get_` prefix (e.g., `key()`, `mode()`, `range()`)
-- Setter pattern: `set_` prefix (e.g., `set_key()`, `set_mode()`)
-- Boolean accessors: no `is_` prefix in method names typically
+**Files (Rust):**
+- Modules: snake_case (`harmony_engine`, `voice_leading`, `beat_clock`)
+- Files mirror module names exactly (`engine.rs`, `rules.rs`, `voicer.rs`)
+- Test helper files: descriptive snake_case (`test_signals.rs`)
 
-**Variables:**
-- snake_case for locals and fields: `note_duration_beats`, `last_beat_position`, `harmony_pitch_classes`
-- Abbreviations lowercase: `bpm`, `ms`, `pc` (pitch class)
+**TypeScript identifiers:**
+- Interfaces and types: PascalCase (`ContrapunkAdapter`, `EngineState`, `MidiDevice`, `HumanizeState`)
+- String literal union types: PascalCase values (`'PassThrough'`, `'DiatonicThirds'`, `'BachChorale'`)
+- Constants: SCREAMING_SNAKE_CASE for module-level data (`ALL_KEYS`, `SCALE_FAMILIES`, `SETTINGS_KEY`, `SETTINGS_VERSION`)
+- Functions: camelCase (`loadSettings`, `saveSettings`, `computeScaleNotes`, `isTauri`)
+- Svelte store singletons: single-word camelCase (`engine`, `midi`, `ui`)
+- Private class fields: underscore prefix (`_isRunning`, `_detuneCents`)
 
-**Types:**
-- PascalCase for structs and enums: `HarmonyEngine`, `NoteGenerator`, `VoiceRegister`, `StylePreset`
-- Enum variants: PascalCase (e.g., `Key::C`, `HarmonyMode::DiatonicThirds`, `OctaveMode::None`)
-- Trait implementations for Display use `std::fmt::Display`
+**Rust identifiers:**
+- Types and structs: PascalCase (`HarmonyEngine`, `VoiceRegister`, `StyleRules`, `ChordPattern`)
+- Functions and methods: snake_case (`note_on`, `set_key`, `build_registers`, `check_parallel_fifths`)
+- Constants: SCREAMING_SNAKE_CASE (`NOTE_NAMES`, `CHORD_PATTERNS`, `STRING_BASE_PITCH`)
+- Modules: snake_case (`voice_leading`, `harmony`, `chord`)
+- Test functions: descriptive snake_case (`test_engine_creation`, `bacf_detect_440hz`, `test_parallel_fifths_detected`)
 
 ## Code Style
 
-**Formatting:**
-- Standard Rust formatting (no custom rustfmt.toml detected)
-- 4-space indentation (Rust default)
-- Line length: appears to follow default 100-character limit
-- Trailing commas in multi-line lists
+**Formatting (TypeScript/Svelte):**
+- No `.prettierrc` or `.eslintrc` detected — formatting is enforced by `svelte-check` via `tsconfig.json`
+- TypeScript strict mode enabled (`"strict": true` in `ui/tsconfig.json`)
+- `moduleResolution: "bundler"` with `esModuleInterop` and `forceConsistentCasingInFileNames`
+- Tabs used for indentation throughout TypeScript files
+- Trailing commas used consistently in multi-line objects and arrays
+
+**Formatting (Rust):**
+- Standard `rustfmt` conventions (4-space indentation)
+- Module-level doc comments use `//!` style
+- Item-level doc comments use `///` style
+- Inline comments use `//` with a space
 
 **Linting:**
-- No custom clippy config detected (uses Rust defaults)
-- Code follows standard Rust idioms
-- No `#[allow(...)]` attributes observed in sampled code
+- TypeScript: `svelte-check` with strict TypeScript config
+- ESLint: not configured (no `.eslintrc` or `eslint.config.*` found)
+- Rust: standard `rustc` warnings enforced; no additional clippy config detected
 
 ## Import Organization
 
-**Order:**
-1. Standard library imports (e.g., `use std::collections::HashSet;`, `use std::io::{Read, Write};`)
-2. External crate imports (e.g., `use wmidi::{MidiMessage, Note, Channel, Velocity};`, `use rand::Rng;`, `use serde::{Serialize, Deserialize};`)
-3. Internal module imports with `crate::` prefix (e.g., `use crate::harmony::{Key, HarmonyMode};`)
-4. Relative imports with `super::` (e.g., `use super::config::HumanizeConfig;`)
+**TypeScript order (observed pattern):**
+1. External packages (`@tauri-apps/api/core`, `@tauri-apps/api/event`)
+2. Internal `$lib` path-aliased imports (`$lib/adapter`, `$lib/stores/engine.svelte`)
+3. Relative imports (`./types`, `./tauri`, `./wasm`)
 
 **Path Aliases:**
-- No custom path aliases
-- Crate-relative imports use `crate::module::Type`
-- Parent module imports use `super::module`
+- `$lib` → `ui/src/lib/` (SvelteKit convention)
+- `$lib/wasm-pkg` → `ui/src/lib/wasm-pkg/` (WASM output)
+
+**Svelte component imports:**
+- Always use `$lib/components/ComponentName.svelte` pattern
+- Store imports always include both the singleton and needed type exports
+
+**Rust imports:**
+- `use super::*` in `#[cfg(test)]` modules to import the module under test
+- Cross-module imports use full crate paths (`crate::harmony::config::HarmonyMode`)
 
 ## Error Handling
 
-**Patterns:**
-- Uses `anyhow` crate for error handling in application code
-- Result types: `anyhow::Result<T>` for functions that can fail
-- Explicit error context with `anyhow!()` macro for creating errors
-- Propagate errors with `?` operator
-- Example from `src/server/protocol.rs`:
-  ```rust
-  pub fn read_message(stream: &mut impl Read) -> Result<Message> {
-      let mut len_buf = [0u8; 2];
-      stream.read_exact(&mut len_buf)?;
-      let len = u16::from_be_bytes(len_buf) as usize;
-      if len == 0 {
-          return Err(anyhow!("invalid message: zero length"));
-      }
-      // ...
-  }
-  ```
+**TypeScript adapter pattern:**
+- All async adapter methods wrap calls in `try/catch`
+- Errors are rethrown as `new Error(\`Descriptive message: ${e}\`)` with context prefix
+- Non-critical operations (inject note on/off, note polling) silently return fallback values on failure rather than throwing
+- WASM stub methods (unimplemented features) silently accept calls rather than throwing
+
+**Example pattern (`ui/src/lib/adapter/tauri.ts`):**
+```typescript
+async setKey(key: string): Promise<void> {
+    try {
+        await invoke('set_key', { key });
+    } catch (e) {
+        throw new Error(`Failed to set key: ${e}`);
+    }
+}
+```
+
+**Store optimistic update pattern (`ui/src/lib/stores/engine.svelte.ts`):**
+```typescript
+async setKey(newKey: KeyName) {
+    const prev = this.key;
+    this.key = newKey;   // optimistic update
+    try {
+        await adapter.setKey(newKey);
+        this.persist();
+    } catch (e) {
+        this.key = prev; // rollback on failure
+        throw e;
+    }
+}
+```
+
+**Rust error handling:**
+- `anyhow::Result` used as the primary error type for fallible operations
+- WASM-exported functions use `Result<T, JsValue>` for JavaScript interop
+- Panics are acceptable for programming errors (wrong state); recoverable errors use `Result`
+- Test assertions use descriptive messages: `assert!(cond, "explanation {}", value)`
 
 ## Logging
 
-**Framework:** Standard output (no dedicated logging framework detected)
+**TypeScript:**
+- Logger: native `console` API
+- Namespace prefix: `[contrapunk]` on all log calls
+- `console.error` for initialization failures in `+page.svelte`
+- `console.warn` for non-fatal restore/sync failures in stores
+- No `console.log` used in production paths — only warn/error
 
-**Patterns:**
-- No structured logging observed in core modules
-- Error messages via `anyhow!()` for propagation
-- Console output in CLI portions (`std::io::{self, Write}`)
+**Rust:**
+- No logging framework detected in core lib
+- WASM uses `console_error_panic_hook` for panic messages in browser console
 
 ## Comments
 
 **When to Comment:**
-- Module-level documentation for every file using `//!` doc comments
-- Public API functions documented with `///` doc comments
-- Complex algorithms explained inline (e.g., voice leading rules)
-- Intent documented for non-obvious code (e.g., borrowing sources in scales)
+- Module-level `//!` doc comments on every Rust module explaining purpose and architecture
+- Function-level `///` doc comments on all public Rust functions and methods
+- JSDoc/TSDoc `/** ... */` block comments on all exported TypeScript interfaces and class methods
+- Inline `//` comments explain non-obvious business logic (e.g., MIDI status byte bit masks, voice leading rules)
 
-**Doc Comments:**
-- Module docs (`//!`) appear at top of each file with purpose and context
-- Function docs (`///`) include:
-  - Purpose description
-  - `# Arguments` section with parameter descriptions
-  - `# Returns` section for return value
-- Example from `src/chord.rs`:
-  ```rust
-  /// Detects the chord from a set of MIDI note numbers.
-  ///
-  /// Analyzes the pitch classes (ignoring octaves) and attempts to match
-  /// against known chord patterns. Detects slash chords when the lowest
-  /// note differs from the chord root.
-  ///
-  /// # Arguments
-  /// * `notes` - Set of MIDI note numbers (0-127)
-  ///
-  /// # Returns
-  /// The chord name (e.g., "Cmaj", "Am7", "Cmaj/E") or None if no chord detected.
-  pub fn detect_chord(notes: &HashSet<u8>) -> Option<String>
-  ```
+**TSDoc pattern (observed in `ui/src/lib/adapter/types.ts`):**
+```typescript
+/**
+ * Subscribe to real-time note updates.
+ * Returns an unsubscribe function.
+ */
+onNoteUpdate(callback: (state: NoteState) => void): () => void;
+```
+
+**Rust doc pattern (observed in `src/harmony/engine.rs`):**
+```rust
+//! Main harmony engine that routes notes through mode-specific algorithms.
+//!
+//! # Processing Pipeline
+//!
+//! ```text
+//! Note-On -> Scale Check -> Mode Algorithm -> Voice Leading -> Octave Mode -> Output
+//! ```
+
+/// Builds register assignments based on voice position.
+///
+/// Assigns registers to the full voice arrangement (0=top to N-1=bass),
+/// then reorders to match final_result layout.
+fn build_registers_for_position(voice_count: usize, voice_position: usize) -> Vec<VoiceRegister>
+```
+
+**Section dividers:**
+- TypeScript files use `// === Section Name ===` dividers between logical blocks
+- Rust files use `// ====...====` comment blocks for major section separations
 
 ## Function Design
 
-**Size:** Functions range from small helpers (~10 lines) to larger complex algorithms (~100-200 lines for voice leading)
+**Size:** Functions are kept focused. Private helper methods extract complex sub-logic (e.g., `mapEngineState`, `mapNoteState`, `sortVoices`, `centsToPitchBend`).
 
 **Parameters:**
-- Borrow by reference for read-only access: `&HashSet<u8>`, `&[u8]`
-- Mutable references for modification: `&mut self`, `&mut impl Write`
-- Owned parameters for consuming: `Vec<u8>`
-- Option types for optional parameters: `Option<&VoiceAnchor>`, `Option<usize>`
+- TypeScript async methods prefer individual typed parameters over config objects for simple cases
+- Partial config objects (`Partial<HumanizeState>`) used for update operations
+- Optional parameters use `?` suffix with `?? defaultValue` at use site
 
 **Return Values:**
-- Use `Result<T>` for fallible operations
-- Use `Option<T>` for operations that may not produce a value
-- Return `Vec<T>` for collections
-- Return owned types for newly constructed values
+- Async adapter methods return `Promise<void>` or `Promise<T>`; never `Promise<undefined>`
+- Synchronous store actions (detune) are non-async when the backend call is fire-and-forget
+- Rust public functions return `Vec<Note>` for harmony output, `Option<T>` for lookup operations
 
 ## Module Design
 
-**Exports:**
-- Public re-exports in `mod.rs` files for clean API surface
-- Example from `src/harmony/mod.rs`:
-  ```rust
-  mod config;
-  mod engine;
-  mod modes;
-  mod scale;
-  mod stateful;
-  pub mod voice_leading;
+**TypeScript exports:**
+- Types defined in `types.ts`, re-exported from `index.ts` for consumer convenience
+- Store singletons exported as named `const` (not default exports): `export const engine = new EngineStore()`
+- Adapter singleton: `export const adapter: ContrapunkAdapter = isTauri() ? new TauriAdapter() : new WasmAdapter()`
+- No barrel files beyond the adapter `index.ts`
 
-  pub use config::{Key, HarmonyMode, OctaveMode, ScaleFamily, ScaleMode};
-  pub use engine::HarmonyEngine;
-  pub use scale::Scale;
-  pub use stateful::{ContraryMotionState, CounterpointState};
-  pub use voice_leading::VoiceLeadingStyle;
-  ```
+**Svelte component design:**
+- Components import from stores directly, never from other components
+- All state accessed via store singletons (`engine.key`, `midi.selectedInput`)
+- Local reactive state uses `$state()`, derived values use `$derived()`
+- Side effects use `$effect()`
 
-**Barrel Files:**
-- `mod.rs` serves as barrel file for each module
-- Re-exports primary types for clean imports
-- Submodules remain private unless explicitly made public
+**Rust module exports:**
+- All public API re-exported via `pub mod` in `lib.rs`
+- Platform-conditional modules use `#[cfg(not(target_arch = "wasm32"))]` guards
+- Feature-gated dependencies use `#[cfg(feature = "web-midi")]`
 
-## Serialization
+## Data Mapping Conventions
 
-**Pattern:**
-- Use `serde` with derive macros for data structures
-- Enum serialization uses snake_case: `#[serde(rename_all = "snake_case")]`
-- Default values: `#[serde(default)]` or custom default functions
-- Skip fields in serialization: `#[serde(skip)]`
-- Example from `src/harmony/config.rs`:
-  ```rust
-  #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-  #[serde(rename_all = "snake_case")]
-  pub enum Key {
-      C, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B,
-  }
-  ```
+**Snake_case ↔ camelCase boundary:**
+- Rust backend uses snake_case for all serialized fields (`mode_number`, `voice_leading_enabled`)
+- TypeScript layer maps these to camelCase on ingress (`mapEngineState`, `mapNoteState` functions in `ui/src/lib/adapter/tauri.ts`)
+- WASM layer reads snake_case fields directly from WASM module return values with `?? default` fallback
 
-## Constants
-
-**Pattern:**
-- SCREAMING_SNAKE_CASE for constants
-- Const arrays for lookup tables and patterns
-- Example from `src/chord.rs`:
-  ```rust
-  const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  const NOTE_NAMES_FLAT: [&str; 12] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
-  ```
-- Private const for internal use, public const for API exposure
-
-## Platform-Specific Code
-
-**Pattern:**
-- Use `#[cfg(target_arch = "wasm32")]` for WASM-specific code
-- Use `#[cfg(not(target_arch = "wasm32"))]` for native-only code
-- Use `#[cfg(feature = "gui")]` for GUI-specific code
-- Example from `src/main.rs`:
-  ```rust
-  #[cfg(not(target_arch = "wasm32"))]
-  mod router;
-
-  #[cfg(feature = "gui")]
-  mod app;
-  ```
+**Validation on deserialization:**
+- localStorage settings validated field-by-field against enum sets (`VALID_KEYS`, `VALID_MODES`)
+- Schema version checked before use; mismatched versions trigger removal and return `null`
+- Numeric bounds validated inline (e.g., `interchangeRange >= 1 && <= 5`)
 
 ---
 
-*Convention analysis: 2026-02-05*
+*Convention analysis: 2026-03-31*

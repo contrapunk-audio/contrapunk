@@ -1,287 +1,279 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-02-05
+**Analysis Date:** 2026-03-31
 
 ## Test Framework
 
-**Runner:**
-- Built-in Rust test framework (cargo test)
-- No external test harness detected
+**Rust (primary test suite):**
+- Runner: built-in `cargo test`
+- No external test framework dependencies
+- Assertion library: built-in `assert!`, `assert_eq!`, `assert_ne!`
+- Config: `Cargo.toml` workspace at `/Users/vibhavbobade/go/src/github.com/waveywaves/contrapunk/Cargo.toml`
 
-**Assertion Library:**
-- Standard library `assert_eq!`, `assert!` macros
-
-**Run Commands:**
+**TypeScript/Svelte:**
+- No test framework installed (no `jest.config.*`, `vitest.config.*`, or test files in `ui/src/`)
+- `svelte-check` runs type checking only, not behavioral tests
+- Run commands:
 ```bash
-cargo test                  # Run all tests
-cargo test --lib           # Run only library tests
-cargo test <test_name>     # Run specific test
-cargo test -- --nocapture  # Show stdout during tests
+cargo test                          # Run all Rust tests
+cargo test harmony                  # Run harmony module tests only
+cargo test --lib                    # Run lib tests only (excludes bin)
+npm run check                       # TypeScript type checking only (not tests)
 ```
 
 ## Test File Organization
 
-**Location:**
-- Tests are co-located with source code (not in separate test files)
-- Tests live at the bottom of each module file inside `#[cfg(test)] mod tests`
-- No separate `tests/` directory for integration tests
+**Location:** Co-located with source in Rust — all tests live in `#[cfg(test)] mod tests` blocks at the bottom of each `.rs` file.
 
-**Naming:**
-- No `*_test.rs` files (all tests inline)
-- Test module always named `tests`
-- Test functions prefixed with `test_`
+**Coverage across modules:**
+- `src/harmony/engine.rs` — 55+ tests covering all harmony modes, key changes, voice leading, interchange, octave modes
+- `src/harmony/scale.rs` — 25+ tests covering scale degrees, diatonic transposition, all scale families
+- `src/harmony/stateful.rs` — 25+ tests covering ContraryMotion and StrictCounterpoint state machines
+- `src/harmony/modes.rs` — Tests for individual mode algorithms
+- `src/harmony/voice_leading/rules.rs` — 11 tests covering parallel fifths/octaves, voice crossing, spacing
+- `src/harmony/voice_leading/voicer.rs` — 11 tests covering chord revoicing and register assignment
+- `src/harmony/voice_leading/styles.rs` — 6 tests for style configuration
+- `src/harmony/voice_leading/suspension.rs` — 6 tests for Palestrina suspension logic
+- `src/audio/detectors.rs` — 20+ tests covering BACF, AMDF, Goertzel pitch detectors
+- `src/audio/guitar.rs` — 15+ tests covering pitch/note conversion, string identification, calibration
 
-**Structure:**
-```
-src/
-├── chord.rs              # Contains #[cfg(test)] mod tests
-├── harmony/
-│   ├── engine.rs         # Contains #[cfg(test)] mod tests
-│   ├── scale.rs          # Contains #[cfg(test)] mod tests
-│   ├── modes.rs          # Contains #[cfg(test)] mod tests
-│   ├── stateful.rs       # Contains #[cfg(test)] mod tests
-│   └── voice_leading/
-│       ├── voicer.rs     # Contains #[cfg(test)] mod tests
-│       ├── rules.rs      # Contains #[cfg(test)] mod tests
-│       ├── styles.rs     # Contains #[cfg(test)] mod tests
-│       └── suspension.rs # Contains #[cfg(test)] mod tests
-└── generator/
-    └── engine.rs         # Contains #[cfg(test)] mod tests
-```
+**Naming:** `test_<behavior_description>` in snake_case.
+Examples: `test_engine_creation`, `bacf_detect_440hz`, `test_parallel_fifths_detected`, `test_common_tone_retention`
 
 ## Test Structure
 
-**Suite Organization:**
+**Standard Rust unit test block:**
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_descriptive_name() {
-        // Arrange
-        let input = create_test_data();
-
-        // Act
-        let result = function_under_test(input);
-
-        // Assert
-        assert_eq!(result, expected);
+    fn test_engine_diatonic_thirds() {
+        let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        let result = engine.harmonize(Note::C4);
+        assert_eq!(result, vec![Note::C4, Note::E4]);
     }
 }
 ```
 
-**Patterns:**
-- Each test module imports parent with `use super::*;`
-- Test functions are simple and focused on single behavior
-- Tests follow Arrange-Act-Assert pattern implicitly
-- No test setup/teardown fixtures (tests are self-contained)
+**Helper functions in test modules:**
+Test modules define private helper functions to generate test input data. These are not `#[test]` annotated — they are plain `fn` called by tests.
 
-## Test Coverage
+**Audio test helpers (from `src/audio/detectors.rs`):**
+```rust
+fn sine_wave(freq: f64, sample_rate: usize, duration_secs: f64, amplitude: f32) -> Vec<f32> {
+    let num_samples = (sample_rate as f64 * duration_secs) as usize;
+    (0..num_samples)
+        .map(|i| {
+            let t = i as f64 / sample_rate as f64;
+            (amplitude as f64 * (2.0 * PI * freq * t).sin()) as f32
+        })
+        .collect()
+}
 
-**Coverage Analysis:**
+fn silence(num_samples: usize) -> Vec<f32> {
+    vec![0.0; num_samples]
+}
+
+fn noise(num_samples: usize, amplitude: f32) -> Vec<f32> {
+    // LCG pseudo-random for deterministic tests — no rand dependency needed
+    let mut state: u64 = 0xDEAD_BEEF_CAFE_BABE;
+    ...
+}
 ```
-Files with tests (11 detected):
-- src/chord.rs (29 tests)
-- src/harmony/engine.rs (68 tests)
-- src/harmony/scale.rs (22 tests)
-- src/harmony/modes.rs (4 tests)
-- src/harmony/stateful.rs (21 tests)
-- src/harmony/voice_leading/voicer.rs (11 tests)
-- src/harmony/voice_leading/rules.rs (11 tests)
-- src/harmony/voice_leading/styles.rs (6 tests)
-- src/harmony/voice_leading/suspension.rs (6 tests)
-- src/generator/engine.rs (7 tests)
-- src/server/protocol.rs (5 tests)
+
+**Voice leading test helpers (from `src/harmony/voice_leading/voicer.rs`):**
+```rust
+fn default_registers_3() -> Vec<VoiceRegister> {
+    vec![
+        VoiceRegister::Soprano, // melody placeholder
+        VoiceRegister::Soprano,
+        VoiceRegister::Alto,
+        VoiceRegister::Tenor,
+    ]
+}
 ```
 
-**Coverage by Module:**
-- Core harmony logic: Extensively tested (68 tests in `harmony/engine.rs`)
-- Voice leading: Well tested (34 tests across submodules)
-- Chord detection: Well tested (29 tests)
-- UI components: Not tested (`src/app.rs`, `src/ui.rs`, `src/piano.rs`)
-- MIDI I/O: Not tested (`src/midi/` modules)
+**Custom assertion helpers (from `src/audio/detectors.rs`):**
+```rust
+const FREQ_TOLERANCE_PERCENT: f64 = 3.0;
+
+fn assert_freq_close(detected: f32, expected: f64, label: &str) {
+    let error_pct = ((detected as f64 - expected) / expected).abs() * 100.0;
+    assert!(
+        error_pct < FREQ_TOLERANCE_PERCENT,
+        "{}: detected {:.1} Hz, expected {:.1} Hz (error {:.2}%)",
+        label, detected, expected, error_pct
+    );
+}
+```
 
 ## Mocking
 
-**Framework:** None (no mocking library used)
+**Framework:** None — no mocking library used.
 
-**Patterns:**
-- Tests use real implementations, not mocks
-- Pure functions tested with concrete inputs
-- No dependency injection for testing
-- WMIDI types used directly in tests
+**Approach:**
+- Tests use real struct instances constructed with default or test-specific configurations
+- Deterministic pseudo-random data generated with LCG (linear congruential generator) inline — avoids `rand` crate dependency in test code
+- WASM-specific code paths are isolated via `#[cfg(not(target_arch = "wasm32"))]` feature flags; tests run on native target only
 
-**Example (no mocking):**
-```rust
-#[test]
-fn test_engine_diatonic_thirds() {
-    let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
-    let result = engine.harmonize(Note::C4);
-    assert_eq!(result, vec![Note::C4, Note::E4]);
-}
-```
+**What to mock:**
+- Audio input data: replaced with `sine_wave()`, `silence()`, `noise()` helpers that produce `Vec<f32>`
+- MIDI events: constructed directly as `Note::C4`, `Note::E4` (using `wmidi::Note` enum values)
+- Time: passed as `f64` seconds parameter to functions that need timestamps
+
+**What NOT to mock:**
+- The harmony engine itself — tests verify full end-to-end harmonization behavior
+- Scale/chord logic — tested directly, not abstracted behind interfaces
 
 ## Fixtures and Factories
 
 **Test Data:**
-- Tests create data inline using simple constructors
-- HashSet from array literals: `[60, 64, 67].into_iter().collect()`
-- Direct enum usage: `Key::C`, `HarmonyMode::DiatonicThirds`, `Note::C4`
-- No factory functions or builders
+No separate fixture files. All test data is constructed inline or via local helper functions within each `mod tests` block.
 
-**Example:**
+**Pattern for audio signal tests:**
 ```rust
-#[test]
-fn test_c_major() {
-    let notes: HashSet<u8> = [60, 64, 67].into_iter().collect();
-    assert_eq!(detect_chord(&notes), Some("Cmaj".to_string()));
-}
+// Provide frequency, sample rate, duration in seconds, amplitude
+let samples = sine_wave(440.0, 44100, 0.1, 0.8);
+let mut det = BacfDetector::new();
+let result = det.detect(&samples, 44100);
 ```
 
-**Location:**
-- No dedicated fixture files
-- Test data created inline within each test function
+**Pattern for harmony engine tests:**
+```rust
+// Construct with specific musical parameters
+let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+let result = engine.harmonize(Note::C4);
+assert_eq!(result, vec![Note::C4, Note::E4]);
+```
+
+**Pattern for voice leading tests:**
+```rust
+// Represent MIDI note numbers as u8 vectors
+let prev = vec![72u8, 60, 53]; // melody=C5, soprano=C4, alto=F3
+let curr = vec![74u8, 62, 55]; // melody=D5, soprano=D4, alto=G3
+let result = check_parallel_fifths(&prev, &curr);
+assert_eq!(result, vec![(1, 2)]);
+```
+
+**Location:** Inline within `mod tests` blocks in each `.rs` file. No separate fixtures directory.
+
+## Coverage
+
+**Requirements:** Not enforced — no coverage tooling configured.
+
+**View Coverage:**
+```bash
+cargo test 2>&1 | grep "test result"   # Summary of pass/fail counts
+# For detailed coverage, install cargo-tarpaulin:
+cargo install cargo-tarpaulin
+cargo tarpaulin --out Html
+```
+
+## Test Types
+
+**Unit Tests (primary):**
+- Scope: individual functions and methods in isolation
+- All Rust tests are unit tests within the module they test
+- Tests directly construct the struct being tested and assert on outputs
+
+**Integration Tests:**
+- No `tests/` directory at crate root — no integration test suite
+- The Tauri/WASM adapter boundary is not tested (no mock Tauri or mock WASM environment)
+
+**E2E Tests:**
+- Not used. No Playwright, Cypress, or similar tooling configured.
+
+**TypeScript/Svelte Tests:**
+- None. The `ui/` frontend has no test suite. `svelte-check` provides type safety only.
 
 ## Common Patterns
 
-**Enum Testing:**
+**Stateful algorithm testing (harmony engine):**
+Tests verify stateful behavior by calling harmonize() multiple times and checking accumulated state:
 ```rust
 #[test]
 fn test_key_change() {
     let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
     let result = engine.harmonize(Note::C4);
-    assert_eq!(result[1], Note::E4);
+    assert_eq!(result[1], Note::E4);   // In C major
 
     engine.set_key(Key::G);
     let result = engine.harmonize(Note::G4);
-    assert_eq!(result[1], Note::B4);
+    assert_eq!(result[1], Note::B4);   // In G major
 }
 ```
 
-**Option Testing:**
+**Boundary / edge case testing:**
 ```rust
 #[test]
-fn test_single_note() {
-    let notes: HashSet<u8> = [60].into_iter().collect();
-    assert_eq!(detect_chord(&notes), None);
+fn bacf_silence_returns_none() {
+    let samples = silence(4410);
+    let mut det = BacfDetector::new();
+    let result = det.detect(&samples, 44100);
+    assert!(result.is_none(), "Should return None for silence");
+}
+
+#[test]
+fn bacf_very_low_amplitude() {
+    let samples = sine_wave(440.0, 44100, 0.1, 0.0001);
+    // Very quiet signal should not be detected
 }
 ```
 
-**Collection Testing:**
+**Determinism testing (for stochastic algorithms):**
 ```rust
 #[test]
-fn test_chord_display_unknown() {
-    let notes: HashSet<u8> = [60, 61].into_iter().collect();
-    let display = chord_display(&notes);
-    assert!(display.contains("C") && display.contains("C#"));
+fn test_determinism_100_times() {
+    let pcs = vec![4, 7];   // E, G pitch classes
+    let prev = vec![72u8, 64, 67];
+    let first = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
+    for _ in 0..100 {
+        let result = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
+        assert_eq!(result, first, "Determinism violated!");
+    }
 }
 ```
 
-**State Machine Testing:**
+**Round-trip testing:**
 ```rust
 #[test]
-fn test_mode_change() {
-    let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::PassThrough);
-    let result = engine.harmonize(Note::C4);
-    assert_eq!(result.len(), 1);
+fn test_profile_json_roundtrip() {
+    let profile = GuitarCalibrationProfile::default();
+    let json = profile.to_json().unwrap();
+    let restored = GuitarCalibrationProfile::from_json(&json).unwrap();
+    assert_eq!(profile, restored);
+}
 
-    engine.set_mode(HarmonyMode::DiatonicThirds);
-    let result = engine.harmonize(Note::C4);
-    assert_eq!(result.len(), 2);
+#[test]
+fn test_roundtrip_note_name() {
+    for midi in 21..=108 {
+        let name = midi_to_note_name(midi);
+        let back = note_name_to_midi(&name).unwrap();
+        assert_eq!(back, midi);
+    }
 }
 ```
 
-## Test Naming
-
-**Convention:**
-- `test_` prefix required by Rust
-- Descriptive names: `test_c_major`, `test_key_change`, `test_parallel_fifths_violation`
-- Pattern: `test_<scenario>` or `test_<function>_<scenario>`
-
-**Examples:**
-- `test_engine_creation` - Constructor behavior
-- `test_engine_pass_through` - Mode-specific behavior
-- `test_parallel_fifths_violation` - Rule validation
-- `test_common_tone_preference` - Voice leading preference
-
-## Assertions
-
-**Equality:**
+**Multi-detector consensus testing:**
 ```rust
-assert_eq!(result, expected);
-assert_eq!(engine.key(), Key::C);
+#[test]
+fn all_detectors_agree_on_440hz() {
+    let samples = sine_wave(440.0, 44100, 0.1, 0.8);
+    // Test all three detectors (BACF, AMDF, Goertzel) on same signal
+    // Assert all return results within tolerance
+}
 ```
 
-**Boolean:**
-```rust
-assert!(display.contains("C"));
-assert!(!has_parallel_fifths);
-```
+## Testing Gaps
 
-**Vector/Collection:**
-```rust
-assert_eq!(result, vec![Note::C4, Note::E4]);
-assert_eq!(result.len(), 2);
-```
+**No TypeScript/Svelte tests:** The entire `ui/` frontend is untested beyond type checking. Adapter implementations (`TauriAdapter`, `WasmAdapter`), store logic (optimistic updates, persistence, rollback), and component behavior have no automated tests.
 
-## Test Types
+**No Tauri IPC tests:** The `src-tauri/` command handlers are not tested in isolation.
 
-**Unit Tests:**
-- Primary testing strategy
-- Tests pure functions and stateful objects
-- Examples: chord detection, harmony generation, scale operations
-- Location: Inline at bottom of source files in `#[cfg(test)] mod tests`
-
-**Integration Tests:**
-- Not detected (no `tests/` directory)
-- No end-to-end workflow tests
-
-**E2E Tests:**
-- Not used (GUI and MIDI I/O not tested)
-
-## Coverage Gaps
-
-**Untested Areas:**
-- GUI components (`src/app.rs`, `src/ui.rs`, `src/piano.rs`, `src/theme/`)
-- MIDI I/O (`src/midi/input.rs`, `src/midi/output.rs`, `src/midi/ports.rs`, `src/midi/web.rs`)
-- Router/Server (`src/router.rs`, `src/server/session.rs`, `src/server/config.rs`)
-- Humanization (`src/humanize/` modules)
-- Preset management (`src/preset/`)
-- Generator tick logic (only basic tests in `src/generator/engine.rs`)
-
-**Well-Tested Areas:**
-- Core harmony algorithms
-- Voice leading rules and voicing
-- Chord detection
-- Scale operations
-
-## Running Tests
-
-**All tests:**
-```bash
-cargo test
-```
-
-**Specific module:**
-```bash
-cargo test harmony::engine
-cargo test chord
-```
-
-**Specific test:**
-```bash
-cargo test test_c_major
-```
-
-**With output:**
-```bash
-cargo test -- --nocapture
-```
-
-**Documentation tests:**
-- No doc tests detected (no `/// # Examples` sections in sampled code)
+**No integration tests:** The Rust lib ↔ WASM bridge is not tested end-to-end.
 
 ---
 
-*Testing analysis: 2026-02-05*
+*Testing analysis: 2026-03-31*
