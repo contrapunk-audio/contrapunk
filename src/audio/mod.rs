@@ -16,6 +16,7 @@ pub mod buffer;
 pub mod config;
 pub mod detectors;
 pub mod guitar;
+pub mod inference;
 pub mod onset;
 pub mod pitch;
 pub mod profiles;

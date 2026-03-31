@@ -1,0 +1,233 @@
+{
+  "model": "PureCNN",
+  "n_classes": 138,
+  "input_shape": [
+    1,
+    1,
+    64,
+    94
+  ],
+  "layers": [
+    {
+      "name": "features.0.weight",
+      "file": "features.0.weight.npy",
+      "shape": [
+        32,
+        1,
+        3,
+        3
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.0.bias",
+      "file": "features.0.bias.npy",
+      "shape": [
+        32
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.1.weight",
+      "file": "features.1.weight.npy",
+      "shape": [
+        32
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.1.bias",
+      "file": "features.1.bias.npy",
+      "shape": [
+        32
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.1.running_mean",
+      "file": "features.1.running_mean.npy",
+      "shape": [
+        32
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.1.running_var",
+      "file": "features.1.running_var.npy",
+      "shape": [
+        32
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.4.weight",
+      "file": "features.4.weight.npy",
+      "shape": [
+        64,
+        32,
+        3,
+        3
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.4.bias",
+      "file": "features.4.bias.npy",
+      "shape": [
+        64
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.5.weight",
+      "file": "features.5.weight.npy",
+      "shape": [
+        64
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.5.bias",
+      "file": "features.5.bias.npy",
+      "shape": [
+        64
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.5.running_mean",
+      "file": "features.5.running_mean.npy",
+      "shape": [
+        64
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.5.running_var",
+      "file": "features.5.running_var.npy",
+      "shape": [
+        64
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.8.weight",
+      "file": "features.8.weight.npy",
+      "shape": [
+        128,
+        64,
+        3,
+        3
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.8.bias",
+      "file": "features.8.bias.npy",
+      "shape": [
+        128
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.9.weight",
+      "file": "features.9.weight.npy",
+      "shape": [
+        128
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.9.bias",
+      "file": "features.9.bias.npy",
+      "shape": [
+        128
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.9.running_mean",
+      "file": "features.9.running_mean.npy",
+      "shape": [
+        128
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.9.running_var",
+      "file": "features.9.running_var.npy",
+      "shape": [
+        128
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.12.weight",
+      "file": "features.12.weight.npy",
+      "shape": [
+        256,
+        128,
+        3,
+        3
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.12.bias",
+      "file": "features.12.bias.npy",
+      "shape": [
+        256
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.13.weight",
+      "file": "features.13.weight.npy",
+      "shape": [
+        256
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.13.bias",
+      "file": "features.13.bias.npy",
+      "shape": [
+        256
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.13.running_mean",
+      "file": "features.13.running_mean.npy",
+      "shape": [
+        256
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "features.13.running_var",
+      "file": "features.13.running_var.npy",
+      "shape": [
+        256
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "classifier.2.weight",
+      "file": "classifier.2.weight.npy",
+      "shape": [
+        138,
+        256
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "classifier.2.bias",
+      "file": "classifier.2.bias.npy",
+      "shape": [
+        138
+      ],
+      "dtype": "float32"
+    }
+  ]
+}

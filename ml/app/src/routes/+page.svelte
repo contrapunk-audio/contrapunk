@@ -11,6 +11,12 @@
 		{ number: 9, title: 'Ensemble', href: '/ensemble', description: 'Combine models for improved accuracy' },
 		{ number: 10, title: 'Live Demo', href: '/live', description: 'Real-time guitar string and fret classification' },
 	];
+
+	const diary = {
+		title: 'ML Diary',
+		href: '/diary/machine-learning',
+		description: 'The full training journey — every round, every decision, every result explained.',
+	};
 </script>
 
 <svelte:head>
@@ -43,6 +49,26 @@
 					</div>
 				</a>
 			{/each}
+		</div>
+
+		<!-- ML Diary -->
+		<div class="mt-10">
+			<a
+				href={diary.href}
+				class="group block bg-gradient-to-r from-cyan-950/40 to-gray-900 border border-cyan-500/30 rounded-xl p-6 hover:border-cyan-400/50 transition-all duration-200"
+			>
+				<div class="flex items-center gap-4">
+					<span class="flex-shrink-0 w-12 h-12 rounded-lg bg-cyan-500/10 text-cyan-400 font-bold text-2xl flex items-center justify-center border border-cyan-500/20">
+						&#128214;
+					</span>
+					<div>
+						<h2 class="text-xl font-semibold text-cyan-300 group-hover:text-cyan-200 transition-colors">
+							{diary.title}
+						</h2>
+						<p class="text-sm text-gray-400 mt-1">{diary.description}</p>
+					</div>
+				</div>
+			</a>
 		</div>
 
 		<footer class="text-center mt-16 text-gray-600 text-sm">
