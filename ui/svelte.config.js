@@ -9,7 +9,14 @@ const config = {
 			fallback: 'index.html'
 		}),
 		prerender: {
-			handleHttpError: 'warn'
+			handleHttpError: 'warn',
+			entries: [
+				'*',
+				'/diary',
+				'/diary/machine-learning',
+				'/diary/machine-learning/round-1',
+				'/diary/machine-learning/round-2'
+			]
 		}
 	}
 };
