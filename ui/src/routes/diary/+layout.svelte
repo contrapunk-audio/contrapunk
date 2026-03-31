@@ -2,7 +2,6 @@
 	let { children } = $props();
 </script>
 
-<!-- Override parent app-shell: diary pages need to scroll and use standard fonts -->
 <div class="diary-shell">
 	{@render children()}
 </div>
@@ -13,8 +12,9 @@
 		inset: 0;
 		z-index: 100;
 		overflow-y: auto;
-		background: #030712;
-		font-family: ui-sans-serif, system-ui, sans-serif;
+		background: var(--color-bg-deep);
+		font-family: var(--font-reading);
+		color: var(--color-text-primary);
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;
 	}
