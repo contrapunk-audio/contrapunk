@@ -296,6 +296,7 @@ fn main() {
 
         // Menu
         println!("\n  Options:");
+        println!("    [T]     Tune first (open tuner before capturing)");
         println!("    [Enter] Resume from where you left off");
         println!("    [J]     Jump to a specific string/fret");
         println!("    [R]     Redo a specific string/fret position");
@@ -308,6 +309,71 @@ fn main() {
         std::io::stdin().read_line(&mut choice).unwrap();
 
         match choice.trim().to_lowercase().as_str() {
+            "t" => {
+                // Tune first — launch the tuner, then resume
+                dataset.samples = existing.samples;
+                total_captured = dataset.samples.len();
+
+                println!("\n  === Quick Tuner ===");
+                println!("  Pluck each open string and check the display.");
+                println!("  Press Enter after each string when it's in tune.\n");
+
+                for si in 0..6 {
+                    let target = STRING_BASE_PITCH[si];
+                    let target_name = midi_to_note_name(target);
+                    println!("  {} ({}) — pluck and tune, press Enter when done:",
+                        STRING_NAMES[si], target_name);
+
+                    // Show live detection while waiting for Enter
+                    // Since stdin blocks, we show a few seconds of detection first
+                    for _ in 0..30 {
+                        std::thread::sleep(Duration::from_millis(100));
+                        let s = state.lock().unwrap();
+                        if s.rms > noise_floor * 2.0 && s.confidence > 0.45 {
+                            let (_, cents) = freq_to_midi(s.frequency);
+                            let arrow = if cents > 5 { "sharp ↓" }
+                                else if cents < -5 { "flat ↑" }
+                                else { "IN TUNE" };
+                            print!("\r    {:>5} {:>+4}¢  {}     ",
+                                s.note_name, cents, arrow);
+                            std::io::stdout().flush().unwrap();
+                        }
+                    }
+                    print!("\r    Press Enter when {} is tuned...     ", STRING_NAMES[si]);
+                    std::io::stdout().flush().unwrap();
+                    wait_enter();
+                    println!("    {} done.", STRING_NAMES[si]);
+                }
+                println!("\n  Tuning complete! Resuming capture.\n");
+
+                // Resume from where we left off
+                let mut last_string: usize = 0;
+                let mut last_fret: u8 = 0;
+                let mut found_any = false;
+                for si in 0..6 {
+                    for f in 0..23 {
+                        if coverage[si][f] >= PLUCKS_PER_POSITION as u32 {
+                            last_string = si;
+                            last_fret = f as u8;
+                            found_any = true;
+                        }
+                    }
+                }
+                if found_any {
+                    if last_fret < FRETS as u8 {
+                        start_string = last_string;
+                        start_fret = last_fret + 1;
+                    } else if last_string < 5 {
+                        start_string = last_string + 1;
+                        start_fret = 0;
+                    } else {
+                        start_string = 6;
+                    }
+                }
+                println!("  Resuming from {} fret {}.\n",
+                    if start_string < 6 { STRING_NAMES[start_string] } else { "noise" },
+                    start_fret);
+            }
             "" => {
                 // Resume: find last captured position, continue from next
                 dataset.samples = existing.samples;
