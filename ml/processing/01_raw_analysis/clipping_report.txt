@@ -1,0 +1,62 @@
+============================================================
+  Clipping & Silence Report
+============================================================
+
+Total samples: 1380
+Clipped (peak > 0.99): 32
+Silent  (rms < 0.005): 7
+
+------------------------------------------------------------
+CLIPPED SAMPLES (peak > 0.99)
+------------------------------------------------------------
+   idx  label                               peak       rms
+   108  string_0_fret_10                  0.9976    0.6954
+   141  string_0_fret_14                  1.0000    0.7865
+   190  string_0_fret_19                  1.0000    0.8530
+   211  string_0_fret_21                  0.9975    0.8466
+   212  string_0_fret_21                  1.0000    0.8611
+   213  string_0_fret_21                  0.9921    0.8321
+   270  string_1_fret_4                   0.9994    0.6518
+   295  string_1_fret_6                   0.9958    0.6114
+   299  string_1_fret_6                   0.9976    0.4566
+   300  string_1_fret_7                   1.0000    0.6558
+   332  string_1_fret_10                  0.9991    0.3064
+   335  string_1_fret_10                  0.9979    0.3992
+   340  string_1_fret_11                  1.0000    0.7074
+   360  string_1_fret_13                  1.0000    0.5746
+   376  string_1_fret_14                  1.0000    0.7295
+   378  string_1_fret_14                  0.9910    0.7905
+   483  string_2_fret_2                   0.9978    0.5454
+   620  string_2_fret_16                  0.9917    0.5959
+   630  string_2_fret_17                  1.0000    0.7570
+   665  string_2_fret_20                  0.9954    0.7836
+   668  string_2_fret_20                  0.9977    0.3312
+   673  string_2_fret_21                  0.9933    0.6958
+   678  string_2_fret_21                  0.9983    0.3237
+   684  string_2_fret_22                  0.9953    0.4098
+   800  string_3_fret_11                  1.0000    0.2784
+   927  string_4_fret_0                   0.9911    0.5093
+   970  string_4_fret_5                   1.0000    0.2431
+   972  string_4_fret_5                   0.9904    0.3854
+   977  string_4_fret_5                   0.9975    0.3453
+  1090  string_4_fret_17                  1.0000    0.6569
+  1305  string_5_fret_15                  0.9944    0.2872
+  1307  string_5_fret_15                  0.9956    0.2559
+
+------------------------------------------------------------
+SILENT SAMPLES (rms < 0.005)
+------------------------------------------------------------
+   idx  label                               peak       rms
+    50  string_0_fret_5                   0.0069    0.0021
+   140  string_0_fret_14                  0.0047    0.0016
+   290  string_1_fret_6                   0.0064    0.0017
+   330  string_1_fret_10                  0.0100    0.0026
+   690  string_3_fret_0                   0.0124    0.0041
+  1240  string_5_fret_9                   0.0127    0.0047
+  1241  string_5_fret_9                   0.0150    0.0044
+
+------------------------------------------------------------
+ASSESSMENT
+------------------------------------------------------------
+Clipping: 32 samples (2.3%) — reduce input gain or check cable.
+Silent: 7 samples (0.5%) — may include noise floor captures (expected) or missed plucks (check these).

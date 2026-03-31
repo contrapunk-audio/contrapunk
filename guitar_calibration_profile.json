@@ -1,0 +1,344 @@
+{
+  "version": 1,
+  "strings": [
+    {
+      "string_name": "Low E",
+      "expected_note": "E2",
+      "expected_frequency": 82.40688,
+      "soft_samples": [
+        {
+          "note": "A#1",
+          "freq": 56.69316,
+          "conf": 0.81963366,
+          "peak": 0.056029182,
+          "rms": 0.027671764,
+          "bright_peak": 0.04147379,
+          "bright_rms": 0.022513105,
+          "main_delta": 0.0,
+          "main_ratio": 2.0247781,
+          "main_slope": 0.0015232805,
+          "bright_delta": 0.0,
+          "bright_ratio": 1.8422066,
+          "bright_slope": 0.0
+        },
+        {
+          "note": "A2",
+          "freq": 110.31234,
+          "conf": 0.58327514,
+          "peak": 0.5213698,
+          "rms": 0.2543218,
+          "bright_peak": 0.51673156,
+          "bright_rms": 0.25875568,
+          "main_delta": 0.0,
+          "main_ratio": 2.0500398,
+          "main_slope": -0.013357222,
+          "bright_delta": 0.0,
+          "bright_ratio": 1.9969863,
+          "bright_slope": 0.0
+        }
+      ],
+      "strong_samples": [
+        {
+          "note": "A#1",
+          "freq": 56.69316,
+          "conf": 0.81963366,
+          "peak": 0.8630734,
+          "rms": 0.2734753,
+          "bright_peak": 0.633384,
+          "bright_rms": 0.21432222,
+          "main_delta": 0.0,
+          "main_ratio": 3.1559465,
+          "main_slope": 0.030816764,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.9552884,
+          "bright_slope": 0.0
+        },
+        {
+          "note": "E2",
+          "freq": 82.810196,
+          "conf": 0.4509558,
+          "peak": 1.0,
+          "rms": 0.5517025,
+          "bright_peak": 1.0,
+          "bright_rms": 0.55472606,
+          "main_delta": 0.0,
+          "main_ratio": 1.812571,
+          "main_slope": 0.004365146,
+          "bright_delta": 0.0,
+          "bright_ratio": 1.8026916,
+          "bright_slope": 0.0
+        }
+      ]
+    },
+    {
+      "string_name": "A",
+      "expected_note": "A2",
+      "expected_frequency": 110.0,
+      "soft_samples": [
+        {
+          "note": "D3",
+          "freq": 146.78424,
+          "conf": 0.66670966,
+          "peak": 0.9847725,
+          "rms": 0.44711795,
+          "bright_peak": 0.9842347,
+          "bright_rms": 0.42854428,
+          "main_delta": 0.0,
+          "main_ratio": 2.2024894,
+          "main_slope": -0.018043399,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.296693,
+          "bright_slope": 0.0
+        }
+      ],
+      "strong_samples": [
+        {
+          "note": "E2",
+          "freq": 82.183586,
+          "conf": 0.48653594,
+          "peak": 1.0,
+          "rms": 0.53934646,
+          "bright_peak": 1.0,
+          "bright_rms": 0.53284806,
+          "main_delta": 0.0,
+          "main_ratio": 1.8540958,
+          "main_slope": 0.02376914,
+          "bright_delta": 0.0,
+          "bright_ratio": 1.8767076,
+          "bright_slope": 0.0
+        },
+        {
+          "note": "E2",
+          "freq": 82.811714,
+          "conf": 0.45120585,
+          "peak": 0.99071413,
+          "rms": 0.6488106,
+          "bright_peak": 0.99071413,
+          "bright_rms": 0.6560626,
+          "main_delta": 0.0,
+          "main_ratio": 1.5269697,
+          "main_slope": 0.015058517,
+          "bright_delta": 0.0,
+          "bright_ratio": 1.5100908,
+          "bright_slope": 0.0
+        }
+      ]
+    },
+    {
+      "string_name": "D",
+      "expected_note": "D3",
+      "expected_frequency": 146.83238,
+      "soft_samples": [
+        {
+          "note": "A2",
+          "freq": 109.65845,
+          "conf": 0.55041504,
+          "peak": 0.86078334,
+          "rms": 0.3518767,
+          "bright_peak": 0.8607557,
+          "bright_rms": 0.32661083,
+          "main_delta": 0.0,
+          "main_ratio": 2.446264,
+          "main_slope": -0.022021621,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.6354167,
+          "bright_slope": 0.0
+        }
+      ],
+      "strong_samples": [
+        {
+          "note": "G3",
+          "freq": 195.66478,
+          "conf": 0.6712493,
+          "peak": 0.8243769,
+          "rms": 0.3585416,
+          "bright_peak": 0.7277837,
+          "bright_rms": 0.35252368,
+          "main_delta": 0.0,
+          "main_ratio": 2.2992504,
+          "main_slope": -0.025928676,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.0644958,
+          "bright_slope": 0.0
+        }
+      ]
+    },
+    {
+      "string_name": "G",
+      "expected_note": "G3",
+      "expected_frequency": 195.99773,
+      "soft_samples": [
+        {
+          "note": "D3",
+          "freq": 146.93063,
+          "conf": 0.7101665,
+          "peak": 0.8528899,
+          "rms": 0.3022245,
+          "bright_peak": 0.8421381,
+          "bright_rms": 0.28223583,
+          "main_delta": 0.0,
+          "main_ratio": 2.822041,
+          "main_slope": -0.017252266,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.98381,
+          "bright_slope": 0.0
+        }
+      ],
+      "strong_samples": [
+        {
+          "note": "D3",
+          "freq": 146.8794,
+          "conf": 0.73498917,
+          "peak": 0.9795317,
+          "rms": 0.53521085,
+          "bright_peak": 0.97723913,
+          "bright_rms": 0.5484528,
+          "main_delta": 0.0,
+          "main_ratio": 1.8301791,
+          "main_slope": 0.03188926,
+          "bright_delta": 0.0,
+          "bright_ratio": 1.7818109,
+          "bright_slope": 0.0
+        }
+      ]
+    },
+    {
+      "string_name": "B",
+      "expected_note": "B3",
+      "expected_frequency": 246.94165,
+      "soft_samples": [
+        {
+          "note": "E4",
+          "freq": 329.56628,
+          "conf": 0.8622436,
+          "peak": 0.17703477,
+          "rms": 0.077665046,
+          "bright_peak": 0.16624929,
+          "bright_rms": 0.07737621,
+          "main_delta": 0.0,
+          "main_ratio": 2.2794652,
+          "main_slope": -0.0012700632,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.1485841,
+          "bright_slope": 0.0
+        }
+      ],
+      "strong_samples": [
+        {
+          "note": "G3",
+          "freq": 196.37816,
+          "conf": 0.7782097,
+          "peak": 0.9999322,
+          "rms": 0.478577,
+          "bright_peak": 0.9999322,
+          "bright_rms": 0.4827437,
+          "main_delta": 0.0,
+          "main_ratio": 2.0893865,
+          "main_slope": 0.0013214052,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.0713522,
+          "bright_slope": 0.0
+        },
+        {
+          "note": "G3",
+          "freq": 195.89726,
+          "conf": 0.78299665,
+          "peak": 0.9803512,
+          "rms": 0.5850735,
+          "bright_peak": 0.9803512,
+          "bright_rms": 0.57776767,
+          "main_delta": 0.0,
+          "main_ratio": 1.6756036,
+          "main_slope": -0.006812632,
+          "bright_delta": 0.0,
+          "bright_ratio": 1.6967914,
+          "bright_slope": 0.0
+        }
+      ]
+    },
+    {
+      "string_name": "High E",
+      "expected_note": "E4",
+      "expected_frequency": 329.62756,
+      "soft_samples": [
+        {
+          "note": "B3",
+          "freq": 246.4992,
+          "conf": 0.5140468,
+          "peak": 0.071321495,
+          "rms": 0.024899168,
+          "bright_peak": 0.03581609,
+          "bright_rms": 0.015424534,
+          "main_delta": 0.0,
+          "main_ratio": 2.8644128,
+          "main_slope": -0.010294871,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.3220208,
+          "bright_slope": 0.0
+        },
+        {
+          "note": "E4",
+          "freq": 330.26108,
+          "conf": 0.85973644,
+          "peak": 0.17950645,
+          "rms": 0.05675886,
+          "bright_peak": 0.17113069,
+          "bright_rms": 0.05819683,
+          "main_delta": 0.0,
+          "main_ratio": 3.1626155,
+          "main_slope": -0.000017452985,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.9405499,
+          "bright_slope": 0.0
+        }
+      ],
+      "strong_samples": [
+        {
+          "note": "E4",
+          "freq": 330.68283,
+          "conf": 0.7568525,
+          "peak": 0.58882844,
+          "rms": 0.14665149,
+          "bright_peak": 0.58882844,
+          "bright_rms": 0.193853,
+          "main_delta": 0.0,
+          "main_ratio": 4.015155,
+          "main_slope": 0.014731005,
+          "bright_delta": 0.0,
+          "bright_ratio": 3.0374997,
+          "bright_slope": 0.0
+        },
+        {
+          "note": "E4",
+          "freq": 330.9422,
+          "conf": 0.8730275,
+          "peak": 0.9968765,
+          "rms": 0.4442937,
+          "bright_peak": 0.99392456,
+          "bright_rms": 0.44805068,
+          "main_delta": 0.0,
+          "main_ratio": 2.2437332,
+          "main_slope": 0.007699847,
+          "bright_delta": 0.0,
+          "bright_ratio": 2.2183306,
+          "bright_slope": 0.0
+        },
+        {
+          "note": "B3",
+          "freq": 246.81213,
+          "conf": 0.83092165,
+          "peak": 0.86987185,
+          "rms": 0.4731758,
+          "bright_peak": 0.866523,
+          "bright_rms": 0.47270066,
+          "main_delta": 0.0,
+          "main_ratio": 1.8383693,
+          "main_slope": -0.014829189,
+          "bright_delta": 0.0,
+          "bright_ratio": 1.8331327,
+          "bright_slope": 0.0
+        }
+      ]
+    }
+  ]
+}
