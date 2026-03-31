@@ -5,6 +5,22 @@
 	import AudioComparison from '$lib/components/diary/AudioComparison.svelte';
 	import AudioPlayer from '$lib/components/diary/AudioPlayer.svelte';
 	import ModelDiagram from '$lib/components/diary/ModelDiagram.svelte';
+	import SpectrogramViewer from '$lib/components/diary/SpectrogramViewer.svelte';
+	import SpectrogramComparison from '$lib/components/diary/SpectrogramComparison.svelte';
+
+	type SpectrogramJson = {
+		label: string;
+		spectrogram: { data: number[][] };
+	};
+
+	let overviewSpecData: number[][] | null = $state(null);
+
+	$effect(() => {
+		fetch('/spectrograms/showcase/E2_open.json')
+			.then(r => r.json() as Promise<SpectrogramJson>)
+			.then(d => { overviewSpecData = d.spectrogram.data; })
+			.catch(() => { /* silent */ });
+	});
 
 	type ModelResult = {
 		name: string;
@@ -106,6 +122,17 @@
 				-- a 64x94 pixel image that represents the frequency content over time. The classifier
 				never hears the audio directly; it sees these images.
 			</p>
+
+			{#if overviewSpecData}
+				<div class="overview-spectrogram">
+					<SpectrogramViewer
+						data={overviewSpecData}
+						label="What the model sees: a mel-spectrogram"
+						height={200}
+					/>
+				</div>
+			{/if}
+
 			<div class="detail-grid">
 				<div class="detail-item">
 					<span class="detail-key">Guitar</span>
@@ -164,6 +191,25 @@
 					urlB="/samples/confused_pairs/A2_on_A_string_open.wav"
 					labelB="A2 on A string (open)"
 					question="Can you hear the difference?"
+				/>
+			</div>
+
+			<!-- See the Data: spectrogram comparison -->
+			<div class="hear-section">
+				<div class="hear-heading">See the Data</div>
+				<p class="hear-desc">
+					The same A2 pair as above, but rendered as mel-spectrograms -- the 64x94
+					images the model actually sees. Notice how the harmonic patterns differ
+					even though both are the same pitch.
+				</p>
+				<SpectrogramComparison
+					urlA="/spectrograms/confused_pairs/A2_E2_string_fret5.json"
+					urlB="/spectrograms/confused_pairs/A2_A2_string_open.json"
+					labelA="A2 on E string (fret 5)"
+					labelB="A2 on A string (open)"
+					audioUrlA="/samples/confused_pairs/A2_on_E_string_fret5.wav"
+					audioUrlB="/samples/confused_pairs/A2_on_A_string_open.wav"
+					question="Same pitch, different harmonic fingerprints"
 				/>
 			</div>
 
@@ -1079,5 +1125,10 @@
 	.next-link a:hover {
 		background: rgba(51, 221, 255, 0.05);
 		border-color: var(--color-accent-cyan);
+	}
+
+	/* Overview spectrogram */
+	.overview-spectrogram {
+		margin: 16px 0;
 	}
 </style>
