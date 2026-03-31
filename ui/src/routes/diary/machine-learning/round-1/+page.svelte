@@ -2,6 +2,9 @@
 	import DiaryNav from '$lib/components/diary/DiaryNav.svelte';
 	import StatBar from '$lib/components/diary/StatBar.svelte';
 	import ConceptInline from '$lib/components/diary/ConceptInline.svelte';
+	import AudioComparison from '$lib/components/diary/AudioComparison.svelte';
+	import AudioPlayer from '$lib/components/diary/AudioPlayer.svelte';
+	import ModelDiagram from '$lib/components/diary/ModelDiagram.svelte';
 
 	type ModelResult = {
 		name: string;
@@ -147,69 +150,376 @@
 					</span>
 				</div>
 			</div>
+
+			<!-- Hear the Data: A/B comparison -->
+			<div class="hear-section">
+				<div class="hear-heading">Hear the Data</div>
+				<p class="hear-desc">
+					The same note -- A2 (110 Hz) -- played on two different strings.
+					The classifier must tell them apart from the spectrogram alone.
+				</p>
+				<AudioComparison
+					urlA="/samples/confused_pairs/A2_on_E_string_fret5.wav"
+					labelA="A2 on E string (fret 5)"
+					urlB="/samples/confused_pairs/A2_on_A_string_open.wav"
+					labelB="A2 on A string (open)"
+					question="Can you hear the difference?"
+				/>
+			</div>
+
+			<!-- Showcase samples -->
+			<div class="hear-section">
+				<div class="hear-heading">Sample Sounds</div>
+				<p class="hear-desc">
+					A few recordings from across the guitar neck. Each is a single 0.5s pluck
+					captured DI through the Audient iD14.
+				</p>
+				<div class="sample-grid">
+					<AudioPlayer url="/samples/showcase/E2_open.wav" label="E2 open string (low E)" />
+					<AudioPlayer url="/samples/showcase/A2_open.wav" label="A2 open string" />
+					<AudioPlayer url="/samples/showcase/E4_open.wav" label="E4 open string (high E)" />
+					<AudioPlayer url="/samples/showcase/G3_fret12.wav" label="G3 fret 12 (harmonic region)" />
+				</div>
+			</div>
 		</section>
 
 		<!-- Station 2: The Models -->
 		<section class="station">
 			<div class="station-label">STATION 2</div>
-			<h2>The Models</h2>
+			<h2>How the Models Work</h2>
 			<p>
 				Three architectures, each taking the same mel-spectrogram input. The question:
-				does the architecture matter more than the data at this scale?
+				does the architecture matter more than the data at this scale? Select a model
+				below to explore its architecture, reasoning, and data flow.
 			</p>
 
-			{#each results as model, i}
-				<div class="model-card" class:selected={selectedModel === i}>
-					<button class="model-header" onclick={() => selectedModel = i}>
-						<span class="model-name">{model.name}</span>
-						<span class="model-acc" style:color={barColor(model.accuracy)}>{pct(model.accuracy)}</span>
+			<!-- Model selector tabs -->
+			<div class="model-selector-tabs">
+				{#each results as model, i}
+					<button
+						class="model-selector-tab"
+						class:active={selectedModel === i}
+						onclick={() => selectedModel = i}
+					>
+						<span class="selector-name">{model.name}</span>
+						<span class="selector-stats">
+							<span class="selector-acc" style:color={barColor(model.accuracy)}>{pct(model.accuracy)}</span>
+							{#if i === 0}
+								<span class="selector-meta">200 trees | 6,016 features</span>
+							{:else if i === 1}
+								<span class="selector-meta">~265K params</span>
+							{:else}
+								<span class="selector-meta">~35K classifier params</span>
+							{/if}
+						</span>
+						{#if model.train_time}
+							<span class="selector-time">{model.train_time.toFixed(1)}s train</span>
+						{/if}
 					</button>
-					<div class="model-notes">{model.notes}</div>
-					{#if model.train_time}
-						<div class="model-time">Train time: {model.train_time.toFixed(1)}s</div>
-					{/if}
+				{/each}
+			</div>
 
-					{#if i === 0}
-						<pre class="arch-diagram">Audio (24,000 samples)
-  -> Mel-spectrogram (64 x 94)
-  -> Flatten (6,016 features)
-  -> 200 Decision Trees (vote)
-  -> Predicted class (1 of 138)</pre>
-					{:else if i === 1}
-						<pre class="arch-diagram">Mel-spectrogram (1 x 64 x 94)
-  -> Conv 16 filters -> BN -> ReLU -> MaxPool
-  -> Conv 32 filters -> BN -> ReLU -> MaxPool
-  -> Conv 64 filters -> BN -> ReLU -> AdaptiveAvgPool(4x4)
-  -> Flatten (1,024) -> Dense 256 -> ReLU -> Dropout(0.3)
-  -> Dense 138 (output)</pre>
-					{:else}
-						<pre class="arch-diagram">Mel-spectrogram (1 x 64 x 94)
-  -> Conv 32 filters -> BN -> ReLU -> MaxPool
-  -> Conv 64 filters -> BN -> ReLU -> MaxPool
-  -> Conv 128 filters -> BN -> ReLU -> MaxPool
-  -> Conv 256 filters -> BN -> ReLU -> GAP(1x1)
-  -> Flatten (256) -> Dropout(0.4)
-  -> Dense 138 (output)</pre>
-					{/if}
+			<!-- Random Forest detail -->
+			{#if selectedModel === 0}
+				<div class="model-detail">
+					<div class="model-detail-section">
+						<div class="model-detail-label">WHY WE CHOSE IT</div>
+						<p>
+							The reliable baseline. Random Forests handle small datasets well, are fast to train,
+							and tell us if the features themselves are informative. If RF gets 90%+, we know the
+							mel-spectrogram contains enough information to distinguish fret positions -- and we
+							do not need a neural network just to prove the signal exists.
+						</p>
+					</div>
+
+					<div class="model-detail-section">
+						<div class="model-detail-label">HOW IT WORKS</div>
+						<ModelDiagram model="random-forest" />
+						<div class="step-list">
+							<div class="step">
+								<span class="step-num">1</span>
+								<div>
+									<strong>Audio to image.</strong> Each 0.5-second recording (24,000 raw samples at
+									48kHz) is converted into a
+									<ConceptInline term="mel-spectrogram">
+										{#snippet children()}
+											A mel-spectrogram converts raw audio into a 2D "image" where the x-axis
+											is time, y-axis is frequency (on a perceptual scale), and brightness is
+											loudness. The mel scale matches human hearing -- we perceive the difference
+											between 100Hz and 200Hz the same as 1000Hz and 2000Hz.
+										{/snippet}
+									</ConceptInline>
+									-- a 64x94 grid of numbers representing frequency content over time.
+								</div>
+							</div>
+							<div class="step">
+								<span class="step-num">2</span>
+								<div>
+									<strong>Flatten the grid.</strong> The 64x94 grid is unrolled into a single list
+									of 6,016 numbers, left-to-right, top-to-bottom. The spatial structure is
+									destroyed -- the model cannot know that pixel (3,5) is "next to" pixel (3,6).
+								</div>
+							</div>
+							<div class="step">
+								<span class="step-num">3</span>
+								<div>
+									<strong>200 decision trees vote.</strong> Each tree sees the same 6,016 numbers
+									but asks different questions in a different order ("Is feature #2041 above 0.3?
+									Then go left..."). Each tree makes its own prediction. The final answer is
+									whichever class gets the most votes.
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="model-detail-section">
+						<div class="model-detail-label">THE KEY DIFFERENCE</div>
+						<p>
+							The Random Forest treats the spectrogram as 6,016 independent numbers. It has
+							<strong>no spatial awareness</strong> -- it cannot learn that "energy at frequency
+							band 12 <em>next to</em> energy at frequency band 13" forms a harmonic peak. It
+							can only learn thresholds on individual pixel values. The fact that it still reaches
+							93% tells us the raw features are very informative.
+						</p>
+					</div>
+
+					<div class="model-io-box">
+						<div class="io-col">
+							<div class="io-label" style="color: #33ddff;">DATA IN</div>
+							<p>
+								A 64x94 grid of numbers, flattened to 6,016. Each row is a frequency band (low
+								to high). Each column is a time step (~5ms). Values are loudness in decibels.
+							</p>
+						</div>
+						<div class="io-col">
+							<div class="io-label" style="color: #00ccaa;">DATA OUT</div>
+							<p>
+								138 vote counts (one per string+fret position). The class with the most votes
+								wins. No softmax -- Random Forests output discrete votes, not probabilities.
+							</p>
+						</div>
+					</div>
 				</div>
-			{/each}
+
+			<!-- Hybrid CNN detail -->
+			{:else if selectedModel === 1}
+				<div class="model-detail">
+					<div class="model-detail-section">
+						<div class="model-detail-label">WHY WE CHOSE IT</div>
+						<p>
+							The standard approach for audio classification. Convolutional layers learn spatial
+							patterns in spectrograms -- harmonic peaks, attack shapes, frequency relationships.
+							The dense bottleneck gives maximum flexibility but can memorize training data. This
+							is the architecture you would find in most audio-ML tutorials.
+						</p>
+					</div>
+
+					<div class="model-detail-section">
+						<div class="model-detail-label">HOW IT WORKS</div>
+						<ModelDiagram model="hybrid-cnn" />
+						<div class="step-list">
+							<div class="step">
+								<span class="step-num">1</span>
+								<div>
+									<strong>Convolutional feature extraction.</strong> Three convolutional layers
+									slide small filters across the spectrogram. Think of each filter as a pattern
+									detector -- one might look for "energy at the 2nd harmonic", another for "sharp
+									attack transient", another for "frequency decay over time". After the first
+									convolution, we have 16 different "views" of the spectrogram, each highlighting
+									different patterns.
+								</div>
+							</div>
+							<div class="step">
+								<span class="step-num">2</span>
+								<div>
+									<strong>Pooling shrinks the image.</strong> After each convolution,
+									<ConceptInline term="max pooling">
+										{#snippet children()}
+											Max pooling takes a 2x2 window and keeps only the brightest pixel,
+											discarding the rest. This halves the image in each dimension. It makes
+											the model tolerant to small shifts -- if a harmonic peak moves one pixel
+											left or right, the pooled output is the same.
+										{/snippet}
+									</ConceptInline>
+									halves the spatial dimensions. The spectrogram goes from 64x94 to 32x47 to
+									16x23, then adaptive pooling forces it down to 4x4. Each step trades spatial
+									detail for more abstract pattern detection.
+								</div>
+							</div>
+							<div class="step">
+								<span class="step-num">3</span>
+								<div>
+									<strong>The dense bottleneck.</strong> The 64 feature maps of size 4x4 are
+									flattened into 1,024 numbers, then compressed through a 256-unit dense layer
+									with
+									<ConceptInline term="dropout">
+										{#snippet children()}
+											During training, dropout randomly sets 30% of neurons to zero on each
+											forward pass. This forces the network to not rely on any single neuron
+											and acts as regularization -- a defense against memorizing the training
+											data. At test time, all neurons are active.
+										{/snippet}
+									</ConceptInline>
+									(0.3). This is where most of the ~265K parameters live -- and where
+									overfitting is most likely with only 10 samples per class.
+								</div>
+							</div>
+							<div class="step">
+								<span class="step-num">4</span>
+								<div>
+									<strong>Classification.</strong> A final linear layer maps 256 features to
+									138 class scores.
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="model-detail-section">
+						<div class="model-detail-label">THE KEY DIFFERENCE</div>
+						<p>
+							The Hybrid CNN <strong>sees spatial patterns</strong> that the Random Forest misses --
+							it knows that adjacent frequency bands forming a harmonic series matter. But it has a
+							<strong>1,024 to 256 dense bottleneck</strong> with ~265K learnable parameters. With
+							only 10 samples per class, this bottleneck can memorize the training data instead of
+							learning generalizable patterns.
+						</p>
+					</div>
+
+					<div class="model-io-box">
+						<div class="io-col">
+							<div class="io-label" style="color: #33ddff;">DATA IN</div>
+							<p>
+								A 64x94 grid of numbers, shaped as a 1-channel "image" (1 x 64 x 94). Each
+								row is a frequency band. Each column is a time step. Values are log-magnitude
+								in decibels.
+							</p>
+						</div>
+						<div class="io-col">
+							<div class="io-label" style="color: #00ccaa;">DATA OUT</div>
+							<p>
+								138 numbers (one per string+fret position). The highest number is the raw
+								prediction. We apply
+								<ConceptInline term="softmax">
+									{#snippet children()}
+										Softmax converts raw scores into probabilities that sum to 1.0. A score
+										vector like [2.1, 0.3, -1.0] becomes [0.82, 0.14, 0.04]. The relative
+										differences are preserved but now interpretable as confidence levels.
+									{/snippet}
+								</ConceptInline>
+								to convert to probabilities.
+							</p>
+						</div>
+					</div>
+				</div>
+
+			<!-- Pure CNN detail -->
+			{:else}
+				<div class="model-detail">
+					<div class="model-detail-section">
+						<div class="model-detail-label">WHY WE CHOSE IT</div>
+						<p>
+							The hypothesis: fewer parameters equals better generalization on small data.
+							<ConceptInline term="Global Average Pooling">
+								{#snippet children()}
+									Traditional CNNs flatten the final feature maps and feed them through dense
+									layers. For a 256-channel 8x11 feature map, that would be 22,528 inputs to
+									a dense layer -- lots of parameters to overfit on. GAP instead averages each
+									8x11 map into a single value, giving just 256 numbers. Dramatically fewer
+									parameters, better generalization on small datasets.
+								{/snippet}
+							</ConceptInline>
+							replaces the dense bottleneck, reducing the classifier from ~265K to ~35K parameters.
+							With only 10 samples per class, this matters.
+						</p>
+					</div>
+
+					<div class="model-detail-section">
+						<div class="model-detail-label">HOW IT WORKS</div>
+						<ModelDiagram model="pure-cnn" />
+						<div class="step-list">
+							<div class="step">
+								<span class="step-num">1</span>
+								<div>
+									<strong>Deeper feature extraction.</strong> Four convolutional layers (vs three
+									in the Hybrid) progressively build up from simple patterns to complex ones.
+									The first layer detects edges and peaks. The second combines those into harmonic
+									patterns. The third recognizes attack shapes and decay curves. The fourth layer
+									sees high-level "fingerprints" of specific string+fret combinations.
+								</div>
+							</div>
+							<div class="step">
+								<span class="step-num">2</span>
+								<div>
+									<strong>Pooling shrinks aggressively.</strong> Three rounds of max-pooling
+									reduce the spatial dimensions from 64x94 down to 8x11. Each pooling step
+									makes the features more invariant to small timing or pitch shifts in the
+									original recording.
+								</div>
+							</div>
+							<div class="step">
+								<span class="step-num">3</span>
+								<div>
+									<strong>Global Average Pooling -- the key.</strong> Instead of flattening 256
+									feature maps of 8x11 into 22,528 numbers, GAP averages each map into a
+									single number. 256 feature maps become 256 numbers. Each number answers one
+									question: "How much of pattern X was present anywhere in the spectrogram?"
+									The spatial location is discarded, but the presence is preserved.
+								</div>
+							</div>
+							<div class="step">
+								<span class="step-num">4</span>
+								<div>
+									<strong>Minimal classifier.</strong> Just 256 numbers through dropout (0.4)
+									into a single linear layer producing 138 scores. That is 256 x 138 = ~35K
+									parameters -- compared to 265K in the Hybrid. Less to memorize, more to
+									generalize.
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="model-detail-section">
+						<div class="model-detail-label">THE KEY DIFFERENCE</div>
+						<p>
+							The Pure CNN <strong>sees spatial patterns AND has minimal parameters</strong>.
+							The convolutional layers (shared feature extractors, ~389K params) learn reusable
+							pattern detectors that generalize well. The classifier head is just 256 numbers to
+							138 classes -- dramatically simpler than the Hybrid's 1,024 to 256 to 138 pipeline.
+							Best of both worlds for small data.
+						</p>
+					</div>
+
+					<div class="model-io-box">
+						<div class="io-col">
+							<div class="io-label" style="color: #33ddff;">DATA IN</div>
+							<p>
+								A 64x94 grid of numbers, shaped as a 1-channel "image" (1 x 64 x 94). Each
+								row is a frequency band (low to high). Each column is a time step (~5ms). The
+								values are loudness in decibels.
+							</p>
+						</div>
+						<div class="io-col">
+							<div class="io-label" style="color: #00ccaa;">DATA OUT</div>
+							<p>
+								138 numbers (one per string+fret position). The highest number is the
+								prediction. We convert to a probability using softmax. With 96.2% accuracy,
+								the correct class is typically the clear winner.
+							</p>
+						</div>
+					</div>
+				</div>
+			{/if}
 
 			<div class="insight-box">
 				<div class="insight-label">WHY PURE CNN WINS</div>
 				<p>
 					With only 10 samples per class, the model with the fewest learnable parameters
-					in its classifier head wins. The Pure CNN uses
-					<ConceptInline term="Global Average Pooling">
-						{#snippet children()}
-							Traditional CNNs flatten the final feature maps and feed them through dense layers.
-							For a 64-channel 4x4 feature map, that is 1024 inputs to a dense layer -- lots of
-							parameters to overfit on. GAP instead averages each 4x4 map into a single value,
-							giving just 256 numbers. Dramatically fewer parameters, better generalization on
-							small datasets.
-						{/snippet}
-					</ConceptInline>
-					to reduce 256 feature maps to 256 numbers, then a single linear layer to 138 classes.
+					in its classifier head wins. The Pure CNN uses Global Average Pooling to reduce
+					256 feature maps to 256 numbers, then a single linear layer to 138 classes.
 					That is around 35K parameters in the classifier vs around 265K in the Hybrid CNN.
+					The convolutional layers in both models have similar parameter counts -- the
+					difference is entirely in how they go from spatial features to a classification
+					decision.
 				</p>
 			</div>
 		</section>
@@ -446,58 +756,128 @@
 		color: var(--color-text-primary);
 	}
 
-	/* Model cards */
-	.model-card {
+	/* Model selector tabs (Station 2) */
+	.model-selector-tabs {
+		display: flex;
+		gap: 2px;
+		margin-bottom: 20px;
+	}
+	.model-selector-tab {
+		flex: 1;
 		background: var(--color-bg-panel);
 		border: 1px solid var(--color-border);
-		padding: 16px;
-		margin-bottom: 8px;
-	}
-	.model-card.selected {
-		border-color: rgba(51, 221, 255, 0.3);
-	}
-	.model-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		width: 100%;
-		background: none;
-		border: none;
-		padding: 0;
+		padding: 12px 10px;
 		cursor: pointer;
-		text-align: left;
-	}
-	.model-name {
+		text-align: center;
 		font-family: var(--font-reading);
-		font-size: 15px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		align-items: center;
+	}
+	.model-selector-tab.active {
+		border-color: var(--color-accent-cyan);
+		background: rgba(51, 221, 255, 0.05);
+	}
+	.selector-name {
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 	}
-	.model-acc {
+	.model-selector-tab.active .selector-name {
+		color: var(--color-accent-cyan);
+	}
+	.selector-stats {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		align-items: center;
+	}
+	.selector-acc {
 		font-family: var(--font-pixel);
-		font-size: 16px;
+		font-size: 15px;
 	}
-	.model-notes {
-		font-size: 12px;
+	.selector-meta {
+		font-size: 10px;
 		color: var(--color-text-dim);
-		margin-top: 4px;
 	}
-	.model-time {
-		font-size: 11px;
+	.selector-time {
+		font-size: 10px;
 		color: var(--color-text-dim);
-		margin-top: 4px;
 	}
-	.arch-diagram {
-		background: var(--color-bg-deep);
-		border: 1px solid var(--color-border);
-		padding: 12px 16px;
+
+	/* Model detail content */
+	.model-detail {
+		margin-bottom: 16px;
+	}
+	.model-detail-section {
+		margin-bottom: 20px;
+	}
+	.model-detail-label {
+		font-family: var(--font-pixel);
+		font-size: var(--font-size-xs);
+		color: var(--color-accent-teal);
+		letter-spacing: 2px;
+		text-transform: uppercase;
+		margin-bottom: 8px;
+	}
+
+	/* Step-by-step explanation list */
+	.step-list {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
 		margin-top: 12px;
-		font-family: monospace;
+	}
+	.step {
+		display: flex;
+		gap: 12px;
+		font-size: 13px;
+		color: var(--color-text-secondary);
+		line-height: 1.7;
+	}
+	.step-num {
+		flex-shrink: 0;
+		width: 22px;
+		height: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--color-bg-panel);
+		border: 1px solid var(--color-border);
+		font-family: var(--font-pixel);
+		font-size: 10px;
+		color: var(--color-accent-cyan);
+		margin-top: 2px;
+	}
+	.step strong {
+		color: var(--color-text-primary);
+	}
+
+	/* Data in / Data out box */
+	.model-io-box {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1px;
+		background: var(--color-border);
+		border: 1px solid var(--color-border);
+		margin-top: 16px;
+	}
+	.io-col {
+		background: var(--color-bg-panel);
+		padding: 12px 14px;
+	}
+	.io-col p {
 		font-size: 12px;
-		color: var(--color-text-dim);
+		color: var(--color-text-secondary);
 		line-height: 1.6;
-		overflow-x: auto;
-		white-space: pre;
+		margin: 0;
+	}
+	.io-label {
+		font-family: var(--font-pixel);
+		font-size: var(--font-size-xs);
+		letter-spacing: 2px;
+		margin-bottom: 6px;
 	}
 
 	/* Insight box */
@@ -657,6 +1037,30 @@
 		width: 100%;
 		border: 1px solid var(--color-border);
 		display: block;
+	}
+
+	/* Hear the Data section */
+	.hear-section {
+		margin-top: 24px;
+	}
+	.hear-heading {
+		font-family: var(--font-pixel);
+		font-size: var(--font-size-xs);
+		color: var(--color-accent-teal);
+		letter-spacing: 2px;
+		text-transform: uppercase;
+		margin-bottom: 8px;
+	}
+	.hear-desc {
+		font-size: 13px;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+		margin: 0 0 12px 0;
+	}
+	.sample-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
 	}
 
 	/* Next link */

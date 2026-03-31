@@ -149,18 +149,106 @@ impl GuitarClassifier {
     /// Intended for use with `include_bytes!()` to embed the weights at
     /// compile time in the final binary.
     ///
-    /// # Binary format (TODO: finalize with weight export agent)
+    /// # Binary format
     ///
-    /// The expected format is a simple concatenation of all weight tensors
-    /// as little-endian f32 values, in the order listed in `ClassifierWeights`.
-    /// Each tensor is preceded by a u32 length (number of f32 elements).
+    /// ```text
+    /// [4 bytes: magic "GCNN"]
+    /// [4 bytes: u32 version = 1]
+    /// [4 bytes: u32 n_classes]
+    /// [4 bytes: u32 n_layers]
+    /// For each layer:
+    ///   [4 bytes: u32 name_len]
+    ///   [name_len bytes: layer name as UTF-8]
+    ///   [4 bytes: u32 n_elements]
+    ///   [n_elements * 4 bytes: f32 values little-endian row-major]
+    /// ```
     ///
-    /// TODO: implement actual weight deserialization once the numpy export
-    /// format is finalized. For now, this creates placeholder zero weights.
+    /// # Panics
+    ///
+    /// Panics if the data is malformed, has the wrong magic/version, or
+    /// is missing expected layers.
     pub fn from_bytes(data: &[u8]) -> Self {
-        // TODO: replace with real deserialization from `data`
-        let _ = data;
-        Self::with_zero_weights()
+        assert!(data.len() >= 16, "Weight data too short for header");
+
+        // -- Parse header --
+        assert_eq!(&data[0..4], b"GCNN", "Bad magic bytes");
+        let version = read_u32_le(&data[4..8]);
+        assert_eq!(version, 1, "Unsupported weight format version {}", version);
+        let n_classes = read_u32_le(&data[8..12]) as usize;
+        assert_eq!(
+            n_classes, NUM_CLASSES,
+            "Weight file has {} classes, expected {}",
+            n_classes, NUM_CLASSES
+        );
+        let n_layers = read_u32_le(&data[12..16]) as usize;
+
+        // -- Read all layers into a map --
+        let mut offset = 16usize;
+        let mut layers: Vec<(String, Vec<f32>)> = Vec::with_capacity(n_layers);
+        for _ in 0..n_layers {
+            let name_len = read_u32_le(&data[offset..offset + 4]) as usize;
+            offset += 4;
+            let name = std::str::from_utf8(&data[offset..offset + name_len])
+                .expect("Invalid UTF-8 in layer name")
+                .to_string();
+            offset += name_len;
+            let n_elements = read_u32_le(&data[offset..offset + 4]) as usize;
+            offset += 4;
+            let byte_len = n_elements * 4;
+            let values = read_f32_slice(&data[offset..offset + byte_len], n_elements);
+            offset += byte_len;
+            layers.push((name, values));
+        }
+
+        // -- Helper: find a layer by name --
+        let find = |name: &str| -> Vec<f32> {
+            layers
+                .iter()
+                .find(|(n, _)| n == name)
+                .unwrap_or_else(|| panic!("Missing weight layer: {}", name))
+                .1
+                .clone()
+        };
+
+        GuitarClassifier {
+            weights: ClassifierWeights {
+                // Block 1: features.0 = Conv2d, features.1 = BN
+                conv1_w: find("features.0.weight"),
+                conv1_b: find("features.0.bias"),
+                bn1_w: find("features.1.weight"),
+                bn1_b: find("features.1.bias"),
+                bn1_mean: find("features.1.running_mean"),
+                bn1_var: find("features.1.running_var"),
+
+                // Block 2: features.4 = Conv2d, features.5 = BN
+                conv2_w: find("features.4.weight"),
+                conv2_b: find("features.4.bias"),
+                bn2_w: find("features.5.weight"),
+                bn2_b: find("features.5.bias"),
+                bn2_mean: find("features.5.running_mean"),
+                bn2_var: find("features.5.running_var"),
+
+                // Block 3: features.8 = Conv2d, features.9 = BN
+                conv3_w: find("features.8.weight"),
+                conv3_b: find("features.8.bias"),
+                bn3_w: find("features.9.weight"),
+                bn3_b: find("features.9.bias"),
+                bn3_mean: find("features.9.running_mean"),
+                bn3_var: find("features.9.running_var"),
+
+                // Block 4: features.12 = Conv2d, features.13 = BN
+                conv4_w: find("features.12.weight"),
+                conv4_b: find("features.12.bias"),
+                bn4_w: find("features.13.weight"),
+                bn4_b: find("features.13.bias"),
+                bn4_mean: find("features.13.running_mean"),
+                bn4_var: find("features.13.running_var"),
+
+                // FC: classifier.2 = Linear
+                fc_w: find("classifier.2.weight"),
+                fc_b: find("classifier.2.bias"),
+            },
+        }
     }
 
     /// Create a classifier with all-zero weights (for testing / placeholder).
@@ -540,6 +628,32 @@ fn top_k(values: &[f32], k: usize) -> Vec<(usize, f32)> {
 }
 
 // ============================================================================
+// Binary parsing helpers
+// ============================================================================
+
+/// Read a little-endian u32 from a 4-byte slice.
+#[inline]
+fn read_u32_le(bytes: &[u8]) -> u32 {
+    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+}
+
+/// Read `n` little-endian f32 values from a byte slice.
+fn read_f32_slice(bytes: &[u8], n: usize) -> Vec<f32> {
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let start = i * 4;
+        let val = f32::from_le_bytes([
+            bytes[start],
+            bytes[start + 1],
+            bytes[start + 2],
+            bytes[start + 3],
+        ]);
+        out.push(val);
+    }
+    out
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -696,12 +810,9 @@ mod tests {
     }
 
     #[test]
-    fn test_from_bytes_placeholder() {
-        // from_bytes currently ignores input and returns zero weights
-        let classifier = GuitarClassifier::from_bytes(&[]);
-        let input = vec![0.0f32; MEL_BINS * TIME_FRAMES];
-        let pred = classifier.predict(&input);
-        assert!(pred.class_id < NUM_CLASSES);
+    #[should_panic(expected = "Bad magic bytes")]
+    fn test_from_bytes_bad_magic() {
+        GuitarClassifier::from_bytes(&[0u8; 16]);
     }
 
     #[test]
@@ -710,5 +821,67 @@ mod tests {
         let classifier = GuitarClassifier::with_zero_weights();
         let bad_input = vec![0.0f32; 100]; // wrong size
         classifier.predict(&bad_input);
+    }
+
+    #[test]
+    fn test_from_bytes_real_weights() {
+        // Load real exported weights from the .bin file
+        let weights_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("ml/training/round_01/weights/guitar_classifier.bin");
+        let data = std::fs::read(&weights_path).unwrap_or_else(|e| {
+            panic!(
+                "Failed to read weight file at {}: {}. Run `python ml/training/export_weights_bin.py` first.",
+                weights_path.display(),
+                e
+            )
+        });
+
+        let classifier = GuitarClassifier::from_bytes(&data);
+
+        // Run inference on a zeros input
+        let input = vec![0.0f32; MEL_BINS * TIME_FRAMES];
+        let pred = classifier.predict(&input);
+
+        // Output should have a valid class
+        assert!(pred.class_id < NUM_CLASSES, "class_id {} out of range", pred.class_id);
+        assert!(pred.string_idx < 6);
+        assert!(pred.fret < FRETS_PER_STRING);
+
+        // With real weights, softmax output should NOT be uniform --
+        // the confidence for the top class should differ from 1/138.
+        let uniform = 1.0 / NUM_CLASSES as f32;
+        assert!(
+            (pred.confidence - uniform).abs() > 1e-6,
+            "Real weights should produce non-uniform output, got confidence {} (uniform = {})",
+            pred.confidence,
+            uniform
+        );
+
+        // Verify top3 are valid and sorted
+        assert!(pred.top3[0].1 >= pred.top3[1].1);
+        assert!(pred.top3[1].1 >= pred.top3[2].1);
+        for &(cls, conf) in &pred.top3 {
+            assert!(cls < NUM_CLASSES, "top3 class {} out of range", cls);
+            assert!(conf >= 0.0 && conf <= 1.0, "top3 confidence {} out of range", conf);
+        }
+    }
+
+    #[test]
+    fn test_binary_parsing_helpers() {
+        // read_u32_le
+        assert_eq!(read_u32_le(&[0x01, 0x00, 0x00, 0x00]), 1);
+        assert_eq!(read_u32_le(&[0xFF, 0x00, 0x00, 0x00]), 255);
+        assert_eq!(read_u32_le(&[0x00, 0x01, 0x00, 0x00]), 256);
+
+        // read_f32_slice
+        let one_bytes = 1.0f32.to_le_bytes();
+        let two_bytes = 2.0f32.to_le_bytes();
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&one_bytes);
+        buf.extend_from_slice(&two_bytes);
+        let vals = read_f32_slice(&buf, 2);
+        assert_eq!(vals.len(), 2);
+        assert!((vals[0] - 1.0).abs() < 1e-10);
+        assert!((vals[1] - 2.0).abs() < 1e-10);
     }
 }

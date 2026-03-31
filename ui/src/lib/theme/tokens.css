@@ -45,6 +45,7 @@
 
 	/* === Typography === */
 	--font-pixel: 'Press Start 2P', monospace;
+	--font-reading: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 	--font-size-xs: 8px;    /* Pixel font base size — use at 8px multiples */
 	--font-size-sm: 10px;
 	--font-size-md: 12px;
