@@ -180,18 +180,7 @@
 						onchange={handleDeviceChange}
 					/>
 				</div>
-				<div class="channel-header">
-					<span class="device-label font-pixel channel-label">CHANNEL</span>
-					<input
-						type="number"
-						class="channel-max-input"
-						min="1"
-						max="32"
-						value={guitar.maxChannels}
-						onchange={(e) => { guitar.maxChannels = Math.max(1, Math.min(32, parseInt(e.currentTarget.value) || 2)); }}
-						title="Set max channels (browsers report 2, Audient iD14 has 12)"
-					/>
-				</div>
+				<span class="device-label font-pixel channel-label">CHANNEL</span>
 				<div class="channel-row">
 					{#each channelNumbers as ch}
 						<button
