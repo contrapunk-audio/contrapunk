@@ -223,6 +223,41 @@ pub enum MidiEvent {
     },
 }
 
+impl MidiEvent {
+    /// Convert to raw MIDI bytes for sending through mpsc channel.
+    /// Returns empty vec for informational-only events.
+    pub fn to_midi_bytes(&self, pitch_bend_range: u8) -> Vec<u8> {
+        match self {
+            MidiEvent::NoteOn { channel, note, velocity } => {
+                vec![0x90 | (channel & 0x0F), *note & 0x7F, *velocity & 0x7F]
+            }
+            MidiEvent::NoteOff { channel, note, velocity } => {
+                vec![0x80 | (channel & 0x0F), *note & 0x7F, *velocity & 0x7F]
+            }
+            MidiEvent::PitchBend { channel, cents } => {
+                let value = cents_to_midi_pitch_bend(*cents, pitch_bend_range);
+                let lsb = (value & 0x7F) as u8;
+                let msb = ((value >> 7) & 0x7F) as u8;
+                vec![0xE0 | (channel & 0x0F), lsb, msb]
+            }
+            MidiEvent::MidiPitchBend { channel, value } => {
+                let lsb = (*value & 0x7F) as u8;
+                let msb = ((*value >> 7) & 0x7F) as u8;
+                vec![0xE0 | (channel & 0x0F), lsb, msb]
+            }
+            MidiEvent::CC { channel, controller, value } => {
+                vec![0xB0 | (channel & 0x0F), *controller & 0x7F, *value & 0x7F]
+            }
+            MidiEvent::ChannelPressure { channel, pressure } => {
+                vec![0xD0 | (channel & 0x0F), *pressure & 0x7F]
+            }
+            MidiEvent::VibratoStatus { .. } => {
+                vec![] // Informational only, no MIDI bytes
+            }
+        }
+    }
+}
+
 // ── Core pipeline ──────────────────────────────────────────────────
 
 /// The main guitar input processor.
@@ -3439,5 +3474,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    // -- MidiEvent::to_midi_bytes tests ─────────────────────────────────
+
+    #[test]
+    fn midi_event_to_bytes_note_on() {
+        let event = MidiEvent::NoteOn { channel: 1, note: 60, velocity: 100 };
+        assert_eq!(event.to_midi_bytes(2), vec![0x91, 60, 100]);
+    }
+
+    #[test]
+    fn midi_event_to_bytes_note_off() {
+        let event = MidiEvent::NoteOff { channel: 0, note: 64, velocity: 0 };
+        assert_eq!(event.to_midi_bytes(2), vec![0x80, 64, 0]);
+    }
+
+    #[test]
+    fn midi_event_to_bytes_pitch_bend_center() {
+        let event = MidiEvent::MidiPitchBend { channel: 2, value: 8192 };
+        let bytes = event.to_midi_bytes(2);
+        assert_eq!(bytes[0], 0xE2);
+        assert_eq!(bytes.len(), 3);
+    }
+
+    #[test]
+    fn midi_event_to_bytes_cc74() {
+        let event = MidiEvent::CC { channel: 3, controller: 74, value: 100 };
+        assert_eq!(event.to_midi_bytes(2), vec![0xB3, 74, 100]);
+    }
+
+    #[test]
+    fn midi_event_to_bytes_vibrato_is_empty() {
+        let event = MidiEvent::VibratoStatus { active: true, rate_hz: 5.0, depth_cents: 30.0 };
+        assert!(event.to_midi_bytes(2).is_empty());
     }
 }
