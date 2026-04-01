@@ -251,8 +251,14 @@ class GuitarInputStore {
 			this.tunerPhase = 'complete';
 			this.calibrated = true;
 			this.calibrating = false;
-			this.calibrationStatus = 'Tuning complete!';
+			this.calibrationStatus = 'Tuning complete! Ready to play.';
 			this.stopTunerCapture();
+
+			// Auto-close tuner UI after 2 seconds so main routing can take over
+			setTimeout(() => {
+				this.tunerActive = false;
+				this.tunerPhase = 'noise-floor';
+			}, 2000);
 			// Auto-close after 2 seconds
 			setTimeout(() => {
 				if (this.tunerPhase === 'complete') {
