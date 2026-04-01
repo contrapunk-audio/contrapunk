@@ -5,7 +5,15 @@
  * WASM-compiled GuitarInput (full Rust DSP pipeline), and emits MIDI events.
  */
 
-import { WasmGuitarInput } from '$lib/wasm-pkg';
+// Dynamic import to avoid loading uninitialized WASM module
+let WasmGuitarInputClass: any = null;
+async function getWasmGuitarInput(): Promise<any> {
+	if (!WasmGuitarInputClass) {
+		const mod = await import('$lib/wasm-pkg');
+		WasmGuitarInputClass = mod.WasmGuitarInput;
+	}
+	return WasmGuitarInputClass;
+}
 
 export interface GuitarCaptureCallbacks {
 	onNoteOn(note: number, velocity: number): void;
@@ -44,7 +52,11 @@ export class GuitarAudioCapture {
 		const source = this.context.createMediaStreamSource(this.stream);
 		const numChannels = source.channelCount;
 
+		const WasmGuitarInput = await getWasmGuitarInput();
 		this.dsp = new WasmGuitarInput(this.context.sampleRate, BUFFER_SIZE);
+		// Match guitar_input_demo defaults
+		this.dsp.set_onset_threshold(0.015);
+		this.dsp.set_string_confidence(0.4);
 
 		this.processor = this.context.createScriptProcessor(
 			BUFFER_SIZE,
