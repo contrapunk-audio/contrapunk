@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
+use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key};
 use contrapunk::humanize::HumanizeConfig;
 use contrapunk::preset::PresetManager;
@@ -40,6 +41,15 @@ pub struct AppState {
 
     /// Currently detected chord name
     pub chord_name: Mutex<String>,
+
+    /// Guitar input DSP configuration (None = use defaults)
+    pub guitar_config: Mutex<Option<GuitarInputConfig>>,
+
+    /// Guitar audio device name (empty = default input device)
+    pub guitar_device: Mutex<String>,
+
+    /// Guitar audio channel index (0-based, e.g. 0 = left, 1 = right)
+    pub guitar_channel: Mutex<usize>,
 }
 
 impl Default for AppState {
@@ -53,6 +63,9 @@ impl Default for AppState {
             harmony_notes: Mutex::new(HashSet::new()),
             borrowed_notes: Mutex::new(HashSet::new()),
             chord_name: Mutex::new(String::new()),
+            guitar_config: Mutex::new(None),
+            guitar_device: Mutex::new(String::new()),
+            guitar_channel: Mutex::new(0),
         }
     }
 }

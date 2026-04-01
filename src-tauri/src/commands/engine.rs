@@ -16,11 +16,18 @@ use wmidi::{Channel, MidiMessage, Note, Velocity};
 
 use contrapunk::chord::chord_display_with_analysis;
 use contrapunk::harmony::HarmonyEngine;
+use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::humanize::{DelayQueue, HumanizeConfig, HumanizedNote, Humanizer};
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
 
+use crate::guitar_bridge::GuitarBridge;
 use crate::state::AppState;
+
+/// Sentinel value for the "Guitar Audio" virtual input.
+/// When `input_idx` equals this value, we spawn a GuitarBridge
+/// instead of connecting to a physical MIDI input port.
+const GUITAR_AUDIO_SENTINEL: usize = usize::MAX - 2;
 
 /// Payload for the "note-update" Tauri event.
 #[derive(Clone, Serialize)]
@@ -90,6 +97,19 @@ pub fn start_routing(
         config.clone()
     };
 
+    // Capture guitar config for the router thread
+    let is_guitar = input_idx == GUITAR_AUDIO_SENTINEL;
+    let guitar_device = {
+        state.guitar_device.lock().map_err(|e| e.to_string())?.clone()
+    };
+    let guitar_channel = {
+        *state.guitar_channel.lock().map_err(|e| e.to_string())?
+    };
+    let guitar_config = {
+        state.guitar_config.lock().map_err(|e| e.to_string())?.clone()
+            .unwrap_or_default()
+    };
+
     // Shared state for note updates
     let input_notes = Arc::new(Mutex::new(HashSet::<u8>::new()));
     let harmony_notes = Arc::new(Mutex::new(HashSet::<u8>::new()));
@@ -126,6 +146,10 @@ pub fn start_routing(
             &output_indices_clone,
             engine_config,
             humanize_config,
+            is_guitar,
+            guitar_device,
+            guitar_channel,
+            guitar_config,
             in_notes,
             harm_notes,
             borr_notes,
@@ -187,6 +211,10 @@ fn run_tauri_router(
     output_ports: &[usize],
     config: EngineConfig,
     humanize_config: HumanizeConfig,
+    is_guitar: bool,
+    guitar_device: String,
+    guitar_channel: usize,
+    guitar_config: GuitarInputConfig,
     input_notes: Arc<Mutex<HashSet<u8>>>,
     harmony_notes: Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: Arc<Mutex<HashSet<u8>>>,
@@ -197,11 +225,28 @@ fn run_tauri_router(
     let (key, mode, octave_mode, vl_enabled, vl_style, scale_mode, ic_enabled, br_range, vp) =
         config;
 
-    // Create channel for MIDI input
+    // Create channel for MIDI input — both physical MIDI and guitar
+    // bridge send Vec<u8> through the same channel.
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
 
-    // Connect to MIDI input
-    let _conn_in = connect_input(input_port, tx)?;
+    // Connect to either Guitar Audio bridge or physical MIDI input
+    let _midi_conn;
+    let _guitar_bridge;
+
+    if is_guitar {
+        // Guitar Audio mode: spawn cpal capture -> DSP -> same tx channel
+        let bridge = GuitarBridge::new(&guitar_device, guitar_channel, guitar_config, tx)
+            .map_err(|e| anyhow::anyhow!("Guitar bridge error: {}", e))?;
+        bridge
+            .start()
+            .map_err(|e| anyhow::anyhow!("Guitar bridge start error: {}", e))?;
+        _guitar_bridge = Some(bridge);
+        _midi_conn = None;
+    } else {
+        // Physical MIDI mode: existing behavior
+        _midi_conn = Some(connect_input(input_port, tx)?);
+        _guitar_bridge = None;
+    };
 
     // Create output router
     let mut output_router = OutputRouter::new(output_ports)?;
