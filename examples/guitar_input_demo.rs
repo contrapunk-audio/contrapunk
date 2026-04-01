@@ -3,6 +3,13 @@
 //! Standalone example demonstrating the full DSP guitar-to-MIDI pipeline:
 //! pitch detection, inharmonicity-based string identification, and MIDI output.
 //!
+//! Flow:
+//!   1. Device + channel selection
+//!   2. Noise floor measurement
+//!   3. Tuner (live cents display per string, same as guitar_capture.rs)
+//!   4. Calibration (inharmonicity B + harmonics per string)
+//!   5. Live detection
+//!
 //! Run with: cargo run --release --example guitar_input_demo
 //!
 //! Requires an audio input device (e.g., Audient iD14).
@@ -12,21 +19,38 @@ use contrapunk::audio::guitar_input::{
     compute_rms, open_string_freq, GuitarCalibration, GuitarInput, GuitarInputConfig,
     MidiEvent, StringProfile,
 };
+use contrapunk::audio::pitch::freq_to_midi;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use pitch_detection::detector::mcleod::McLeodDetector;
+use pitch_detection::detector::PitchDetector;
 
+use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const BUFFER_SIZE: usize = 1024;
+const BUFFER_SIZE: usize = 2048;
 const CALIBRATION_LISTEN_SECS: f32 = 3.0;
 const SILENCE_LISTEN_SECS: f32 = 3.0;
+const MIN_CONFIDENCE: f64 = 0.40;
+
+// ── Audio State (shared between audio thread and main thread) ───────
+// Same pattern as guitar_capture.rs for live pitch display in the tuner.
+
+struct AudioState {
+    rms: f32,
+    peak: f32,
+    frequency: f32,
+    confidence: f32,
+    midi_note: u8,
+    note_name: String,
+    prev_rms: f32,
+}
 
 fn main() {
     println!();
-    println!("Contrapunk Guitar Input Demo");
-    println!("{}", "\u{2501}".repeat(28));
+    println!("=== Contrapunk Guitar Input Demo ===");
     println!();
 
     // ── Audio device selection ──────────────────────────────────────
@@ -42,13 +66,13 @@ fn main() {
         return;
     }
 
-    println!("  Audio Input Devices:");
+    println!("Audio Inputs:");
     for (i, d) in devices.iter().enumerate() {
-        println!("    [{}] {}", i, d.name().unwrap_or_default());
+        println!("  [{}] {}", i, d.name().unwrap_or_default());
     }
     println!();
 
-    let dev_idx = prompt_usize("  Select device", devices.len() - 1);
+    let dev_idx = prompt_usize("Select", devices.len() - 1);
     let device = &devices[dev_idx];
     let device_name = device.name().unwrap_or_default();
 
@@ -58,10 +82,14 @@ fn main() {
     let sample_rate = input_config.sample_rate().0 as usize;
     let channels = input_config.channels() as usize;
 
-    println!("  Device: {} ({}ch, {}Hz)", device_name, channels, sample_rate);
+    println!("  Using: {}", device_name);
+    println!(
+        "  Channels: {}, Sample Rate: {}",
+        channels, sample_rate
+    );
 
     let channel = if channels > 1 {
-        prompt_usize(&format!("  Channel [0-{}]", channels - 1), channels - 1)
+        prompt_usize(&format!("\nSelect channel [0-{}]", channels - 1), channels - 1)
     } else {
         0
     };
@@ -90,10 +118,24 @@ fn main() {
 
     let pipeline = Arc::new(Mutex::new(GuitarInput::new(config.clone())));
 
-    // Shared state for audio callback -> main thread
+    // Shared ring buffer for calibration pluck detection
     let audio_ring = Arc::new(Mutex::new(AudioRing::new(sample_rate * 4))); // 4s ring
 
-    // Events queue
+    // Shared AudioState for tuner (pitch display from audio thread)
+    let audio_state = Arc::new(Mutex::new(AudioState {
+        rms: 0.0,
+        peak: 0.0,
+        frequency: 0.0,
+        confidence: 0.0,
+        midi_note: 0,
+        note_name: String::new(),
+        prev_rms: 0.0,
+    }));
+
+    // Pitch detection buffer (VecDeque for O(1) push/pop, same as guitar_capture)
+    let pitch_buffer = Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(BUFFER_SIZE * 2)));
+
+    // Events queue for live detection phase
     let events_queue: Arc<Mutex<Vec<(MidiEvent, Instant)>>> =
         Arc::new(Mutex::new(Vec::new()));
 
@@ -102,15 +144,18 @@ fn main() {
     let ring_c = Arc::clone(&audio_ring);
     let pipeline_c = Arc::clone(&pipeline);
     let events_c = Arc::clone(&events_queue);
+    let state_c = Arc::clone(&audio_state);
+    let pbuf_c = Arc::clone(&pitch_buffer);
     let ch = channel;
     let n_ch = channels;
+    let sr = sample_rate;
 
     let stream_config: cpal::StreamConfig = input_config.clone().into();
     let stream = match input_config.sample_format() {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &stream_config,
             move |data: &[f32], _| {
-                audio_callback(data, n_ch, ch, &ring_c, &pipeline_c, &events_c);
+                audio_callback(data, n_ch, ch, sr, &ring_c, &pipeline_c, &events_c, &state_c, &pbuf_c);
             },
             |e| eprintln!("Audio error: {}", e),
             None,
@@ -119,13 +164,15 @@ fn main() {
             let ring_c2 = Arc::clone(&audio_ring);
             let pipeline_c2 = Arc::clone(&pipeline);
             let events_c2 = Arc::clone(&events_queue);
+            let state_c2 = Arc::clone(&audio_state);
+            let pbuf_c2 = Arc::clone(&pitch_buffer);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[i16], _| {
                     let float: Vec<f32> =
                         data.iter().map(|&s| s as f32 / 32768.0).collect();
                     audio_callback(
-                        &float, n_ch, ch, &ring_c2, &pipeline_c2, &events_c2,
+                        &float, n_ch, ch, sr, &ring_c2, &pipeline_c2, &events_c2, &state_c2, &pbuf_c2,
                     );
                 },
                 |e| eprintln!("Audio error: {}", e),
@@ -141,14 +188,9 @@ fn main() {
 
     stream.play().expect("Failed to start audio stream");
 
-    // ── Calibration phase ───────────────────────────────────────────
+    // ── Noise floor measurement ─────────────────────────────────────
 
-    println!("  CALIBRATION");
-    println!();
-
-    // Step 1: Noise floor
-    print!("  [1/7] Silence for {:.0}s... ", SILENCE_LISTEN_SECS);
-    io::stdout().flush().unwrap();
+    println!("--- Measuring noise floor ({:.0}s, stay quiet) ---", SILENCE_LISTEN_SECS);
     std::thread::sleep(Duration::from_secs_f32(SILENCE_LISTEN_SECS));
 
     let noise_floor = {
@@ -156,22 +198,76 @@ fn main() {
         let recent = ring.recent(sample_rate); // last 1s
         GuitarInput::measure_noise_floor(&recent)
     };
-    println!("noise floor: {:.4}", noise_floor);
+    println!("  Noise floor: {:.4}", noise_floor);
+    println!();
 
-    // Steps 2-7: Calibrate each string
+    // ── Tuner phase (exact same as guitar_capture.rs) ───────────────
+
+    println!("--- TUNER ---");
+    println!("Pluck each open string and check the display.");
+    println!("Press Enter after each string when it's in tune.");
+    println!();
+
+    for si in 0..6 {
+        let target = STRING_BASE_PITCH[si];
+        let target_name = midi_to_note_name(target);
+        println!(
+            "  {} ({}) \u{2014} pluck and tune, press Enter when done:",
+            STRING_NAMES[si], target_name
+        );
+
+        // Show live detection while waiting for Enter
+        // Same pattern as guitar_capture.rs: poll AudioState in a loop
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_millis(100));
+            let s = audio_state.lock().unwrap();
+            if s.rms > noise_floor * 2.0 && s.confidence > 0.45 {
+                let (_, cents) = freq_to_midi(s.frequency);
+                let arrow = if cents > 5 {
+                    "sharp \u{2193}"
+                } else if cents < -5 {
+                    "flat \u{2191}"
+                } else {
+                    "IN TUNE"
+                };
+                print!(
+                    "\r    {:>5} {:>+4}\u{00a2}  {}     ",
+                    s.note_name, cents, arrow
+                );
+                io::stdout().flush().unwrap();
+            }
+        }
+        print!(
+            "\r    Press Enter when {} is tuned...     ",
+            STRING_NAMES[si]
+        );
+        io::stdout().flush().unwrap();
+        wait_enter();
+        println!("  {} done.", STRING_NAMES[si]);
+    }
+    println!();
+    println!("Tuning complete!");
+    println!();
+
+    // ── Calibration phase ───────────────────────────────────────────
+
+    println!("--- CALIBRATION ---");
+    println!("Now pluck each open string for calibration.");
+    println!();
+
     let string_labels = ["E2", "A2", "D3", "G3", "B3", "E4"];
     let mut string_profiles: Vec<StringProfile> = Vec::new();
+    let pluck_threshold = (noise_floor * 5.0).max(0.012);
 
     for (i, label) in string_labels.iter().enumerate() {
         print!(
-            "  [{}/7] Pluck {} open... ",
-            i + 2,
+            "  [{}/6] Pluck {} open... ",
+            i + 1,
             label
         );
         io::stdout().flush().unwrap();
 
         // Wait for a pluck (RMS spike above noise)
-        let pluck_threshold = (noise_floor * 5.0).max(0.012);
         let capture = wait_for_pluck(
             &audio_ring,
             sample_rate,
@@ -184,7 +280,7 @@ fn main() {
                 let pipe = pipeline.lock().unwrap();
                 if let Some(profile) = pipe.calibrate_string(i, &audio) {
                     println!(
-                        "B={:.4}, f={:.1}Hz",
+                        "B={:.4}, f={:.1}Hz, harmonics captured",
                         profile.inharmonicity_b, profile.open_frequency
                     );
                     string_profiles.push(profile);
@@ -220,15 +316,17 @@ fn main() {
     }
 
     println!();
-    println!("  READY -- play anything! (Ctrl+C to exit)");
+    println!("Calibration complete!");
     println!();
+
+    // ── Live detection ──────────────────────────────────────────────
+
+    println!("--- LIVE DETECTION ---");
     println!(
         "  {:5}  {:6}  {:4}  {:5}  {:4}  {:7}",
         "Note", "String", "Fret", "Conf.", "Vel.", "Latency"
     );
     println!("  {}", "\u{2500}".repeat(42));
-
-    // ── Live detection loop ─────────────────────────────────────────
 
     let mut note_count: u64 = 0;
     let mut total_latency_ms = 0.0f64;
@@ -288,7 +386,6 @@ fn main() {
                     total_latency_ms += latency_ms_val;
                 }
                 MidiEvent::NoteOff { note, .. } => {
-                    // Quiet note-off, no display needed
                     let _ = note;
                 }
                 MidiEvent::PitchBend { cents, .. } => {
@@ -318,14 +415,21 @@ fn main() {
 }
 
 // ── Audio callback ──────────────────────────────────────────────────
+//
+// Combines two responsibilities:
+//   1. McLeod pitch detection -> AudioState (for the tuner display)
+//   2. GuitarInput pipeline -> MidiEvent queue (for live detection)
 
 fn audio_callback(
     data: &[f32],
     channels: usize,
     target_channel: usize,
+    sample_rate: usize,
     ring: &Arc<Mutex<AudioRing>>,
     pipeline: &Arc<Mutex<GuitarInput>>,
     events: &Arc<Mutex<Vec<(MidiEvent, Instant)>>>,
+    state: &Arc<Mutex<AudioState>>,
+    pitch_buf: &Arc<Mutex<VecDeque<f32>>>,
 ) {
     // Extract mono channel
     let mono: Vec<f32> = data
@@ -333,13 +437,55 @@ fn audio_callback(
         .filter_map(|frame| frame.get(target_channel).copied())
         .collect();
 
-    // Store in ring buffer
+    // Store in ring buffer (for calibration pluck detection)
     {
         let mut r = ring.lock().unwrap();
         r.push(&mono);
     }
 
-    // Process through pipeline
+    // ── McLeod pitch detection for tuner (same as guitar_capture.rs audio_process) ──
+    {
+        let mut buf = pitch_buf.lock().unwrap();
+        for &s in &mono {
+            buf.push_back(s);
+        }
+
+        // Keep only what we need
+        while buf.len() > BUFFER_SIZE * 2 {
+            buf.pop_front();
+        }
+
+        if buf.len() >= BUFFER_SIZE {
+            let frame: Vec<f32> = buf.drain(..BUFFER_SIZE).collect();
+
+            let rms = (frame.iter().map(|s| s * s).sum::<f32>() / BUFFER_SIZE as f32).sqrt();
+            let peak = frame.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+
+            // Pitch detection
+            let samples_f64: Vec<f64> = frame.iter().map(|&s| s as f64).collect();
+            let mut detector = McLeodDetector::new(BUFFER_SIZE, BUFFER_SIZE / 2);
+            let pitch = detector.get_pitch(&samples_f64, sample_rate, 0.3, 0.3);
+
+            let mut s = state.lock().unwrap();
+            s.rms = rms;
+            s.peak = peak;
+
+            if let Some(p) = pitch {
+                if p.clarity > MIN_CONFIDENCE {
+                    let freq = p.frequency as f32;
+                    let (midi, _) = freq_to_midi(freq);
+                    s.frequency = freq;
+                    s.confidence = p.clarity as f32;
+                    s.midi_note = midi;
+                    s.note_name = midi_to_note_name(midi);
+                }
+            }
+
+            s.prev_rms = rms;
+        }
+    }
+
+    // ── GuitarInput pipeline for live detection ──
     let now = Instant::now();
     let midi_events = {
         let mut pipe = pipeline.lock().unwrap();
@@ -462,18 +608,13 @@ fn prompt_usize(label: &str, max: usize) -> usize {
     }
 }
 
-fn ctrlc_handler(running: Arc<std::sync::atomic::AtomicBool>) {
-    // Best-effort Ctrl+C handling without extra dependencies.
-    // If ctrlc crate is not available, just catch the signal.
-    std::thread::spawn(move || {
-        // We use a simple approach: read stdin for 'q' as backup,
-        // and rely on the OS SIGINT to terminate.
-        // The main loop checks `running` on each iteration.
-        let _ = running; // keep alive
-    });
+fn wait_enter() {
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+}
 
-    // Register signal handler
-    // Since we don't have the ctrlc crate, we use a simpler approach:
-    // the user can also press Enter to see if we should quit.
-    // The process will terminate on Ctrl+C via default SIGINT behavior.
+fn ctrlc_handler(running: Arc<std::sync::atomic::AtomicBool>) {
+    std::thread::spawn(move || {
+        let _ = running;
+    });
 }
