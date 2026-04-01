@@ -372,6 +372,11 @@ impl GuitarInput {
         Self::new(GuitarInputConfig::default())
     }
 
+    /// Mutable access to the configuration (for runtime adjustments).
+    pub fn config_mut(&mut self) -> &mut GuitarInputConfig {
+        &mut self.config
+    }
+
     /// Set the calibration data (measured from `calibrate_string`).
     pub fn set_calibration(&mut self, cal: GuitarCalibration) {
         self.calibration = Some(cal);
