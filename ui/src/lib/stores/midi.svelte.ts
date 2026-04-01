@@ -58,7 +58,14 @@ class MidiStore {
 		this.error = null;
 
 		try {
-			await adapter.refreshMidiDevices();
+			// Best-effort refresh — don't let it block device listing.
+			// list_midi_inputs/outputs already create fresh midir clients,
+			// so even if refresh fails we still get the current device list.
+			try {
+				await adapter.refreshMidiDevices();
+			} catch {
+				// Ignore — listing below will still enumerate ports
+			}
 
 			const [newInputs, newOutputs] = await Promise.all([
 				adapter.listMidiInputs(),
@@ -73,11 +80,19 @@ class MidiStore {
 			if (saved) {
 				// Restore input by name
 				if (saved.inputName) {
-					const match = newInputs.find((d) => d.name === saved.inputName);
-					if (match) {
-						this.selectedInput = match.index;
+					if (saved.inputName === '__virtual_guitar_audio__') {
+						this.selectedInput = Number.MAX_SAFE_INTEGER - 2;
+					} else if (saved.inputName === '__virtual_computer_keyboard__') {
+						this.selectedInput = Number.MAX_SAFE_INTEGER - 1;
+					} else if (saved.inputName === '__virtual_note_generator__') {
+						this.selectedInput = Number.MAX_SAFE_INTEGER;
 					} else {
-						this.selectedInput = null;
+						const match = newInputs.find((d) => d.name === saved.inputName);
+						if (match) {
+							this.selectedInput = match.index;
+						} else {
+							this.selectedInput = null;
+						}
 					}
 				}
 
@@ -169,6 +184,9 @@ class MidiStore {
 	 */
 	get selectedInputName(): string | null {
 		if (this.selectedInput === null) return null;
+		if (this.selectedInput === Number.MAX_SAFE_INTEGER) return '__virtual_note_generator__';
+		if (this.selectedInput === Number.MAX_SAFE_INTEGER - 1) return '__virtual_computer_keyboard__';
+		if (this.selectedInput === Number.MAX_SAFE_INTEGER - 2) return '__virtual_guitar_audio__';
 		return this.inputs.find((d) => d.index === this.selectedInput)?.name ?? null;
 	}
 
