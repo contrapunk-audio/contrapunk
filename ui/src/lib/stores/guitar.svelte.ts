@@ -11,6 +11,15 @@ import { platformName } from '$lib/adapter';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { detectPitch, frequencyToMidi, midiToNoteName } from '$lib/audio/pitchDetector';
 
+const STORAGE_KEY = 'contrapunk-guitar';
+
+function loadSaved(): Record<string, any> {
+	try {
+		const raw = localStorage.getItem(STORAGE_KEY);
+		return raw ? JSON.parse(raw) : {};
+	} catch { return {}; }
+}
+
 class GuitarInputStore {
 	// -- Config (mirrors GuitarInputConfig in Rust) --
 	latencyMs = $state(21);
@@ -26,6 +35,37 @@ class GuitarInputStore {
 	selectedDeviceId = $state<string>('');
 	selectedChannel = $state(1); // 1-indexed for display
 	maxChannels = $state(2); // depends on selected device
+
+	constructor() {
+		const saved = loadSaved();
+		if (saved.latencyMs !== undefined) this.latencyMs = saved.latencyMs;
+		if (saved.gain !== undefined) this.gain = saved.gain;
+		if (saved.stringConfidence !== undefined) this.stringConfidence = saved.stringConfidence;
+		if (saved.bendsEnabled !== undefined) this.bendsEnabled = saved.bendsEnabled;
+		if (saved.legatoEnabled !== undefined) this.legatoEnabled = saved.legatoEnabled;
+		if (saved.slidesEnabled !== undefined) this.slidesEnabled = saved.slidesEnabled;
+		if (saved.vibratoEnabled !== undefined) this.vibratoEnabled = saved.vibratoEnabled;
+		if (saved.selectedDeviceId) this.selectedDeviceId = saved.selectedDeviceId;
+		if (saved.selectedChannel) this.selectedChannel = saved.selectedChannel;
+		if (saved.calibrated) this.calibrated = saved.calibrated;
+	}
+
+	private persist() {
+		try {
+			localStorage.setItem(STORAGE_KEY, JSON.stringify({
+				latencyMs: this.latencyMs,
+				gain: this.gain,
+				stringConfidence: this.stringConfidence,
+				bendsEnabled: this.bendsEnabled,
+				legatoEnabled: this.legatoEnabled,
+				slidesEnabled: this.slidesEnabled,
+				vibratoEnabled: this.vibratoEnabled,
+				selectedDeviceId: this.selectedDeviceId,
+				selectedChannel: this.selectedChannel,
+				calibrated: this.calibrated,
+			}));
+		} catch {}
+	}
 	/** Manual override for channel count (null = auto-detect from device) */
 	manualMaxChannels = $state<number | null>(null);
 	audioDeviceError = $state<string>('');
@@ -70,6 +110,7 @@ class GuitarInputStore {
 				this.vibratoEnabled = !this.vibratoEnabled;
 				break;
 		}
+		this.persist();
 	}
 
 	/** Noise floor RMS measured during calibration. */
@@ -315,19 +356,19 @@ class GuitarInputStore {
 	/** Set latency with bounds checking and sync. */
 	setLatency(value: number) {
 		this.latencyMs = Math.max(10, Math.min(50, value));
-		this.syncConfig();
+		this.syncConfig(); this.persist();
 	}
 
 	/** Set gain with bounds checking and sync. */
 	setGain(value: number) {
 		this.gain = Math.max(0.1, Math.min(2.0, Math.round(value * 20) / 20));
-		this.syncConfig();
+		this.syncConfig(); this.persist();
 	}
 
 	/** Set string confidence with bounds checking and sync. */
 	setStringConfidence(value: number) {
 		this.stringConfidence = Math.max(0.1, Math.min(1.0, Math.round(value * 20) / 20));
-		this.syncConfig();
+		this.syncConfig(); this.persist();
 	}
 
 	/** Enumerate available audio input devices via the Web Audio API. */
@@ -364,6 +405,7 @@ class GuitarInputStore {
 	selectDevice(deviceId: string) {
 		this.selectedDeviceId = deviceId;
 		this.selectedChannel = 1;
+		this.persist();
 
 		// Try to determine channel count by opening a stream with the device
 		this.probeChannelCount(deviceId);
@@ -372,6 +414,7 @@ class GuitarInputStore {
 	/** Select an input channel (1-indexed). */
 	selectChannel(channel: number) {
 		this.selectedChannel = channel;
+		this.persist();
 	}
 
 	/** Set a manual channel count override, or null to auto-detect. */
