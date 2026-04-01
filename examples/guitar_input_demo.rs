@@ -143,7 +143,10 @@ fn main() {
         onset_threshold: 0.015,
         string_confidence_min: 0.4,
         bends_enabled: true,
-        legato_enabled: false,
+        legato_enabled: true,
+        slides_enabled: true,
+        vibrato_detection: true,
+        vibrato_passthrough: true,
         filter_enabled: false,
         min_clarity: 0.40,
         cooldown_samples: sample_rate / 10, // 100ms
@@ -459,6 +462,20 @@ fn main() {
                 MidiEvent::PitchBend { cents, .. } => {
                     if cents.abs() > 20 {
                         println!("  bend: {:+}c", cents);
+                    }
+                }
+                MidiEvent::VibratoStatus {
+                    active,
+                    rate_hz,
+                    depth_cents,
+                } => {
+                    if active {
+                        println!(
+                            "  VIB: {:.1}Hz \u{00b1}{:.0}\u{00a2}",
+                            rate_hz, depth_cents
+                        );
+                    } else {
+                        println!("  VIB: off");
                     }
                 }
             }

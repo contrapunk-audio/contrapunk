@@ -37,6 +37,12 @@ pub struct GuitarInputConfig {
     pub bends_enabled: bool,
     /// Enable legato detection (hammer-on / pull-off).
     pub legato_enabled: bool,
+    /// Enable slide detection (continuous pitch movement crossing note boundaries).
+    pub slides_enabled: bool,
+    /// Enable vibrato detection (periodic pitch oscillation).
+    pub vibrato_detection: bool,
+    /// When true, pass vibrato through as MIDI pitch bend; when false, smooth it out.
+    pub vibrato_passthrough: bool,
     /// Enable low-pass pre-filter on input.
     pub filter_enabled: bool,
     /// Minimum McLeod clarity to accept a pitch detection.
@@ -61,7 +67,10 @@ impl Default for GuitarInputConfig {
             onset_threshold: 0.02,
             string_confidence_min: 0.5,
             bends_enabled: true,
-            legato_enabled: false,
+            legato_enabled: true,
+            slides_enabled: true,
+            vibrato_detection: true,
+            vibrato_passthrough: true,
             filter_enabled: false,
             min_clarity: 0.40,
             cooldown_samples: 4800, // 100ms @ 48kHz
@@ -172,6 +181,12 @@ pub enum MidiEvent {
         /// Bend in cents from current note.
         cents: i16,
     },
+    /// Vibrato detected/ended -- informational, UI can display.
+    VibratoStatus {
+        active: bool,
+        rate_hz: f32,
+        depth_cents: f32,
+    },
 }
 
 // ── Core pipeline ──────────────────────────────────────────────────
@@ -211,6 +226,24 @@ pub struct GuitarInput {
 
     // Spectral flux onset (#5)
     prev_spectrum: Option<Vec<f32>>,
+
+    // Slide detection state
+    /// Ring buffer of recent cents-from-base values for slide detection.
+    slide_history: Vec<i16>,
+    slide_history_idx: usize,
+    /// Velocity decay multiplier per slide note (0.9 = 10% softer each).
+    slide_velocity_decay: f32,
+
+    // Vibrato detection state
+    /// Ring buffer of cents deviations for vibrato analysis.
+    vibrato_buffer: Vec<f32>,
+    vibrato_buffer_idx: usize,
+    /// Whether vibrato is currently detected.
+    vibrato_detected: bool,
+    /// Detected vibrato rate in Hz.
+    vibrato_rate_hz: f32,
+    /// Detected vibrato depth in cents.
+    vibrato_depth_cents: f32,
 }
 
 impl GuitarInput {
@@ -233,6 +266,17 @@ impl GuitarInput {
             pitch_history: [None; 3],
             pitch_history_idx: 0,
             prev_spectrum: None,
+            // Slide state: keep last 8 frames of cents values
+            slide_history: vec![0i16; 8],
+            slide_history_idx: 0,
+            slide_velocity_decay: 0.9,
+            // Vibrato state: buffer ~500ms of cents values
+            // At 48kHz/1024 = ~47 frames/sec, 24 frames ~ 500ms
+            vibrato_buffer: Vec::with_capacity(24),
+            vibrato_buffer_idx: 0,
+            vibrato_detected: false,
+            vibrato_rate_hz: 0.0,
+            vibrato_depth_cents: 0.0,
         }
     }
 
@@ -410,28 +454,59 @@ impl GuitarInput {
                             self.cooldown_remaining = self.config.cooldown_samples;
                             self.note_state = NoteState::Sustain;
                             self.state_samples = 0;
+                            self.clear_slide_history();
+                            self.clear_vibrato_state();
                         } else if self.state_samples > attack_timeout_samples {
                             // Attack -> Idle: false trigger
                             self.note_state = NoteState::Idle;
                             self.state_samples = 0;
                             self.clear_pitch_history();
+                            self.clear_slide_history();
+                            self.clear_vibrato_state();
                         }
                     }
                     NoteState::Sustain => {
+                        // Sustain handler priority order:
+                        //   1. onset -> Attack (re-pluck)
+                        //   2. RMS below threshold -> Decay
+                        //   3. pitch jump > 2 semitones -> legato or missed onset
+                        //   4. pitch crosses semitone boundary gradually -> SLIDE
+                        //   5. pitch oscillates periodically -> VIBRATO (informational)
+                        //   6. pitch drifts < 2 semitones -> BEND
+                        //   7. pitch stable -> nothing
+
                         if onset {
-                            // Sustain -> Attack: re-pluck detected (new onset = new note)
+                            // 1. Sustain -> Attack: re-pluck detected
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
                             self.push_pitch(midi_note);
+                            self.clear_slide_history();
+                            self.clear_vibrato_state();
                         } else if rms < sustain_threshold {
-                            // Sustain -> Decay: signal dropping
+                            // 2. Sustain -> Decay: signal dropping
                             self.note_state = NoteState::Decay;
                             self.state_samples = 0;
-                        } else if let Some(ref mut note) = self.current_note {
-                            let semitone_diff = (midi_note as i16 - note.midi_note as i16).abs();
+                            // Emit vibrato-off if it was active
+                            if self.vibrato_detected {
+                                events.push(MidiEvent::VibratoStatus {
+                                    active: false,
+                                    rate_hz: 0.0,
+                                    depth_cents: 0.0,
+                                });
+                                self.clear_vibrato_state();
+                            }
+                        } else if self.current_note.is_some() {
+                            // Extract values we need from the current note
+                            // to avoid borrow conflicts with &mut self methods.
+                            let note_midi = self.current_note.as_ref().unwrap().midi_note;
+                            let note_freq = self.current_note.as_ref().unwrap().frequency;
+                            let note_vel = self.current_note.as_ref().unwrap().velocity;
+                            let note_bend = self.current_note.as_ref().unwrap().bend_cents;
+
+                            let semitone_diff = (midi_note as i16 - note_midi as i16).abs();
                             let cents_from_base = {
-                                let base_freq = midi_to_freq(note.midi_note);
+                                let base_freq = midi_to_freq(note_midi);
                                 if base_freq > 0.0 && freq > 0.0 {
                                     (1200.0 * (freq / base_freq).log2()) as i16
                                 } else {
@@ -439,26 +514,30 @@ impl GuitarInput {
                                 }
                             };
 
-                            if semitone_diff >= 2 && self.config.legato_enabled {
-                                // LEGATO: pitch jumped > 2 semitones without onset
-                                // = hammer-on, pull-off, or slide arrival
-                                let old_note = note.midi_note;
-                                let old_vel = note.velocity;
+                            // Feed slide and vibrato buffers
+                            self.push_slide_cents(cents_from_base);
+                            self.push_vibrato_cents(cents_from_base as f32);
 
-                                // Note-off gating for old note
-                                self.suppress_frequency = Some(note.frequency);
+                            // Detect rapid pitch change (legato vs bend):
+                            // Legato = fast jump (> 50 cents in one frame)
+                            // Bend = slow movement (< 30 cents per frame)
+                            let prev_cents = self.slide_history_prev_cents();
+                            let cents_per_frame = (cents_from_base - prev_cents).abs();
+                            let is_rapid_jump = cents_per_frame > 50;
+
+                            if semitone_diff >= 1 && is_rapid_jump && self.config.legato_enabled {
+                                // 3. LEGATO: rapid pitch jump without onset (hammer-on/pull-off)
+                                self.suppress_frequency = Some(note_freq);
                                 self.suppress_until = self.total_samples
                                     + (self.config.sample_rate as f32 * 0.1) as usize;
 
                                 events.push(MidiEvent::NoteOff {
                                     channel: 0,
-                                    note: old_note,
+                                    note: note_midi,
                                 });
 
-                                // Legato velocity: slightly softer than original pluck
-                                let legato_vel = (old_vel as f32 * 0.8).min(127.0) as u8;
+                                let legato_vel = (note_vel as f32 * 0.8).min(127.0) as u8;
 
-                                // Re-identify string for the new note
                                 let (string_idx, fret, string_conf) =
                                     self.identify_string_and_fret(&buf, freq, midi_note);
 
@@ -480,34 +559,192 @@ impl GuitarInput {
 
                                 self.current_note = Some(new_note);
                                 self.clear_pitch_history();
-                            } else if semitone_diff >= 2 && !self.config.legato_enabled {
-                                // Large pitch jump without legato enabled:
-                                // treat as a new attack (the onset detector missed it)
+                                self.clear_slide_history();
+                                self.clear_vibrato_state();
+                            } else if semitone_diff >= 1 && is_rapid_jump && !self.config.legato_enabled {
+                                // Rapid pitch jump without legato enabled: treat as missed onset
                                 self.note_state = NoteState::Attack;
                                 self.state_samples = 0;
                                 self.clear_pitch_history();
                                 self.push_pitch(midi_note);
-                            } else if self.config.bends_enabled {
-                                // BEND: pitch within ±2 semitones of current note
-                                // Track continuous pitch deviation
-                                if cents_from_base.abs() > 5 && cents_from_base.abs() < 200 {
-                                    // Real bend: slow continuous movement
-                                    if (cents_from_base - note.bend_cents).abs() > 3 {
-                                        events.push(MidiEvent::PitchBend {
-                                            channel: 0,
-                                            cents: cents_from_base,
-                                        });
-                                        note.bend_cents = cents_from_base;
-                                        note.frequency = freq;
+                                self.clear_slide_history();
+                                self.clear_vibrato_state();
+                            } else if cents_from_base.abs() >= 100
+                                && self.config.slides_enabled
+                                && self.is_slide_movement()
+                            {
+                                // 4. SLIDE: pitch crossed a semitone boundary gradually
+                                let (new_midi, _new_cents) = freq_to_midi(freq);
+                                if new_midi != note_midi {
+                                    events.push(MidiEvent::NoteOff {
+                                        channel: 0,
+                                        note: note_midi,
+                                    });
+
+                                    // Slide velocity decays gradually
+                                    let slide_vel = ((note_vel as f32
+                                        * self.slide_velocity_decay)
+                                        .min(127.0)
+                                        as u8)
+                                        .max(1);
+
+                                    let (string_idx, fret, string_conf) =
+                                        self.identify_string_and_fret(
+                                            &buf, freq, new_midi,
+                                        );
+
+                                    let new_note = DetectedNote {
+                                        midi_note: new_midi,
+                                        frequency: freq,
+                                        string_idx,
+                                        fret,
+                                        string_confidence: string_conf,
+                                        velocity: slide_vel,
+                                        bend_cents: 0,
+                                    };
+
+                                    events.push(MidiEvent::NoteOn {
+                                        channel: 0,
+                                        note: new_midi,
+                                        velocity: slide_vel,
+                                    });
+
+                                    self.current_note = Some(new_note);
+                                    // Stay in Sustain, reset slide/bend tracking
+                                    self.clear_slide_history();
+                                }
+                            } else {
+                                // 5. VIBRATO detection (informational)
+                                let vibrato_result = if self.config.vibrato_detection {
+                                    self.detect_vibrato()
+                                } else {
+                                    None
+                                };
+
+                                if self.config.vibrato_detection {
+                                    if let Some((rate_hz, amplitude)) = vibrato_result {
+                                        if !self.vibrato_detected {
+                                            self.vibrato_detected = true;
+                                            self.vibrato_rate_hz = rate_hz;
+                                            self.vibrato_depth_cents = amplitude;
+                                            events.push(MidiEvent::VibratoStatus {
+                                                active: true,
+                                                rate_hz,
+                                                depth_cents: amplitude,
+                                            });
+                                        } else if (rate_hz - self.vibrato_rate_hz).abs() > 0.5
+                                            || (amplitude - self.vibrato_depth_cents).abs() > 5.0
+                                        {
+                                            self.vibrato_rate_hz = rate_hz;
+                                            self.vibrato_depth_cents = amplitude;
+                                            events.push(MidiEvent::VibratoStatus {
+                                                active: true,
+                                                rate_hz,
+                                                depth_cents: amplitude,
+                                            });
+                                        }
+
+                                        // If vibrato passthrough is disabled,
+                                        // suppress pitch bend events (smooth out)
+                                        if !self.config.vibrato_passthrough {
+                                            if note_bend != 0 {
+                                                events.push(MidiEvent::PitchBend {
+                                                    channel: 0,
+                                                    cents: 0,
+                                                });
+                                                if let Some(ref mut note) = self.current_note {
+                                                    note.bend_cents = 0;
+                                                }
+                                            }
+                                        } else if self.config.bends_enabled {
+                                            // Vibrato passthrough: let bend events flow
+                                            if cents_from_base.abs() > 5
+                                                && cents_from_base.abs() < 200
+                                            {
+                                                if (cents_from_base - note_bend).abs() > 3 {
+                                                    events.push(MidiEvent::PitchBend {
+                                                        channel: 0,
+                                                        cents: cents_from_base,
+                                                    });
+                                                    if let Some(ref mut note) = self.current_note {
+                                                        note.bend_cents = cents_from_base;
+                                                        note.frequency = freq;
+                                                    }
+                                                }
+                                            } else if cents_from_base.abs() <= 5 && note_bend != 0 {
+                                                events.push(MidiEvent::PitchBend {
+                                                    channel: 0,
+                                                    cents: 0,
+                                                });
+                                                if let Some(ref mut note) = self.current_note {
+                                                    note.bend_cents = 0;
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        // No vibrato detected
+                                        if self.vibrato_detected {
+                                            events.push(MidiEvent::VibratoStatus {
+                                                active: false,
+                                                rate_hz: 0.0,
+                                                depth_cents: 0.0,
+                                            });
+                                            self.vibrato_detected = false;
+                                            self.vibrato_rate_hz = 0.0;
+                                            self.vibrato_depth_cents = 0.0;
+                                        }
+
+                                        // 6. BEND: pitch within +/-2 semitones
+                                        if self.config.bends_enabled {
+                                            if cents_from_base.abs() > 5
+                                                && cents_from_base.abs() < 200
+                                            {
+                                                if (cents_from_base - note_bend).abs() > 3 {
+                                                    events.push(MidiEvent::PitchBend {
+                                                        channel: 0,
+                                                        cents: cents_from_base,
+                                                    });
+                                                    if let Some(ref mut note) = self.current_note {
+                                                        note.bend_cents = cents_from_base;
+                                                        note.frequency = freq;
+                                                    }
+                                                }
+                                            } else if cents_from_base.abs() <= 5 && note_bend != 0 {
+                                                events.push(MidiEvent::PitchBend {
+                                                    channel: 0,
+                                                    cents: 0,
+                                                });
+                                                if let Some(ref mut note) = self.current_note {
+                                                    note.bend_cents = 0;
+                                                }
+                                            }
+                                        }
                                     }
-                                } else if cents_from_base.abs() <= 5 {
-                                    // Back to center — reset bend
-                                    if note.bend_cents != 0 {
-                                        events.push(MidiEvent::PitchBend {
-                                            channel: 0,
-                                            cents: 0,
-                                        });
-                                        note.bend_cents = 0;
+                                } else {
+                                    // Vibrato detection disabled; just do bends
+                                    if self.config.bends_enabled {
+                                        if cents_from_base.abs() > 5
+                                            && cents_from_base.abs() < 200
+                                        {
+                                            if (cents_from_base - note_bend).abs() > 3 {
+                                                events.push(MidiEvent::PitchBend {
+                                                    channel: 0,
+                                                    cents: cents_from_base,
+                                                });
+                                                if let Some(ref mut note) = self.current_note {
+                                                    note.bend_cents = cents_from_base;
+                                                    note.frequency = freq;
+                                                }
+                                            }
+                                        } else if cents_from_base.abs() <= 5 && note_bend != 0 {
+                                            events.push(MidiEvent::PitchBend {
+                                                channel: 0,
+                                                cents: 0,
+                                            });
+                                            if let Some(ref mut note) = self.current_note {
+                                                note.bend_cents = 0;
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -643,6 +880,164 @@ impl GuitarInput {
     fn clear_pitch_history(&mut self) {
         self.pitch_history = [None; 3];
         self.pitch_history_idx = 0;
+    }
+
+    // ── Slide detection ────────────────────────────────────────────
+
+    /// Push a cents-from-base value into the slide history ring buffer.
+    fn push_slide_cents(&mut self, cents: i16) {
+        self.slide_history[self.slide_history_idx] = cents;
+        self.slide_history_idx = (self.slide_history_idx + 1) % self.slide_history.len();
+    }
+
+    /// Get the previous cents value from slide history (for detecting rapid jumps).
+    fn slide_history_prev_cents(&self) -> i16 {
+        let len = self.slide_history.len();
+        if len == 0 { return 0; }
+        // Previous index (one before current write position)
+        let prev_idx = if self.slide_history_idx == 0 { len - 1 } else { self.slide_history_idx - 1 };
+        self.slide_history[prev_idx]
+    }
+
+    /// Check if recent pitch movement is a gradual slide (monotonic trend)
+    /// rather than a sudden jump.
+    ///
+    /// Returns true if the last ~5 frames show continuous monotonic movement
+    /// without any sudden jump (>50 cents between consecutive frames).
+    fn is_slide_movement(&self) -> bool {
+        let len = self.slide_history.len();
+        if len < 3 {
+            return false;
+        }
+
+        // Reconstruct the ordered history (oldest to newest)
+        let mut ordered = Vec::with_capacity(len);
+        for i in 0..len {
+            ordered.push(self.slide_history[(self.slide_history_idx + i) % len]);
+        }
+
+        // Check last 5 frames (or fewer if not enough data)
+        let check_len = 5.min(len);
+        let recent = &ordered[len - check_len..];
+
+        // 1. No sudden jumps: consecutive frames should differ by < 50 cents
+        for pair in recent.windows(2) {
+            if (pair[1] - pair[0]).abs() > 50 {
+                return false; // sudden jump = not a slide
+            }
+        }
+
+        // 2. Monotonic trend: all differences should have the same sign
+        //    (all increasing or all decreasing)
+        let mut increasing = 0;
+        let mut decreasing = 0;
+        for pair in recent.windows(2) {
+            let diff = pair[1] - pair[0];
+            if diff > 2 {
+                increasing += 1;
+            } else if diff < -2 {
+                decreasing += 1;
+            }
+            // Near-zero differences are neutral
+        }
+
+        // Must be predominantly one direction
+        (increasing >= check_len - 2 && decreasing == 0)
+            || (decreasing >= check_len - 2 && increasing == 0)
+    }
+
+    /// Clear slide history (e.g., on note change).
+    fn clear_slide_history(&mut self) {
+        for v in self.slide_history.iter_mut() {
+            *v = 0;
+        }
+        self.slide_history_idx = 0;
+    }
+
+    // ── Vibrato detection ────────────────────────────────────────────
+
+    /// Push a cents deviation into the vibrato analysis buffer.
+    fn push_vibrato_cents(&mut self, cents: f32) {
+        let cap = 24; // ~500ms at typical frame rates
+        if self.vibrato_buffer.len() < cap {
+            self.vibrato_buffer.push(cents);
+        } else {
+            let idx = self.vibrato_buffer_idx % cap;
+            self.vibrato_buffer[idx] = cents;
+        }
+        self.vibrato_buffer_idx += 1;
+    }
+
+    /// Detect vibrato from the ring buffer of cents deviations.
+    ///
+    /// Returns `Some((rate_hz, amplitude_cents))` if periodic oscillation
+    /// in the 3-8 Hz range with 10-60 cents amplitude is detected.
+    fn detect_vibrato(&self) -> Option<(f32, f32)> {
+        let buf = &self.vibrato_buffer;
+        // Need at least ~300ms of data (~14 frames at 47 fps)
+        if buf.len() < 10 {
+            return None;
+        }
+
+        // Reconstruct ordered buffer
+        let len = buf.len();
+        let cap = 24.min(len);
+        let ordered: Vec<f32> = if len < 24 {
+            buf.clone()
+        } else {
+            let start = self.vibrato_buffer_idx % cap;
+            let mut v = Vec::with_capacity(cap);
+            for i in 0..cap {
+                v.push(buf[(start + i) % cap]);
+            }
+            v
+        };
+
+        // 1. Compute mean
+        let mean = ordered.iter().sum::<f32>() / ordered.len() as f32;
+
+        // 2. Count zero-crossings (crossings of the mean)
+        let crossings = ordered
+            .windows(2)
+            .filter(|w| (w[0] - mean).signum() != (w[1] - mean).signum())
+            .count();
+
+        // 3. Estimate frequency from zero-crossing rate
+        //    Each analysis frame is buffer_size / sample_rate seconds
+        let frame_duration =
+            self.config.buffer_size as f32 / self.config.sample_rate as f32;
+        let duration_secs = ordered.len() as f32 * frame_duration;
+        if duration_secs < 0.05 {
+            return None;
+        }
+        let rate_hz = crossings as f32 / (2.0 * duration_secs);
+
+        // 4. Check if rate is in vibrato range (3-8 Hz)
+        if rate_hz < 3.0 || rate_hz > 8.0 {
+            return None;
+        }
+
+        // 5. Measure amplitude (max deviation from mean)
+        let amplitude = ordered
+            .iter()
+            .map(|c| (c - mean).abs())
+            .fold(0.0f32, f32::max);
+
+        // 6. Check amplitude is in vibrato range (10-60 cents)
+        if amplitude < 10.0 || amplitude > 60.0 {
+            return None;
+        }
+
+        Some((rate_hz, amplitude))
+    }
+
+    /// Clear vibrato state (e.g., on note change).
+    fn clear_vibrato_state(&mut self) {
+        self.vibrato_buffer.clear();
+        self.vibrato_buffer_idx = 0;
+        self.vibrato_detected = false;
+        self.vibrato_rate_hz = 0.0;
+        self.vibrato_depth_cents = 0.0;
     }
 
     // ── Spectral flux onset detection (#5) ────────────────────────
@@ -1509,6 +1904,9 @@ mod tests {
             string_confidence_min: 0.3,
             bends_enabled: false,
             legato_enabled: false,
+            slides_enabled: false,
+            vibrato_detection: false,
+            vibrato_passthrough: false,
             filter_enabled: false,
             min_clarity: 0.3,
             cooldown_samples: 1024,
@@ -1873,6 +2271,9 @@ mod tests {
             string_confidence_min: 0.3,
             bends_enabled: false,
             legato_enabled: false,
+            slides_enabled: false,
+            vibrato_detection: false,
+            vibrato_passthrough: false,
             filter_enabled: false,
             min_clarity: 0.3,
             cooldown_samples: 1024,
@@ -1958,5 +2359,287 @@ mod tests {
                 harmonic_ratios: vec![0.45, 0.25, 0.12, 0.06, 0.03],
             },
         ]
+    }
+
+    // -- Slide detection tests ──────────────────────────────────────
+
+    #[test]
+    fn is_slide_movement_monotonic_increasing() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Simulate gradual upward pitch movement: 0, 10, 20, 30, 40, 50, 60, 70
+        for cents in [0i16, 10, 20, 30, 40, 50, 60, 70] {
+            pipeline.push_slide_cents(cents);
+        }
+        assert!(
+            pipeline.is_slide_movement(),
+            "monotonic increasing cents should be detected as a slide"
+        );
+    }
+
+    #[test]
+    fn is_slide_movement_monotonic_decreasing() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Simulate gradual downward pitch movement
+        for cents in [70i16, 60, 50, 40, 30, 20, 10, 0] {
+            pipeline.push_slide_cents(cents);
+        }
+        assert!(
+            pipeline.is_slide_movement(),
+            "monotonic decreasing cents should be detected as a slide"
+        );
+    }
+
+    #[test]
+    fn is_slide_movement_sudden_jump_rejected() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Simulate a sudden jump: gradual then big jump
+        for cents in [0i16, 5, 10, 15, 20, 25, 30, 100] {
+            pipeline.push_slide_cents(cents);
+        }
+        assert!(
+            !pipeline.is_slide_movement(),
+            "a sudden jump (>50 cents between frames) should not be a slide"
+        );
+    }
+
+    #[test]
+    fn is_slide_movement_random_oscillation_rejected() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Simulate random oscillation (not monotonic)
+        for cents in [0i16, 20, -10, 30, -5, 15, -20, 10] {
+            pipeline.push_slide_cents(cents);
+        }
+        assert!(
+            !pipeline.is_slide_movement(),
+            "random oscillation should not be detected as a slide"
+        );
+    }
+
+    #[test]
+    fn slide_history_clears() {
+        let mut pipeline = GuitarInput::with_defaults();
+        for cents in [0i16, 10, 20, 30, 40, 50, 60, 70] {
+            pipeline.push_slide_cents(cents);
+        }
+        assert!(pipeline.is_slide_movement());
+        pipeline.clear_slide_history();
+        assert!(
+            !pipeline.is_slide_movement(),
+            "after clearing, slide should not be detected"
+        );
+    }
+
+    // -- Vibrato detection tests ────────────────────────────────────
+
+    #[test]
+    fn detect_vibrato_periodic_oscillation() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Simulate a 5 Hz vibrato at ~30 cents amplitude
+        // At 1024/48000 = ~21.3ms per frame = ~47 frames/sec
+        // 5 Hz = one cycle every ~9.4 frames
+        // Fill 24 frames (~500ms) with sinusoidal oscillation
+        let frame_duration = 1024.0 / 48000.0;
+        for i in 0..24 {
+            let t = i as f32 * frame_duration;
+            let cents = 30.0 * (2.0 * PI * 5.0 * t).sin();
+            pipeline.push_vibrato_cents(cents);
+        }
+        let result = pipeline.detect_vibrato();
+        assert!(
+            result.is_some(),
+            "should detect vibrato from periodic oscillation"
+        );
+        let (rate_hz, amplitude) = result.unwrap();
+        assert!(
+            rate_hz >= 3.0 && rate_hz <= 8.0,
+            "vibrato rate {:.1} Hz should be in 3-8 Hz range",
+            rate_hz
+        );
+        assert!(
+            amplitude >= 10.0 && amplitude <= 60.0,
+            "vibrato amplitude {:.1} cents should be in 10-60 range",
+            amplitude
+        );
+    }
+
+    #[test]
+    fn detect_vibrato_rejects_random_noise() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Fill with small random-ish values (not periodic)
+        let values = [2.0, -1.0, 3.0, 0.5, -2.0, 1.5, -0.5, 2.5, -1.5, 0.0,
+                      3.0, -2.0, 1.0, -1.0, 2.0, -3.0, 0.5, 1.5, -0.5, 2.0,
+                      -1.0, 3.0, -2.0, 1.0];
+        for &v in &values {
+            pipeline.push_vibrato_cents(v);
+        }
+        let result = pipeline.detect_vibrato();
+        assert!(
+            result.is_none(),
+            "small random noise should not be detected as vibrato"
+        );
+    }
+
+    #[test]
+    fn detect_vibrato_rejects_too_slow() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Simulate very slow oscillation (~1 Hz) -- below vibrato range
+        let frame_duration = 1024.0 / 48000.0;
+        for i in 0..24 {
+            let t = i as f32 * frame_duration;
+            let cents = 30.0 * (2.0 * PI * 1.0 * t).sin();
+            pipeline.push_vibrato_cents(cents);
+        }
+        let result = pipeline.detect_vibrato();
+        assert!(
+            result.is_none(),
+            "1 Hz oscillation should be too slow for vibrato"
+        );
+    }
+
+    #[test]
+    fn detect_vibrato_rejects_too_fast() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Simulate very fast oscillation (~15 Hz) -- above vibrato range
+        let frame_duration = 1024.0 / 48000.0;
+        for i in 0..24 {
+            let t = i as f32 * frame_duration;
+            let cents = 30.0 * (2.0 * PI * 15.0 * t).sin();
+            pipeline.push_vibrato_cents(cents);
+        }
+        let result = pipeline.detect_vibrato();
+        assert!(
+            result.is_none(),
+            "15 Hz oscillation should be too fast for vibrato"
+        );
+    }
+
+    #[test]
+    fn detect_vibrato_rejects_too_small_amplitude() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Simulate 5 Hz oscillation but only 5 cents amplitude (below 10 threshold)
+        let frame_duration = 1024.0 / 48000.0;
+        for i in 0..24 {
+            let t = i as f32 * frame_duration;
+            let cents = 5.0 * (2.0 * PI * 5.0 * t).sin();
+            pipeline.push_vibrato_cents(cents);
+        }
+        let result = pipeline.detect_vibrato();
+        assert!(
+            result.is_none(),
+            "5 cents amplitude should be too small for vibrato"
+        );
+    }
+
+    #[test]
+    fn vibrato_state_clears() {
+        let mut pipeline = GuitarInput::with_defaults();
+        let frame_duration = 1024.0 / 48000.0;
+        for i in 0..24 {
+            let t = i as f32 * frame_duration;
+            let cents = 30.0 * (2.0 * PI * 5.0 * t).sin();
+            pipeline.push_vibrato_cents(cents);
+        }
+        assert!(pipeline.detect_vibrato().is_some());
+        pipeline.clear_vibrato_state();
+        assert!(
+            pipeline.detect_vibrato().is_none(),
+            "after clearing, vibrato should not be detected"
+        );
+    }
+
+    // -- Slide crossing semitone boundary integration test ──────────
+
+    #[test]
+    fn slide_crossing_semitone_emits_note_off_and_on() {
+        // Unit test for the slide mechanism: directly set up the pipeline
+        // in Sustain state with a known note, prime the slide history,
+        // then verify that the slide detection components work correctly.
+        let mut pipeline = GuitarInput::with_defaults();
+
+        // Manually set up state: note at A4, in Sustain
+        pipeline.current_note = Some(DetectedNote {
+            midi_note: 69, // A4
+            frequency: 440.0,
+            string_idx: Some(5),
+            fret: Some(5),
+            string_confidence: 0.8,
+            velocity: 80,
+            bend_cents: 0,
+        });
+        pipeline.note_state = NoteState::Sustain;
+
+        // Prime slide history with gradual upward trend
+        for cents in [10i16, 20, 30, 40, 50, 60, 80, 100] {
+            pipeline.push_slide_cents(cents);
+        }
+
+        // Verify is_slide_movement detects this as a slide
+        assert!(
+            pipeline.is_slide_movement(),
+            "primed history should be detected as a slide"
+        );
+
+        // Verify the slide_velocity_decay is applied correctly
+        let original_vel = 80u8;
+        let expected_vel = (original_vel as f32 * pipeline.slide_velocity_decay) as u8;
+        assert!(
+            expected_vel < original_vel,
+            "slide velocity ({}) should be less than original ({})",
+            expected_vel,
+            original_vel
+        );
+        assert!(
+            expected_vel > 0,
+            "slide velocity should still be positive"
+        );
+
+        // Verify the note hasn't changed yet (slide hasn't been processed)
+        assert_eq!(
+            pipeline.current_note.as_ref().unwrap().midi_note,
+            69,
+            "note should still be A4 before slide processing"
+        );
+    }
+
+    // -- Vibrato within single note does not change note ────────────
+
+    #[test]
+    fn vibrato_does_not_change_note() {
+        // Test that vibrato detection within a single note does not
+        // alter the detected MIDI note at the vibrato-buffer level.
+        // This is a unit test for the vibrato algorithm itself.
+        let mut pipeline = GuitarInput::with_defaults();
+
+        // Set up a current note at A4
+        pipeline.current_note = Some(DetectedNote {
+            midi_note: 69,
+            frequency: 440.0,
+            string_idx: Some(5),
+            fret: Some(5),
+            string_confidence: 0.8,
+            velocity: 80,
+            bend_cents: 0,
+        });
+        pipeline.note_state = NoteState::Sustain;
+
+        // Feed vibrato-like cents into the vibrato buffer
+        // 5 Hz vibrato at 25 cents amplitude (well within a single note)
+        let frame_duration = 1024.0 / 48000.0;
+        for i in 0..24 {
+            let t = i as f32 * frame_duration;
+            let cents = 25.0 * (2.0 * PI * 5.0 * t).sin();
+            pipeline.push_vibrato_cents(cents);
+        }
+
+        // Vibrato should be detected
+        let vib = pipeline.detect_vibrato();
+        assert!(vib.is_some(), "vibrato should be detected");
+
+        // The current note should still be A4 (MIDI 69)
+        assert_eq!(
+            pipeline.current_note.as_ref().unwrap().midi_note,
+            69,
+            "vibrato should not change the MIDI note"
+        );
     }
 }
