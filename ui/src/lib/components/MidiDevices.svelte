@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 
@@ -6,6 +7,14 @@
 	const VIRTUAL_NOTE_GENERATOR = Number.MAX_SAFE_INTEGER;
 	const VIRTUAL_COMPUTER_KEYBOARD = Number.MAX_SAFE_INTEGER - 1;
 	const VIRTUAL_GUITAR_AUDIO = Number.MAX_SAFE_INTEGER - 2;
+
+	// Auto-refresh on mount if device lists are empty (defensive — page init should
+	// already call midi.refresh(), but this ensures devices show even if that failed).
+	onMount(() => {
+		if (midi.inputs.length === 0 && midi.outputs.length === 0 && !midi.isLoading) {
+			midi.refresh();
+		}
+	});
 
 	const MAX_OUTPUT_SLOTS = 8;
 

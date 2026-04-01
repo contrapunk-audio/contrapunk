@@ -319,8 +319,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	/**
-	 * Start guitar audio capture with pitch detection.
-	 * Routes detected notes through the harmony engine via injectNoteOn/Off.
+	 * Start guitar audio capture with full DSP pipeline.
+	 * Routes detected notes through the harmony engine via injectNoteOn/Off,
+	 * and forwards PitchBend, CC74, and ChannelPressure to MIDI outputs.
 	 */
 	private async startGuitarCapture(outputIndices: number[]): Promise<void> {
 		// Resolve MIDI outputs for sending harmony notes
@@ -344,6 +345,26 @@ export class WasmAdapter implements ContrapunkAdapter {
 				},
 				onNoteOff(note: number) {
 					self.injectNoteOff(note).catch(() => {});
+				},
+				onMidiPitchBend(channel: number, value: number) {
+					// Send 14-bit pitch bend to MIDI outputs
+					const lsb = value & 0x7f;
+					const msb = (value >> 7) & 0x7f;
+					for (const output of self.activeOutputs) {
+						output.send([0xe0 | (channel & 0x0f), lsb, msb]);
+					}
+				},
+				onCC(channel: number, controller: number, ccValue: number) {
+					// Forward CC messages (e.g., CC74 brightness)
+					for (const output of self.activeOutputs) {
+						output.send([0xb0 | (channel & 0x0f), controller & 0x7f, ccValue & 0x7f]);
+					}
+				},
+				onChannelPressure(channel: number, pressure: number) {
+					// Forward channel pressure (aftertouch)
+					for (const output of self.activeOutputs) {
+						output.send([0xd0 | (channel & 0x0f), pressure & 0x7f]);
+					}
 				}
 			}
 		);
