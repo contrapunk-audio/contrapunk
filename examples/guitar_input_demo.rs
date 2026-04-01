@@ -155,7 +155,9 @@ fn main() {
         flux_threshold: 0.5,
         per_string_channels: true,
         pitch_bend_range: 2,
-        aftertouch_enabled: false,
+        pressure_enabled: true,
+        pressure_hold: 0.3,
+        brightness_enabled: true,
     };
 
     let pipeline = Arc::new(Mutex::new(GuitarInput::new(config.clone())));
@@ -483,7 +485,14 @@ fn main() {
                 }
                 MidiEvent::ChannelPressure { channel, pressure } => {
                     if pressure > 10 {
-                        println!("  AT: ch{} p={}", channel + 1, pressure);
+                        println!("  PRESS: ch{} p={}", channel + 1, pressure);
+                    }
+                }
+                MidiEvent::CC { channel, controller, value } => {
+                    if controller == 74 {
+                        println!("  CC74 brightness: ch{} val={}", channel + 1, value);
+                    } else {
+                        println!("  CC{}: ch{} val={}", controller, channel + 1, value);
                     }
                 }
                 MidiEvent::VibratoStatus {
