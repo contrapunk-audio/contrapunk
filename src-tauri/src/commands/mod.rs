@@ -4,6 +4,7 @@
 //! in the Tauri builder.
 
 pub mod engine;
+pub mod guitar;
 pub mod harmony;
 pub mod midi;
 pub mod presets;

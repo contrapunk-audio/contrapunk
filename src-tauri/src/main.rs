@@ -33,6 +33,10 @@ fn main() {
             commands::engine::start_routing,
             commands::engine::stop_routing,
             commands::engine::get_note_state,
+            // Guitar audio input
+            commands::guitar::set_guitar_device,
+            commands::guitar::set_guitar_config,
+            commands::guitar::list_audio_devices,
             // Presets
             commands::presets::list_presets,
             commands::presets::load_preset,
