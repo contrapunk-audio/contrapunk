@@ -153,6 +153,9 @@ fn main() {
         n_harmonics: 6,
         input_gain: 1.0,       // will be set by calibration
         flux_threshold: 0.5,
+        per_string_channels: true,
+        pitch_bend_range: 2,
+        aftertouch_enabled: false,
     };
 
     let pipeline = Arc::new(Mutex::new(GuitarInput::new(config.clone())));
@@ -394,10 +397,10 @@ fn main() {
 
     println!("--- LIVE DETECTION ---");
     println!(
-        "  {:5}  {:6}  {:4}  {:5}  {:4}  {:7}",
-        "Note", "String", "Fret", "Conf.", "Vel.", "Latency"
+        "  {:5}  {:6}  {:4}  {:5}  {:4}  {:10}  {:3}  {:7}",
+        "Note", "String", "Fret", "Conf.", "Vel.", "Vel.Bar", "Ch", "Latency"
     );
-    println!("  {}", "\u{2500}".repeat(42));
+    println!("  {}", "\u{2500}".repeat(58));
 
     let mut note_count: u64 = 0;
     let mut total_latency_ms = 0.0f64;
@@ -420,7 +423,7 @@ fn main() {
         for (event, timestamp) in events {
             match event {
                 MidiEvent::NoteOn {
-                    note, velocity, ..
+                    channel, note, velocity,
                 } => {
                     let now = Instant::now();
                     let latency = now.duration_since(timestamp);
@@ -442,26 +445,45 @@ fn main() {
                         }
                     };
 
+                    // Build velocity bar (10 chars wide)
+                    let bar_len = (velocity as usize * 10) / 127;
+                    let vel_bar = format!("[{}{}]",
+                        "#".repeat(bar_len),
+                        "-".repeat(10 - bar_len));
+
                     let note_name = midi_to_note_name(note);
                     println!(
-                        "  {:5}  {:6}  {:>4}  {:>4.0}%  {:>4}  {:>5.0}ms",
+                        "  {:5}  {:6}  {:>4}  {:>4.0}%  {:>4}  {:>10}  {:>3}  {:>5.0}ms",
                         note_name,
                         string_name,
                         fret,
                         conf * 100.0,
                         velocity,
+                        vel_bar,
+                        channel + 1, // display as 1-based MIDI channel
                         latency_ms_val
                     );
 
                     note_count += 1;
                     total_latency_ms += latency_ms_val;
                 }
-                MidiEvent::NoteOff { note, .. } => {
-                    let _ = note;
+                MidiEvent::NoteOff { note, velocity, channel } => {
+                    let _ = (note, velocity, channel);
                 }
                 MidiEvent::PitchBend { cents, .. } => {
                     if cents.abs() > 20 {
                         println!("  bend: {:+}c", cents);
+                    }
+                }
+                MidiEvent::MidiPitchBend { channel, value } => {
+                    // Raw 14-bit pitch bend (only show if far from center)
+                    if (value as i32 - 8192).unsigned_abs() > 2000 {
+                        println!("  pb14: ch{} val={}", channel + 1, value);
+                    }
+                }
+                MidiEvent::ChannelPressure { channel, pressure } => {
+                    if pressure > 10 {
+                        println!("  AT: ch{} p={}", channel + 1, pressure);
                     }
                 }
                 MidiEvent::VibratoStatus {

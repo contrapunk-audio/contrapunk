@@ -57,6 +57,13 @@ pub struct GuitarInputConfig {
     /// Spectral flux threshold for onset detection.
     /// Onset triggers when spectral flux exceeds this value.
     pub flux_threshold: f32,
+    /// Use per-string MIDI channels (string 0 = ch 0, string 1 = ch 1, etc.)
+    /// When false, all notes go on channel 0.
+    pub per_string_channels: bool,
+    /// Pitch bend range in semitones (default 2, matching MiGiC default).
+    pub pitch_bend_range: u8,
+    /// Enable channel pressure (aftertouch) from sustain RMS (opt-in).
+    pub aftertouch_enabled: bool,
 }
 
 impl Default for GuitarInputConfig {
@@ -77,6 +84,9 @@ impl Default for GuitarInputConfig {
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
+            per_string_channels: true,
+            pitch_bend_range: 2,
+            aftertouch_enabled: false,
         }
     }
 }
@@ -175,11 +185,22 @@ pub enum MidiEvent {
     NoteOff {
         channel: u8,
         note: u8,
+        velocity: u8,
     },
     PitchBend {
         channel: u8,
         /// Bend in cents from current note.
         cents: i16,
+    },
+    /// Raw 14-bit MIDI pitch bend (0-16383, 8192 = center).
+    MidiPitchBend {
+        channel: u8,
+        value: u16,
+    },
+    /// Channel pressure (aftertouch) derived from sustain RMS.
+    ChannelPressure {
+        channel: u8,
+        pressure: u8,
     },
     /// Vibrato detected/ended -- informational, UI can display.
     VibratoStatus {
@@ -244,6 +265,12 @@ pub struct GuitarInput {
     vibrato_rate_hz: f32,
     /// Detected vibrato depth in cents.
     vibrato_depth_cents: f32,
+
+    // Aftertouch / NoteOff velocity state
+    /// Last RMS measured during sustain, used for NoteOff release velocity.
+    last_sustain_rms: f32,
+    /// Last channel pressure value sent (to avoid duplicate events).
+    last_pressure: u8,
 }
 
 impl GuitarInput {
@@ -277,6 +304,9 @@ impl GuitarInput {
             vibrato_detected: false,
             vibrato_rate_hz: 0.0,
             vibrato_depth_cents: 0.0,
+            // Aftertouch / NoteOff velocity state
+            last_sustain_rms: 0.0,
+            last_pressure: 0,
         }
     }
 
@@ -421,18 +451,44 @@ impl GuitarInput {
                                 self.suppress_until = self.total_samples
                                     + (self.config.sample_rate as f32 * 0.1) as usize;
 
+                                let prev_channel = if self.config.per_string_channels {
+                                    prev.string_idx.unwrap_or(0) as u8
+                                } else {
+                                    0
+                                };
+                                // Release velocity from last sustain RMS
+                                let release_vel = if let Some(cal) = &self.calibration {
+                                    rms_to_velocity_calibrated(self.last_sustain_rms, cal.noise_floor, cal.signal_peak)
+                                } else {
+                                    rms_to_velocity(self.last_sustain_rms)
+                                };
                                 events.push(MidiEvent::NoteOff {
-                                    channel: 0,
+                                    channel: prev_channel,
                                     note: prev.midi_note,
+                                    velocity: release_vel,
                                 });
                             }
 
-                            // Velocity from RMS
-                            let velocity = rms_to_velocity(rms);
+                            // Velocity from attack peak (first ~5ms) instead of full-buffer RMS
+                            let attack_samples = (self.config.sample_rate as f32 * 0.005) as usize;
+                            let attack_end = attack_samples.min(buf.len());
+                            let attack_rms = compute_rms(&buf[..attack_end]);
+
+                            let velocity = if let Some(cal) = &self.calibration {
+                                rms_to_velocity_calibrated(attack_rms, cal.noise_floor, cal.signal_peak)
+                            } else {
+                                rms_to_velocity(attack_rms)
+                            };
 
                             // String identification with plausibility filter (#3)
                             let (string_idx, fret, string_conf) =
                                 self.identify_string_and_fret(&buf, freq, stable_midi);
+
+                            let channel = if self.config.per_string_channels {
+                                string_idx.unwrap_or(0) as u8
+                            } else {
+                                0
+                            };
 
                             let detected = DetectedNote {
                                 midi_note: stable_midi,
@@ -445,7 +501,7 @@ impl GuitarInput {
                             };
 
                             events.push(MidiEvent::NoteOn {
-                                channel: 0,
+                                channel,
                                 note: stable_midi,
                                 velocity,
                             });
@@ -454,6 +510,8 @@ impl GuitarInput {
                             self.cooldown_remaining = self.config.cooldown_samples;
                             self.note_state = NoteState::Sustain;
                             self.state_samples = 0;
+                            self.last_sustain_rms = rms;
+                            self.last_pressure = 0;
                             self.clear_slide_history();
                             self.clear_vibrato_state();
                         } else if self.state_samples > attack_timeout_samples {
@@ -503,6 +561,15 @@ impl GuitarInput {
                             let note_freq = self.current_note.as_ref().unwrap().frequency;
                             let note_vel = self.current_note.as_ref().unwrap().velocity;
                             let note_bend = self.current_note.as_ref().unwrap().bend_cents;
+                            let note_string_idx = self.current_note.as_ref().unwrap().string_idx;
+                            let channel = if self.config.per_string_channels {
+                                note_string_idx.unwrap_or(0) as u8
+                            } else {
+                                0
+                            };
+
+                            // Track sustain RMS for NoteOff release velocity
+                            self.last_sustain_rms = rms;
 
                             let semitone_diff = (midi_note as i16 - note_midi as i16).abs();
                             let cents_from_base = {
@@ -531,15 +598,27 @@ impl GuitarInput {
                                 self.suppress_until = self.total_samples
                                     + (self.config.sample_rate as f32 * 0.1) as usize;
 
+                                let release_vel = if let Some(cal) = &self.calibration {
+                                    rms_to_velocity_calibrated(self.last_sustain_rms, cal.noise_floor, cal.signal_peak)
+                                } else {
+                                    rms_to_velocity(self.last_sustain_rms)
+                                };
                                 events.push(MidiEvent::NoteOff {
-                                    channel: 0,
+                                    channel,
                                     note: note_midi,
+                                    velocity: release_vel,
                                 });
 
                                 let legato_vel = (note_vel as f32 * 0.8).min(127.0) as u8;
 
                                 let (string_idx, fret, string_conf) =
                                     self.identify_string_and_fret(&buf, freq, midi_note);
+
+                                let new_channel = if self.config.per_string_channels {
+                                    string_idx.unwrap_or(0) as u8
+                                } else {
+                                    0
+                                };
 
                                 let new_note = DetectedNote {
                                     midi_note,
@@ -552,7 +631,7 @@ impl GuitarInput {
                                 };
 
                                 events.push(MidiEvent::NoteOn {
-                                    channel: 0,
+                                    channel: new_channel,
                                     note: midi_note,
                                     velocity: legato_vel,
                                 });
@@ -576,9 +655,15 @@ impl GuitarInput {
                                 // 4. SLIDE: pitch crossed a semitone boundary gradually
                                 let (new_midi, _new_cents) = freq_to_midi(freq);
                                 if new_midi != note_midi {
+                                    let release_vel = if let Some(cal) = &self.calibration {
+                                        rms_to_velocity_calibrated(self.last_sustain_rms, cal.noise_floor, cal.signal_peak)
+                                    } else {
+                                        rms_to_velocity(self.last_sustain_rms)
+                                    };
                                     events.push(MidiEvent::NoteOff {
-                                        channel: 0,
+                                        channel,
                                         note: note_midi,
+                                        velocity: release_vel,
                                     });
 
                                     // Slide velocity decays gradually
@@ -593,6 +678,12 @@ impl GuitarInput {
                                             &buf, freq, new_midi,
                                         );
 
+                                    let new_channel = if self.config.per_string_channels {
+                                        string_idx.unwrap_or(0) as u8
+                                    } else {
+                                        0
+                                    };
+
                                     let new_note = DetectedNote {
                                         midi_note: new_midi,
                                         frequency: freq,
@@ -604,7 +695,7 @@ impl GuitarInput {
                                     };
 
                                     events.push(MidiEvent::NoteOn {
-                                        channel: 0,
+                                        channel: new_channel,
                                         note: new_midi,
                                         velocity: slide_vel,
                                     });
@@ -649,8 +740,12 @@ impl GuitarInput {
                                         if !self.config.vibrato_passthrough {
                                             if note_bend != 0 {
                                                 events.push(MidiEvent::PitchBend {
-                                                    channel: 0,
+                                                    channel,
                                                     cents: 0,
+                                                });
+                                                events.push(MidiEvent::MidiPitchBend {
+                                                    channel,
+                                                    value: cents_to_midi_pitch_bend(0, self.config.pitch_bend_range),
                                                 });
                                                 if let Some(ref mut note) = self.current_note {
                                                     note.bend_cents = 0;
@@ -663,8 +758,12 @@ impl GuitarInput {
                                             {
                                                 if (cents_from_base - note_bend).abs() > 3 {
                                                     events.push(MidiEvent::PitchBend {
-                                                        channel: 0,
+                                                        channel,
                                                         cents: cents_from_base,
+                                                    });
+                                                    events.push(MidiEvent::MidiPitchBend {
+                                                        channel,
+                                                        value: cents_to_midi_pitch_bend(cents_from_base, self.config.pitch_bend_range),
                                                     });
                                                     if let Some(ref mut note) = self.current_note {
                                                         note.bend_cents = cents_from_base;
@@ -673,8 +772,12 @@ impl GuitarInput {
                                                 }
                                             } else if cents_from_base.abs() <= 5 && note_bend != 0 {
                                                 events.push(MidiEvent::PitchBend {
-                                                    channel: 0,
+                                                    channel,
                                                     cents: 0,
+                                                });
+                                                events.push(MidiEvent::MidiPitchBend {
+                                                    channel,
+                                                    value: cents_to_midi_pitch_bend(0, self.config.pitch_bend_range),
                                                 });
                                                 if let Some(ref mut note) = self.current_note {
                                                     note.bend_cents = 0;
@@ -701,8 +804,12 @@ impl GuitarInput {
                                             {
                                                 if (cents_from_base - note_bend).abs() > 3 {
                                                     events.push(MidiEvent::PitchBend {
-                                                        channel: 0,
+                                                        channel,
                                                         cents: cents_from_base,
+                                                    });
+                                                    events.push(MidiEvent::MidiPitchBend {
+                                                        channel,
+                                                        value: cents_to_midi_pitch_bend(cents_from_base, self.config.pitch_bend_range),
                                                     });
                                                     if let Some(ref mut note) = self.current_note {
                                                         note.bend_cents = cents_from_base;
@@ -711,8 +818,12 @@ impl GuitarInput {
                                                 }
                                             } else if cents_from_base.abs() <= 5 && note_bend != 0 {
                                                 events.push(MidiEvent::PitchBend {
-                                                    channel: 0,
+                                                    channel,
                                                     cents: 0,
+                                                });
+                                                events.push(MidiEvent::MidiPitchBend {
+                                                    channel,
+                                                    value: cents_to_midi_pitch_bend(0, self.config.pitch_bend_range),
                                                 });
                                                 if let Some(ref mut note) = self.current_note {
                                                     note.bend_cents = 0;
@@ -728,8 +839,12 @@ impl GuitarInput {
                                         {
                                             if (cents_from_base - note_bend).abs() > 3 {
                                                 events.push(MidiEvent::PitchBend {
-                                                    channel: 0,
+                                                    channel,
                                                     cents: cents_from_base,
+                                                });
+                                                events.push(MidiEvent::MidiPitchBend {
+                                                    channel,
+                                                    value: cents_to_midi_pitch_bend(cents_from_base, self.config.pitch_bend_range),
                                                 });
                                                 if let Some(ref mut note) = self.current_note {
                                                     note.bend_cents = cents_from_base;
@@ -738,13 +853,26 @@ impl GuitarInput {
                                             }
                                         } else if cents_from_base.abs() <= 5 && note_bend != 0 {
                                             events.push(MidiEvent::PitchBend {
-                                                channel: 0,
+                                                channel,
                                                 cents: 0,
+                                            });
+                                            events.push(MidiEvent::MidiPitchBend {
+                                                channel,
+                                                value: cents_to_midi_pitch_bend(0, self.config.pitch_bend_range),
                                             });
                                             if let Some(ref mut note) = self.current_note {
                                                 note.bend_cents = 0;
                                             }
                                         }
+                                    }
+                                }
+
+                                // Channel pressure (aftertouch) from sustain RMS
+                                if self.config.aftertouch_enabled {
+                                    let pressure = rms_to_pressure(rms, noise_floor);
+                                    if pressure != self.last_pressure {
+                                        events.push(MidiEvent::ChannelPressure { channel, pressure });
+                                        self.last_pressure = pressure;
                                     }
                                 }
                             }
@@ -765,9 +893,20 @@ impl GuitarInput {
                         {
                             // Decay -> Idle: silence or timeout
                             if let Some(prev) = self.current_note.take() {
+                                let decay_channel = if self.config.per_string_channels {
+                                    prev.string_idx.unwrap_or(0) as u8
+                                } else {
+                                    0
+                                };
+                                let release_vel = if let Some(cal) = &self.calibration {
+                                    rms_to_velocity_calibrated(self.last_sustain_rms, cal.noise_floor, cal.signal_peak)
+                                } else {
+                                    rms_to_velocity(self.last_sustain_rms)
+                                };
                                 events.push(MidiEvent::NoteOff {
-                                    channel: 0,
+                                    channel: decay_channel,
                                     note: prev.midi_note,
+                                    velocity: release_vel,
                                 });
                             }
                             self.note_state = NoteState::Idle;
@@ -789,9 +928,20 @@ impl GuitarInput {
                     NoteState::Sustain | NoteState::Decay => {
                         if rms < noise_floor * 2.0 {
                             if let Some(prev) = self.current_note.take() {
+                                let nopitch_channel = if self.config.per_string_channels {
+                                    prev.string_idx.unwrap_or(0) as u8
+                                } else {
+                                    0
+                                };
+                                let release_vel = if let Some(cal) = &self.calibration {
+                                    rms_to_velocity_calibrated(self.last_sustain_rms, cal.noise_floor, cal.signal_peak)
+                                } else {
+                                    rms_to_velocity(self.last_sustain_rms)
+                                };
                                 events.push(MidiEvent::NoteOff {
-                                    channel: 0,
+                                    channel: nopitch_channel,
                                     note: prev.midi_note,
+                                    velocity: release_vel,
                                 });
                             }
                             self.note_state = NoteState::Idle;
@@ -1562,11 +1712,47 @@ pub fn compute_rms(samples: &[f32]) -> f32 {
 }
 
 /// Convert RMS to MIDI velocity (1-127).
+///
+/// Fallback when no calibration data is available. Uses a hardcoded
+/// range mapping [0.01, 0.5] to [30, 127].
 pub fn rms_to_velocity(rms: f32) -> u8 {
     // Map RMS range [0.01, 0.5] to velocity [30, 127].
     let normalized = ((rms - 0.01) / 0.49).clamp(0.0, 1.0);
     let vel = 30.0 + normalized * 97.0;
     (vel as u8).clamp(1, 127)
+}
+
+/// Convert RMS to MIDI velocity using calibrated range and power curve.
+///
+/// Uses calibration data for per-guitar dynamic range. The power curve
+/// (gamma 0.5) gives more dynamic range in the soft-to-medium region,
+/// which matches human perception better than linear.
+pub fn rms_to_velocity_calibrated(rms: f32, noise_floor: f32, signal_peak: f32) -> u8 {
+    let floor = noise_floor.max(0.001);
+    let ceiling = signal_peak.max(floor + 0.01);
+    let normalized = ((rms - floor) / (ceiling - floor)).clamp(0.0, 1.0);
+
+    // Power curve (gamma 0.5): more dynamic range in soft-to-medium region
+    let curved = normalized.powf(0.5);
+
+    let vel = 1.0 + curved * 126.0;
+    (vel as u8).clamp(1, 127)
+}
+
+/// Convert cents offset to 14-bit MIDI pitch bend value.
+///
+/// MIDI pitch bend is 14-bit (0-16383, center at 8192).
+/// `range_semitones` is the pitch bend range in semitones (typically 2).
+pub fn cents_to_midi_pitch_bend(cents: i16, range_semitones: u8) -> u16 {
+    let range_cents = range_semitones as f32 * 100.0;
+    let normalized = (cents as f32 / range_cents).clamp(-1.0, 1.0);
+    ((normalized * 8191.0) + 8192.0).clamp(0.0, 16383.0) as u16
+}
+
+/// Convert sustain RMS to channel pressure (aftertouch) value (0-127).
+pub fn rms_to_pressure(rms: f32, noise_floor: f32) -> u8 {
+    let normalized = ((rms - noise_floor) / (0.3 - noise_floor)).clamp(0.0, 1.0);
+    (normalized * 127.0) as u8
 }
 
 /// Convert frequency to MIDI note and cents (re-export for convenience).
@@ -1913,6 +2099,9 @@ mod tests {
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
+            per_string_channels: true,
+            pitch_bend_range: 2,
+            aftertouch_enabled: false,
         };
         let mut pipeline = GuitarInput::new(config);
 
@@ -2280,6 +2469,9 @@ mod tests {
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
+            per_string_channels: true,
+            pitch_bend_range: 2,
+            aftertouch_enabled: false,
         };
         let mut pipeline = GuitarInput::new(config);
 
@@ -2640,6 +2832,148 @@ mod tests {
             pipeline.current_note.as_ref().unwrap().midi_note,
             69,
             "vibrato should not change the MIDI note"
+        );
+    }
+
+    // -- rms_to_velocity_calibrated tests ──────────────────────────────
+
+    #[test]
+    fn calibrated_velocity_at_noise_floor_is_minimum() {
+        let vel = rms_to_velocity_calibrated(0.001, 0.001, 0.5);
+        assert_eq!(vel, 1, "at noise floor should give minimum velocity");
+    }
+
+    #[test]
+    fn calibrated_velocity_at_signal_peak_is_maximum() {
+        let vel = rms_to_velocity_calibrated(0.5, 0.001, 0.5);
+        assert_eq!(vel, 127, "at signal peak should give maximum velocity");
+    }
+
+    #[test]
+    fn calibrated_velocity_mid_range_uses_power_curve() {
+        // With gamma 0.5, normalized 0.25 -> curved sqrt(0.25) = 0.5
+        // vel = 1 + 0.5 * 126 = 64
+        let vel = rms_to_velocity_calibrated(0.126, 0.001, 0.5);
+        // 0.126 normalized in [0.001, 0.5]: (0.126-0.001)/(0.5-0.001) = 0.25
+        // curved = sqrt(0.25) = 0.5, vel = 1 + 0.5*126 = 64
+        assert!(vel >= 60 && vel <= 68, "mid-range calibrated vel should be ~64, got {}", vel);
+    }
+
+    #[test]
+    fn calibrated_velocity_narrow_range() {
+        // Very narrow dynamic range: floor 0.1, peak 0.15
+        let soft = rms_to_velocity_calibrated(0.10, 0.10, 0.15);
+        let loud = rms_to_velocity_calibrated(0.15, 0.10, 0.15);
+        assert_eq!(soft, 1, "at floor of narrow range");
+        assert_eq!(loud, 127, "at peak of narrow range");
+    }
+
+    #[test]
+    fn calibrated_velocity_below_floor_clamps() {
+        let vel = rms_to_velocity_calibrated(0.0, 0.01, 0.5);
+        assert_eq!(vel, 1, "below noise floor should clamp to 1");
+    }
+
+    // -- cents_to_midi_pitch_bend tests ───────────────────────────────
+
+    #[test]
+    fn pitch_bend_center() {
+        let val = cents_to_midi_pitch_bend(0, 2);
+        assert_eq!(val, 8192, "0 cents should be center (8192)");
+    }
+
+    #[test]
+    fn pitch_bend_max_up() {
+        // 200 cents = full range with range_semitones=2
+        let val = cents_to_midi_pitch_bend(200, 2);
+        assert_eq!(val, 16383, "full bend up should be 16383");
+    }
+
+    #[test]
+    fn pitch_bend_max_down() {
+        let val = cents_to_midi_pitch_bend(-200, 2);
+        // normalized = -1.0, value = -8191 + 8192 = 1
+        assert_eq!(val, 1, "full bend down should be 1");
+    }
+
+    #[test]
+    fn pitch_bend_clamps_beyond_range() {
+        // 400 cents with range 2 semitones (200 cents) should clamp
+        let val = cents_to_midi_pitch_bend(400, 2);
+        assert_eq!(val, 16383, "beyond range should clamp to max");
+
+        let val = cents_to_midi_pitch_bend(-400, 2);
+        assert_eq!(val, 1, "beyond range should clamp to min");
+    }
+
+    #[test]
+    fn pitch_bend_half_up() {
+        // 100 cents = half of 200 cent range
+        let val = cents_to_midi_pitch_bend(100, 2);
+        // normalized = 0.5, value = 0.5*8191 + 8192 = 12287.5 -> 12287
+        assert!(val > 12000 && val < 12500, "half bend up should be ~12288, got {}", val);
+    }
+
+    #[test]
+    fn pitch_bend_different_range() {
+        // 200 cents with range 4 semitones (400 cents) = half
+        let val = cents_to_midi_pitch_bend(200, 4);
+        assert!(val > 12000 && val < 12500, "200c in 4-semitone range should be ~12288, got {}", val);
+    }
+
+    // -- rms_to_pressure tests ────────────────────────────────────────
+
+    #[test]
+    fn pressure_at_noise_floor_is_zero() {
+        let p = rms_to_pressure(0.01, 0.01);
+        assert_eq!(p, 0, "at noise floor should be 0 pressure");
+    }
+
+    #[test]
+    fn pressure_at_max_is_127() {
+        let p = rms_to_pressure(0.3, 0.01);
+        assert_eq!(p, 127, "at 0.3 RMS should be max pressure");
+    }
+
+    #[test]
+    fn pressure_mid_range() {
+        // midpoint: rms = (0.01 + 0.3) / 2 = 0.155
+        // normalized = (0.155 - 0.01) / (0.3 - 0.01) = 0.5
+        let p = rms_to_pressure(0.155, 0.01);
+        assert!(p >= 60 && p <= 67, "mid-range pressure should be ~63, got {}", p);
+    }
+
+    #[test]
+    fn pressure_below_floor_clamps() {
+        let p = rms_to_pressure(0.0, 0.01);
+        assert_eq!(p, 0, "below noise floor should clamp to 0");
+    }
+
+    // -- Attack peak measurement test ─────────────────────────────────
+
+    #[test]
+    fn attack_peak_uses_first_5ms() {
+        // 5ms at 48000 Hz = 240 samples
+        let sr = 48000;
+        let attack_samples = (sr as f32 * 0.005) as usize;
+        assert_eq!(attack_samples, 240, "5ms at 48kHz should be 240 samples");
+
+        // Create a buffer where the first 240 samples are loud, rest is quiet
+        let mut buf = vec![0.0f32; 1024];
+        for i in 0..240 {
+            buf[i] = 0.5 * (2.0 * PI * 440.0 * i as f32 / sr as f32).sin();
+        }
+
+        let attack_end = attack_samples.min(buf.len());
+        let attack_rms = compute_rms(&buf[..attack_end]);
+        let full_rms = compute_rms(&buf);
+
+        // Attack RMS should be significantly higher than full-buffer RMS
+        // because most of the buffer is silent
+        assert!(
+            attack_rms > full_rms * 1.5,
+            "attack RMS ({:.4}) should be much higher than full-buffer RMS ({:.4})",
+            attack_rms, full_rms
         );
     }
 }
