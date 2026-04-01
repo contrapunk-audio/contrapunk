@@ -7,12 +7,15 @@
 //!
 //! # Pipeline
 //!
-//! 1. **Onset detection** -- RMS spike with cooldown
-//! 2. **Pitch detection** -- McLeod (from `pitch_detection` crate)
-//! 3. **Harmonic measurement** -- Goertzel at integer multiples of fundamental
-//! 4. **String identification** -- inharmonicity B-coefficient matching
-//! 5. **Bend tracking** -- continuous pitch monitoring between onsets
-//! 6. **MIDI event generation** -- NoteOn / NoteOff / PitchBend
+//! 1. **Onset detection** -- RMS spike + spectral flux with cooldown
+//! 2. **Note state machine** -- Idle/Attack/Sustain/Decay hysteresis
+//! 3. **Pitch detection** -- McLeod (from `pitch_detection` crate) with multi-frame voting
+//! 4. **Octave error correction** -- detects harmonic lock / subharmonic errors
+//! 5. **Harmonic measurement** -- Goertzel at integer multiples of fundamental
+//! 6. **String identification** -- inharmonicity B-coefficient matching + plausibility filter
+//! 7. **Note-off gating** -- suppress previous note's frequency on new onset
+//! 8. **Bend tracking** -- continuous pitch monitoring between onsets
+//! 9. **MIDI event generation** -- NoteOn / NoteOff / PitchBend
 
 use super::guitar::{midi_to_freq, midi_to_note_name, STRING_BASE_PITCH, STRING_NAMES};
 use super::pitch::freq_to_midi;
@@ -42,6 +45,12 @@ pub struct GuitarInputConfig {
     pub cooldown_samples: usize,
     /// Number of harmonics to measure for inharmonicity.
     pub n_harmonics: usize,
+    /// Input gain normalization factor (0.0-2.0, default 1.0).
+    /// Set by calibration to normalize pluck levels.
+    pub input_gain: f32,
+    /// Spectral flux threshold for onset detection.
+    /// Onset triggers when spectral flux exceeds this value.
+    pub flux_threshold: f32,
 }
 
 impl Default for GuitarInputConfig {
@@ -57,8 +66,38 @@ impl Default for GuitarInputConfig {
             min_clarity: 0.40,
             cooldown_samples: 4800, // 100ms @ 48kHz
             n_harmonics: 6,
+            input_gain: 1.0,
+            flux_threshold: 0.5,
         }
     }
+}
+
+impl GuitarInputConfig {
+    /// Convert latency_ms to buffer_size in samples.
+    ///
+    /// Rounds to the nearest power of 2 for FFT efficiency, clamped to [256, 4096].
+    pub fn buffer_size_for_latency(latency_ms: f32, sample_rate: usize) -> usize {
+        let samples = (latency_ms / 1000.0 * sample_rate as f32) as usize;
+        samples.next_power_of_two().max(256).min(4096)
+    }
+}
+
+// ── Note State Machine ────────────────────────────────────────────
+
+/// Hysteresis state machine for note detection.
+///
+/// Prevents flickering between notes by requiring stable pitch confirmation
+/// before emitting events, and proper decay detection before re-triggering.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum NoteState {
+    /// Waiting for onset (silence or between notes).
+    Idle,
+    /// Onset detected, gathering pitch info for confirmation.
+    Attack,
+    /// Note confirmed, tracking for bends. No note change unless new Attack.
+    Sustain,
+    /// RMS dropping, waiting for silence or timeout.
+    Decay,
 }
 
 // ── Calibration types ──────────────────────────────────────────────
@@ -74,6 +113,10 @@ pub struct StringProfile {
     pub open_frequency: f32,
     /// Measured inharmonicity B coefficient.
     pub inharmonicity_b: f32,
+    /// Inharmonicity B measured at fret 5 (optional, for interpolation).
+    pub inharmonicity_b_fret5: Option<f32>,
+    /// Inharmonicity B measured at fret 12 (optional, for interpolation).
+    pub inharmonicity_b_fret12: Option<f32>,
     /// First N harmonic magnitude ratios (h2/h1, h3/h1, ...).
     pub harmonic_ratios: Vec<f32>,
 }
@@ -148,6 +191,26 @@ pub struct GuitarInput {
     cooldown_remaining: usize,
     ring_buffer: Vec<f32>,
     ring_pos: usize,
+
+    // Note state machine (#2)
+    note_state: NoteState,
+    /// Sample counter for state timeouts.
+    state_samples: usize,
+    /// Total samples processed (monotonic counter).
+    total_samples: usize,
+
+    // Note-off gating / anti-resonance (#1)
+    /// After detecting a new onset, suppress the previous note's frequency.
+    suppress_frequency: Option<f32>,
+    /// Sample count at which suppression expires.
+    suppress_until: usize,
+
+    // Multi-frame pitch voting (#7)
+    pitch_history: [Option<u8>; 3],
+    pitch_history_idx: usize,
+
+    // Spectral flux onset (#5)
+    prev_spectrum: Option<Vec<f32>>,
 }
 
 impl GuitarInput {
@@ -162,6 +225,14 @@ impl GuitarInput {
             cooldown_remaining: 0,
             ring_buffer: vec![0.0; buf_size],
             ring_pos: 0,
+            note_state: NoteState::Idle,
+            state_samples: 0,
+            total_samples: 0,
+            suppress_frequency: None,
+            suppress_until: 0,
+            pitch_history: [None; 3],
+            pitch_history_idx: 0,
+            prev_spectrum: None,
         }
     }
 
@@ -190,6 +261,11 @@ impl GuitarInput {
         self.current_note.as_ref()
     }
 
+    /// Get the current note state machine state.
+    pub fn note_state(&self) -> NoteState {
+        self.note_state
+    }
+
     // ── Main processing ────────────────────────────────────────────
 
     /// Process a block of mono audio samples and return any MIDI events.
@@ -199,10 +275,14 @@ impl GuitarInput {
     /// buffer accumulates samples and triggers analysis when full.
     pub fn process_block(&mut self, audio: &[f32]) -> Vec<MidiEvent> {
         let mut events = Vec::new();
+        let gain = self.config.input_gain;
 
         for &sample in audio {
-            self.ring_buffer[self.ring_pos] = sample;
+            // Apply input gain normalization (#8)
+            let gained_sample = sample * gain;
+            self.ring_buffer[self.ring_pos] = gained_sample;
             self.ring_pos = (self.ring_pos + 1) % self.config.buffer_size;
+            self.total_samples += 1;
 
             // Only analyze when the ring buffer wraps (one full window)
             if self.ring_pos == 0 {
@@ -222,10 +302,15 @@ impl GuitarInput {
         // 1. Compute RMS for onset detection
         let rms = compute_rms(&buf);
 
-        // 2. Onset detection with cooldown
-        let onset = self.detect_onset(rms);
+        // 2. Spectral flux onset detection (#5)
+        let flux = self.compute_spectral_flux(&buf);
 
-        // 3. Pitch detection (McLeod)
+        // 3. Onset detection: RMS spike OR spectral flux
+        let rms_onset = self.detect_onset(rms);
+        let flux_onset = flux > self.config.flux_threshold && self.cooldown_remaining == 0;
+        let onset = rms_onset || flux_onset;
+
+        // 4. Pitch detection (McLeod)
         let pitch_result = detect_pitch_mcleod(
             &buf,
             self.config.sample_rate,
@@ -238,76 +323,177 @@ impl GuitarInput {
                 .saturating_sub(self.config.buffer_size);
         }
 
+        // Advance state timer
+        self.state_samples += self.config.buffer_size;
+
+        // Sustain threshold for Decay transition
+        let sustain_threshold = self.config.onset_threshold * 0.3;
+        let noise_floor = self
+            .calibration
+            .as_ref()
+            .map(|c| c.noise_floor)
+            .unwrap_or(0.001);
+
         match pitch_result {
-            Some((freq, _clarity)) => {
+            Some((raw_freq, _clarity)) => {
+                // Apply octave error correction (#6) BEFORE freq_to_midi
+                let freq = self.correct_octave(raw_freq);
                 let (midi_note, cents) = freq_to_midi(freq);
 
-                if onset {
-                    // New note onset
-                    // End previous note first
-                    if let Some(prev) = &self.current_note {
-                        events.push(MidiEvent::NoteOff {
-                            channel: 0,
-                            note: prev.midi_note,
-                        });
+                // Check note-off gating (#1): suppress previous note's frequency
+                if self.is_suppressed(freq) {
+                    // Detected pitch is within suppression zone, ignore it
+                    self.prev_rms = rms;
+                    return events;
+                }
+
+                // Note state machine (#2) transitions
+                match self.note_state {
+                    NoteState::Idle => {
+                        if onset {
+                            // Idle -> Attack: onset detected
+                            self.note_state = NoteState::Attack;
+                            self.state_samples = 0;
+                            // Record pitch in voting history (#7)
+                            self.push_pitch(midi_note);
+                        }
                     }
+                    NoteState::Attack => {
+                        // Record pitch in voting history
+                        self.push_pitch(midi_note);
 
-                    // Velocity from RMS (map to 1-127)
-                    let velocity = rms_to_velocity(rms);
+                        // Attack timeout: if pitch not stable within 50ms, false trigger
+                        let attack_timeout_samples =
+                            (self.config.sample_rate as f32 * 0.05) as usize;
 
-                    // String identification
-                    let (string_idx, fret, string_conf) =
-                        self.identify_string_and_fret(&buf, freq, midi_note);
+                        if self.is_pitch_stable() {
+                            // Attack -> Sustain: pitch confirmed
+                            let stable_midi = self.pitch_history[0].unwrap_or(midi_note);
 
-                    let detected = DetectedNote {
-                        midi_note,
-                        frequency: freq,
-                        string_idx,
-                        fret,
-                        string_confidence: string_conf,
-                        velocity,
-                        bend_cents: cents as i16,
-                    };
+                            // End previous note first
+                            if let Some(prev) = &self.current_note {
+                                // Set up note-off gating (#1): suppress old frequency
+                                self.suppress_frequency = Some(prev.frequency);
+                                self.suppress_until = self.total_samples
+                                    + (self.config.sample_rate as f32 * 0.1) as usize;
 
-                    events.push(MidiEvent::NoteOn {
-                        channel: 0,
-                        note: midi_note,
-                        velocity,
-                    });
-
-                    self.current_note = Some(detected);
-                    self.cooldown_remaining = self.config.cooldown_samples;
-                } else if self.config.bends_enabled {
-                    // Sustain phase: track pitch bends
-                    if let Some(ref mut note) = self.current_note {
-                        if midi_note == note.midi_note {
-                            let new_bend = cents as i16;
-                            if (new_bend - note.bend_cents).abs() > 5 {
-                                events.push(MidiEvent::PitchBend {
+                                events.push(MidiEvent::NoteOff {
                                     channel: 0,
-                                    cents: new_bend,
+                                    note: prev.midi_note,
                                 });
-                                note.bend_cents = new_bend;
                             }
+
+                            // Velocity from RMS
+                            let velocity = rms_to_velocity(rms);
+
+                            // String identification with plausibility filter (#3)
+                            let (string_idx, fret, string_conf) =
+                                self.identify_string_and_fret(&buf, freq, stable_midi);
+
+                            let detected = DetectedNote {
+                                midi_note: stable_midi,
+                                frequency: freq,
+                                string_idx,
+                                fret,
+                                string_confidence: string_conf,
+                                velocity,
+                                bend_cents: cents as i16,
+                            };
+
+                            events.push(MidiEvent::NoteOn {
+                                channel: 0,
+                                note: stable_midi,
+                                velocity,
+                            });
+
+                            self.current_note = Some(detected);
+                            self.cooldown_remaining = self.config.cooldown_samples;
+                            self.note_state = NoteState::Sustain;
+                            self.state_samples = 0;
+                        } else if self.state_samples > attack_timeout_samples {
+                            // Attack -> Idle: false trigger
+                            self.note_state = NoteState::Idle;
+                            self.state_samples = 0;
+                            self.clear_pitch_history();
+                        }
+                    }
+                    NoteState::Sustain => {
+                        if onset {
+                            // Sustain -> Attack: re-pluck detected
+                            self.note_state = NoteState::Attack;
+                            self.state_samples = 0;
+                            self.clear_pitch_history();
+                            self.push_pitch(midi_note);
+                        } else if rms < sustain_threshold {
+                            // Sustain -> Decay: signal dropping
+                            self.note_state = NoteState::Decay;
+                            self.state_samples = 0;
+                        } else if self.config.bends_enabled {
+                            // Track pitch bends during sustain (no note change)
+                            if let Some(ref mut note) = self.current_note {
+                                if midi_note == note.midi_note {
+                                    let new_bend = cents as i16;
+                                    if (new_bend - note.bend_cents).abs() > 5 {
+                                        events.push(MidiEvent::PitchBend {
+                                            channel: 0,
+                                            cents: new_bend,
+                                        });
+                                        note.bend_cents = new_bend;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    NoteState::Decay => {
+                        let decay_timeout_samples =
+                            (self.config.sample_rate as f32 * 0.5) as usize;
+
+                        if onset {
+                            // New onset during decay -> Attack
+                            self.note_state = NoteState::Attack;
+                            self.state_samples = 0;
+                            self.clear_pitch_history();
+                            self.push_pitch(midi_note);
+                        } else if rms < noise_floor * 2.0
+                            || self.state_samples > decay_timeout_samples
+                        {
+                            // Decay -> Idle: silence or timeout
+                            if let Some(prev) = self.current_note.take() {
+                                events.push(MidiEvent::NoteOff {
+                                    channel: 0,
+                                    note: prev.midi_note,
+                                });
+                            }
+                            self.note_state = NoteState::Idle;
+                            self.state_samples = 0;
+                            self.clear_pitch_history();
                         }
                     }
                 }
             }
             None => {
-                // No pitch detected -- check for note-off
-                let noise_floor = self
-                    .calibration
-                    .as_ref()
-                    .map(|c| c.noise_floor)
-                    .unwrap_or(0.001);
-
-                if rms < noise_floor * 2.0 {
-                    if let Some(prev) = self.current_note.take() {
-                        events.push(MidiEvent::NoteOff {
-                            channel: 0,
-                            note: prev.midi_note,
-                        });
+                // No pitch detected
+                match self.note_state {
+                    NoteState::Attack => {
+                        // Lost pitch during attack -> Idle (false trigger)
+                        self.note_state = NoteState::Idle;
+                        self.state_samples = 0;
+                        self.clear_pitch_history();
                     }
+                    NoteState::Sustain | NoteState::Decay => {
+                        if rms < noise_floor * 2.0 {
+                            if let Some(prev) = self.current_note.take() {
+                                events.push(MidiEvent::NoteOff {
+                                    channel: 0,
+                                    note: prev.midi_note,
+                                });
+                            }
+                            self.note_state = NoteState::Idle;
+                            self.state_samples = 0;
+                            self.clear_pitch_history();
+                        }
+                    }
+                    NoteState::Idle => {}
                 }
             }
         }
@@ -326,6 +512,98 @@ impl GuitarInput {
         rms > self.config.onset_threshold && rms > self.prev_rms * 2.0
     }
 
+    // ── Octave error correction (#6) ──────────────────────────────
+
+    /// Correct octave jumps caused by harmonic lock or subharmonic detection.
+    ///
+    /// If the detected frequency is exactly an octave above the current note,
+    /// it is likely a harmonic lock and should be dropped an octave.
+    /// If exactly an octave below, it is a subharmonic and should be raised.
+    fn correct_octave(&self, detected_freq: f32) -> f32 {
+        if let Some(prev) = &self.current_note {
+            let ratio = detected_freq / prev.frequency;
+            // Jumped exactly an octave up -> probably harmonic lock
+            if (ratio - 2.0).abs() < 0.05 {
+                return detected_freq / 2.0;
+            }
+            // Jumped exactly an octave down -> probably subharmonic
+            if (ratio - 0.5).abs() < 0.05 {
+                return detected_freq * 2.0;
+            }
+        }
+        detected_freq
+    }
+
+    // ── Note-off gating / anti-resonance (#1) ─────────────────────
+
+    /// Check if a detected frequency is within the suppression zone.
+    ///
+    /// After a new onset, the previous note's string is still ringing.
+    /// Suppress that frequency for 100ms to prevent confusion.
+    fn is_suppressed(&self, freq: f32) -> bool {
+        if self.total_samples >= self.suppress_until {
+            return false;
+        }
+        if let Some(suppress_freq) = self.suppress_frequency {
+            // Check if within ±1 semitone of the suppressed frequency
+            let ratio = freq / suppress_freq;
+            let semitone_ratio = 2.0_f32.powf(1.0 / 12.0);
+            let lower = 1.0 / semitone_ratio;
+            let upper = semitone_ratio;
+            ratio >= lower && ratio <= upper
+        } else {
+            false
+        }
+    }
+
+    // ── Multi-frame pitch voting (#7) ─────────────────────────────
+
+    /// Push a detected MIDI note into the voting history.
+    fn push_pitch(&mut self, midi_note: u8) {
+        self.pitch_history[self.pitch_history_idx] = Some(midi_note);
+        self.pitch_history_idx = (self.pitch_history_idx + 1) % 3;
+    }
+
+    /// Check if the last 3 detected pitches agree.
+    fn is_pitch_stable(&self) -> bool {
+        let first = self.pitch_history[0];
+        first.is_some() && self.pitch_history.iter().all(|p| *p == first)
+    }
+
+    /// Clear the pitch voting history.
+    fn clear_pitch_history(&mut self) {
+        self.pitch_history = [None; 3];
+        self.pitch_history_idx = 0;
+    }
+
+    // ── Spectral flux onset detection (#5) ────────────────────────
+
+    /// Compute spectral flux between the previous and current spectrum.
+    ///
+    /// Uses Goertzel at a bank of frequencies spanning the guitar range (80-1200 Hz)
+    /// to build a coarse spectrum, then computes the half-wave rectified spectral
+    /// flux (only positive changes count).
+    fn compute_spectral_flux(&mut self, audio: &[f32]) -> f32 {
+        // Build a coarse spectrum using Goertzel at a bank of frequencies
+        let freqs: Vec<f32> = (0..24)
+            .map(|i| 80.0 * 2.0_f32.powf(i as f32 / 6.0)) // ~80Hz to ~1200Hz in quarter-tone steps
+            .collect();
+
+        let curr_spectrum: Vec<f32> = freqs
+            .iter()
+            .map(|&f| goertzel(audio, self.config.sample_rate, f))
+            .collect();
+
+        let flux = if let Some(ref prev) = self.prev_spectrum {
+            spectral_flux(prev, &curr_spectrum)
+        } else {
+            0.0
+        };
+
+        self.prev_spectrum = Some(curr_spectrum);
+        flux
+    }
+
     /// Identify string and fret from detected pitch + harmonic analysis.
     fn identify_string_and_fret(
         &self,
@@ -334,7 +612,7 @@ impl GuitarInput {
         midi_note: u8,
     ) -> (Option<usize>, Option<usize>, f32) {
         if let Some(ref cal) = self.calibration {
-            match identify_string(
+            match identify_string_with_plausibility(
                 audio,
                 fundamental,
                 midi_note,
@@ -342,6 +620,7 @@ impl GuitarInput {
                 self.config.sample_rate,
                 self.config.n_harmonics,
                 self.config.string_confidence_min,
+                self.current_note.as_ref(),
             ) {
                 Some((string_idx, confidence)) => {
                     let fret = midi_note
@@ -373,14 +652,18 @@ impl GuitarInput {
 
     // ── Calibration ────────────────────────────────────────────────
 
-    /// Calibrate a single string from captured open-string audio.
+    /// Calibrate a single string from captured audio.
     ///
     /// Extracts fundamental frequency, measures harmonics via Goertzel,
     /// and computes the inharmonicity B coefficient.
+    ///
+    /// If `fret` is `Some`, stores the B value for that fret position
+    /// (supports 0=open, 5=fret5, 12=fret12 for interpolation).
     pub fn calibrate_string(
         &self,
         string_idx: usize,
         audio: &[f32],
+        fret: Option<u8>,
     ) -> Option<StringProfile> {
         if string_idx >= 6 || audio.len() < self.config.buffer_size {
             return None;
@@ -412,6 +695,36 @@ impl GuitarInput {
         let h1 = harmonics.first().copied().unwrap_or(1.0).max(1e-10);
         let ratios: Vec<f32> = harmonics.iter().skip(1).map(|&h| h / h1).collect();
 
+        // Build profile with optional fretted B values (#4)
+        let (b_open, b_fret5, b_fret12) = match fret {
+            Some(0) | None => (b, None, None),
+            Some(5) => {
+                // Return existing open B, set fret5
+                let open_b = self
+                    .calibration
+                    .as_ref()
+                    .and_then(|c| c.string_profiles.get(string_idx))
+                    .map(|p| p.inharmonicity_b)
+                    .unwrap_or(b);
+                (open_b, Some(b), None)
+            }
+            Some(12) => {
+                let open_b = self
+                    .calibration
+                    .as_ref()
+                    .and_then(|c| c.string_profiles.get(string_idx))
+                    .map(|p| p.inharmonicity_b)
+                    .unwrap_or(b);
+                let fret5_b = self
+                    .calibration
+                    .as_ref()
+                    .and_then(|c| c.string_profiles.get(string_idx))
+                    .and_then(|p| p.inharmonicity_b_fret5);
+                (open_b, fret5_b, Some(b))
+            }
+            _ => (b, None, None),
+        };
+
         Some(StringProfile {
             name: STRING_NAMES.get(string_idx).copied().unwrap_or("?"),
             open_midi: STRING_BASE_PITCH
@@ -419,7 +732,9 @@ impl GuitarInput {
                 .copied()
                 .unwrap_or(40),
             open_frequency: freq,
-            inharmonicity_b: b,
+            inharmonicity_b: b_open,
+            inharmonicity_b_fret5: b_fret5,
+            inharmonicity_b_fret12: b_fret12,
             harmonic_ratios: ratios,
         })
     }
@@ -428,6 +743,89 @@ impl GuitarInput {
     pub fn measure_noise_floor(audio: &[f32]) -> f32 {
         compute_rms(audio)
     }
+
+    /// Compute an optimal input_gain from calibration peak measurement.
+    ///
+    /// Targets ~0.8 peak amplitude so the loudest pluck has headroom
+    /// without being too quiet.
+    pub fn compute_input_gain(peak_pluck_level: f32) -> f32 {
+        if peak_pluck_level <= 0.0 {
+            return 1.0;
+        }
+        (0.8 / peak_pluck_level).clamp(0.1, 2.0)
+    }
+}
+
+// ── Plausibility filter (#3) ──────────────────────────────────────
+
+/// Check if a MIDI note is physically playable on a given string.
+///
+/// Returns true if the note falls between the open string pitch and
+/// 22 frets above it (standard guitar range).
+pub fn is_plausible(midi_note: u8, string_idx: usize) -> bool {
+    if string_idx >= STRING_BASE_PITCH.len() {
+        return false;
+    }
+    let open = STRING_BASE_PITCH[string_idx];
+    midi_note >= open && midi_note <= open + 22
+}
+
+/// Compute a plausibility score for assigning a MIDI note to a string.
+///
+/// Takes into account:
+/// - Physical playability (must be on frets 0-22)
+/// - Lower fret preference (more common in practice)
+/// - Fret proximity bonus (prefer small jumps from previous note)
+pub fn plausibility_score(
+    midi_note: u8,
+    string_idx: usize,
+    prev_note: Option<&DetectedNote>,
+) -> f32 {
+    if !is_plausible(midi_note, string_idx) {
+        return 0.0;
+    }
+
+    let open = STRING_BASE_PITCH[string_idx];
+    let fret = midi_note - open;
+    let mut score = 1.0;
+
+    // Prefer lower fret positions (more common in practice)
+    score -= fret as f32 * 0.01;
+
+    // Fret proximity bonus if we have a previous note
+    if let Some(prev) = prev_note {
+        if let Some(prev_fret) = prev.fret {
+            let fret_distance = (fret as i16 - prev_fret as i16).unsigned_abs();
+            if fret_distance <= 5 {
+                score += 0.2;
+            }
+        }
+    }
+
+    score
+}
+
+// ── Spectral flux helper ──────────────────────────────────────────
+
+/// Compute half-wave rectified spectral flux between two spectra.
+///
+/// Only positive changes (increases in energy) contribute. This makes
+/// the detector sensitive to new energy appearing (onsets) rather than
+/// energy disappearing (note decay).
+pub fn spectral_flux(prev_spectrum: &[f32], curr_spectrum: &[f32]) -> f32 {
+    prev_spectrum
+        .iter()
+        .zip(curr_spectrum.iter())
+        .map(|(p, c)| {
+            let diff = c - p;
+            if diff > 0.0 {
+                diff * diff
+            } else {
+                0.0
+            } // half-wave rectified
+        })
+        .sum::<f32>()
+        .sqrt()
 }
 
 // ── Goertzel algorithm ─────────────────────────────────────────────
@@ -535,19 +933,14 @@ pub fn compute_inharmonicity_b(audio: &[f32], fundamental: f32, sample_rate: usi
     }
 }
 
-// ── String identification ──────────────────────────────────────────
+// ── String identification with plausibility ───────────────────────
 
 /// Identify which string produced a note by comparing measured
-/// inharmonicity against calibrated per-string B coefficients.
-///
-/// For each candidate string:
-///   1. Check that the MIDI note is playable (>= open, <= open+22)
-///   2. Compute expected B at the detected fret position
-///   3. Compare with measured B from the audio
-///   4. Return the best match above the confidence threshold
+/// inharmonicity against calibrated per-string B coefficients,
+/// with plausibility filtering (#3) and fret proximity scoring.
 ///
 /// Returns `(string_idx, confidence)` or `None`.
-pub fn identify_string(
+pub fn identify_string_with_plausibility(
     audio: &[f32],
     fundamental: f32,
     midi_note: u8,
@@ -555,6 +948,7 @@ pub fn identify_string(
     sample_rate: usize,
     n_harmonics: usize,
     confidence_min: f32,
+    prev_note: Option<&DetectedNote>,
 ) -> Option<(usize, f32)> {
     // Measure actual inharmonicity from the audio
     let measured_b = compute_inharmonicity_b(audio, fundamental, sample_rate);
@@ -572,18 +966,15 @@ pub fn identify_string(
     let mut best_confidence = 0.0f32;
 
     for (idx, profile) in profiles.iter().enumerate() {
-        // Plausibility: note must be playable on this string
-        if midi_note < profile.open_midi || midi_note > profile.open_midi + 22 {
+        // Plausibility filter (#3): reject impossible fret combinations
+        if !is_plausible(midi_note, idx) {
             continue;
         }
 
         let fret = midi_note - profile.open_midi;
 
-        // Inharmonicity increases with fret position (shorter string).
-        // B(fret) ~ B(open) * (L_open / L_fret)^2
-        // L_fret / L_open = 2^(-fret/12), so L_open/L_fret = 2^(fret/12)
-        // B(fret) = B(open) * 2^(fret/6)
-        let expected_b = profile.inharmonicity_b * 2.0f32.powf(fret as f32 / 6.0);
+        // Interpolate expected B based on fret position (#4)
+        let expected_b = interpolate_b(profile, fret);
 
         // B similarity: closer is better (log scale, since B can vary by orders)
         let b_ratio = if measured_b > 0.0 && expected_b > 0.0 {
@@ -615,8 +1006,11 @@ pub fn identify_string(
         // Fret preference: prefer lower fret positions
         let fret_bonus = 1.0 - (fret as f32 * 0.02).min(0.3);
 
-        // Combined confidence
-        let confidence = b_ratio * 0.5 + harmonic_sim * 0.3 + fret_bonus * 0.2;
+        // Plausibility score (#3): includes fret proximity
+        let plaus = plausibility_score(midi_note, idx, prev_note);
+
+        // Combined confidence (weight plausibility into the mix)
+        let confidence = b_ratio * 0.4 + harmonic_sim * 0.25 + fret_bonus * 0.15 + plaus * 0.2;
 
         if confidence > best_confidence && confidence >= confidence_min {
             best_confidence = confidence;
@@ -625,6 +1019,71 @@ pub fn identify_string(
     }
 
     best_string.map(|s| (s, best_confidence))
+}
+
+/// Original identify_string function for backward compatibility.
+///
+/// Delegates to `identify_string_with_plausibility` without previous note context.
+pub fn identify_string(
+    audio: &[f32],
+    fundamental: f32,
+    midi_note: u8,
+    profiles: &[StringProfile; 6],
+    sample_rate: usize,
+    n_harmonics: usize,
+    confidence_min: f32,
+) -> Option<(usize, f32)> {
+    identify_string_with_plausibility(
+        audio,
+        fundamental,
+        midi_note,
+        profiles,
+        sample_rate,
+        n_harmonics,
+        confidence_min,
+        None,
+    )
+}
+
+/// Interpolate the expected inharmonicity B for a fret position.
+///
+/// Uses calibrated B values at open, fret 5, and fret 12 if available.
+/// Falls back to the theoretical model: B(fret) = B(open) * 2^(fret/6).
+fn interpolate_b(profile: &StringProfile, fret: u8) -> f32 {
+    let b_open = profile.inharmonicity_b;
+
+    // If we have fret-specific measurements, use linear interpolation
+    match (profile.inharmonicity_b_fret5, profile.inharmonicity_b_fret12) {
+        (Some(b5), Some(b12)) => {
+            if fret <= 5 {
+                // Interpolate between open and fret 5
+                let t = fret as f32 / 5.0;
+                b_open + t * (b5 - b_open)
+            } else if fret <= 12 {
+                // Interpolate between fret 5 and fret 12
+                let t = (fret as f32 - 5.0) / 7.0;
+                b5 + t * (b12 - b5)
+            } else {
+                // Extrapolate beyond fret 12 using the fret5-fret12 slope
+                let slope = (b12 - b5) / 7.0;
+                b12 + slope * (fret as f32 - 12.0)
+            }
+        }
+        (Some(b5), None) => {
+            if fret <= 5 {
+                let t = fret as f32 / 5.0;
+                b_open + t * (b5 - b_open)
+            } else {
+                // Extrapolate using the open-fret5 slope
+                let slope = (b5 - b_open) / 5.0;
+                b5 + slope * (fret as f32 - 5.0)
+            }
+        }
+        _ => {
+            // No fretted calibration data, use theoretical model
+            b_open * 2.0f32.powf(fret as f32 / 6.0)
+        }
+    }
 }
 
 // ── Utility functions ──────────────────────────────────────────────
@@ -846,6 +1305,373 @@ mod tests {
         assert_eq!(f, 0, "open");
     }
 
+    // -- is_plausible tests (#3) ────────────────────────────────────
+
+    #[test]
+    fn plausible_open_strings() {
+        // Each open string's own pitch is plausible on that string
+        for (idx, &open) in STRING_BASE_PITCH.iter().enumerate() {
+            assert!(is_plausible(open, idx), "open string {} should be plausible on string {}", open, idx);
+        }
+    }
+
+    #[test]
+    fn plausible_high_fret() {
+        // Fret 22 on Low E: MIDI 40 + 22 = 62
+        assert!(is_plausible(62, 0), "fret 22 on Low E should be plausible");
+    }
+
+    #[test]
+    fn implausible_too_low() {
+        // MIDI 39 is below Low E open (40)
+        assert!(!is_plausible(39, 0), "MIDI 39 is below Low E open");
+    }
+
+    #[test]
+    fn implausible_too_high() {
+        // MIDI 63 is fret 23 on Low E (40 + 23 = 63) -- beyond 22 frets
+        assert!(!is_plausible(63, 0), "fret 23 is beyond 22 frets");
+    }
+
+    #[test]
+    fn implausible_wrong_string() {
+        // MIDI 40 (E2) is not plausible on string 5 (high E, open 64)
+        assert!(!is_plausible(40, 5), "E2 is not playable on high E string");
+    }
+
+    #[test]
+    fn implausible_invalid_string() {
+        // String index 6 is out of range
+        assert!(!is_plausible(60, 6), "string index 6 is invalid");
+    }
+
+    // -- correct_octave tests (#6) ──────────────────────────────────
+
+    #[test]
+    fn correct_octave_drops_harmonic_lock() {
+        let mut pipeline = GuitarInput::with_defaults();
+        // Set a current note at A2 = 110 Hz
+        pipeline.current_note = Some(DetectedNote {
+            midi_note: 45,
+            frequency: 110.0,
+            string_idx: Some(1),
+            fret: Some(0),
+            string_confidence: 0.8,
+            velocity: 80,
+            bend_cents: 0,
+        });
+
+        // Detected 220 Hz (octave up) -> should correct to 110 Hz
+        let corrected = pipeline.correct_octave(220.0);
+        assert!(
+            (corrected - 110.0).abs() < 1.0,
+            "should drop octave from 220 to ~110, got {}",
+            corrected
+        );
+    }
+
+    #[test]
+    fn correct_octave_raises_subharmonic() {
+        let mut pipeline = GuitarInput::with_defaults();
+        pipeline.current_note = Some(DetectedNote {
+            midi_note: 45,
+            frequency: 110.0,
+            string_idx: Some(1),
+            fret: Some(0),
+            string_confidence: 0.8,
+            velocity: 80,
+            bend_cents: 0,
+        });
+
+        // Detected 55 Hz (octave down) -> should correct to 110 Hz
+        let corrected = pipeline.correct_octave(55.0);
+        assert!(
+            (corrected - 110.0).abs() < 1.0,
+            "should raise from 55 to ~110, got {}",
+            corrected
+        );
+    }
+
+    #[test]
+    fn correct_octave_no_change_for_normal_interval() {
+        let mut pipeline = GuitarInput::with_defaults();
+        pipeline.current_note = Some(DetectedNote {
+            midi_note: 45,
+            frequency: 110.0,
+            string_idx: Some(1),
+            fret: Some(0),
+            string_confidence: 0.8,
+            velocity: 80,
+            bend_cents: 0,
+        });
+
+        // Detected 130 Hz (not an exact octave) -> no correction
+        let corrected = pipeline.correct_octave(130.0);
+        assert!(
+            (corrected - 130.0).abs() < 0.01,
+            "should not change 130 Hz, got {}",
+            corrected
+        );
+    }
+
+    #[test]
+    fn correct_octave_no_current_note() {
+        let pipeline = GuitarInput::with_defaults();
+        // No current note, no correction
+        let corrected = pipeline.correct_octave(220.0);
+        assert_eq!(corrected, 220.0, "no current note means no correction");
+    }
+
+    // -- NoteState transition tests (#2) ────────────────────────────
+
+    #[test]
+    fn note_state_starts_idle() {
+        let pipeline = GuitarInput::with_defaults();
+        assert_eq!(pipeline.note_state(), NoteState::Idle);
+    }
+
+    #[test]
+    fn note_state_transitions_idle_to_attack_on_loud_signal() {
+        let sr = 48000;
+        let config = GuitarInputConfig {
+            buffer_size: 1024,
+            sample_rate: sr,
+            onset_threshold: 0.01,
+            string_confidence_min: 0.3,
+            bends_enabled: false,
+            legato_enabled: false,
+            filter_enabled: false,
+            min_clarity: 0.3,
+            cooldown_samples: 1024,
+            n_harmonics: 6,
+            input_gain: 1.0,
+            flux_threshold: 0.5,
+        };
+        let mut pipeline = GuitarInput::new(config);
+
+        // Feed silence first
+        let silence = vec![0.0f32; 1024];
+        pipeline.process_block(&silence);
+        assert_eq!(pipeline.note_state(), NoteState::Idle);
+
+        // Feed a loud signal -- should transition to Attack
+        let loud: Vec<f32> = sine_wave(440.0, sr, 1024)
+            .into_iter()
+            .map(|s| s * 0.5)
+            .collect();
+        pipeline.process_block(&loud);
+
+        // After one loud window, should be in Attack (or Sustain if pitch is stable fast)
+        assert!(
+            pipeline.note_state() == NoteState::Attack
+                || pipeline.note_state() == NoteState::Sustain,
+            "should be Attack or Sustain after loud signal, got {:?}",
+            pipeline.note_state()
+        );
+    }
+
+    // -- Multi-frame voting tests (#7) ──────────────────────────────
+
+    #[test]
+    fn pitch_voting_requires_three_agreements() {
+        let mut pipeline = GuitarInput::with_defaults();
+
+        // Not stable with no history
+        assert!(!pipeline.is_pitch_stable());
+
+        // Push first note
+        pipeline.push_pitch(60);
+        assert!(!pipeline.is_pitch_stable());
+
+        // Push second (same)
+        pipeline.push_pitch(60);
+        assert!(!pipeline.is_pitch_stable());
+
+        // Push third (same) -> stable
+        pipeline.push_pitch(60);
+        assert!(pipeline.is_pitch_stable());
+    }
+
+    #[test]
+    fn pitch_voting_not_stable_with_disagreement() {
+        let mut pipeline = GuitarInput::with_defaults();
+
+        pipeline.push_pitch(60);
+        pipeline.push_pitch(60);
+        pipeline.push_pitch(61); // disagreement!
+
+        assert!(!pipeline.is_pitch_stable());
+    }
+
+    #[test]
+    fn pitch_voting_clears_properly() {
+        let mut pipeline = GuitarInput::with_defaults();
+
+        pipeline.push_pitch(60);
+        pipeline.push_pitch(60);
+        pipeline.push_pitch(60);
+        assert!(pipeline.is_pitch_stable());
+
+        pipeline.clear_pitch_history();
+        assert!(!pipeline.is_pitch_stable());
+    }
+
+    // -- spectral_flux tests (#5) ───────────────────────────────────
+
+    #[test]
+    fn spectral_flux_zero_for_identical_spectra() {
+        let spec = vec![1.0, 2.0, 3.0, 4.0];
+        let flux = spectral_flux(&spec, &spec);
+        assert!(flux.abs() < 1e-10, "identical spectra should have zero flux, got {}", flux);
+    }
+
+    #[test]
+    fn spectral_flux_positive_for_increasing_energy() {
+        let prev = vec![0.0, 0.0, 0.0, 0.0];
+        let curr = vec![1.0, 2.0, 3.0, 4.0];
+        let flux = spectral_flux(&prev, &curr);
+        assert!(flux > 0.0, "increasing energy should produce positive flux, got {}", flux);
+    }
+
+    #[test]
+    fn spectral_flux_half_wave_rectified() {
+        // Only positive changes count; energy decrease should contribute 0
+        let prev = vec![10.0, 10.0, 10.0, 10.0];
+        let curr = vec![5.0, 5.0, 5.0, 5.0]; // all decreasing
+        let flux = spectral_flux(&prev, &curr);
+        assert!(flux.abs() < 1e-10, "decreasing energy should give zero flux, got {}", flux);
+    }
+
+    // -- input_gain tests (#8) ──────────────────────────────────────
+
+    #[test]
+    fn input_gain_normalization() {
+        let gain = GuitarInput::compute_input_gain(0.4);
+        // 0.8 / 0.4 = 2.0
+        assert!((gain - 2.0).abs() < 0.01, "gain should be 2.0, got {}", gain);
+    }
+
+    #[test]
+    fn input_gain_clamped() {
+        // Very quiet signal
+        let gain = GuitarInput::compute_input_gain(0.001);
+        assert_eq!(gain, 2.0, "gain should be clamped to 2.0");
+
+        // Zero signal
+        let gain = GuitarInput::compute_input_gain(0.0);
+        assert_eq!(gain, 1.0, "zero signal should give gain 1.0");
+    }
+
+    // -- buffer_size_for_latency tests (#9) ─────────────────────────
+
+    #[test]
+    fn buffer_size_for_latency_reasonable() {
+        // 20ms @ 48kHz = 960 samples -> next power of 2 = 1024
+        let size = GuitarInputConfig::buffer_size_for_latency(20.0, 48000);
+        assert_eq!(size, 1024);
+    }
+
+    #[test]
+    fn buffer_size_for_latency_clamped_min() {
+        // Very small latency should clamp to 256
+        let size = GuitarInputConfig::buffer_size_for_latency(0.1, 48000);
+        assert_eq!(size, 256);
+    }
+
+    #[test]
+    fn buffer_size_for_latency_clamped_max() {
+        // Very large latency should clamp to 4096
+        let size = GuitarInputConfig::buffer_size_for_latency(200.0, 48000);
+        assert_eq!(size, 4096);
+    }
+
+    // -- interpolate_b tests (#4) ───────────────────────────────────
+
+    #[test]
+    fn interpolate_b_open_only() {
+        let profile = StringProfile {
+            name: "test",
+            open_midi: 40,
+            open_frequency: 82.41,
+            inharmonicity_b: 0.006,
+            inharmonicity_b_fret5: None,
+            inharmonicity_b_fret12: None,
+            harmonic_ratios: vec![],
+        };
+        // With no fretted data, should use theoretical model
+        let b0 = interpolate_b(&profile, 0);
+        assert!((b0 - 0.006).abs() < 0.001, "open B should be 0.006, got {}", b0);
+
+        let b12 = interpolate_b(&profile, 12);
+        // Theoretical: 0.006 * 2^(12/6) = 0.006 * 4 = 0.024
+        assert!((b12 - 0.024).abs() < 0.002, "fret 12 B should be ~0.024, got {}", b12);
+    }
+
+    #[test]
+    fn interpolate_b_with_fret5_and_fret12() {
+        let profile = StringProfile {
+            name: "test",
+            open_midi: 40,
+            open_frequency: 82.41,
+            inharmonicity_b: 0.006,
+            inharmonicity_b_fret5: Some(0.010),
+            inharmonicity_b_fret12: Some(0.020),
+            harmonic_ratios: vec![],
+        };
+        // At fret 0
+        let b0 = interpolate_b(&profile, 0);
+        assert!((b0 - 0.006).abs() < 0.001);
+
+        // At fret 5 (should be 0.010)
+        let b5 = interpolate_b(&profile, 5);
+        assert!((b5 - 0.010).abs() < 0.001, "fret 5 should be 0.010, got {}", b5);
+
+        // At fret 12 (should be 0.020)
+        let b12 = interpolate_b(&profile, 12);
+        assert!((b12 - 0.020).abs() < 0.001, "fret 12 should be 0.020, got {}", b12);
+    }
+
+    // -- plausibility_score tests (#3) ──────────────────────────────
+
+    #[test]
+    fn plausibility_score_impossible_is_zero() {
+        // MIDI 39 on Low E (open 40) -> impossible
+        let score = plausibility_score(39, 0, None);
+        assert_eq!(score, 0.0, "impossible fret should score 0");
+    }
+
+    #[test]
+    fn plausibility_score_open_string_high() {
+        // Open Low E (MIDI 40, string 0) -> should be high score
+        let score = plausibility_score(40, 0, None);
+        assert!(score > 0.9, "open string should score high, got {}", score);
+    }
+
+    #[test]
+    fn plausibility_score_fret_proximity_bonus() {
+        let prev = DetectedNote {
+            midi_note: 43,
+            frequency: 98.0,
+            string_idx: Some(0),
+            fret: Some(3), // Low E fret 3
+            string_confidence: 0.8,
+            velocity: 80,
+            bend_cents: 0,
+        };
+
+        // Fret 5 on Low E (close to fret 3 -> bonus)
+        let score_close = plausibility_score(45, 0, Some(&prev));
+        // Fret 15 on Low E (far from fret 3 -> no bonus)
+        let score_far = plausibility_score(55, 0, Some(&prev));
+
+        assert!(
+            score_close > score_far,
+            "close fret ({}) should score higher than far fret ({})",
+            score_close,
+            score_far
+        );
+    }
+
     // -- identify_string tests ───────────────────────────────────────
 
     #[test]
@@ -982,6 +1808,8 @@ mod tests {
             min_clarity: 0.3,
             cooldown_samples: 1024,
             n_harmonics: 6,
+            input_gain: 1.0,
+            flux_threshold: 0.5,
         };
         let mut pipeline = GuitarInput::new(config);
 
@@ -990,8 +1818,9 @@ mod tests {
         let events1 = pipeline.process_block(&silence);
         assert!(events1.is_empty(), "silence should produce no events");
 
-        // Now feed a loud A4 sine (amplitude 0.5)
-        let a4: Vec<f32> = sine_wave(440.0, sr, 2048)
+        // Now feed multiple blocks of loud A4 sine (amplitude 0.5)
+        // The state machine needs 3 frames of stable pitch (Attack -> Sustain)
+        let a4: Vec<f32> = sine_wave(440.0, sr, 1024 * 5)
             .into_iter()
             .map(|s| s * 0.5)
             .collect();
@@ -1010,6 +1839,8 @@ mod tests {
                 open_midi: 40,
                 open_frequency: 82.41,
                 inharmonicity_b: 0.006,
+                inharmonicity_b_fret5: None,
+                inharmonicity_b_fret12: None,
                 harmonic_ratios: vec![0.5, 0.3, 0.2, 0.1, 0.05],
             },
             StringProfile {
@@ -1017,6 +1848,8 @@ mod tests {
                 open_midi: 45,
                 open_frequency: 110.0,
                 inharmonicity_b: 0.003,
+                inharmonicity_b_fret5: None,
+                inharmonicity_b_fret12: None,
                 harmonic_ratios: vec![0.55, 0.35, 0.2, 0.12, 0.06],
             },
             StringProfile {
@@ -1024,6 +1857,8 @@ mod tests {
                 open_midi: 50,
                 open_frequency: 146.83,
                 inharmonicity_b: 0.003,
+                inharmonicity_b_fret5: None,
+                inharmonicity_b_fret12: None,
                 harmonic_ratios: vec![0.5, 0.3, 0.18, 0.1, 0.05],
             },
             StringProfile {
@@ -1031,6 +1866,8 @@ mod tests {
                 open_midi: 55,
                 open_frequency: 196.0,
                 inharmonicity_b: 0.006,
+                inharmonicity_b_fret5: None,
+                inharmonicity_b_fret12: None,
                 harmonic_ratios: vec![0.6, 0.4, 0.25, 0.15, 0.08],
             },
             StringProfile {
@@ -1038,6 +1875,8 @@ mod tests {
                 open_midi: 59,
                 open_frequency: 246.94,
                 inharmonicity_b: 0.003,
+                inharmonicity_b_fret5: None,
+                inharmonicity_b_fret12: None,
                 harmonic_ratios: vec![0.5, 0.28, 0.15, 0.08, 0.04],
             },
             StringProfile {
@@ -1045,6 +1884,8 @@ mod tests {
                 open_midi: 64,
                 open_frequency: 329.63,
                 inharmonicity_b: 0.002,
+                inharmonicity_b_fret5: None,
+                inharmonicity_b_fret12: None,
                 harmonic_ratios: vec![0.45, 0.25, 0.12, 0.06, 0.03],
             },
         ]

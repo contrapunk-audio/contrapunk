@@ -32,7 +32,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const BUFFER_SIZE: usize = 1024;
+const DEFAULT_BUFFER_SIZE: usize = 1024;
 const OVERLAP_PCT: u8 = 75;
 const MIN_CONFIDENCE: f64 = 0.45;
 const IN_TUNE_CENTS: i8 = 8;
@@ -114,17 +114,31 @@ fn main() {
         0
     };
 
-    let latency_ms = BUFFER_SIZE as f32 / sample_rate as f32 * 1000.0;
+    // Configurable analysis window (#9): use env var or default
+    let buffer_size = match std::env::var("CONTRAPUNK_LATENCY_MS") {
+        Ok(ms_str) => {
+            if let Ok(ms) = ms_str.parse::<f32>() {
+                let size = GuitarInputConfig::buffer_size_for_latency(ms, sample_rate);
+                println!("  Using configured latency: {:.1}ms -> {} samples", ms, size);
+                size
+            } else {
+                DEFAULT_BUFFER_SIZE
+            }
+        }
+        Err(_) => DEFAULT_BUFFER_SIZE,
+    };
+
+    let latency_ms = buffer_size as f32 / sample_rate as f32 * 1000.0;
     println!(
         "  Buffer: {} samples ({:.1}ms @ {}Hz)",
-        BUFFER_SIZE, latency_ms, sample_rate
+        buffer_size, latency_ms, sample_rate
     );
     println!();
 
     // ── Pipeline setup ──────────────────────────────────────────────
 
     let config = GuitarInputConfig {
-        buffer_size: BUFFER_SIZE,
+        buffer_size,
         sample_rate,
         onset_threshold: 0.015,
         string_confidence_min: 0.4,
@@ -134,6 +148,8 @@ fn main() {
         min_clarity: 0.40,
         cooldown_samples: sample_rate / 10, // 100ms
         n_harmonics: 6,
+        input_gain: 1.0,       // will be set by calibration
+        flux_threshold: 0.5,
     };
 
     let pipeline = Arc::new(Mutex::new(GuitarInput::new(config.clone())));
@@ -159,8 +175,8 @@ fn main() {
     }));
 
     // OverlapManager + GoertzelBank + PluckDetector for audio processing
-    let overlap = Arc::new(Mutex::new(OverlapManager::new(BUFFER_SIZE, OVERLAP_PCT)));
-    let pluck_det = Arc::new(Mutex::new(PluckDetector::new(BUFFER_SIZE / 2 + 1)));
+    let overlap = Arc::new(Mutex::new(OverlapManager::new(buffer_size, OVERLAP_PCT)));
+    let pluck_det = Arc::new(Mutex::new(PluckDetector::new(buffer_size / 2 + 1)));
     let goertzel = Arc::new(Mutex::new(GoertzelBank::new(sample_rate)));
 
     // ── Start audio stream ──────────────────────────────────────────
@@ -328,13 +344,23 @@ fn main() {
             open_midi: STRING_BASE_PITCH.get(si).copied().unwrap_or(40),
             open_frequency: avg_freq,
             inharmonicity_b,
+            inharmonicity_b_fret5: None,
+            inharmonicity_b_fret12: None,
             harmonic_ratios: vec![0.5, 0.3, 0.2, 0.1, 0.05],
         });
     }
 
+    // Compute input gain (#8): normalize so loudest pluck is ~0.8 peak
+    let peak_pluck_level = all_plucks
+        .iter()
+        .map(|(_, p)| p.peak)
+        .fold(0.0f32, f32::max);
+    let input_gain = GuitarInput::compute_input_gain(peak_pluck_level);
+    println!("  Peak pluck: {:.4}, input gain: {:.2}", peak_pluck_level, input_gain);
+
     let calibration = GuitarCalibration {
         noise_floor,
-        signal_peak: 1.0,
+        signal_peak: peak_pluck_level,
         string_profiles: [
             string_profiles[0].clone(),
             string_profiles[1].clone(),
@@ -348,6 +374,15 @@ fn main() {
     {
         let mut pipe = pipeline.lock().unwrap();
         pipe.set_calibration(calibration);
+        // Apply computed input gain
+        let mut cfg = pipe.config().clone();
+        cfg.input_gain = input_gain;
+        // Re-create pipeline with updated config (preserves calibration)
+        let cal = pipe.calibration().cloned();
+        *pipe = GuitarInput::new(cfg);
+        if let Some(c) = cal {
+            pipe.set_calibration(c);
+        }
     }
 
     println!("  Calibration applied.\n");
