@@ -127,10 +127,17 @@
 	<!-- Tune + Calibrate button -->
 	<button
 		class="calibrate-btn pixel-btn"
+		class:calibrating={guitar.calibrating}
+		disabled={guitar.calibrating}
 		onclick={() => guitar.startCalibration()}
 	>
-		TUNE + CALIBRATE
+		{guitar.calibrating ? 'CALIBRATING...' : guitar.calibrated ? 'CALIBRATED' : 'TUNE + CALIBRATE'}
 	</button>
+	{#if guitar.calibrationStatus}
+		<div class="calibration-status font-pixel" class:calibrated={guitar.calibrated}>
+			{guitar.calibrationStatus}
+		</div>
+	{/if}
 
 	<!-- Live detection status -->
 	<div class="detection-status font-pixel" class:detecting={guitar.detecting}>
@@ -314,6 +321,24 @@
 	.calibrate-btn:hover {
 		background: var(--color-bg-panel);
 		border-color: var(--color-accent-teal);
+	}
+
+	.calibrate-btn.calibrating {
+		opacity: 0.6;
+		cursor: wait;
+	}
+
+	.calibration-status {
+		font-size: 6px;
+		color: var(--color-text-dim);
+		padding: 2px 4px;
+		margin-bottom: 4px;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	.calibration-status.calibrated {
+		color: var(--color-accent-teal);
 	}
 
 	/* === Detection status === */

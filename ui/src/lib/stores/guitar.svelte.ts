@@ -7,6 +7,8 @@
  */
 
 import { adapter } from '$lib/adapter';
+import { platformName } from '$lib/adapter';
+import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 
 class GuitarInputStore {
 	// -- Config (mirrors GuitarInputConfig in Rust) --
@@ -55,9 +57,42 @@ class GuitarInputStore {
 		}
 	}
 
-	/** Start calibration flow (placeholder — will be wired to backend). */
-	startCalibration() {
-		console.log('[contrapunk] Guitar calibration requested (not yet wired to backend)');
+	/** Noise floor RMS measured during calibration. */
+	noiseFloorRms = $state(0);
+	/** Status message shown after calibration. */
+	calibrationStatus = $state('');
+
+	/**
+	 * Start calibration flow.
+	 * - Browser/WASM: simple noise floor measurement (3s of audio, compute average RMS).
+	 * - Tauri: placeholder for full 3-pass tuner (handled by Rust backend).
+	 */
+	async startCalibration() {
+		if (this.calibrating) return;
+
+		if (platformName === 'browser') {
+			// Web-based simple calibration: measure noise floor
+			this.calibrating = true;
+			this.calibrated = false;
+			this.calibrationStatus = 'Measuring noise floor... (3s)';
+
+			try {
+				const capture = new GuitarAudioCapture();
+				const avgRms = await capture.measureNoiseFloor(this.selectedDeviceId, 3000);
+				this.noiseFloorRms = avgRms;
+				this.calibrated = true;
+				this.calibrationStatus = `Calibrated (noise floor: ${(avgRms * 1000).toFixed(1)} mRMS)`;
+			} catch (err) {
+				this.calibrationStatus =
+					err instanceof Error ? `Calibration failed: ${err.message}` : 'Calibration failed';
+				this.calibrated = false;
+			} finally {
+				this.calibrating = false;
+			}
+		} else {
+			// Tauri: delegate to backend
+			console.log('[contrapunk] Guitar calibration requested (Tauri backend)');
+		}
 	}
 
 	/** Enumerate available audio input devices via the Web Audio API. */

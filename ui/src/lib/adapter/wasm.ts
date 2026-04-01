@@ -14,6 +14,7 @@ import type {
 	NoteState,
 	Preset
 } from './types';
+import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 
 /**
  * Dynamically imported WASM module.
@@ -24,6 +25,12 @@ import type {
 let wasmModule: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let engine: any = null;
+
+/**
+ * Sentinel input index used to signal "guitar audio input" rather than MIDI.
+ * Must match the value used in the UI when starting guitar routing.
+ */
+const GUITAR_AUDIO_SENTINEL = Number.MAX_SAFE_INTEGER - 2;
 
 export class WasmAdapter implements ContrapunkAdapter {
 	private initialized = false;
@@ -36,6 +43,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private _detuneCents = 0;
 	/** Pitch bend range in semitones (standard MIDI default). */
 	private pitchBendRangeSemitones = 2;
+	/** Guitar audio capture instance for browser-based pitch detection. */
+	private guitarCapture: GuitarAudioCapture | null = null;
+	/** Currently selected guitar device ID (for audio capture). */
+	private _guitarDeviceId = '';
+	/** Currently selected guitar channel (0-based). */
+	private _guitarChannel = 0;
 
 	async init(): Promise<void> {
 		if (this.initialized) return;
@@ -225,6 +238,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 	async startRouting(inputIdx: number, outputIndices: number[]): Promise<void> {
 		this.ensureInit();
 
+		// --- Guitar audio input mode ---
+		if (inputIdx === GUITAR_AUDIO_SENTINEL) {
+			await this.startGuitarCapture(outputIndices);
+			return;
+		}
+
 		const access = await this.ensureMidiAccess();
 		if (!access) {
 			// No Web MIDI: still allow "running" for virtual/keyboard input
@@ -299,7 +318,46 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	/**
+	 * Start guitar audio capture with pitch detection.
+	 * Routes detected notes through the harmony engine via injectNoteOn/Off.
+	 */
+	private async startGuitarCapture(outputIndices: number[]): Promise<void> {
+		// Resolve MIDI outputs for sending harmony notes
+		const access = await this.ensureMidiAccess();
+		if (access) {
+			const outputs = Array.from(access.outputs.values());
+			this.activeOutputs = outputIndices
+				.filter((i) => i >= 0 && i < outputs.length)
+				.map((i) => outputs[i]);
+		}
+
+		this.guitarCapture = new GuitarAudioCapture();
+		const self = this;
+
+		await this.guitarCapture.start(
+			this._guitarDeviceId,
+			this._guitarChannel,
+			{
+				onNoteOn(note: number, velocity: number) {
+					self.injectNoteOn(note, velocity).catch(() => {});
+				},
+				onNoteOff(note: number) {
+					self.injectNoteOff(note).catch(() => {});
+				}
+			}
+		);
+
+		this._isRunning = true;
+	}
+
 	async stopRouting(): Promise<void> {
+		// Stop guitar audio capture if active
+		if (this.guitarCapture) {
+			await this.guitarCapture.stop();
+			this.guitarCapture = null;
+		}
+
 		// Send All-Notes-Off (CC 123) to every active output to prevent stuck notes
 		for (const output of this.activeOutputs) {
 			try {
@@ -451,16 +509,32 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async listAudioDevices(): Promise<string[]> {
-		// WASM mode does not yet support native audio device enumeration
-		return [];
+		if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
+			return [];
+		}
+		try {
+			// Request permission so labels are populated
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			stream.getTracks().forEach((t) => t.stop());
+
+			const allDevices = await navigator.mediaDevices.enumerateDevices();
+			return allDevices
+				.filter((d) => d.kind === 'audioinput')
+				.map((d) => d.label || `Audio Input ${d.deviceId.slice(0, 8)}`);
+		} catch {
+			return [];
+		}
 	}
 
-	async setGuitarDevice(_deviceName: string, _channel: number): Promise<void> {
-		// WASM mode does not yet support guitar input
+	async setGuitarDevice(deviceName: string, channel: number): Promise<void> {
+		// Store for use when startRouting is called with guitar sentinel
+		this._guitarDeviceId = deviceName;
+		this._guitarChannel = Math.max(0, channel - 1); // Convert 1-indexed to 0-indexed
 	}
 
 	async setGuitarConfig(_config: GuitarConfig): Promise<void> {
-		// WASM mode does not yet support guitar input
+		// Browser-side pitch detection doesn't use these DSP params,
+		// but accept silently so shared UI code doesn't error.
 	}
 
 	/**

@@ -11,10 +11,16 @@ import { WasmAdapter } from './wasm';
 
 /**
  * Detect whether we are running inside a Tauri webview.
- * Tauri injects the __TAURI__ global when the app loads.
+ *
+ * Tauri v2 only injects `__TAURI_INTERNALS__` by default.
+ * The `__TAURI__` global requires `withGlobalTauri: true` in
+ * tauri.conf.json, which is not set. Check both to be safe.
  */
 function isTauri(): boolean {
-	return typeof window !== 'undefined' && '__TAURI__' in window;
+	return (
+		typeof window !== 'undefined' &&
+		('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
+	);
 }
 
 /** The active platform name, for display purposes. */
