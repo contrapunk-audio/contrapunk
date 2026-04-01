@@ -14,5 +14,6 @@ serde_json = "1.0"
 anyhow = "1.0"
 contrapunk = { path = ".." }
 midir = "0.10"
+cpal = "0.15"
 wmidi = "4.0"
 rand = "0.8"
