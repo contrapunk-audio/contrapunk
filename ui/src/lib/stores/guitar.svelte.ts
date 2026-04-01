@@ -9,6 +9,7 @@
 import { adapter } from '$lib/adapter';
 import { platformName } from '$lib/adapter';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
+import { detectPitch, frequencyToMidi, midiToNoteName } from '$lib/audio/pitchDetector';
 
 class GuitarInputStore {
 	// -- Config (mirrors GuitarInputConfig in Rust) --
@@ -39,6 +40,18 @@ class GuitarInputStore {
 	calibrated = $state(false);
 	calibrating = $state(false);
 
+	// -- Tuner state --
+	tunerActive = $state(false);
+	tunerStringIndex = $state(0);
+	tunerDetectedNote = $state('');
+	tunerDetectedFreq = $state(0);
+	tunerCents = $state(0);
+	tunerClarity = $state(0);
+	tunerStatus = $state<'waiting' | 'sharp' | 'flat' | 'in-tune' | 'holding' | 'done'>('waiting');
+	tunerHoldProgress = $state(0); // 0..1
+	tunerPhase = $state<'noise-floor' | 'tuning' | 'complete'>('noise-floor');
+	tunerNoiseProgress = $state(0); // 0..1
+
 	/** Toggle a technique on/off by name. */
 	toggleTechnique(technique: 'bends' | 'legato' | 'slides' | 'vibrato') {
 		switch (technique) {
@@ -62,37 +75,208 @@ class GuitarInputStore {
 	/** Status message shown after calibration. */
 	calibrationStatus = $state('');
 
+	/** Open strings for standard tuning. */
+	static readonly OPEN_STRINGS = [
+		{ name: 'Low E', note: 'E2', midi: 40, freq: 82.41 },
+		{ name: 'A', note: 'A2', midi: 45, freq: 110.00 },
+		{ name: 'D', note: 'D3', midi: 50, freq: 146.83 },
+		{ name: 'G', note: 'G3', midi: 55, freq: 196.00 },
+		{ name: 'B', note: 'B3', midi: 59, freq: 246.94 },
+		{ name: 'High E', note: 'E4', midi: 64, freq: 329.63 },
+	];
+
+	private tunerCapture: GuitarAudioCapture | null = null;
+	private tunerAnimFrame: number | null = null;
+	private inTuneSince: number | null = null;
+
+	/** In-tune threshold in cents. */
+	private static readonly IN_TUNE_CENTS = 8;
+	/** How long to hold in-tune before auto-advancing (ms). */
+	private static readonly IN_TUNE_HOLD_MS = 1500;
+
 	/**
-	 * Start calibration flow.
-	 * - Browser/WASM: simple noise floor measurement (3s of audio, compute average RMS).
-	 * - Tauri: placeholder for full 3-pass tuner (handled by Rust backend).
+	 * Start the full tuner calibration flow.
+	 * Phase 1: Noise floor measurement (3s).
+	 * Phase 2: Per-string tuning with live pitch detection.
 	 */
 	async startCalibration() {
 		if (this.calibrating) return;
 
 		if (platformName === 'browser') {
-			// Web-based simple calibration: measure noise floor
 			this.calibrating = true;
 			this.calibrated = false;
-			this.calibrationStatus = 'Measuring noise floor... (3s)';
+			this.tunerActive = true;
+			this.tunerPhase = 'noise-floor';
+			this.tunerStringIndex = 0;
+			this.tunerNoiseProgress = 0;
+			this.tunerStatus = 'waiting';
+			this.tunerHoldProgress = 0;
+			this.calibrationStatus = 'Measuring noise floor...';
 
 			try {
+				// Phase 1: Noise floor
 				const capture = new GuitarAudioCapture();
-				const avgRms = await capture.measureNoiseFloor(this.selectedDeviceId, 3000);
+				const noisePromise = capture.measureNoiseFloor(this.selectedDeviceId, 3000);
+
+				// Animate progress bar for noise floor
+				const noiseStart = Date.now();
+				const noiseTimer = setInterval(() => {
+					const elapsed = Date.now() - noiseStart;
+					this.tunerNoiseProgress = Math.min(1, elapsed / 3000);
+				}, 50);
+
+				const avgRms = await noisePromise;
+				clearInterval(noiseTimer);
+				this.tunerNoiseProgress = 1;
 				this.noiseFloorRms = avgRms;
-				this.calibrated = true;
-				this.calibrationStatus = `Calibrated (noise floor: ${(avgRms * 1000).toFixed(1)} mRMS)`;
+				this.calibrationStatus = `Noise floor: ${(avgRms * 1000).toFixed(1)} mRMS`;
+
+				// Phase 2: Per-string tuning
+				this.tunerPhase = 'tuning';
+				this.tunerStringIndex = 0;
+				await this.startTunerCapture();
 			} catch (err) {
 				this.calibrationStatus =
 					err instanceof Error ? `Calibration failed: ${err.message}` : 'Calibration failed';
 				this.calibrated = false;
-			} finally {
+				this.tunerActive = false;
 				this.calibrating = false;
 			}
 		} else {
 			// Tauri: delegate to backend
 			console.log('[contrapunk] Guitar calibration requested (Tauri backend)');
 		}
+	}
+
+	/** Start audio capture for the tuner phase. */
+	private async startTunerCapture() {
+		this.tunerCapture = new GuitarAudioCapture();
+		this.inTuneSince = null;
+
+		// Use a ScriptProcessor-based capture with onDetection for live updates
+		const channelIndex = this.selectedChannel - 1;
+		await this.tunerCapture.start(this.selectedDeviceId, channelIndex, {
+			onNoteOn: () => {},
+			onNoteOff: () => {},
+			onDetection: (info) => {
+				if (!this.tunerActive || this.tunerPhase !== 'tuning') return;
+
+				const target = GuitarInputStore.OPEN_STRINGS[this.tunerStringIndex];
+				if (!target) return;
+
+				if (info.frequency === null || info.rms < this.noiseFloorRms * 2) {
+					this.tunerDetectedNote = '';
+					this.tunerDetectedFreq = 0;
+					this.tunerCents = 0;
+					this.tunerClarity = 0;
+					this.tunerStatus = 'waiting';
+					this.tunerHoldProgress = 0;
+					this.inTuneSince = null;
+					return;
+				}
+
+				const midiInfo = frequencyToMidi(info.frequency);
+				const noteName = midiToNoteName(midiInfo.note);
+				this.tunerDetectedNote = noteName;
+				this.tunerDetectedFreq = info.frequency;
+				this.tunerClarity = info.clarity;
+
+				// Calculate cents relative to the target frequency
+				const centsFromTarget = 1200 * Math.log2(info.frequency / target.freq);
+				this.tunerCents = Math.round(centsFromTarget);
+
+				const absCents = Math.abs(this.tunerCents);
+
+				if (absCents <= GuitarInputStore.IN_TUNE_CENTS) {
+					this.tunerStatus = 'holding';
+					if (this.inTuneSince === null) {
+						this.inTuneSince = Date.now();
+					}
+					const held = Date.now() - this.inTuneSince;
+					this.tunerHoldProgress = Math.min(1, held / GuitarInputStore.IN_TUNE_HOLD_MS);
+
+					if (held >= GuitarInputStore.IN_TUNE_HOLD_MS) {
+						this.tunerStatus = 'in-tune';
+						this.advanceTunerString();
+					}
+				} else {
+					this.inTuneSince = null;
+					this.tunerHoldProgress = 0;
+					this.tunerStatus = this.tunerCents > 0 ? 'sharp' : 'flat';
+				}
+			}
+		});
+	}
+
+	/** Advance to the next string, or finish tuning. */
+	private advanceTunerString() {
+		this.inTuneSince = null;
+		this.tunerHoldProgress = 0;
+
+		if (this.tunerStringIndex >= 5) {
+			// All 6 strings done
+			this.tunerPhase = 'complete';
+			this.calibrated = true;
+			this.calibrating = false;
+			this.calibrationStatus = 'Tuning complete!';
+			this.stopTunerCapture();
+			// Auto-close after 2 seconds
+			setTimeout(() => {
+				if (this.tunerPhase === 'complete') {
+					this.tunerActive = false;
+				}
+			}, 2000);
+		} else {
+			this.tunerStringIndex++;
+			this.tunerStatus = 'waiting';
+			this.tunerDetectedNote = '';
+			this.tunerCents = 0;
+		}
+	}
+
+	/** Skip the current tuner string. */
+	skipTunerString() {
+		if (!this.tunerActive || this.tunerPhase !== 'tuning') return;
+		this.advanceTunerString();
+	}
+
+	/** Cancel the tuner and return to normal view. */
+	cancelTuner() {
+		this.stopTunerCapture();
+		this.tunerActive = false;
+		this.tunerPhase = 'noise-floor';
+		this.calibrating = false;
+		this.calibrationStatus = this.calibrated ? 'Calibration preserved' : '';
+	}
+
+	/** Stop the tuner audio capture. */
+	private async stopTunerCapture() {
+		if (this.tunerCapture) {
+			await this.tunerCapture.stop();
+			this.tunerCapture = null;
+		}
+		if (this.tunerAnimFrame !== null) {
+			cancelAnimationFrame(this.tunerAnimFrame);
+			this.tunerAnimFrame = null;
+		}
+	}
+
+	/** Set latency with bounds checking and sync. */
+	setLatency(value: number) {
+		this.latencyMs = Math.max(10, Math.min(50, value));
+		this.syncConfig();
+	}
+
+	/** Set gain with bounds checking and sync. */
+	setGain(value: number) {
+		this.gain = Math.max(0.1, Math.min(2.0, Math.round(value * 20) / 20));
+		this.syncConfig();
+	}
+
+	/** Set string confidence with bounds checking and sync. */
+	setStringConfidence(value: number) {
+		this.stringConfidence = Math.max(0.5, Math.min(1.0, Math.round(value * 20) / 20));
+		this.syncConfig();
 	}
 
 	/** Enumerate available audio input devices via the Web Audio API. */
