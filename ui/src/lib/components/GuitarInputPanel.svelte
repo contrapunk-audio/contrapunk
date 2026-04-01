@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { guitar } from '$lib/stores/guitar.svelte';
+	import PixelSelect from './PixelSelect.svelte';
 
 	const techniques = [
 		{ key: 'bends' as const, label: 'BENDS', get active() { return guitar.bendsEnabled; } },
@@ -17,10 +19,61 @@
 			? `Detecting: ${guitar.currentNote}  String: ${guitar.currentString} f${guitar.currentFret}  ${guitar.confidence}%`
 			: 'No signal'
 	);
+
+	let deviceOptions = $derived(
+		guitar.audioDevices.map((d) => ({
+			value: d.deviceId,
+			label: d.label || `Audio Device ${d.deviceId.slice(0, 8)}`
+		}))
+	);
+
+	let channelNumbers = $derived(
+		Array.from({ length: guitar.maxChannels }, (_, i) => i + 1)
+	);
+
+	function handleDeviceChange(value: string) {
+		if (value) {
+			guitar.selectDevice(value);
+		}
+	}
+
+	onMount(() => {
+		guitar.enumerateAudioDevices();
+	});
 </script>
 
 <div class="guitar-panel pixel-card">
 	<div class="panel-header font-pixel">GUITAR INPUT</div>
+
+	<!-- Audio device + channel selector -->
+	<div class="device-section">
+		<span class="device-label font-pixel">DEVICE</span>
+		{#if guitar.audioDeviceError}
+			<div class="device-error font-pixel">{guitar.audioDeviceError}</div>
+		{:else}
+			<div class="device-select-row">
+				<PixelSelect
+					options={deviceOptions}
+					value={guitar.selectedDeviceId}
+					placeholder="Select device..."
+					small={true}
+					onchange={handleDeviceChange}
+				/>
+			</div>
+			<span class="device-label font-pixel channel-label">CHANNEL</span>
+			<div class="channel-row">
+				{#each channelNumbers as ch}
+					<button
+						class="channel-btn font-pixel"
+						class:channel-active={guitar.selectedChannel === ch}
+						onclick={() => guitar.selectChannel(ch)}
+					>
+						{ch}
+					</button>
+				{/each}
+			</div>
+		{/if}
+	</div>
 
 	<!-- Dials row -->
 	<div class="dials-row">
@@ -85,6 +138,76 @@
 		margin-bottom: 6px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
+	}
+
+	/* === Device + Channel selector === */
+	.device-section {
+		margin-bottom: 6px;
+		padding-bottom: 6px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.device-label {
+		display: block;
+		font-size: 6px;
+		color: var(--color-text-secondary);
+		margin-bottom: 3px;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	.channel-label {
+		margin-top: 4px;
+	}
+
+	.device-select-row {
+		display: flex;
+		gap: 4px;
+		align-items: center;
+	}
+
+	.device-error {
+		font-size: 6px;
+		color: var(--color-text-dim);
+		padding: 3px 4px;
+		background: var(--color-bg-panel);
+		border: 1px solid var(--color-border);
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	.channel-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 2px;
+	}
+
+	.channel-btn {
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 6px;
+		color: var(--color-text-dim);
+		background: var(--color-widget-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 0;
+		cursor: pointer;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	.channel-btn:hover {
+		border-color: var(--color-accent-cyan);
+		color: var(--color-text-primary);
+	}
+
+	.channel-btn.channel-active {
+		background: var(--color-accent-cyan);
+		color: var(--color-bg-deep);
+		border-color: var(--color-accent-cyan);
 	}
 
 	/* === Dials === */
