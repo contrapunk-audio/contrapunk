@@ -180,7 +180,18 @@
 						onchange={handleDeviceChange}
 					/>
 				</div>
-				<span class="device-label font-pixel channel-label">CHANNEL</span>
+				<div class="channel-header">
+					<span class="device-label font-pixel channel-label">CHANNEL</span>
+					<input
+						type="number"
+						class="channel-max-input"
+						min="1"
+						max="32"
+						value={guitar.maxChannels}
+						onchange={(e) => { guitar.maxChannels = Math.max(1, Math.min(32, parseInt(e.currentTarget.value) || 2)); }}
+						title="Set max channels (browsers report 2, Audient iD14 has 12)"
+					/>
+				</div>
 				<div class="channel-row">
 					{#each channelNumbers as ch}
 						<button
@@ -316,6 +327,22 @@
 		gap: 2px;
 	}
 
+	.channel-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.channel-max-input {
+		width: 36px;
+		height: 18px;
+		background: var(--color-widget-bg);
+		border: 1px solid var(--color-border);
+		color: var(--color-accent-cyan);
+		font-family: var(--font-pixel);
+		font-size: 8px;
+		text-align: center;
+		padding: 0;
+	}
 	.channel-btn {
 		width: 18px;
 		height: 18px;
