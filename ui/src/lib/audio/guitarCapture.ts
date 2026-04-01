@@ -64,10 +64,20 @@ export class GuitarAudioCapture {
 			1
 		);
 
+		let frameCount = 0;
 		this.processor.onaudioprocess = (event) => {
 			const input = event.inputBuffer;
 			const ch = Math.min(channelIndex, input.numberOfChannels - 1);
 			const samples = input.getChannelData(ch);
+
+			// Debug: log RMS every 50 frames (~1s) to verify audio is flowing
+			frameCount++;
+			if (frameCount % 50 === 0) {
+				let sum = 0;
+				for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+				const rms = Math.sqrt(sum / samples.length);
+				console.log(`[guitar] frame=${frameCount} rms=${rms.toFixed(4)} ch=${ch}/${input.numberOfChannels}`);
+			}
 
 			const eventsJson = this.dsp!.process_block(samples);
 			let events: any[];
