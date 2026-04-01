@@ -71,7 +71,7 @@
 		return '\u2588'.repeat(filled) + '\u2591'.repeat(width - filled);
 	}
 
-	const OPEN_STRINGS = [
+	const OPEN_CONFIDENCES = [
 		{ name: 'Low E', note: 'E2', midi: 40, freq: 82.41 },
 		{ name: 'A', note: 'A2', midi: 45, freq: 110.00 },
 		{ name: 'D', note: 'D3', midi: 50, freq: 146.83 },
@@ -80,7 +80,7 @@
 		{ name: 'High E', note: 'E4', midi: 64, freq: 329.63 },
 	];
 
-	let tunerTarget = $derived(OPEN_STRINGS[guitar.tunerStringIndex]);
+	let tunerTarget = $derived(OPEN_CONFIDENCES[guitar.tunerStringIndex]);
 
 	onMount(() => {
 		guitar.enumerateAudioDevices();
@@ -232,7 +232,7 @@
 					<span class="dial-value">{confidenceDisplay}</span>
 					<button class="dial-arrow dial-down font-pixel" onclick={() => guitar.setStringConfidence(guitar.stringConfidence - 0.05)} aria-label="Decrease confidence">-</button>
 				</div>
-				<span class="dial-label font-pixel">STRING</span>
+				<span class="dial-label font-pixel">CONFIDENCE</span>
 			</div>
 		</div>
 
