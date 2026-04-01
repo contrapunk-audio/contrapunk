@@ -419,7 +419,7 @@ impl GuitarInput {
                     }
                     NoteState::Sustain => {
                         if onset {
-                            // Sustain -> Attack: re-pluck detected
+                            // Sustain -> Attack: re-pluck detected (new onset = new note)
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
@@ -428,17 +428,86 @@ impl GuitarInput {
                             // Sustain -> Decay: signal dropping
                             self.note_state = NoteState::Decay;
                             self.state_samples = 0;
-                        } else if self.config.bends_enabled {
-                            // Track pitch bends during sustain (no note change)
-                            if let Some(ref mut note) = self.current_note {
-                                if midi_note == note.midi_note {
-                                    let new_bend = cents as i16;
-                                    if (new_bend - note.bend_cents).abs() > 5 {
+                        } else if let Some(ref mut note) = self.current_note {
+                            let semitone_diff = (midi_note as i16 - note.midi_note as i16).abs();
+                            let cents_from_base = {
+                                let base_freq = midi_to_freq(note.midi_note);
+                                if base_freq > 0.0 && freq > 0.0 {
+                                    (1200.0 * (freq / base_freq).log2()) as i16
+                                } else {
+                                    0
+                                }
+                            };
+
+                            if semitone_diff >= 2 && self.config.legato_enabled {
+                                // LEGATO: pitch jumped > 2 semitones without onset
+                                // = hammer-on, pull-off, or slide arrival
+                                let old_note = note.midi_note;
+                                let old_vel = note.velocity;
+
+                                // Note-off gating for old note
+                                self.suppress_frequency = Some(note.frequency);
+                                self.suppress_until = self.total_samples
+                                    + (self.config.sample_rate as f32 * 0.1) as usize;
+
+                                events.push(MidiEvent::NoteOff {
+                                    channel: 0,
+                                    note: old_note,
+                                });
+
+                                // Legato velocity: slightly softer than original pluck
+                                let legato_vel = (old_vel as f32 * 0.8).min(127.0) as u8;
+
+                                // Re-identify string for the new note
+                                let (string_idx, fret, string_conf) =
+                                    self.identify_string_and_fret(&buf, freq, midi_note);
+
+                                let new_note = DetectedNote {
+                                    midi_note,
+                                    frequency: freq,
+                                    string_idx,
+                                    fret,
+                                    string_confidence: string_conf,
+                                    velocity: legato_vel,
+                                    bend_cents: 0,
+                                };
+
+                                events.push(MidiEvent::NoteOn {
+                                    channel: 0,
+                                    note: midi_note,
+                                    velocity: legato_vel,
+                                });
+
+                                self.current_note = Some(new_note);
+                                self.clear_pitch_history();
+                            } else if semitone_diff >= 2 && !self.config.legato_enabled {
+                                // Large pitch jump without legato enabled:
+                                // treat as a new attack (the onset detector missed it)
+                                self.note_state = NoteState::Attack;
+                                self.state_samples = 0;
+                                self.clear_pitch_history();
+                                self.push_pitch(midi_note);
+                            } else if self.config.bends_enabled {
+                                // BEND: pitch within ±2 semitones of current note
+                                // Track continuous pitch deviation
+                                if cents_from_base.abs() > 5 && cents_from_base.abs() < 200 {
+                                    // Real bend: slow continuous movement
+                                    if (cents_from_base - note.bend_cents).abs() > 3 {
                                         events.push(MidiEvent::PitchBend {
                                             channel: 0,
-                                            cents: new_bend,
+                                            cents: cents_from_base,
                                         });
-                                        note.bend_cents = new_bend;
+                                        note.bend_cents = cents_from_base;
+                                        note.frequency = freq;
+                                    }
+                                } else if cents_from_base.abs() <= 5 {
+                                    // Back to center — reset bend
+                                    if note.bend_cents != 0 {
+                                        events.push(MidiEvent::PitchBend {
+                                            channel: 0,
+                                            cents: 0,
+                                        });
+                                        note.bend_cents = 0;
                                     }
                                 }
                             }
