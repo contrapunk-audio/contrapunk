@@ -1,0 +1,19 @@
+{
+  "name": "contrapunk-wasm",
+  "type": "module",
+  "collaborators": [
+    "Contrapunk Team"
+  ],
+  "description": "WASM bridge for Contrapunk harmony engine",
+  "version": "0.1.0",
+  "files": [
+    "contrapunk_wasm_bg.wasm",
+    "contrapunk_wasm.js",
+    "contrapunk_wasm.d.ts"
+  ],
+  "main": "contrapunk_wasm.js",
+  "types": "contrapunk_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
