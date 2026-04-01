@@ -15,6 +15,7 @@
 	let r1Results: ModelResult[] = $state([]);
 	let r2Results: ModelResult[] = $state([]);
 	let r3Results: ModelResult[] = $state([]);
+	let r4Results: ModelResult[] = $state([]);
 	let loading = $state(true);
 	let selectedModel = $state(2); // Pure CNN by default
 
@@ -25,10 +26,12 @@
 			fetch('/training/round_01/results.json').then(r => r.json()),
 			fetch('/training/round_02/results.json').then(r => r.json()),
 			fetch('/training/round_03/results.json').then(r => r.json()),
-		]).then(([r1, r2, r3]) => {
+			fetch('/training/round_04/results.json').then(r => r.json()),
+		]).then(([r1, r2, r3, r4]) => {
 			r1Results = r1;
 			r2Results = r2;
 			r3Results = r3;
+			r4Results = r4;
 			loading = false;
 		}).catch(() => { loading = false; });
 	});
@@ -64,12 +67,12 @@
 	const crumbs = [
 		{ label: 'Diary', href: '/diary' },
 		{ label: 'Machine Learning', href: '/diary/machine-learning' },
-		{ label: 'Round 3' },
+		{ label: 'Round 4' },
 	];
 </script>
 
 <svelte:head>
-	<title>Round 3: Quality Cleanup - Contrapunk Diary</title>
+	<title>Round 4: Goertzel Harmonics - Contrapunk Diary</title>
 </svelte:head>
 
 <DiaryNav {crumbs} />
@@ -77,36 +80,37 @@
 <div class="round-page">
 	<!-- Hero -->
 	<header class="hero">
-		<div class="round-label">ROUND 03</div>
-		<h1>Quality Cleanup</h1>
+		<div class="round-label">ROUND 04</div>
+		<h1>Goertzel Harmonics</h1>
 		<p class="hero-sub">
-			The first round with measurable improvement. Removed 32 clipped samples and
-			7 near-silent recordings from 1,380 total, leaving 1,341 clean samples.
-			Data quality beats data quantity -- removing 39 bad samples helped more than
-			aligning 1,380.
+			Each guitar string has a unique harmonic fingerprint -- the ratio of overtone
+			amplitudes relative to the fundamental. We extracted these using the Goertzel
+			algorithm and fused them with the spectrogram in a two-branch neural network.
+			The result: harmonic features help weaker models on hard strings, but the
+			Pure CNN already captures this information from the spectrogram alone.
 		</p>
 	</header>
 
 	{#if loading}
 		<p class="loading-text">Loading results...</p>
-	{:else if r1Results.length && r2Results.length && r3Results.length}
-		{@const r2Best = bestAccuracy(r2Results)}
+	{:else if r1Results.length && r3Results.length && r4Results.length}
 		{@const r3Best = bestAccuracy(r3Results)}
-		{@const delta = r3Best - r2Best}
+		{@const r4Best = bestAccuracy(r4Results)}
+		{@const delta = r4Best - r3Best}
 
 		<StatBar stats={[
-			{ value: pct(r3Best), label: 'Best Accuracy', color: 'var(--color-accent-cyan)' },
-			{ value: deltaPct(r2Best, r3Best), label: 'vs Round 2', color: 'var(--color-accent-teal)' },
-			{ value: '1,341', label: 'Clean Samples', color: 'var(--color-accent-teal)' },
-			{ value: '39', label: 'Removed', color: 'var(--color-accent-magenta)' },
+			{ value: pct(r4Best), label: 'Best Accuracy', color: 'var(--color-accent-cyan)' },
+			{ value: deltaPct(r3Best, r4Best), label: 'vs Round 3', color: deltaColor(delta) },
+			{ value: '11', label: 'Goertzel Features', color: 'var(--color-accent-teal)' },
+			{ value: '+5.2%', label: 'Hybrid CNN E2', color: 'var(--color-accent-teal)' },
 		]} />
 
 		<!-- Comparison Banner -->
 		<div class="comparison-banner">
 			<div class="comp-item">
-				<div class="comp-label">ROUND 2</div>
-				<div class="comp-value">{pct(r2Best)}</div>
-				<div class="comp-sub">Onset-aligned</div>
+				<div class="comp-label">ROUND 3</div>
+				<div class="comp-value">{pct(r3Best)}</div>
+				<div class="comp-sub">Quality-cleaned</div>
 			</div>
 			<div class="comp-arrow">
 				<svg width="24" height="16" viewBox="0 0 24 16" fill="none">
@@ -114,14 +118,14 @@
 				</svg>
 			</div>
 			<div class="comp-item">
-				<div class="comp-label">ROUND 3</div>
-				<div class="comp-value">{pct(r3Best)}</div>
-				<div class="comp-sub">Quality-cleaned</div>
+				<div class="comp-label">ROUND 4</div>
+				<div class="comp-value">{pct(r4Best)}</div>
+				<div class="comp-sub">Goertzel harmonics</div>
 			</div>
 			<div class="comp-item delta">
 				<div class="comp-label">DELTA</div>
-				<div class="comp-value" style:color={deltaColor(delta)}>{deltaPct(r2Best, r3Best)}</div>
-				<div class="comp-sub">First measurable gain</div>
+				<div class="comp-value" style:color={deltaColor(delta)}>{deltaPct(r3Best, r4Best)}</div>
+				<div class="comp-sub">Best model unchanged</div>
 			</div>
 		</div>
 
@@ -130,120 +134,129 @@
 			<div class="station-label">STATION 1</div>
 			<h2>What Changed</h2>
 			<p>
-				From the original 1,380 samples, we identified and removed two categories of
-				problematic recordings:
-			</p>
-			<div class="removal-grid">
-				<div class="removal-card">
-					<div class="removal-num">32</div>
-					<div class="removal-type">Clipped Samples</div>
-					<div class="removal-detail">Peak amplitude exceeding 0.99</div>
-				</div>
-				<div class="removal-card">
-					<div class="removal-num">7</div>
-					<div class="removal-type">Near-Silent Samples</div>
-					<div class="removal-detail">RMS below 0.005</div>
-				</div>
-			</div>
-			<p>
-				<strong>Clipped samples</strong> are recordings where the signal was too loud for
-				the analog-to-digital converter. When a signal exceeds the maximum representable
-				value, the waveform's peaks get
-				<ConceptInline term="hard-clipped">
+				The mel-spectrogram captures pitch (which fret) well but struggles with
+				string identity for overlapping pitches. Two different string-fret
+				combinations can produce the same fundamental frequency -- for example,
+				E2 fret 5 and A2 open are both 110 Hz. What distinguishes them is their
+				<ConceptInline term="harmonic fingerprint">
 					{#snippet children()}
-						Hard clipping occurs when a signal exceeds the maximum range of the recording
-						system. Instead of following its natural curve, the waveform is flattened at
-						the ceiling. This creates sharp discontinuities in the waveform that generate
-						harmonics not present in the original signal. In a spectrogram, clipping
-						manifests as bright horizontal lines across many frequency bins -- false
-						spectral content that does not correspond to any real harmonic of the note.
-						The classifier sees these artifacts as features and tries to learn from them,
-						but since clipping varies randomly with playing dynamics, it adds noise rather
-						than signal.
+						Every vibrating string produces not just the fundamental frequency but
+						also a series of overtones at integer multiples (2x, 3x, 4x...). The
+						relative amplitudes of these overtones -- the harmonic ratios -- are
+						determined by the string's physical properties: wound vs plain, thick
+						vs thin, steel vs nylon. A wound E2 string produces different harmonic
+						ratios than a plain B3 string even when playing the same pitch. This
+						is what gives each string its characteristic timbre and what allows a
+						trained ear (or a classifier) to tell them apart.
 					{/snippet}
 				</ConceptInline>
-				-- flattened at the ceiling. This distorts the harmonic content, creating
-				false spectral energy across frequency bins that does not correspond to any real
-				harmonic of the note. The spectrogram becomes contaminated with artifacts the
-				model tries to learn from but cannot generalize.
+				-- the unique pattern of overtone amplitudes determined by the string's
+				physical properties.
 			</p>
 			<p>
-				<strong>Near-silent samples</strong> are recordings where the string was barely
-				plucked or the capture triggered on ambient noise. With an RMS below 0.005,
-				these spectrograms are mostly noise floor. They teach the model nothing useful
-				about what a note at that position sounds like -- instead, the model is forced
-				to memorize random noise patterns to classify them correctly, which hurts
-				generalization.
+				We used the
+				<ConceptInline term="Goertzel algorithm">
+					{#snippet children()}
+						The Goertzel algorithm computes the energy at a single specific
+						frequency, unlike the FFT which computes energy at all frequencies.
+						When you only need a handful of frequency bins (like the first 10
+						harmonics of a known fundamental), Goertzel is more efficient than a
+						full FFT. For each sample, we compute the fundamental frequency from
+						the fret label, then use Goertzel filters at the first 10 harmonic
+						frequencies (1x, 2x, ... 10x the fundamental) to extract their
+						amplitudes. This gives us 9 harmonic ratios (H2/H1 through H10/H1),
+						plus spectral centroid and inharmonicity -- 11 features total.
+					{/snippet}
+				</ConceptInline>
+				to extract 11 physics-based features from each sample:
 			</p>
-			<div class="viz-item">
-				<div class="viz-label">Removed samples: clipped (left) and near-silent (right)</div>
-				<img
-					src="/training/round_03/removed_samples.png"
-					alt="Visualization showing the 32 clipped samples with peaks exceeding 0.99 and 7 near-silent samples with RMS below 0.005 that were removed from the dataset"
-					class="viz-img"
-				/>
+			<div class="feature-grid">
+				<div class="feature-card">
+					<div class="feature-num">9</div>
+					<div class="feature-type">Harmonic Ratios</div>
+					<div class="feature-detail">H2/H1 through H10/H1</div>
+				</div>
+				<div class="feature-card">
+					<div class="feature-num">1</div>
+					<div class="feature-type">Spectral Centroid</div>
+					<div class="feature-detail">Brightness measure</div>
+				</div>
+				<div class="feature-card">
+					<div class="feature-num">1</div>
+					<div class="feature-type">Inharmonicity</div>
+					<div class="feature-detail">Overtone stretch factor</div>
+				</div>
 			</div>
-			<p class="viz-caption">
-				The 39 samples removed from the dataset. Clipped samples show distorted waveforms
-				with flattened peaks. Silent samples show near-zero amplitude with mostly noise floor.
+			<p>
+				These 11 features were fused with the spectrogram: concatenated as extra
+				columns for the Random Forest, or fed as a second input branch for the
+				CNN architectures (two-branch fusion network).
 			</p>
 		</section>
 
-		<!-- Station 2: Why It Helped -->
+		<!-- Station 2: The Physics -->
 		<section class="station">
 			<div class="station-label">STATION 2</div>
-			<h2>Why It Helped</h2>
+			<h2>The Physics</h2>
 			<p>
-				This is the first round with measurable improvement across all three models.
-				Round 2 (onset alignment) produced zero change. Here, removing just 39 samples
-				out of 1,380 -- less than 3% of the data -- produced clear gains.
+				Not all strings are created equal. The Goertzel analysis revealed that
+				each string has a distinct harmonic profile:
 			</p>
 			<ul class="findings">
 				<li>
 					<span class="finding-icon num">1</span>
 					<div>
-						<strong>Clipped samples had distorted harmonic content that confused the model.</strong>
-						When a signal clips, the flat-topped waveform generates spurious harmonics
-						across the frequency spectrum. The spectrogram shows bright energy at
-						frequencies that have nothing to do with the fundamental pitch or its natural
-						overtones. The model sees these artifacts and tries to incorporate them into
-						its learned features, but since clipping is random and inconsistent, these
-						features hurt rather than help classification.
+						<strong>G3 has the highest H2 ratio (0.76).</strong>
+						The G3 string on a standard acoustic guitar is often the thickest
+						unwound (plain) string. Its second harmonic is nearly as strong as
+						the fundamental, giving it that characteristic bright, ringing quality
+						that makes it easy to classify.
 					</div>
 				</li>
 				<li>
 					<span class="finding-icon num">2</span>
 					<div>
-						<strong>Silent samples were pure noise the model had to memorize instead of learn from.</strong>
-						A near-silent spectrogram is dominated by the noise floor of the recording
-						chain. There are no meaningful harmonic patterns to extract. When these
-						samples appear in training, the model must memorize their random noise
-						patterns to classify them correctly, wasting model capacity on information
-						that cannot generalize to real playing.
+						<strong>E2 and G3 have the highest inharmonicity.</strong>
+						Real strings are not ideal -- their overtones are slightly sharp
+						relative to perfect integer multiples. This
+						<ConceptInline term="inharmonicity">
+							{#snippet children()}
+								Inharmonicity is the deviation of a string's overtones from perfect
+								harmonic ratios. An ideal string would have overtones at exactly 2x,
+								3x, 4x the fundamental. Real strings, due to stiffness, produce
+								overtones that are slightly sharper (higher) than these ideal values.
+								Thicker, stiffer strings (like the wound E2) have more inharmonicity
+								than thin, flexible strings (like the plain E4). This measurable
+								physical property is a strong cue for string identification.
+							{/snippet}
+						</ConceptInline>
+						is most pronounced on thicker strings and provides an additional
+						dimension for distinguishing strings with overlapping fundamentals.
 					</div>
 				</li>
 				<li>
 					<span class="finding-icon num">3</span>
 					<div>
-						<strong>Random Forest benefited most (+1.5%) because flattened features are more sensitive to noise.</strong>
-						The Random Forest operates on flattened spectrogram pixels -- every pixel
-						is an independent feature with no spatial context. A few corrupted pixels
-						from clipping artifacts can mislead individual decision trees. The CNNs,
-						with their spatial convolution filters, are somewhat more robust to
-						localized noise because they aggregate information from neighboring regions.
-					</div>
-				</li>
-				<li>
-					<span class="finding-icon num">4</span>
-					<div>
-						<strong>Data quality beats data quantity.</strong>
-						Removing 39 bad samples helped more than aligning 1,380. This is a common
-						pattern in machine learning: a small number of noisy or mislabeled samples
-						can disproportionately drag down accuracy because the model wastes capacity
-						trying to fit data that contradicts the true patterns.
+						<strong>Higher strings (B3, E4) have cleaner harmonic series.</strong>
+						Their overtones align closely with integer multiples, making them
+						easier to classify from the spectrogram alone. This explains why
+						the Pure CNN already handles them well without extra features.
 					</div>
 				</li>
 			</ul>
+			<div class="viz-item">
+				<div class="viz-label">Round 4 per-string accuracy deltas vs Round 1</div>
+				<img
+					src="/training/round_04/round_04_delta.png"
+					alt="Bar chart showing per-string accuracy changes from Round 1 to Round 4. Hybrid CNN E2 shows the largest improvement at +5.2%."
+					class="viz-img"
+				/>
+			</div>
+			<p class="viz-caption">
+				The delta chart shows where harmonic features had the most impact. The Hybrid CNN's
+				E2 string jumped +5.2%, while the Pure CNN's E2 stayed flat -- it already extracts
+				this information from the spectrogram.
+			</p>
 		</section>
 
 		<!-- Station 3: Results Comparison -->
@@ -251,13 +264,13 @@
 			<div class="station-label">STATION 3</div>
 			<h2>Results Comparison</h2>
 			<p>
-				All three rounds compared side-by-side. Select a model to see its
+				All four rounds compared side-by-side. Select a model to see its
 				string-by-string breakdown across all rounds.
 			</p>
 
 			<!-- Model selector tabs -->
 			<div class="model-tabs">
-				{#each r3Results as model, i}
+				{#each r4Results as model, i}
 					<button
 						class="model-tab"
 						class:active={selectedModel === i}
@@ -269,41 +282,44 @@
 				{/each}
 			</div>
 
-			<!-- Three-round comparison table -->
+			<!-- Four-round comparison table -->
 			<div class="model-compare">
 				<div class="mc-header">
 					<span class="mc-col"></span>
 					<span class="mc-col">Round 1</span>
 					<span class="mc-col">Round 2</span>
 					<span class="mc-col">Round 3</span>
-					<span class="mc-col">R1 to R3</span>
+					<span class="mc-col">Round 4</span>
+					<span class="mc-col">R1 to R4</span>
 				</div>
 				<div class="mc-row overall">
 					<span class="mc-col mc-label">Overall</span>
 					<span class="mc-col">{pct(r1Results[selectedModel].accuracy)}</span>
 					<span class="mc-col">{pct(r2Results[selectedModel].accuracy)}</span>
 					<span class="mc-col">{pct(r3Results[selectedModel].accuracy)}</span>
-					<span class="mc-col" style:color={deltaColor(r3Results[selectedModel].accuracy - r1Results[selectedModel].accuracy)}>
-						{deltaPct(r1Results[selectedModel].accuracy, r3Results[selectedModel].accuracy)}
+					<span class="mc-col">{pct(r4Results[selectedModel].accuracy)}</span>
+					<span class="mc-col" style:color={deltaColor(r4Results[selectedModel].accuracy - r1Results[selectedModel].accuracy)}>
+						{deltaPct(r1Results[selectedModel].accuracy, r4Results[selectedModel].accuracy)}
 					</span>
 				</div>
 				{#each stringNames as name, i}
-					{@const d = r3Results[selectedModel].per_string[i] - r1Results[selectedModel].per_string[i]}
+					{@const d = r4Results[selectedModel].per_string[i] - r1Results[selectedModel].per_string[i]}
 					<div class="mc-row">
 						<span class="mc-col mc-label">{name}</span>
 						<span class="mc-col">{pct(r1Results[selectedModel].per_string[i])}</span>
 						<span class="mc-col">{pct(r2Results[selectedModel].per_string[i])}</span>
 						<span class="mc-col">{pct(r3Results[selectedModel].per_string[i])}</span>
-						<span class="mc-col" style:color={deltaColor(d)}>{deltaPct(r1Results[selectedModel].per_string[i], r3Results[selectedModel].per_string[i])}</span>
+						<span class="mc-col">{pct(r4Results[selectedModel].per_string[i])}</span>
+						<span class="mc-col" style:color={deltaColor(d)}>{deltaPct(r1Results[selectedModel].per_string[i], r4Results[selectedModel].per_string[i])}</span>
 					</div>
 				{/each}
 			</div>
 
-			<!-- Per-string bars for Pure CNN Round 3 -->
+			<!-- Per-string bars for Round 4 -->
 			<div class="string-bars">
-				<div class="bars-title">Per-String Accuracy -- {r3Results[selectedModel].name} (Round 3)</div>
+				<div class="bars-title">Per-String Accuracy -- {r4Results[selectedModel].name} (Round 4)</div>
 				{#each stringNames as name, i}
-					{@const acc = r3Results[selectedModel].per_string[i]}
+					{@const acc = r4Results[selectedModel].per_string[i]}
 					<div class="bar-row">
 						<span class="bar-label">{name}</span>
 						<div class="bar-track">
@@ -317,14 +333,20 @@
 				{/each}
 			</div>
 
-			<!-- Side-by-side accuracy chart -->
 			<div class="viz-item">
-				<div class="viz-label">Round 1 vs Round 2 vs Round 3 accuracy across all models</div>
+				<div class="viz-label">Round 1 vs Round 4 accuracy across all models</div>
 				<img
-					src="/training/round_03/comparison_bars.png"
-					alt="Bar chart comparing Round 1, Round 2, and Round 3 accuracy for Random Forest, Hybrid CNN, and Pure CNN. Round 3 shows improvement across all models."
+					src="/training/round_04/round_04_comparison.png"
+					alt="Bar chart comparing Round 1 and Round 4 accuracy for Random Forest, Hybrid CNN, and Pure CNN."
 					class="viz-img"
 				/>
+			</div>
+
+			<div class="table-note">
+				The key finding: Hybrid CNN E2 jumped from 81.3% to 86.5% (+5.2%) with
+				harmonic features, but Pure CNN E2 stayed at 94.3% -- it was already
+				extracting this information from the raw spectrogram. Harmonic features
+				help weaker models catch up but do not push the frontier.
 			</div>
 		</section>
 
@@ -334,39 +356,39 @@
 			<h2>What We Learned</h2>
 			<ul class="learnings">
 				<li>
-					<strong>Quality matters more than alignment.</strong>
-					Round 2 aligned all 1,380 samples to their pluck onset with zero accuracy
-					impact. Round 3 removed just 39 samples and every model improved. The
-					32 clipped samples were actively harmful -- their distorted harmonics were
-					polluting the learned features.
+					<strong>Harmonic features help weaker models on hard strings.</strong>
+					The Hybrid CNN's E2 accuracy jumped +5.2% (81.3% to 86.5%) with Goertzel
+					features. The Random Forest's E2 gained +2.2%. These models lacked the
+					depth to extract harmonic ratios from the spectrogram on their own, so
+					providing them explicitly helped significantly.
 				</li>
 				<li>
-					<strong>A small number of bad samples can disproportionately hurt accuracy.</strong>
-					39 samples is 2.8% of the dataset. Removing them gave the Pure CNN a +0.9%
-					boost and the Random Forest +1.5%. These samples were not just unhelpful --
-					they were teaching the model incorrect patterns.
+					<strong>The Pure CNN already captures harmonic information.</strong>
+					With 4 convolutional layers and enough depth, the Pure CNN learns to
+					extract harmonic ratio patterns directly from the spectrogram's vertical
+					frequency structure. Adding explicit harmonic features gave it nothing new
+					to work with, resulting in a negligible +0.2% overall change.
 				</li>
 				<li>
-					<strong>Feature-level models are more sensitive to data quality.</strong>
-					The Random Forest, which operates on flattened pixel values with no spatial
-					context, gained the most from cleanup. The CNNs, with their spatial pooling,
-					were partially robust to the noise but still benefited.
+					<strong>The ceiling is not about features -- it is about data quantity.</strong>
+					With only 10 samples per class, even a model that perfectly extracts all
+					available features is limited by the statistical reliability of its
+					training signal. More features cannot compensate for thin data.
 				</li>
 				<li>
-					<strong>Next: harmonic features for string identification.</strong>
-					With quality issues resolved, the next frontier is the E2/A2 confusion.
-					These strings share overlapping fundamental frequencies at certain fret
-					positions. Physics-based harmonic ratio features (via Goertzel filters)
-					should help distinguish them by their overtone structure rather than relying
-					solely on the spectrogram.
+					<strong>Next: data augmentation to increase effective training size.</strong>
+					If the limit is data quantity rather than feature coverage, the next
+					logical step is to generate augmented copies of the training data --
+					gain variation, noise injection, time shift -- to give the models more
+					examples to learn from without capturing new recordings.
 				</li>
 			</ul>
 			<div class="nav-links">
-				<a href="/diary/machine-learning/round-2" class="nav-link prev">
-					&lt;- Round 2: Onset Alignment
+				<a href="/diary/machine-learning/round-3" class="nav-link prev">
+					&lt;- Round 3: Quality Cleanup
 				</a>
-				<a href="/diary/machine-learning/round-4" class="nav-link next">
-					Round 4: Goertzel Harmonics ->
+				<a href="/diary/machine-learning/round-5" class="nav-link next">
+					Round 5: Data Augmentation ->
 				</a>
 			</div>
 		</section>
@@ -455,32 +477,32 @@
 		margin-top: 4px;
 	}
 
-	/* Removal grid */
-	.removal-grid {
+	/* Feature grid */
+	.feature-grid {
 		display: flex;
 		gap: 12px;
 		margin: 16px 0;
 	}
-	.removal-card {
+	.feature-card {
 		flex: 1;
 		background: var(--color-bg-panel);
 		border: 1px solid var(--color-border);
 		padding: 16px;
 		text-align: center;
 	}
-	.removal-num {
+	.feature-num {
 		font-family: var(--font-pixel);
 		font-size: 28px;
-		color: var(--color-accent-magenta);
+		color: var(--color-accent-cyan);
 	}
-	.removal-type {
+	.feature-type {
 		font-family: var(--font-reading);
 		font-size: 13px;
 		color: var(--color-text-primary);
 		font-weight: 600;
 		margin-top: 4px;
 	}
-	.removal-detail {
+	.feature-detail {
 		font-size: 11px;
 		color: var(--color-text-dim);
 		margin-top: 4px;
@@ -581,6 +603,17 @@
 		font-family: var(--font-reading);
 		color: var(--color-text-primary);
 		font-size: 12px;
+	}
+
+	/* Table note */
+	.table-note {
+		font-size: 13px;
+		color: var(--color-text-dim);
+		line-height: 1.7;
+		margin-top: 8px;
+		padding: 12px 16px;
+		border-left: 2px solid var(--color-accent-amber);
+		background: var(--color-bg-panel);
 	}
 
 	/* Accuracy bars */

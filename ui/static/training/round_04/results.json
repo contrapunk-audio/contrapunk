@@ -1,0 +1,43 @@
+[
+  {
+    "name": "Random Forest",
+    "accuracy": 0.9376811594202898,
+    "per_string": [
+      0.8826086956521738,
+      0.9130434782608695,
+      0.9739130434782609,
+      0.9565217391304348,
+      0.9391304347826086,
+      0.9608695652173914
+    ],
+    "notes": "mel + Goertzel harmonic ratios, centroid, inharmonicity"
+  },
+  {
+    "name": "Hybrid CNN",
+    "accuracy": 0.9347826086956521,
+    "per_string": [
+      0.8652173913043478,
+      0.9,
+      0.9565217391304349,
+      0.9739130434782609,
+      0.9434782608695652,
+      0.9695652173913043
+    ],
+    "notes": "two-branch fusion, 50 epochs",
+    "training_curves": true
+  },
+  {
+    "name": "Pure CNN",
+    "accuracy": 0.9644927536231883,
+    "per_string": [
+      0.9434782608695652,
+      0.9478260869565217,
+      0.9695652173913045,
+      0.9826086956521738,
+      0.9608695652173914,
+      0.982608695652174
+    ],
+    "notes": "two-branch fusion, 60 epochs",
+    "training_curves": true
+  }
+]

@@ -17,6 +17,9 @@ const config = {
 				'/diary/machine-learning/round-1',
 				'/diary/machine-learning/round-2',
 				'/diary/machine-learning/round-3',
+				'/diary/machine-learning/round-4',
+				'/diary/machine-learning/round-5',
+				'/diary/machine-learning/the-pivot',
 				'/diary/machine-learning/playground'
 			]
 		}

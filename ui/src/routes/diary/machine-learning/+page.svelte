@@ -13,6 +13,8 @@
 	let r1Results: ModelResult[] = $state([]);
 	let r2Results: ModelResult[] = $state([]);
 	let r3Results: ModelResult[] = $state([]);
+	let r4Results: ModelResult[] = $state([]);
+	let r5Results: ModelResult[] = $state([]);
 	let loading = $state(true);
 
 	$effect(() => {
@@ -20,10 +22,14 @@
 			fetch('/training/round_01/results.json').then(r => r.json()),
 			fetch('/training/round_02/results.json').then(r => r.json()),
 			fetch('/training/round_03/results.json').then(r => r.json()),
-		]).then(([r1, r2, r3]) => {
+			fetch('/training/round_04/results.json').then(r => r.json()),
+			fetch('/training/round_05/results.json').then(r => r.json()),
+		]).then(([r1, r2, r3, r4, r5]) => {
 			r1Results = r1;
 			r2Results = r2;
 			r3Results = r3;
+			r4Results = r4;
+			r5Results = r5;
 			loading = false;
 		}).catch(() => { loading = false; });
 	});
@@ -54,8 +60,9 @@
 		<div class="label">CHAPTER</div>
 		<h1>Teaching a Model to Identify Guitar Positions</h1>
 		<p>
-			138 positions on a guitar neck. 1,380 audio samples. Three model architectures.
-			We train iteratively — changing one thing at a time, measuring the impact, documenting everything.
+			138 positions on a guitar neck. 1,380 audio samples. Five training rounds.
+			Three model architectures. The iterative journey that taught us physics
+			works better than pattern matching.
 		</p>
 	</header>
 
@@ -110,13 +117,54 @@
 			<RoundCard
 				number={4}
 				title="Goertzel Harmonics"
-				accuracy={0}
-				description="Physics-based harmonic ratio features for string identification."
-				date=""
-				complete={false}
-				href=""
+				accuracy={bestAccuracy(r4Results)}
+				delta={bestAccuracy(r4Results) - bestAccuracy(r3Results)}
+				description="Added 11 physics-based harmonic ratio features via Goertzel algorithm. Hybrid CNN E2 jumped +5.2% but Pure CNN unchanged — it already learns harmonics implicitly."
+				date="Apr 2, 2026"
+				complete={true}
+				href="/diary/machine-learning/round-4"
 			/>
+
+			<RoundCard
+				number={5}
+				title="Data Augmentation"
+				accuracy={bestAccuracy(r5Results)}
+				delta={bestAccuracy(r5Results) - bestAccuracy(r4Results)}
+				description="4x training data via gain, noise, shift, stretch augmentation. Hybrid CNN hit 95.1% (new best) but Pure CNN stayed flat. Round 3's 97.3% still the overall best."
+				date="Apr 3, 2026"
+				complete={true}
+				href="/diary/machine-learning/round-5"
+			/>
+
+			<!-- The Pivot — not a RoundCard, a special narrative link -->
+			<a class="pivot-card" href="/diary/machine-learning/the-pivot">
+				<div class="pivot-icon">
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+						<polyline points="17 6 23 6 23 12"></polyline>
+					</svg>
+				</div>
+				<div class="pivot-body">
+					<div class="pivot-label">CONCLUSION</div>
+					<div class="pivot-title">The Pivot: From ML to Physics</div>
+					<div class="pivot-desc">
+						Five rounds taught us the ceiling is physics-bounded.
+						Research showed DSP achieves 98.5% with 1 calibration sample per string.
+					</div>
+				</div>
+			</a>
 		{/if}
+	</section>
+
+	<section class="discovery">
+		<div class="label">WHAT WE DISCOVERED</div>
+		<p>
+			After five rounds of iterative training, our best model reached 97.3%.
+			Then we discovered that a physics-based approach using the
+			<strong>inharmonicity B coefficient</strong> achieves 98.5% with just one
+			calibration sample per string. The full story is in
+			<a href="/diary/machine-learning/the-pivot">The Pivot</a>.
+		</p>
 	</section>
 
 	<section class="tools">
@@ -224,5 +272,76 @@
 		color: var(--color-text-secondary);
 		font-size: 11px;
 		margin-top: 4px;
+	}
+
+	/* Pivot card */
+	.pivot-card {
+		display: flex;
+		gap: 16px;
+		align-items: flex-start;
+		text-decoration: none;
+		background: var(--color-bg-panel);
+		border: 1px solid rgba(255, 170, 51, 0.3);
+		border-left: 3px solid rgba(255, 170, 51, 0.6);
+		padding: 16px;
+		margin-top: 8px;
+	}
+	.pivot-card:hover {
+		background: rgba(255, 170, 51, 0.03);
+		border-color: rgba(255, 170, 51, 0.5);
+	}
+	.pivot-icon {
+		flex-shrink: 0;
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--color-accent-amber, #ffaa33);
+	}
+	.pivot-body {
+		flex: 1;
+	}
+	.pivot-label {
+		font-family: var(--font-pixel);
+		font-size: var(--font-size-xs);
+		color: var(--color-accent-amber, #ffaa33);
+		letter-spacing: 2px;
+		margin-bottom: 4px;
+	}
+	.pivot-title {
+		font-family: var(--font-reading);
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+	.pivot-desc {
+		color: var(--color-text-secondary);
+		font-size: 13px;
+		margin-top: 4px;
+		line-height: 1.5;
+	}
+
+	/* Discovery section */
+	.discovery {
+		padding: 24px;
+		border-bottom: 1px solid var(--color-border);
+	}
+	.discovery p {
+		font-size: 14px;
+		color: var(--color-text-secondary);
+		line-height: 1.7;
+		margin: 0;
+	}
+	.discovery strong {
+		color: var(--color-text-primary);
+	}
+	.discovery a {
+		color: var(--color-accent-cyan);
+		text-decoration: none;
+		border-bottom: 1px dashed var(--color-accent-cyan-dim, rgba(51, 221, 255, 0.3));
+	}
+	.discovery a:hover {
+		border-bottom-color: var(--color-accent-cyan);
 	}
 </style>
