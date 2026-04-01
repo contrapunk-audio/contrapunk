@@ -5,6 +5,7 @@
 	// Virtual input sentinel values (matching existing INPUT_NOTE_GENERATOR / INPUT_COMPUTER_KEYBOARD from app.rs)
 	const VIRTUAL_NOTE_GENERATOR = Number.MAX_SAFE_INTEGER;
 	const VIRTUAL_COMPUTER_KEYBOARD = Number.MAX_SAFE_INTEGER - 1;
+	const VIRTUAL_GUITAR_AUDIO = Number.MAX_SAFE_INTEGER - 2;
 
 	const MAX_OUTPUT_SLOTS = 8;
 
@@ -14,7 +15,8 @@
 	let inputOptions = $derived([
 		...midi.inputs.map((d) => ({ value: String(d.index), label: d.name })),
 		{ value: String(VIRTUAL_NOTE_GENERATOR), label: 'Note Generator' },
-		{ value: String(VIRTUAL_COMPUTER_KEYBOARD), label: 'Computer Keyboard' }
+		{ value: String(VIRTUAL_COMPUTER_KEYBOARD), label: 'Computer Keyboard' },
+		{ value: String(VIRTUAL_GUITAR_AUDIO), label: 'Guitar Audio' }
 	]);
 
 	let outputOptions = $derived(
@@ -26,7 +28,7 @@
 			midi.clearInput();
 		} else {
 			const idx = parseInt(value, 10);
-			if (idx === VIRTUAL_NOTE_GENERATOR || idx === VIRTUAL_COMPUTER_KEYBOARD) {
+			if (idx === VIRTUAL_NOTE_GENERATOR || idx === VIRTUAL_COMPUTER_KEYBOARD || idx === VIRTUAL_GUITAR_AUDIO) {
 				midi.selectedInput = idx;
 			} else {
 				midi.selectInput(idx);

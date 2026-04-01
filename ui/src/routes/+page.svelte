@@ -3,6 +3,7 @@
 	import ControlPanel from '$lib/components/ControlPanel.svelte';
 	import Piano from '$lib/components/Piano.svelte';
 	import MidiDevices from '$lib/components/MidiDevices.svelte';
+	import GuitarInputPanel from '$lib/components/GuitarInputPanel.svelte';
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import HumanizePanel from '$lib/components/HumanizePanel.svelte';
@@ -12,8 +13,12 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 
-	// Virtual input sentinel (must match MidiDevices.svelte)
+	// Virtual input sentinels (must match MidiDevices.svelte)
 	const VIRTUAL_COMPUTER_KEYBOARD = Number.MAX_SAFE_INTEGER - 1;
+	const VIRTUAL_GUITAR_AUDIO = Number.MAX_SAFE_INTEGER - 2;
+
+	// Derived: is Guitar Audio selected as input?
+	let isGuitarAudioSelected = $derived(midi.selectedInput === VIRTUAL_GUITAR_AUDIO);
 
 	// Piano-style QWERTY mapping:
 	// Lower octave — Z row = white keys, S/D/G/H/J = black keys
@@ -169,9 +174,12 @@
 	{#if initDone}
 		<!-- Middle: 3-column content area -->
 		<div class="content-area">
-			<!-- Left column: MIDI devices + Presets -->
+			<!-- Left column: MIDI devices + Guitar Input + Presets -->
 			<div class="column column-left">
 				<MidiDevices />
+				{#if isGuitarAudioSelected}
+					<GuitarInputPanel />
+				{/if}
 				<PresetManager />
 			</div>
 
