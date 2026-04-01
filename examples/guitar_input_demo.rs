@@ -6,46 +6,66 @@
 //! Flow:
 //!   1. Device + channel selection
 //!   2. Noise floor measurement
-//!   3. Tuner (live cents display per string, same as guitar_capture.rs)
-//!   4. Calibration (inharmonicity B + harmonics per string)
-//!   5. Live detection
+//!   3. 3-pass tuner (same as guitar_tuner.rs) with auto-pluck capture
+//!   4. Save GuitarCalibrationProfile to JSON
+//!   5. Build GuitarCalibration from captured data
+//!   6. Live detection with string/fret display
 //!
 //! Run with: cargo run --release --example guitar_input_demo
 //!
 //! Requires an audio input device (e.g., Audient iD14).
 
-use contrapunk::audio::guitar::{midi_to_note_name, STRING_BASE_PITCH, STRING_NAMES};
+use contrapunk::audio::buffer::OverlapManager;
+use contrapunk::audio::detectors::GoertzelBank;
+use contrapunk::audio::guitar::*;
 use contrapunk::audio::guitar_input::{
-    compute_rms, open_string_freq, GuitarCalibration, GuitarInput, GuitarInputConfig,
-    MidiEvent, StringProfile,
+    open_string_freq, GuitarCalibration, GuitarInput, GuitarInputConfig, MidiEvent, StringProfile,
 };
+use contrapunk::audio::onset::PluckDetector;
 use contrapunk::audio::pitch::freq_to_midi;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use pitch_detection::detector::mcleod::McLeodDetector;
 use pitch_detection::detector::PitchDetector;
 
-use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const BUFFER_SIZE: usize = 2048;
-const CALIBRATION_LISTEN_SECS: f32 = 3.0;
-const SILENCE_LISTEN_SECS: f32 = 3.0;
-const MIN_CONFIDENCE: f64 = 0.40;
+const BUFFER_SIZE: usize = 1024;
+const OVERLAP_PCT: u8 = 75;
+const MIN_CONFIDENCE: f64 = 0.45;
+const IN_TUNE_CENTS: i8 = 8;
+const IN_TUNE_HOLD_SECS: f32 = 1.2;
+const PROFILE_PATH: &str = "guitar_calibration_profile.json";
 
 // ── Audio State (shared between audio thread and main thread) ───────
-// Same pattern as guitar_capture.rs for live pitch display in the tuner.
 
 struct AudioState {
-    rms: f32,
-    peak: f32,
     frequency: f32,
     confidence: f32,
+    rms: f32,
     midi_note: u8,
+    cents: i8,
     note_name: String,
+    peak: f32,
+    bright_rms: f32,
+    bright_peak: f32,
+    slope: f32,
     prev_rms: f32,
+    goertzel_note: Option<u8>,
+}
+
+#[derive(Clone)]
+struct Pluck {
+    midi_note: u8,
+    freq: f32,
+    conf: f32,
+    rms: f32,
+    peak: f32,
+    bright_rms: f32,
+    bright_peak: f32,
+    slope: f32,
 }
 
 fn main() {
@@ -118,34 +138,39 @@ fn main() {
 
     let pipeline = Arc::new(Mutex::new(GuitarInput::new(config.clone())));
 
-    // Shared ring buffer for calibration pluck detection
-    let audio_ring = Arc::new(Mutex::new(AudioRing::new(sample_rate * 4))); // 4s ring
-
-    // Shared AudioState for tuner (pitch display from audio thread)
-    let audio_state = Arc::new(Mutex::new(AudioState {
-        rms: 0.0,
-        peak: 0.0,
-        frequency: 0.0,
-        confidence: 0.0,
-        midi_note: 0,
-        note_name: String::new(),
-        prev_rms: 0.0,
-    }));
-
-    // Pitch detection buffer (VecDeque for O(1) push/pop, same as guitar_capture)
-    let pitch_buffer = Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(BUFFER_SIZE * 2)));
-
     // Events queue for live detection phase
     let events_queue: Arc<Mutex<Vec<(MidiEvent, Instant)>>> =
         Arc::new(Mutex::new(Vec::new()));
 
+    // Shared AudioState for tuner
+    let audio_state = Arc::new(Mutex::new(AudioState {
+        frequency: 0.0,
+        confidence: 0.0,
+        rms: 0.0,
+        midi_note: 0,
+        cents: 0,
+        note_name: String::new(),
+        peak: 0.0,
+        bright_rms: 0.0,
+        bright_peak: 0.0,
+        slope: 0.0,
+        prev_rms: 0.0,
+        goertzel_note: None,
+    }));
+
+    // OverlapManager + GoertzelBank + PluckDetector for audio processing
+    let overlap = Arc::new(Mutex::new(OverlapManager::new(BUFFER_SIZE, OVERLAP_PCT)));
+    let pluck_det = Arc::new(Mutex::new(PluckDetector::new(BUFFER_SIZE / 2 + 1)));
+    let goertzel = Arc::new(Mutex::new(GoertzelBank::new(sample_rate)));
+
     // ── Start audio stream ──────────────────────────────────────────
 
-    let ring_c = Arc::clone(&audio_ring);
+    let state_c = Arc::clone(&audio_state);
+    let oc = Arc::clone(&overlap);
+    let pc = Arc::clone(&pluck_det);
+    let gc = Arc::clone(&goertzel);
     let pipeline_c = Arc::clone(&pipeline);
     let events_c = Arc::clone(&events_queue);
-    let state_c = Arc::clone(&audio_state);
-    let pbuf_c = Arc::clone(&pitch_buffer);
     let ch = channel;
     let n_ch = channels;
     let sr = sample_rate;
@@ -155,25 +180,25 @@ fn main() {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &stream_config,
             move |data: &[f32], _| {
-                audio_callback(data, n_ch, ch, sr, &ring_c, &pipeline_c, &events_c, &state_c, &pbuf_c);
+                audio_process(data, n_ch, ch, sr, &oc, &pc, &gc, &state_c);
+                feed_pipeline(data, n_ch, ch, &pipeline_c, &events_c);
             },
             |e| eprintln!("Audio error: {}", e),
             None,
         ),
         cpal::SampleFormat::I16 => {
-            let ring_c2 = Arc::clone(&audio_ring);
+            let state_c2 = Arc::clone(&audio_state);
+            let oc2 = Arc::clone(&overlap);
+            let pc2 = Arc::clone(&pluck_det);
+            let gc2 = Arc::clone(&goertzel);
             let pipeline_c2 = Arc::clone(&pipeline);
             let events_c2 = Arc::clone(&events_queue);
-            let state_c2 = Arc::clone(&audio_state);
-            let pbuf_c2 = Arc::clone(&pitch_buffer);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[i16], _| {
-                    let float: Vec<f32> =
-                        data.iter().map(|&s| s as f32 / 32768.0).collect();
-                    audio_callback(
-                        &float, n_ch, ch, sr, &ring_c2, &pipeline_c2, &events_c2, &state_c2, &pbuf_c2,
-                    );
+                    let f: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                    audio_process(&f, n_ch, ch, sr, &oc2, &pc2, &gc2, &state_c2);
+                    feed_pipeline(&f, n_ch, ch, &pipeline_c2, &events_c2);
                 },
                 |e| eprintln!("Audio error: {}", e),
                 None,
@@ -190,113 +215,123 @@ fn main() {
 
     // ── Noise floor measurement ─────────────────────────────────────
 
-    println!("--- Measuring noise floor ({:.0}s, stay quiet) ---", SILENCE_LISTEN_SECS);
-    std::thread::sleep(Duration::from_secs_f32(SILENCE_LISTEN_SECS));
+    println!("  Measuring noise floor...");
+    std::thread::sleep(Duration::from_millis(1200));
+    let noise_floor = { audio_state.lock().unwrap().rms };
+    let pluck_threshold = (noise_floor * 5.0).max(0.012);
+    println!("  Noise: {:.4}\n", noise_floor);
 
-    let noise_floor = {
-        let ring = audio_ring.lock().unwrap();
-        let recent = ring.recent(sample_rate); // last 1s
-        GuitarInput::measure_noise_floor(&recent)
-    };
-    println!("  Noise floor: {:.4}", noise_floor);
-    println!();
+    // ── Per-String Tuning (3 passes) ────────────────────────────────
 
-    // ── Tuner phase (exact same as guitar_capture.rs) ───────────────
+    let mut all_plucks: Vec<(usize, Pluck)> = Vec::new();
 
-    println!("--- TUNER ---");
-    println!("Pluck each open string and check the display.");
-    println!("Press Enter after each string when it's in tune.");
-    println!();
+    let passes: Vec<(&str, Vec<usize>)> = vec![
+        ("Pass 1/3: Low E → High E", (0..6).collect()),
+        ("Pass 2/3: High E → Low E", (0..6).rev().collect()),
+        ("Pass 3/3: Low E → High E (final check)", (0..6).collect()),
+    ];
+
+    for (pass_idx, (pass_name, string_order)) in passes.iter().enumerate() {
+        println!("\n╔══════════════════════════════════════════════╗");
+        println!("║  {}{}║",
+            pass_name, " ".repeat(44 - pass_name.len()));
+        println!("╚══════════════════════════════════════════════╝\n");
+
+        for (step, &string_idx) in string_order.iter().enumerate() {
+            let total_strings = string_order.len();
+            let pluck_count = tune_string(
+                string_idx, step + 1, total_strings, pass_idx,
+                &audio_state, noise_floor, pluck_threshold, &mut all_plucks,
+            );
+
+            println!("\n  {} {}! ({} plucks)\n",
+                STRING_NAMES[string_idx],
+                if pass_idx == 2 { "confirmed" } else { "tuned" },
+                pluck_count);
+        }
+    }
+
+    // ── Build & Save Profile ─────────────────────────────────────────
+
+    println!("\n══════════════════════════════════════════════");
+    println!("  All strings tuned! Building calibration profile...");
+    println!("══════════════════════════════════════════════\n");
+
+    let mut profile = GuitarCalibrationProfile::default();
+
+    for string_idx in 0..6 {
+        let mut plucks: Vec<&Pluck> = all_plucks.iter()
+            .filter(|(si, _)| *si == string_idx)
+            .map(|(_, p)| p)
+            .collect();
+
+        if plucks.is_empty() { continue; }
+
+        plucks.sort_by(|a, b| a.rms.partial_cmp(&b.rms).unwrap());
+        let split = plucks.len() / 2;
+        let soft = &plucks[..split.max(1)];
+        let strong = &plucks[split..];
+
+        profile.strings[string_idx].soft_samples = soft.iter().map(|p| to_cal(p)).collect();
+        profile.strings[string_idx].strong_samples = strong.iter().map(|p| to_cal(p)).collect();
+    }
+
+    // Summary
+    println!("  {:>6}  {:>5}  {:>8}  {:>8}  {:>6}",
+        "String", "Count", "SoftRMS", "StrongRMS", "Conf");
+    println!("  {}", "-".repeat(42));
+
+    for (i, cal) in profile.strings.iter().enumerate() {
+        let count = all_plucks.iter().filter(|(si, _)| *si == i).count();
+        let strong_rms = if cal.strong_samples.is_empty() { 0.0 }
+            else { cal.strong_samples.iter().map(|s| s.rms).sum::<f32>() / cal.strong_samples.len() as f32 };
+        println!("  {:>6}  {:>5}  {:>8.4}  {:>8.4}  {:>5.1}%",
+            STRING_NAMES[i], count, cal.soft_rms_threshold(), strong_rms,
+            cal.avg_confidence() * 100.0);
+    }
+
+    let json = profile.to_json().expect("Failed to serialize");
+    std::fs::write(PROFILE_PATH, &json).expect("Failed to write");
+    println!("\n  Saved: {} ({} plucks, {} bytes)", PROFILE_PATH, all_plucks.len(), json.len());
+
+    // ── Build GuitarCalibration from captured data ──────────────────
+
+    println!("\n  Building GuitarCalibration for live detection...");
+
+    let default_b = [0.006, 0.003, 0.003, 0.006, 0.003, 0.002];
+    let mut string_profiles: Vec<StringProfile> = Vec::new();
 
     for si in 0..6 {
-        let target = STRING_BASE_PITCH[si];
-        let target_name = midi_to_note_name(target);
-        println!(
-            "  {} ({}) \u{2014} pluck and tune, press Enter when done:",
-            STRING_NAMES[si], target_name
-        );
+        let plucks_for_string: Vec<&Pluck> = all_plucks.iter()
+            .filter(|(idx, _)| *idx == si)
+            .map(|(_, p)| p)
+            .collect();
 
-        // Show live detection while waiting for Enter
-        // Same pattern as guitar_capture.rs: poll AudioState in a loop
-        for _ in 0..30 {
-            std::thread::sleep(Duration::from_millis(100));
-            let s = audio_state.lock().unwrap();
-            if s.rms > noise_floor * 2.0 && s.confidence > 0.45 {
-                let (_, cents) = freq_to_midi(s.frequency);
-                let arrow = if cents > 5 {
-                    "sharp \u{2193}"
-                } else if cents < -5 {
-                    "flat \u{2191}"
-                } else {
-                    "IN TUNE"
-                };
-                print!(
-                    "\r    {:>5} {:>+4}\u{00a2}  {}     ",
-                    s.note_name, cents, arrow
-                );
-                io::stdout().flush().unwrap();
-            }
-        }
-        print!(
-            "\r    Press Enter when {} is tuned...     ",
-            STRING_NAMES[si]
-        );
-        io::stdout().flush().unwrap();
-        wait_enter();
-        println!("  {} done.", STRING_NAMES[si]);
-    }
-    println!();
-    println!("Tuning complete!");
-    println!();
+        let avg_freq = if plucks_for_string.is_empty() {
+            open_string_freq(si)
+        } else {
+            plucks_for_string.iter().map(|p| p.freq).sum::<f32>() / plucks_for_string.len() as f32
+        };
 
-    // ── Calibration phase ───────────────────────────────────────────
+        // Compute inharmonicity B from pluck frequency spread if enough samples
+        let inharmonicity_b = if plucks_for_string.len() >= 2 {
+            let expected = open_string_freq(si);
+            let avg_ratio = avg_freq / expected;
+            // B ~ (ratio - 1) for fundamental; rough approximation
+            ((avg_ratio - 1.0).abs() * 0.1).max(default_b[si] * 0.5).min(default_b[si] * 2.0)
+        } else {
+            default_b[si]
+        };
 
-    println!("--- CALIBRATION ---");
-    println!("Now pluck each open string for calibration.");
-    println!();
-
-    let string_labels = ["E2", "A2", "D3", "G3", "B3", "E4"];
-    let mut string_profiles: Vec<StringProfile> = Vec::new();
-    let pluck_threshold = (noise_floor * 5.0).max(0.012);
-
-    for (i, label) in string_labels.iter().enumerate() {
-        print!(
-            "  [{}/6] Pluck {} open... ",
-            i + 1,
-            label
-        );
-        io::stdout().flush().unwrap();
-
-        // Wait for a pluck (RMS spike above noise)
-        let capture = wait_for_pluck(
-            &audio_ring,
-            sample_rate,
-            pluck_threshold,
-            CALIBRATION_LISTEN_SECS,
-        );
-
-        match capture {
-            Some(audio) => {
-                let pipe = pipeline.lock().unwrap();
-                if let Some(profile) = pipe.calibrate_string(i, &audio) {
-                    println!(
-                        "B={:.4}, f={:.1}Hz, harmonics captured",
-                        profile.inharmonicity_b, profile.open_frequency
-                    );
-                    string_profiles.push(profile);
-                } else {
-                    println!("failed -- using defaults");
-                    string_profiles.push(default_string_profile(i));
-                }
-            }
-            None => {
-                println!("timeout -- using defaults");
-                string_profiles.push(default_string_profile(i));
-            }
-        }
+        string_profiles.push(StringProfile {
+            name: STRING_NAMES.get(si).copied().unwrap_or("?"),
+            open_midi: STRING_BASE_PITCH.get(si).copied().unwrap_or(40),
+            open_frequency: avg_freq,
+            inharmonicity_b,
+            harmonic_ratios: vec![0.5, 0.3, 0.2, 0.1, 0.05],
+        });
     }
 
-    // Build calibration
     let calibration = GuitarCalibration {
         noise_floor,
         signal_peak: 1.0,
@@ -315,9 +350,7 @@ fn main() {
         pipe.set_calibration(calibration);
     }
 
-    println!();
-    println!("Calibration complete!");
-    println!();
+    println!("  Calibration applied.\n");
 
     // ── Live detection ──────────────────────────────────────────────
 
@@ -414,78 +447,195 @@ fn main() {
     println!();
 }
 
-// ── Audio callback ──────────────────────────────────────────────────
-//
-// Combines two responsibilities:
-//   1. McLeod pitch detection -> AudioState (for the tuner display)
-//   2. GuitarInput pipeline -> MidiEvent queue (for live detection)
+// ── Tuner functions (exact copies from guitar_tuner.rs) ─────────────
 
-fn audio_callback(
+/// Tune a single string. Returns number of plucks captured.
+fn tune_string(
+    string_idx: usize,
+    step: usize,
+    total: usize,
+    pass_idx: usize,
+    state: &Arc<Mutex<AudioState>>,
+    noise_floor: f32,
+    pluck_threshold: f32,
+    all_plucks: &mut Vec<(usize, Pluck)>,
+) -> usize {
+    let string_name = STRING_NAMES[string_idx];
+    let target_midi = STRING_BASE_PITCH[string_idx];
+    let target_note = midi_to_note_name(target_midi);
+    let target_freq = midi_to_freq(target_midi);
+
+    let pass_label = if pass_idx == 2 { "verify" } else { "tune" };
+
+    println!("  ── {}/{}: {} {} ({}, {:.1} Hz) ──",
+        step, total, pass_label, string_name, target_note, target_freq);
+
+    let mut in_tune_since: Option<Instant> = None;
+    let mut string_plucks: Vec<Pluck> = Vec::new();
+    let mut was_quiet = true;
+    let mut last_pluck_time = Instant::now();
+
+    // Final pass has shorter hold time since strings should be stable
+    let hold_secs = if pass_idx == 2 { IN_TUNE_HOLD_SECS * 0.6 } else { IN_TUNE_HOLD_SECS };
+
+    loop {
+        std::thread::sleep(Duration::from_millis(40));
+
+        let s = state.lock().unwrap();
+
+        // Auto-capture plucks
+        if s.rms < pluck_threshold * 0.4 { was_quiet = true; }
+
+        if was_quiet
+            && s.rms > pluck_threshold
+            && s.confidence > MIN_CONFIDENCE as f32
+            && last_pluck_time.elapsed() > Duration::from_millis(200)
+        {
+            was_quiet = false;
+            last_pluck_time = Instant::now();
+            let dist = (s.midi_note as i16 - target_midi as i16).abs();
+            if dist <= 12 {
+                string_plucks.push(Pluck {
+                    midi_note: s.midi_note, freq: s.frequency, conf: s.confidence,
+                    rms: s.rms, peak: s.peak, bright_rms: s.bright_rms,
+                    bright_peak: s.bright_peak, slope: s.slope,
+                });
+            }
+        }
+
+        // Tuner display
+        if s.rms < noise_floor * 2.0 || s.confidence < MIN_CONFIDENCE as f32 {
+            in_tune_since = None;
+            print!("\r    {:>5} {:>5} {:>6} {:>4}%  {:21}  {:20}",
+                "---", "", "", "", "", "pluck...");
+            io::stdout().flush().unwrap();
+            continue;
+        }
+
+        let dist = (s.midi_note as i16 - target_midi as i16).abs();
+        let is_target = dist == 0 || dist == 12;
+        let cents = if dist == 0 { s.cents } else { 50i8 };
+        let meter = build_meter(cents);
+
+        let status = if !is_target {
+            in_tune_since = None;
+            format!("{} — play {}", s.note_name, target_note)
+        } else if cents.abs() <= IN_TUNE_CENTS {
+            if in_tune_since.is_none() { in_tune_since = Some(Instant::now()); }
+            let held_ms = in_tune_since.unwrap().elapsed().as_millis() as f32;
+            let hold_ms = hold_secs * 1000.0;
+            let progress = (held_ms / hold_ms).min(1.0);
+            let filled = (progress * 10.0) as usize;
+            let bar = "█".repeat(filled) + &"░".repeat(10 - filled);
+
+            if held_ms >= hold_ms {
+                // Done — store plucks and return
+                let count = string_plucks.len();
+                for p in string_plucks {
+                    all_plucks.push((string_idx, p));
+                }
+                let cents_str = if s.cents >= 0 { format!("+{}¢", s.cents) } else { format!("{}¢", s.cents) };
+                print!("\r    {:>5} {:>5} {:>6.1} {:>4.0}%  {}  IN TUNE [{}]   ",
+                    s.note_name, cents_str, s.frequency, s.confidence * 100.0, meter, bar);
+                io::stdout().flush().unwrap();
+                return count;
+            }
+            format!("hold [{}] x{}", bar, string_plucks.len())
+        } else {
+            in_tune_since = None;
+            if cents > 0 { "sharp ↓".into() } else { "flat ↑".into() }
+        };
+
+        let cents_str = if is_target {
+            if s.cents >= 0 { format!("+{}¢", s.cents) } else { format!("{}¢", s.cents) }
+        } else { "".into() };
+
+        print!("\r    {:>5} {:>5} {:>6.1} {:>4.0}%  {}  {}   ",
+            s.note_name, cents_str, s.frequency, s.confidence * 100.0, meter, status);
+        io::stdout().flush().unwrap();
+    }
+}
+
+fn to_cal(p: &Pluck) -> CalibrationSample {
+    CalibrationSample {
+        note: midi_to_note_name(p.midi_note), freq: p.freq, conf: p.conf,
+        peak: p.peak, rms: p.rms, bright_peak: p.bright_peak, bright_rms: p.bright_rms,
+        main_delta: 0.0,
+        main_ratio: if p.rms > 0.0 { p.peak / p.rms } else { 0.0 },
+        main_slope: p.slope, bright_delta: 0.0,
+        bright_ratio: if p.bright_rms > 0.0 { p.bright_peak / p.bright_rms } else { 0.0 },
+        bright_slope: 0.0,
+    }
+}
+
+fn build_meter(cents: i8) -> String {
+    let width = 21;
+    let center = width / 2;
+    let mut bar = vec!['-'; width];
+    bar[center] = '|';
+    let pos = ((cents as f32 / 50.0) * center as f32 + center as f32)
+        .round().clamp(0.0, (width - 1) as f32) as usize;
+    let ch = if cents.abs() <= 5 { '*' } else if cents.abs() <= 15 { '=' } else { '#' };
+    bar[pos] = ch;
+    format!("[{}]", bar.iter().collect::<String>())
+}
+
+// ── Audio Processing (from guitar_tuner.rs) ─────────────────────────
+
+fn audio_process(
+    data: &[f32], channels: usize, target_ch: usize, sample_rate: usize,
+    overlap: &Arc<Mutex<OverlapManager>>,
+    _pluck_det: &Arc<Mutex<PluckDetector>>,
+    goertzel: &Arc<Mutex<GoertzelBank>>,
+    state: &Arc<Mutex<AudioState>>,
+) {
+    let mono: Vec<f32> = data.chunks(channels)
+        .map(|f| f.get(target_ch).copied().unwrap_or(0.0)).collect();
+
+    let frames = { overlap.lock().unwrap().feed(&mono) };
+
+    for frame in frames {
+        let rms = (frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt();
+        let peak = frame.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        let half = frame.len() / 2;
+        let bright_rms = (frame[half..].iter().map(|s| s * s).sum::<f32>() / half as f32).sqrt();
+        let bright_peak = frame[half..].iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+
+        let g_note = { goertzel.lock().unwrap().analyze(&frame).map(|(m, _)| m) };
+
+        let samples_f64: Vec<f64> = frame.iter().map(|&s| s as f64).collect();
+        let mut det = McLeodDetector::new(frame.len(), frame.len() / 2);
+        let pitch = det.get_pitch(&samples_f64, sample_rate, 0.3, 0.3);
+
+        let mut s = state.lock().unwrap();
+        let slope = rms - s.prev_rms;
+        s.rms = rms; s.peak = peak; s.bright_rms = bright_rms;
+        s.bright_peak = bright_peak; s.slope = slope; s.prev_rms = rms;
+        s.goertzel_note = g_note;
+
+        if let Some(p) = pitch {
+            if p.clarity > MIN_CONFIDENCE {
+                let freq = p.frequency as f32;
+                let (midi, cents) = freq_to_midi(freq);
+                s.frequency = freq; s.confidence = p.clarity as f32;
+                s.midi_note = midi; s.cents = cents;
+                s.note_name = midi_to_note_name(midi);
+            }
+        }
+    }
+}
+
+/// Feed mono audio into the GuitarInput pipeline for live detection.
+fn feed_pipeline(
     data: &[f32],
     channels: usize,
-    target_channel: usize,
-    sample_rate: usize,
-    ring: &Arc<Mutex<AudioRing>>,
+    target_ch: usize,
     pipeline: &Arc<Mutex<GuitarInput>>,
     events: &Arc<Mutex<Vec<(MidiEvent, Instant)>>>,
-    state: &Arc<Mutex<AudioState>>,
-    pitch_buf: &Arc<Mutex<VecDeque<f32>>>,
 ) {
-    // Extract mono channel
-    let mono: Vec<f32> = data
-        .chunks(channels)
-        .filter_map(|frame| frame.get(target_channel).copied())
-        .collect();
+    let mono: Vec<f32> = data.chunks(channels)
+        .map(|f| f.get(target_ch).copied().unwrap_or(0.0)).collect();
 
-    // Store in ring buffer (for calibration pluck detection)
-    {
-        let mut r = ring.lock().unwrap();
-        r.push(&mono);
-    }
-
-    // ── McLeod pitch detection for tuner (same as guitar_capture.rs audio_process) ──
-    {
-        let mut buf = pitch_buf.lock().unwrap();
-        for &s in &mono {
-            buf.push_back(s);
-        }
-
-        // Keep only what we need
-        while buf.len() > BUFFER_SIZE * 2 {
-            buf.pop_front();
-        }
-
-        if buf.len() >= BUFFER_SIZE {
-            let frame: Vec<f32> = buf.drain(..BUFFER_SIZE).collect();
-
-            let rms = (frame.iter().map(|s| s * s).sum::<f32>() / BUFFER_SIZE as f32).sqrt();
-            let peak = frame.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-
-            // Pitch detection
-            let samples_f64: Vec<f64> = frame.iter().map(|&s| s as f64).collect();
-            let mut detector = McLeodDetector::new(BUFFER_SIZE, BUFFER_SIZE / 2);
-            let pitch = detector.get_pitch(&samples_f64, sample_rate, 0.3, 0.3);
-
-            let mut s = state.lock().unwrap();
-            s.rms = rms;
-            s.peak = peak;
-
-            if let Some(p) = pitch {
-                if p.clarity > MIN_CONFIDENCE {
-                    let freq = p.frequency as f32;
-                    let (midi, _) = freq_to_midi(freq);
-                    s.frequency = freq;
-                    s.confidence = p.clarity as f32;
-                    s.midi_note = midi;
-                    s.note_name = midi_to_note_name(midi);
-                }
-            }
-
-            s.prev_rms = rms;
-        }
-    }
-
-    // ── GuitarInput pipeline for live detection ──
     let now = Instant::now();
     let midi_events = {
         let mut pipe = pipeline.lock().unwrap();
@@ -497,97 +647,6 @@ fn audio_callback(
         for e in midi_events {
             q.push((e, now));
         }
-    }
-}
-
-// ── Audio ring buffer ───────────────────────────────────────────────
-
-struct AudioRing {
-    buffer: Vec<f32>,
-    write_pos: usize,
-    capacity: usize,
-    filled: usize,
-}
-
-impl AudioRing {
-    fn new(capacity: usize) -> Self {
-        Self {
-            buffer: vec![0.0; capacity],
-            write_pos: 0,
-            capacity,
-            filled: 0,
-        }
-    }
-
-    fn push(&mut self, samples: &[f32]) {
-        for &s in samples {
-            self.buffer[self.write_pos] = s;
-            self.write_pos = (self.write_pos + 1) % self.capacity;
-            if self.filled < self.capacity {
-                self.filled += 1;
-            }
-        }
-    }
-
-    /// Get the most recent `n` samples (linearized, oldest first).
-    fn recent(&self, n: usize) -> Vec<f32> {
-        let n = n.min(self.filled);
-        let mut out = Vec::with_capacity(n);
-        let start = if self.write_pos >= n {
-            self.write_pos - n
-        } else {
-            self.capacity - (n - self.write_pos)
-        };
-        for i in 0..n {
-            out.push(self.buffer[(start + i) % self.capacity]);
-        }
-        out
-    }
-}
-
-// ── Calibration helpers ─────────────────────────────────────────────
-
-/// Wait for a pluck (RMS spike) and return the captured audio.
-fn wait_for_pluck(
-    ring: &Arc<Mutex<AudioRing>>,
-    sample_rate: usize,
-    threshold: f32,
-    timeout_secs: f32,
-) -> Option<Vec<f32>> {
-    let start = Instant::now();
-    let timeout = Duration::from_secs_f32(timeout_secs);
-    let capture_len = sample_rate / 2; // 500ms
-
-    loop {
-        if start.elapsed() > timeout {
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-
-        let recent = {
-            let r = ring.lock().unwrap();
-            r.recent(capture_len)
-        };
-
-        let rms = compute_rms(&recent);
-        if rms > threshold && recent.len() >= capture_len {
-            return Some(recent);
-        }
-    }
-}
-
-/// Create a default string profile for when calibration fails.
-fn default_string_profile(string_idx: usize) -> StringProfile {
-    let default_b = [0.006, 0.003, 0.003, 0.006, 0.003, 0.002];
-    StringProfile {
-        name: STRING_NAMES.get(string_idx).copied().unwrap_or("?"),
-        open_midi: STRING_BASE_PITCH
-            .get(string_idx)
-            .copied()
-            .unwrap_or(40),
-        open_frequency: open_string_freq(string_idx),
-        inharmonicity_b: default_b.get(string_idx).copied().unwrap_or(0.003),
-        harmonic_ratios: vec![0.5, 0.3, 0.2, 0.1, 0.05],
     }
 }
 
@@ -606,11 +665,6 @@ fn prompt_usize(label: &str, max: usize) -> usize {
         }
         println!("  Invalid, try again.");
     }
-}
-
-fn wait_enter() {
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
 }
 
 fn ctrlc_handler(running: Arc<std::sync::atomic::AtomicBool>) {
