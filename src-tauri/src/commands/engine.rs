@@ -233,8 +233,10 @@ fn run_tauri_router(
     let _midi_conn;
     let _guitar_bridge;
 
+    eprintln!("[tauri-router] is_guitar={} device='{}' channel={}", is_guitar, guitar_device, guitar_channel);
     if is_guitar {
         // Guitar Audio mode: spawn cpal capture -> DSP -> same tx channel
+        eprintln!("[tauri-router] Creating GuitarBridge...");
         let bridge = GuitarBridge::new(&guitar_device, guitar_channel, guitar_config, tx)
             .map_err(|e| anyhow::anyhow!("Guitar bridge error: {}", e))?;
         bridge
