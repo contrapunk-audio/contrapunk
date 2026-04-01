@@ -35,6 +35,7 @@ export const adapter: ContrapunkAdapter = isTauri() ? new TauriAdapter() : new W
 export type {
 	ContrapunkAdapter,
 	EngineState,
+	GuitarConfig,
 	HumanizeState,
 	MidiDevice,
 	NoteState,

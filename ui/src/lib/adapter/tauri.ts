@@ -10,6 +10,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
 	ContrapunkAdapter,
 	EngineState,
+	GuitarConfig,
 	HumanizeState,
 	MidiDevice,
 	NoteState,
@@ -308,6 +309,38 @@ export class TauriAdapter implements ContrapunkAdapter {
 			await invoke('delete_preset', { name });
 		} catch (e) {
 			throw new Error(`Failed to delete preset: ${e}`);
+		}
+	}
+
+	async listAudioDevices(): Promise<string[]> {
+		try {
+			return (await invoke('list_audio_devices')) as string[];
+		} catch (e) {
+			throw new Error(`Failed to list audio devices: ${e}`);
+		}
+	}
+
+	async setGuitarDevice(deviceName: string, channel: number): Promise<void> {
+		try {
+			await invoke('set_guitar_device', { deviceName, channel });
+		} catch (e) {
+			throw new Error(`Failed to set guitar device: ${e}`);
+		}
+	}
+
+	async setGuitarConfig(config: GuitarConfig): Promise<void> {
+		try {
+			await invoke('set_guitar_config', {
+				latencyMs: config.latencyMs,
+				gain: config.gain,
+				stringConfidence: config.stringConfidence,
+				bends: config.bends,
+				legato: config.legato,
+				slides: config.slides,
+				vibrato: config.vibrato,
+			});
+		} catch (e) {
+			throw new Error(`Failed to set guitar config: ${e}`);
 		}
 	}
 

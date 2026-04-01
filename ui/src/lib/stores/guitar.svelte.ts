@@ -2,9 +2,11 @@
  * Guitar Input Store — Reactive Guitar Audio Input State (Svelte 5 Runes)
  *
  * Tracks guitar input configuration (latency, gain, string confidence,
- * technique toggles) and live detection state. UI-only for now; the
- * actual audio processing and WASM bridge will be connected in a later phase.
+ * technique toggles) and live detection state. Calls the platform adapter
+ * to sync device selection and DSP config to the backend.
  */
+
+import { adapter } from '$lib/adapter';
 
 class GuitarInputStore {
 	// -- Config (mirrors GuitarInputConfig in Rust) --
@@ -123,6 +125,48 @@ class GuitarInputStore {
 		} catch {
 			// Fallback: assume stereo
 			this.maxChannels = 2;
+		}
+	}
+
+	// -- Backend audio devices (from cpal via adapter) --
+	backendAudioDevices: string[] = $state([]);
+
+	/** Load audio input devices from the backend (cpal). */
+	async loadAudioDevices() {
+		try {
+			this.backendAudioDevices = await adapter.listAudioDevices();
+		} catch {
+			// Backend may not support audio device listing (e.g. WASM)
+			this.backendAudioDevices = [];
+		}
+	}
+
+	/** Sync the current guitar DSP config to the backend. */
+	async syncConfig() {
+		try {
+			await adapter.setGuitarConfig({
+				latencyMs: this.latencyMs,
+				gain: this.gain,
+				stringConfidence: this.stringConfidence,
+				bends: this.bendsEnabled,
+				legato: this.legatoEnabled,
+				slides: this.slidesEnabled,
+				vibrato: this.vibratoEnabled,
+			});
+		} catch {
+			// Silently ignore — backend may not be ready yet
+		}
+	}
+
+	/** Sync the selected device and channel to the backend. */
+	async syncDevice() {
+		try {
+			await adapter.setGuitarDevice(
+				this.selectedDeviceId,
+				this.selectedChannel,
+			);
+		} catch {
+			// Silently ignore — backend may not be ready yet
 		}
 	}
 }

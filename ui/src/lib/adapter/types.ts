@@ -52,6 +52,17 @@ export interface HumanizeState {
 	metronomeEnabled: boolean;
 }
 
+/** Guitar DSP pipeline configuration sent to the backend. */
+export interface GuitarConfig {
+	latencyMs: number;
+	gain: number;
+	stringConfidence: number;
+	bends: boolean;
+	legato: boolean;
+	slides: boolean;
+	vibrato: boolean;
+}
+
 /** Preset metadata. */
 export interface Preset {
 	index: number;
@@ -161,6 +172,17 @@ export interface ContrapunkAdapter {
 
 	/** Delete a custom preset by name. */
 	deletePreset(name: string): Promise<void>;
+
+	// -- Guitar input --
+
+	/** List available audio input devices (via cpal on desktop). */
+	listAudioDevices(): Promise<string[]>;
+
+	/** Set the guitar audio input device and channel. */
+	setGuitarDevice(deviceName: string, channel: number): Promise<void>;
+
+	/** Set the guitar DSP pipeline configuration. */
+	setGuitarConfig(config: GuitarConfig): Promise<void>;
 
 	// -- Detune --
 

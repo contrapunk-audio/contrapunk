@@ -8,6 +8,7 @@
 import type {
 	ContrapunkAdapter,
 	EngineState,
+	GuitarConfig,
 	HumanizeState,
 	MidiDevice,
 	NoteState,
@@ -447,6 +448,19 @@ export class WasmAdapter implements ContrapunkAdapter {
 		for (const output of this.activeOutputs) {
 			output.send([0xe0, lsb, msb]);
 		}
+	}
+
+	async listAudioDevices(): Promise<string[]> {
+		// WASM mode does not yet support native audio device enumeration
+		return [];
+	}
+
+	async setGuitarDevice(_deviceName: string, _channel: number): Promise<void> {
+		// WASM mode does not yet support guitar input
+	}
+
+	async setGuitarConfig(_config: GuitarConfig): Promise<void> {
+		// WASM mode does not yet support guitar input
 	}
 
 	/**

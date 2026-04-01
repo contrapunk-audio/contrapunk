@@ -34,11 +34,23 @@
 	function handleDeviceChange(value: string) {
 		if (value) {
 			guitar.selectDevice(value);
+			guitar.syncDevice();
 		}
+	}
+
+	function handleChannelChange(ch: number) {
+		guitar.selectChannel(ch);
+		guitar.syncDevice();
+	}
+
+	function handleTechniqueToggle(technique: 'bends' | 'legato' | 'slides' | 'vibrato') {
+		guitar.toggleTechnique(technique);
+		guitar.syncConfig();
 	}
 
 	onMount(() => {
 		guitar.enumerateAudioDevices();
+		guitar.loadAudioDevices();
 	});
 </script>
 
@@ -66,7 +78,7 @@
 					<button
 						class="channel-btn font-pixel"
 						class:channel-active={guitar.selectedChannel === ch}
-						onclick={() => guitar.selectChannel(ch)}
+						onclick={() => handleChannelChange(ch)}
 					>
 						{ch}
 					</button>
@@ -105,7 +117,7 @@
 			<button
 				class="technique-btn pixel-btn"
 				class:technique-active={tech.active}
-				onclick={() => guitar.toggleTechnique(tech.key)}
+				onclick={() => handleTechniqueToggle(tech.key)}
 			>
 				{tech.label}
 			</button>
