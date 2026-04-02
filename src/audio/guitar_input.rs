@@ -1178,9 +1178,12 @@ impl GuitarInput {
         if self.cooldown_remaining > 0 {
             return false;
         }
-        // Onset = RMS jumped above threshold and is significantly higher
-        // than the previous frame.
-        rms > self.config.onset_threshold && rms > self.prev_rms * 2.0
+        // Onset = RMS above threshold AND either:
+        // - RMS jumped significantly (attack transient), OR
+        // - RMS is well above threshold (strong signal, browser may smooth transients)
+        let slope_onset = rms > self.prev_rms * 1.5;
+        let strong_signal = rms > self.config.onset_threshold * 3.0;
+        rms > self.config.onset_threshold && (slope_onset || strong_signal)
     }
 
     // ── Octave error correction (#6) ──────────────────────────────
