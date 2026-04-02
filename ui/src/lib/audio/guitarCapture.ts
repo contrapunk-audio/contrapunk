@@ -68,6 +68,12 @@ export class GuitarAudioCapture {
 	 * @param channelIndex - 0-based channel index to analyze (for multi-channel interfaces)
 	 * @param callbacks    - NoteOn/NoteOff/Detection callbacks
 	 */
+	/** Live gate thresholds — updated from the UI while capture is running. */
+	noiseGateThreshold = 0.01;
+	clarityThreshold = 0.7;
+	noiseGateEnabled = true;
+	clarityGateEnabled = true;
+
 	async start(
 		deviceId: string,
 		channelIndex: number,
@@ -138,8 +144,25 @@ export class GuitarAudioCapture {
 			}
 			const rms = Math.sqrt(rmsSum / channelData.length);
 
-			// Run pitch detection
-			const result = detectPitch(channelData, sampleRate);
+			// Noise gate: skip detection if signal is below threshold
+			if (self.noiseGateEnabled && rms < self.noiseGateThreshold) {
+				// Still fire detection callback for graph updates
+				self.silenceFrameCount++;
+				if (self.callbacks.onDetection) {
+					self.callbacks.onDetection({
+						frequency: null, clarity: 0, noteName: '-', midi: 0, cents: 0, rms
+					});
+				}
+				if (self.currentNote !== null && self.silenceFrameCount >= SILENCE_FRAMES_THRESHOLD) {
+					self.callbacks.onNoteOff(self.currentNote);
+					self.currentNote = null;
+				}
+				return;
+			}
+
+			// Run pitch detection with live clarity threshold
+			const result = detectPitch(channelData, sampleRate,
+				self.clarityGateEnabled ? self.clarityThreshold : 0.3);
 
 			if (result) {
 				const midiInfo = frequencyToMidi(result.frequency);
@@ -162,12 +185,9 @@ export class GuitarAudioCapture {
 					self.silenceFrameCount = 0;
 
 					if (self.currentNote !== midi) {
-						// New note detected — send NoteOff for old, NoteOn for new
 						if (self.currentNote !== null) {
 							self.callbacks.onNoteOff(self.currentNote);
 						}
-
-						// Velocity from RMS (scale to MIDI 1-127)
 						const velocity = Math.max(1, Math.min(127, Math.round(rms * 800)));
 						self.currentNote = midi;
 						self.callbacks.onNoteOn(midi, velocity);
