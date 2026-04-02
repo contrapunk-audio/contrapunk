@@ -349,10 +349,16 @@ export class WasmAdapter implements ContrapunkAdapter {
 					self.injectNoteOff(note).catch(() => {});
 				},
 				onDetection(info) {
+					// Always push signal data for graphs
+					guitar.pushSignalFrame(info.rms, info.clarity);
+
 					if (info.frequency !== null) {
 						guitar.currentNote = info.noteName;
 						guitar.confidence = Math.round(info.clarity * 100);
 						guitar.velocity = Math.round(info.rms * 800);
+					} else {
+						guitar.currentNote = '';
+						guitar.confidence = 0;
 					}
 				}
 			}

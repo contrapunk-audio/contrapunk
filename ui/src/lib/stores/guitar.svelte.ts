@@ -48,6 +48,10 @@ class GuitarInputStore {
 		if (saved.selectedDeviceId) this.selectedDeviceId = saved.selectedDeviceId;
 		if (saved.selectedChannel) this.selectedChannel = saved.selectedChannel;
 		if (saved.calibrated) this.calibrated = saved.calibrated;
+		if (saved.noiseGateEnabled !== undefined) this.noiseGateEnabled = saved.noiseGateEnabled;
+		if (saved.noiseGateThreshold !== undefined) this.noiseGateThreshold = saved.noiseGateThreshold;
+		if (saved.freqGateEnabled !== undefined) this.freqGateEnabled = saved.freqGateEnabled;
+		if (saved.freqGateRange !== undefined) this.freqGateRange = saved.freqGateRange;
 	}
 
 	private persist() {
@@ -63,6 +67,10 @@ class GuitarInputStore {
 				selectedDeviceId: this.selectedDeviceId,
 				selectedChannel: this.selectedChannel,
 				calibrated: this.calibrated,
+				noiseGateEnabled: this.noiseGateEnabled,
+				noiseGateThreshold: this.noiseGateThreshold,
+				freqGateEnabled: this.freqGateEnabled,
+				freqGateRange: this.freqGateRange,
 			}));
 		} catch {}
 	}
@@ -79,6 +87,39 @@ class GuitarInputStore {
 	currentFret = $state(0);
 	confidence = $state(0);
 	velocity = $state(0);
+	/** Current signal RMS level (0.0-1.0, updated every frame). */
+	signalLevel = $state(0);
+	/** Current pitch clarity (0.0-1.0, updated every frame). */
+	signalClarity = $state(0);
+
+	// -- Gate controls --
+	/** Noise gate: reject signals below this RMS threshold. */
+	noiseGateEnabled = $state(true);
+	noiseGateThreshold = $state(0.01);
+	/** Frequency gate: reject detections outside expected guitar range (cents from expected). */
+	freqGateEnabled = $state(true);
+	freqGateRange = $state(1200); // cents — 1 octave
+
+	// -- Signal history for graphs (rolling buffers) --
+	/** Last N amplitude values for the graph. */
+	amplitudeHistory: number[] = [];
+	/** Last N clarity values for the graph. */
+	clarityHistory: number[] = [];
+	private static readonly HISTORY_SIZE = 128;
+
+	/** Push a new frame of signal data (called from adapter). */
+	pushSignalFrame(rms: number, clarity: number) {
+		this.signalLevel = Math.min(1, rms * 5);
+		this.signalClarity = clarity;
+		this.amplitudeHistory.push(Math.min(1, rms * 5));
+		this.clarityHistory.push(clarity);
+		if (this.amplitudeHistory.length > GuitarInputStore.HISTORY_SIZE) {
+			this.amplitudeHistory.shift();
+		}
+		if (this.clarityHistory.length > GuitarInputStore.HISTORY_SIZE) {
+			this.clarityHistory.shift();
+		}
+	}
 
 	// -- Calibration state --
 	calibrated = $state(false);

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { guitar } from '$lib/stores/guitar.svelte';
 	import PixelSelect from './PixelSelect.svelte';
+	import SignalGraphs from './SignalGraphs.svelte';
 
 	const techniques = [
 		{ key: 'bends' as const, label: 'BENDS', get active() { return guitar.bendsEnabled; } },
@@ -283,6 +284,9 @@
 				Using ch{guitar.activeChannel} (wanted ch{guitar.selectedChannel} — restart to change)
 			</div>
 		{/if}
+
+		<!-- Signal graphs (MiGiC-style) -->
+		<SignalGraphs />
 	</div>
 {/if}
 
