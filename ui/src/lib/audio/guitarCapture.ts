@@ -55,8 +55,13 @@ export class GuitarAudioCapture {
 
 	private _isRunning = false;
 	private _actualChannel = 0;
-
 	private _frameCount = 0;
+
+	// Overlap buffer — 75% overlap means each hop (window/4) triggers analysis
+	private overlapBuffer: Float32Array | null = null;
+	private overlapWritePos = 0;
+	private hopSize = 0;
+	private windowSize = 0;
 
 	get isRunning(): boolean { return this._isRunning; }
 	get actualChannel(): number { return this._actualChannel; }
@@ -101,9 +106,16 @@ export class GuitarAudioCapture {
 		console.log(`[guitar] Device: ${actualChannels}ch @ ${sampleRate}Hz, want ch${channelIndex}, buffer=${bufferSize}`);
 
 		// Create WASM DSP with actual sample rate
+		// Use the bufferSize as the analysis window; hop = window/4 for 75% overlap
+		this.windowSize = bufferSize;
+		this.hopSize = Math.floor(bufferSize / 4);
+		this.overlapBuffer = new Float32Array(bufferSize);
+		this.overlapWritePos = 0;
+
 		this.dsp = new WasmGuitarInput(sampleRate, bufferSize);
 		this.dsp.set_onset_threshold(0.015);
 		this.dsp.set_string_confidence(0.4);
+		console.log(`[guitar] Overlap: window=${this.windowSize} hop=${this.hopSize} (75% overlap)`);
 
 		const inputChannels = Math.max(channelIndex + 1, actualChannels);
 		this.processorNode = this.audioContext.createScriptProcessor(bufferSize, inputChannels, 1);
@@ -126,14 +138,14 @@ export class GuitarAudioCapture {
 				actualChannelLogged = true;
 			}
 
-			const samples = inputBuffer.getChannelData(useChannel);
+			const rawSamples = inputBuffer.getChannelData(useChannel);
 
-			// Compute RMS for UI signal graph
+			// Compute RMS for UI signal graph (from raw input)
 			let rmsSum = 0;
-			for (let i = 0; i < samples.length; i++) rmsSum += samples[i] * samples[i];
-			const rms = Math.sqrt(rmsSum / samples.length);
+			for (let i = 0; i < rawSamples.length; i++) rmsSum += rawSamples[i] * rawSamples[i];
+			const rms = Math.sqrt(rmsSum / rawSamples.length);
 
-			// Noise gate (JS-side, before sending to WASM for efficiency)
+			// Noise gate (JS-side, before overlap/WASM for efficiency)
 			if (self.noiseGateEnabled && rms < self.noiseGateThreshold) {
 				if (self.callbacks.onDetection) {
 					self.callbacks.onDetection({
@@ -149,24 +161,42 @@ export class GuitarAudioCapture {
 				console.log(`[guitar] frame=${self._frameCount} rms=${rms.toFixed(4)} ch=${useChannel}`);
 			}
 
-			// Send audio to Rust WASM DSP pipeline
-			const eventsJson = self.dsp.process_block(samples);
-			let events: any[];
-			try {
-				events = JSON.parse(eventsJson);
-			} catch (err) {
-				console.error('[guitar] Failed to parse WASM events:', eventsJson, err);
-				return;
+			// ── Feed samples through overlap buffer ──────────────
+			// Accumulate raw samples, then extract overlapping windows
+			// at hop intervals and feed each to WASM process_block.
+			const allEvents: any[] = [];
+
+			// Feed sample by sample into overlap buffer
+			for (let i = 0; i < rawSamples.length; i++) {
+				self.overlapBuffer![self.overlapWritePos] = rawSamples[i];
+				self.overlapWritePos++;
+
+				// When we've accumulated one hop, send the full window to WASM
+				if (self.overlapWritePos >= self.windowSize) {
+					// Send the full window to WASM
+					const eventsJson = self.dsp.process_block(self.overlapBuffer!);
+					try {
+						const events = JSON.parse(eventsJson);
+						if (events.length > 0) allEvents.push(...events);
+					} catch (err) {
+						console.error('[guitar] Failed to parse WASM events:', err);
+					}
+
+					// Shift buffer left by hopSize (keep last windowSize-hopSize samples)
+					const keep = self.windowSize - self.hopSize;
+					self.overlapBuffer!.copyWithin(0, self.hopSize, self.windowSize);
+					self.overlapWritePos = keep;
+				}
 			}
 
 			// Log events when they occur
-			if (events.length > 0) {
-				console.log(`[guitar] WASM events (${events.length}):`, JSON.stringify(events));
+			if (allEvents.length > 0) {
+				console.log(`[guitar] WASM events (${allEvents.length}):`, JSON.stringify(allEvents));
 			}
 
-			// Fire detection callback for UI (rms every frame)
+			// Fire detection callback for UI
 			if (self.callbacks.onDetection) {
-				const lastNoteOn = events.findLast?.((e: any) => e.type === 'note_on');
+				const lastNoteOn = allEvents.findLast?.((e: any) => e.type === 'note_on');
 				if (lastNoteOn) {
 					self.callbacks.onDetection({
 						frequency: null,
@@ -184,7 +214,7 @@ export class GuitarAudioCapture {
 			}
 
 			// Dispatch MIDI events to callbacks
-			for (const e of events) {
+			for (const e of allEvents) {
 				switch (e.type) {
 					case 'note_on':
 						console.log(`[midi] NOTE ON: ${midiToNoteName(e.note)} (${e.note}) vel=${e.velocity} ch=${e.channel}`);
