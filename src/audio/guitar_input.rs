@@ -680,16 +680,23 @@ impl GuitarInput {
                     }
                     NoteState::Sustain => {
                         // Sustain handler priority order:
-                        //   1. onset -> Attack (re-pluck)
+                        //   1. onset + different note -> Attack (re-pluck on new note)
                         //   2. RMS below threshold -> Decay
                         //   3. pitch jump > 2 semitones -> legato or missed onset
                         //   4. pitch crosses semitone boundary gradually -> SLIDE
                         //   5. pitch oscillates periodically -> VIBRATO (informational)
                         //   6. pitch drifts < 2 semitones -> BEND
-                        //   7. pitch stable -> nothing
+                        //   7. pitch stable / same note re-pluck -> stay in Sustain
 
-                        if onset {
-                            // 1. Sustain -> Attack: re-pluck detected
+                        // Only re-enter Attack if it's a DIFFERENT note.
+                        // Same-note re-plucks stay in Sustain (the note is already sounding).
+                        let is_different_note = self.current_note
+                            .as_ref()
+                            .map(|n| n.midi_note != midi_note)
+                            .unwrap_or(true);
+
+                        if onset && is_different_note {
+                            // 1. Sustain -> Attack: re-pluck on a new note
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
@@ -1197,9 +1204,13 @@ impl GuitarInput {
         if self.cooldown_remaining > 0 {
             return false;
         }
-        // Onset = RMS jumped above threshold and is significantly higher
-        // than the previous frame (matching demo behavior).
-        rms > self.config.onset_threshold && rms > self.prev_rms * 2.0
+        // Onset = RMS above threshold AND either:
+        // - Sharp attack transient (2× previous frame), OR
+        // - Strong signal well above threshold (browser smooths transients)
+        // Same-note re-triggering is prevented by the state machine, not here.
+        let slope_onset = rms > self.prev_rms * 2.0;
+        let strong_signal = rms > self.config.onset_threshold * 3.0;
+        rms > self.config.onset_threshold && (slope_onset || strong_signal)
     }
 
     // ── Octave error correction (#6) ──────────────────────────────
