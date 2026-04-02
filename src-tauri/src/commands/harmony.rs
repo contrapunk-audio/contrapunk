@@ -32,10 +32,10 @@ pub fn get_engine_state(state: State<AppState>) -> Result<EngineStateResponse, S
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
     Ok(EngineStateResponse {
         key: format!("{}", engine.key()),
-        mode: format!("{}", engine.mode().description()),
+        mode: format!("{:?}", engine.mode()),
         mode_number: engine.mode().number(),
-        scale_mode: format!("{}", engine.scale_mode()),
-        octave_mode: format!("{}", engine.octave_mode()),
+        scale_mode: format!("{:?}", engine.scale_mode()),
+        octave_mode: format!("{:?}", engine.octave_mode()),
         voice_leading_enabled: engine.voice_leading_enabled(),
         voice_leading_style: format!("{:?}", engine.voice_leading_style()),
         interchange_enabled: engine.interchange_enabled(),

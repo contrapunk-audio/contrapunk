@@ -15,7 +15,7 @@ class GuitarInputStore {
 	// -- Config (mirrors GuitarInputConfig in Rust) --
 	latencyMs = $state(21);
 	gain = $state(1.0);
-	stringConfidence = $state(0.85);
+	stringConfidence = $state(0.4);
 	bendsEnabled = $state(true);
 	legatoEnabled = $state(true);
 	slidesEnabled = $state(true);
@@ -275,7 +275,7 @@ class GuitarInputStore {
 
 	/** Set string confidence with bounds checking and sync. */
 	setStringConfidence(value: number) {
-		this.stringConfidence = Math.max(0.5, Math.min(1.0, Math.round(value * 20) / 20));
+		this.stringConfidence = Math.max(0.1, Math.min(1.0, Math.round(value * 20) / 20));
 		this.syncConfig();
 	}
 

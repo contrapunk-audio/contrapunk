@@ -27,7 +27,8 @@ use crate::state::AppState;
 /// Sentinel value for the "Guitar Audio" virtual input.
 /// When `input_idx` equals this value, we spawn a GuitarBridge
 /// instead of connecting to a physical MIDI input port.
-const GUITAR_AUDIO_SENTINEL: usize = usize::MAX - 2;
+/// Must match Number.MAX_SAFE_INTEGER - 2 from JS (not usize::MAX - 2).
+const GUITAR_AUDIO_SENTINEL: usize = 9007199254740989;
 
 /// Payload for the "note-update" Tauri event.
 #[derive(Clone, Serialize)]

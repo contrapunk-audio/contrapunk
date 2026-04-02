@@ -1,0 +1,1 @@
+export { default as component } from "../../../../src/routes/diary/machine-learning/the-pivot/+page.svelte";

@@ -28,15 +28,22 @@ impl GuitarBridge {
     ) -> Result<Self, String> {
         let host = cpal::default_host();
 
-        // Find device by name, or use default
+        // Find device by name, or fall back to default
         let device = if device_name.is_empty() {
             host.default_input_device()
                 .ok_or("No default audio input device")?
         } else {
-            host.input_devices()
+            let found = host.input_devices()
                 .map_err(|e| format!("Failed to enumerate audio devices: {}", e))?
-                .find(|d| d.name().unwrap_or_default().contains(device_name))
-                .ok_or_else(|| format!("Audio device '{}' not found", device_name))?
+                .find(|d| d.name().unwrap_or_default().contains(device_name));
+            match found {
+                Some(d) => d,
+                None => {
+                    eprintln!("[guitar_bridge] Device '{}' not found, using default", device_name);
+                    host.default_input_device()
+                        .ok_or("No default audio input device")?
+                }
+            }
         };
 
         let supported_config = device
