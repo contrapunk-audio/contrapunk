@@ -387,6 +387,11 @@ impl GuitarInput {
         &self.config
     }
 
+    /// Mutable access to config for runtime parameter changes.
+    pub fn config_mut(&mut self) -> &mut GuitarInputConfig {
+        &mut self.config
+    }
+
     /// Get the currently active note, if any.
     pub fn current_note(&self) -> Option<&DetectedNote> {
         self.current_note.as_ref()
