@@ -260,9 +260,8 @@ class GuitarInputStore {
 
 			const absCents = Math.abs(this.tunerCents);
 
-			// Ignore detections more than 1200 cents (one octave) from target —
-			// these are harmonics, noise, or the wrong string entirely.
-			if (absCents > 1200) {
+			// More than 2 octaves away = noise/garbage, ignore completely
+			if (absCents > 2400) {
 				this.tunerStatus = 'waiting';
 				this.tunerHoldProgress = 0;
 				this.inTuneSince = null;
