@@ -354,10 +354,11 @@ export class WasmAdapter implements ContrapunkAdapter {
 					self.injectNoteOff(note).catch(() => {});
 				},
 				onDetection(info) {
-					// Sync noise gate from store → capture every frame
+					// Sync noise gate + actual channel from capture every frame
 					if (self.guitarCapture) {
 						self.guitarCapture.noiseGateThreshold = guitar.noiseGateThreshold;
 						self.guitarCapture.noiseGateEnabled = guitar.noiseGateEnabled;
+						guitar.activeChannel = self.guitarCapture.actualChannel + 1;
 					}
 
 					// Push signal data for graphs
