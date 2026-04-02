@@ -338,11 +338,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 		guitar.detecting = true;
 
-		// Set initial gate values from store
+		// Set initial gate values from store (noise gate only)
 		this.guitarCapture.noiseGateThreshold = guitar.noiseGateThreshold;
-		this.guitarCapture.clarityThreshold = guitar.stringConfidence;
 		this.guitarCapture.noiseGateEnabled = guitar.noiseGateEnabled;
-		this.guitarCapture.clarityGateEnabled = guitar.freqGateEnabled;
+		this.guitarCapture.clarityGateEnabled = false;
 
 		await this.guitarCapture.start(
 			this._guitarDeviceId,
@@ -355,13 +354,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 					self.injectNoteOff(note).catch(() => {});
 				},
 				onDetection(info) {
-					// Sync gate values from store → capture every frame
-					// (so slider changes take effect immediately)
+					// Sync noise gate from store → capture every frame
 					if (self.guitarCapture) {
 						self.guitarCapture.noiseGateThreshold = guitar.noiseGateThreshold;
-						self.guitarCapture.clarityThreshold = guitar.stringConfidence;
 						self.guitarCapture.noiseGateEnabled = guitar.noiseGateEnabled;
-						self.guitarCapture.clarityGateEnabled = guitar.freqGateEnabled;
 					}
 
 					// Push signal data for graphs

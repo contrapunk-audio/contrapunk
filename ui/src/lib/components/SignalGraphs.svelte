@@ -2,7 +2,6 @@
 	import { guitar } from '$lib/stores/guitar.svelte';
 
 	let ampCanvas: HTMLCanvasElement;
-	let clarityCanvas: HTMLCanvasElement;
 	let animFrame: number | null = null;
 
 	const WIDTH = 240;
@@ -68,10 +67,6 @@
 				: null;
 			drawGraph(ampCanvas, guitar.amplitudeHistory, noiseThreshold, '#00e5cc', '#ffaa00');
 		}
-		if (clarityCanvas) {
-			const clarityThreshold = guitar.freqGateEnabled ? guitar.stringConfidence : null;
-			drawGraph(clarityCanvas, guitar.clarityHistory, clarityThreshold, '#ff3399', '#ffaa00');
-		}
 		animFrame = requestAnimationFrame(render);
 	}
 
@@ -108,28 +103,6 @@
 				value={guitar.noiseGateThreshold}
 				oninput={(e) => { guitar.noiseGateThreshold = parseFloat((e.target as HTMLInputElement).value); }}
 				title={`Threshold: ${(guitar.noiseGateThreshold * 1000).toFixed(0)} mRMS`}
-			/>
-		</div>
-	</div>
-	<div class="graph-row">
-		<span class="graph-label font-pixel">CLR</span>
-		<canvas bind:this={clarityCanvas} width={WIDTH} height={HEIGHT} class="signal-canvas"></canvas>
-		<div class="gate-controls">
-			<button
-				class="gate-btn font-pixel"
-				class:gate-on={guitar.freqGateEnabled}
-				onclick={() => { guitar.freqGateEnabled = !guitar.freqGateEnabled; }}
-				title="Frequency/Clarity Gate"
-			>FG</button>
-			<input
-				type="range"
-				class="gate-slider"
-				min="0.3"
-				max="0.95"
-				step="0.05"
-				value={guitar.stringConfidence}
-				oninput={(e) => { guitar.stringConfidence = parseFloat((e.target as HTMLInputElement).value); }}
-				title={`Clarity: ${Math.round(guitar.stringConfidence * 100)}%`}
 			/>
 		</div>
 	</div>
