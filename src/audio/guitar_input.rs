@@ -499,6 +499,11 @@ impl GuitarInput {
         let rms_onset = self.detect_onset(rms);
         let flux_onset = flux > self.config.flux_threshold && self.cooldown_remaining == 0;
         let onset = rms_onset || flux_onset;
+        // Slope-only onset: true only when RMS jumped sharply from previous frame.
+        // Used by Sustain to distinguish re-plucks from sustained ringing.
+        let slope_onset = self.cooldown_remaining == 0
+            && rms > self.config.onset_threshold
+            && rms > self.prev_rms * 2.0;
 
         // 4. Pitch detection (McLeod)
         let pitch_result = detect_pitch_mcleod(
@@ -680,16 +685,20 @@ impl GuitarInput {
                     }
                     NoteState::Sustain => {
                         // Sustain handler priority order:
-                        //   1. onset -> Attack (re-pluck)
+                        //   1. slope_onset -> Attack (genuine re-pluck, sharp RMS jump)
                         //   2. RMS below threshold -> Decay
                         //   3. pitch jump > 2 semitones -> legato or missed onset
                         //   4. pitch crosses semitone boundary gradually -> SLIDE
                         //   5. pitch oscillates periodically -> VIBRATO (informational)
                         //   6. pitch drifts < 2 semitones -> BEND
                         //   7. pitch stable -> nothing
+                        //
+                        // Uses slope_onset (not general onset) to distinguish
+                        // a new pluck from sustained ringing. A re-pluck always
+                        // has a sharp RMS jump; sustained signal doesn't.
 
-                        if onset {
-                            // 1. Sustain -> Attack: re-pluck detected
+                        if slope_onset {
+                            // 1. Sustain -> Attack: genuine re-pluck (RMS jumped)
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
