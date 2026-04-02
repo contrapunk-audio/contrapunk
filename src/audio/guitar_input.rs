@@ -325,6 +325,13 @@ pub struct GuitarInput {
     last_sent_pressure: u8,
     /// Last CC74 brightness value sent (to avoid duplicate events).
     last_brightness: u8,
+
+    // Debug state (read by WASM wrapper for logging)
+    pub last_debug_onset: bool,
+    pub last_debug_rms_onset: bool,
+    pub last_debug_flux_onset: bool,
+    pub last_debug_flux: f32,
+    pub last_debug_pitch: Option<(f32, f32)>, // (freq, clarity)
 }
 
 impl GuitarInput {
@@ -364,6 +371,11 @@ impl GuitarInput {
             note_onset_rms: 0.0,
             last_sent_pressure: 0,
             last_brightness: 0,
+            last_debug_onset: false,
+            last_debug_rms_onset: false,
+            last_debug_flux_onset: false,
+            last_debug_flux: 0.0,
+            last_debug_pitch: None,
         }
     }
 
@@ -494,6 +506,13 @@ impl GuitarInput {
             self.config.sample_rate,
             self.config.min_clarity,
         );
+
+        // Store debug info for WASM logging (read by wrapper)
+        self.last_debug_onset = onset;
+        self.last_debug_rms_onset = rms_onset;
+        self.last_debug_flux_onset = flux_onset;
+        self.last_debug_flux = flux;
+        self.last_debug_pitch = pitch_result.map(|(f, c)| (f, c));
 
         // Tick down cooldown
         if self.cooldown_remaining > 0 {

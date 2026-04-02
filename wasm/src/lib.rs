@@ -534,25 +534,25 @@ impl WasmGuitarInput {
 
         self.frame_count += 1;
 
-        // Log internal DSP state every 50 frames
-        if self.frame_count % 50 == 0 {
+        // Log internal DSP state every 20 frames
+        if self.frame_count % 20 == 0 {
             let rms: f32 = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
             let state = match self.inner.note_state_name() {
-                0 => "Idle",
-                1 => "Attack",
-                2 => "Sustain",
-                3 => "Decay",
-                _ => "?",
+                0 => "Idle", 1 => "Attack", 2 => "Sustain", 3 => "Decay", _ => "?",
             };
-            let note = self.inner.current_note()
-                .map(|n| format!("midi={}", n.midi_note))
-                .unwrap_or_else(|| "none".to_string());
-            let prev_rms = self.inner.prev_rms();
-            let cooldown = self.inner.cooldown_remaining();
+            let pitch_str = match self.inner.last_debug_pitch {
+                Some((f, c)) => format!("freq={:.1} clr={:.2}", f, c),
+                None => "None".to_string(),
+            };
             console_log!(
-                "[wasm-guitar] frame={} rms={:.4} prevRms={:.4} state={} note={} cooldown={} ring_pos={} total={}",
-                self.frame_count, rms, prev_rms, state, note, cooldown,
-                self.inner.ring_pos(), self.inner.total_samples()
+                "[analyze] rms={:.4} prevRms={:.4} onset={} (rms={} flux={} f={:.3}) pitch={} state={}",
+                rms, self.inner.prev_rms(),
+                self.inner.last_debug_onset,
+                self.inner.last_debug_rms_onset,
+                self.inner.last_debug_flux_onset,
+                self.inner.last_debug_flux,
+                pitch_str,
+                state
             );
         }
         if !events.is_empty() {

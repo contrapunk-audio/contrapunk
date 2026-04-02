@@ -138,14 +138,14 @@ export class GuitarAudioCapture {
 				actualChannelLogged = true;
 			}
 
-			const rawSamples = inputBuffer.getChannelData(useChannel);
+			const samples = inputBuffer.getChannelData(useChannel);
 
-			// Compute RMS for UI signal graph (from raw input)
+			// Compute RMS for UI signal graph
 			let rmsSum = 0;
-			for (let i = 0; i < rawSamples.length; i++) rmsSum += rawSamples[i] * rawSamples[i];
-			const rms = Math.sqrt(rmsSum / rawSamples.length);
+			for (let i = 0; i < samples.length; i++) rmsSum += samples[i] * samples[i];
+			const rms = Math.sqrt(rmsSum / samples.length);
 
-			// Noise gate (JS-side, before overlap/WASM for efficiency)
+			// Noise gate (JS-side, before WASM for efficiency)
 			if (self.noiseGateEnabled && rms < self.noiseGateThreshold) {
 				if (self.callbacks.onDetection) {
 					self.callbacks.onDetection({
@@ -155,41 +155,22 @@ export class GuitarAudioCapture {
 				return;
 			}
 
-			// Log RMS every ~1 second to verify audio is flowing
 			self._frameCount++;
 			if (self._frameCount % 25 === 0) {
 				console.log(`[guitar] frame=${self._frameCount} rms=${rms.toFixed(4)} ch=${useChannel}`);
 			}
 
-			// ── Feed samples through overlap buffer ──────────────
-			// Accumulate raw samples, then extract overlapping windows
-			// at hop intervals and feed each to WASM process_block.
-			const allEvents: any[] = [];
-
-			// Feed sample by sample into overlap buffer
-			for (let i = 0; i < rawSamples.length; i++) {
-				self.overlapBuffer![self.overlapWritePos] = rawSamples[i];
-				self.overlapWritePos++;
-
-				// When we've accumulated one hop, send the full window to WASM
-				if (self.overlapWritePos >= self.windowSize) {
-					// Send the full window to WASM
-					const eventsJson = self.dsp.process_block(self.overlapBuffer!);
-					try {
-						const events = JSON.parse(eventsJson);
-						if (events.length > 0) allEvents.push(...events);
-					} catch (err) {
-						console.error('[guitar] Failed to parse WASM events:', err);
-					}
-
-					// Shift buffer left by hopSize (keep last windowSize-hopSize samples)
-					const keep = self.windowSize - self.hopSize;
-					self.overlapBuffer!.copyWithin(0, self.hopSize, self.windowSize);
-					self.overlapWritePos = keep;
-				}
+			// Send raw audio directly to WASM — the Rust ring buffer handles windowing.
+			// (The demo's feed_pipeline sends raw cpal chunks, not overlapped.)
+			const eventsJson = self.dsp.process_block(samples);
+			let allEvents: any[];
+			try {
+				allEvents = JSON.parse(eventsJson);
+			} catch (err) {
+				console.error('[guitar] Failed to parse WASM events:', err);
+				return;
 			}
 
-			// Log events when they occur
 			if (allEvents.length > 0) {
 				console.log(`[guitar] WASM events (${allEvents.length}):`, JSON.stringify(allEvents));
 			}
