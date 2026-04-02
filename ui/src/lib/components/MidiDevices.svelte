@@ -2,10 +2,10 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 
-	// Virtual input sentinel values (matching existing INPUT_NOTE_GENERATOR / INPUT_COMPUTER_KEYBOARD from app.rs)
-	const VIRTUAL_NOTE_GENERATOR = Number.MAX_SAFE_INTEGER;
-	const VIRTUAL_COMPUTER_KEYBOARD = Number.MAX_SAFE_INTEGER - 1;
-	const VIRTUAL_GUITAR_AUDIO = Number.MAX_SAFE_INTEGER - 2;
+	// Virtual input sentinel values — must match src-tauri/src/commands/engine.rs
+	const VIRTUAL_NOTE_GENERATOR = 999_999;
+	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
+	const VIRTUAL_GUITAR_AUDIO = 999_997;
 
 	const MAX_OUTPUT_SLOTS = 8;
 

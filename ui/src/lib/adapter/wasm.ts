@@ -30,7 +30,7 @@ let engine: any = null;
  * Sentinel input index used to signal "guitar audio input" rather than MIDI.
  * Must match the value used in the UI when starting guitar routing.
  */
-const GUITAR_AUDIO_SENTINEL = Number.MAX_SAFE_INTEGER - 2;
+const GUITAR_AUDIO_SENTINEL = 999_997;
 
 export class WasmAdapter implements ContrapunkAdapter {
 	private initialized = false;

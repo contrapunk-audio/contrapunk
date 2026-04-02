@@ -11,6 +11,15 @@ import { platformName } from '$lib/adapter';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { detectPitch, frequencyToMidi, midiToNoteName } from '$lib/audio/pitchDetector';
 
+const STORAGE_KEY = 'contrapunk-guitar';
+
+function loadSaved(): Record<string, any> {
+	try {
+		const raw = localStorage.getItem(STORAGE_KEY);
+		return raw ? JSON.parse(raw) : {};
+	} catch { return {}; }
+}
+
 class GuitarInputStore {
 	// -- Config (mirrors GuitarInputConfig in Rust) --
 	latencyMs = $state(21);
@@ -26,6 +35,39 @@ class GuitarInputStore {
 	selectedDeviceId = $state<string>('');
 	selectedChannel = $state(1); // 1-indexed for display
 	maxChannels = $state(2); // depends on selected device
+
+	constructor() {
+		const saved = loadSaved();
+		if (saved.latencyMs !== undefined) this.latencyMs = saved.latencyMs;
+		if (saved.gain !== undefined) this.gain = saved.gain;
+		if (saved.stringConfidence !== undefined) this.stringConfidence = saved.stringConfidence;
+		if (saved.bendsEnabled !== undefined) this.bendsEnabled = saved.bendsEnabled;
+		if (saved.legatoEnabled !== undefined) this.legatoEnabled = saved.legatoEnabled;
+		if (saved.slidesEnabled !== undefined) this.slidesEnabled = saved.slidesEnabled;
+		if (saved.vibratoEnabled !== undefined) this.vibratoEnabled = saved.vibratoEnabled;
+		if (saved.selectedDeviceId) this.selectedDeviceId = saved.selectedDeviceId;
+		if (saved.selectedChannel) this.selectedChannel = saved.selectedChannel;
+		if (saved.calibrated) this.calibrated = saved.calibrated;
+	}
+
+	private persist() {
+		try {
+			localStorage.setItem(STORAGE_KEY, JSON.stringify({
+				latencyMs: this.latencyMs,
+				gain: this.gain,
+				stringConfidence: this.stringConfidence,
+				bendsEnabled: this.bendsEnabled,
+				legatoEnabled: this.legatoEnabled,
+				slidesEnabled: this.slidesEnabled,
+				vibratoEnabled: this.vibratoEnabled,
+				selectedDeviceId: this.selectedDeviceId,
+				selectedChannel: this.selectedChannel,
+				calibrated: this.calibrated,
+			}));
+		} catch {}
+	}
+	/** Manual override for channel count (null = auto-detect from device) */
+	manualMaxChannels = $state<number | null>(null);
 	audioDeviceError = $state<string>('');
 
 	// -- Live detection state (updated from backend when wired) --
@@ -68,6 +110,7 @@ class GuitarInputStore {
 				this.vibratoEnabled = !this.vibratoEnabled;
 				break;
 		}
+		this.persist();
 	}
 
 	/** Noise floor RMS measured during calibration. */
@@ -148,65 +191,96 @@ class GuitarInputStore {
 		}
 	}
 
-	/** Start audio capture for the tuner phase. */
+	/** Start audio capture for the tuner phase using raw JS pitch detection. */
 	private async startTunerCapture() {
-		this.tunerCapture = new GuitarAudioCapture();
 		this.inTuneSince = null;
 
-		// Use a ScriptProcessor-based capture with onDetection for live updates
 		const channelIndex = this.selectedChannel - 1;
-		await this.tunerCapture.start(this.selectedDeviceId, channelIndex, {
-			onNoteOn: () => {},
-			onNoteOff: () => {},
-			onDetection: (info) => {
-				if (!this.tunerActive || this.tunerPhase !== 'tuning') return;
+		const constraints: MediaStreamConstraints = {
+			audio: {
+				...(this.selectedDeviceId ? { deviceId: { exact: this.selectedDeviceId } } : {}),
+				echoCancellation: false,
+				noiseSuppression: false,
+				autoGainControl: false,
+			},
+		};
 
-				const target = GuitarInputStore.OPEN_STRINGS[this.tunerStringIndex];
-				if (!target) return;
+		const stream = await navigator.mediaDevices.getUserMedia(constraints);
+		this.tunerStream = stream;
+		const ctx = new AudioContext({ sampleRate: 48000 });
+		this.tunerContext = ctx;
+		const source = ctx.createMediaStreamSource(stream);
+		const proc = ctx.createScriptProcessor(2048, source.channelCount, 1);
+		this.tunerProcessor = proc;
 
-				if (info.frequency === null || info.rms < this.noiseFloorRms * 2) {
-					this.tunerDetectedNote = '';
-					this.tunerDetectedFreq = 0;
-					this.tunerCents = 0;
-					this.tunerClarity = 0;
-					this.tunerStatus = 'waiting';
-					this.tunerHoldProgress = 0;
-					this.inTuneSince = null;
-					return;
-				}
+		proc.onaudioprocess = (event) => {
+			if (!this.tunerActive || this.tunerPhase !== 'tuning') return;
 
-				const midiInfo = frequencyToMidi(info.frequency);
-				const noteName = midiToNoteName(midiInfo.note);
-				this.tunerDetectedNote = noteName;
-				this.tunerDetectedFreq = info.frequency;
-				this.tunerClarity = info.clarity;
+			const input = event.inputBuffer;
+			const ch = Math.min(channelIndex, input.numberOfChannels - 1);
+			const samples = input.getChannelData(ch);
 
-				// Calculate cents relative to the target frequency
-				const centsFromTarget = 1200 * Math.log2(info.frequency / target.freq);
-				this.tunerCents = Math.round(centsFromTarget);
+			// Compute RMS
+			let sum = 0;
+			for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+			const rms = Math.sqrt(sum / samples.length);
 
-				const absCents = Math.abs(this.tunerCents);
+			// Run pitch detection
+			const result = detectPitch(samples, ctx.sampleRate);
 
-				if (absCents <= GuitarInputStore.IN_TUNE_CENTS) {
-					this.tunerStatus = 'holding';
-					if (this.inTuneSince === null) {
-						this.inTuneSince = Date.now();
-					}
-					const held = Date.now() - this.inTuneSince;
-					this.tunerHoldProgress = Math.min(1, held / GuitarInputStore.IN_TUNE_HOLD_MS);
+			const target = GuitarInputStore.OPEN_STRINGS[this.tunerStringIndex];
+			if (!target) return;
 
-					if (held >= GuitarInputStore.IN_TUNE_HOLD_MS) {
-						this.tunerStatus = 'in-tune';
-						this.advanceTunerString();
-					}
-				} else {
-					this.inTuneSince = null;
-					this.tunerHoldProgress = 0;
-					this.tunerStatus = this.tunerCents > 0 ? 'sharp' : 'flat';
-				}
+			if (!result || rms < this.noiseFloorRms * 2) {
+				this.tunerDetectedNote = '';
+				this.tunerDetectedFreq = 0;
+				this.tunerCents = 0;
+				this.tunerClarity = 0;
+				this.tunerStatus = 'waiting';
+				this.tunerHoldProgress = 0;
+				this.inTuneSince = null;
+				return;
 			}
-		});
+
+			const midiInfo = frequencyToMidi(result.frequency);
+			const noteName = midiToNoteName(midiInfo.note);
+			this.tunerDetectedNote = noteName;
+			this.tunerDetectedFreq = result.frequency;
+			this.tunerClarity = result.clarity;
+
+			// Calculate cents relative to the target frequency
+			const centsFromTarget = 1200 * Math.log2(result.frequency / target.freq);
+			this.tunerCents = Math.round(centsFromTarget);
+
+			const absCents = Math.abs(this.tunerCents);
+
+			if (absCents <= GuitarInputStore.IN_TUNE_CENTS) {
+				this.tunerStatus = 'holding';
+				if (this.inTuneSince === null) {
+					this.inTuneSince = Date.now();
+				}
+				const held = Date.now() - this.inTuneSince;
+				this.tunerHoldProgress = Math.min(1, held / GuitarInputStore.IN_TUNE_HOLD_MS);
+
+				if (held >= GuitarInputStore.IN_TUNE_HOLD_MS) {
+					this.tunerStatus = 'in-tune';
+					this.advanceTunerString();
+				}
+			} else {
+				this.inTuneSince = null;
+				this.tunerHoldProgress = 0;
+				this.tunerStatus = this.tunerCents > 0 ? 'sharp' : 'flat';
+			}
+		};
+
+		source.connect(proc);
+		proc.connect(ctx.destination);
 	}
+
+	// Tuner audio resources
+	private tunerStream: MediaStream | null = null;
+	private tunerContext: AudioContext | null = null;
+	private tunerProcessor: ScriptProcessorNode | null = null;
 
 	/** Advance to the next string, or finish tuning. */
 	private advanceTunerString() {
@@ -218,8 +292,14 @@ class GuitarInputStore {
 			this.tunerPhase = 'complete';
 			this.calibrated = true;
 			this.calibrating = false;
-			this.calibrationStatus = 'Tuning complete!';
+			this.calibrationStatus = 'Tuning complete! Ready to play.';
 			this.stopTunerCapture();
+
+			// Auto-close tuner UI after 2 seconds so main routing can take over
+			setTimeout(() => {
+				this.tunerActive = false;
+				this.tunerPhase = 'noise-floor';
+			}, 2000);
 			// Auto-close after 2 seconds
 			setTimeout(() => {
 				if (this.tunerPhase === 'complete') {
@@ -251,6 +331,18 @@ class GuitarInputStore {
 
 	/** Stop the tuner audio capture. */
 	private async stopTunerCapture() {
+		if (this.tunerProcessor) {
+			this.tunerProcessor.disconnect();
+			this.tunerProcessor = null;
+		}
+		if (this.tunerStream) {
+			this.tunerStream.getTracks().forEach(t => t.stop());
+			this.tunerStream = null;
+		}
+		if (this.tunerContext) {
+			await this.tunerContext.close();
+			this.tunerContext = null;
+		}
 		if (this.tunerCapture) {
 			await this.tunerCapture.stop();
 			this.tunerCapture = null;
@@ -264,19 +356,19 @@ class GuitarInputStore {
 	/** Set latency with bounds checking and sync. */
 	setLatency(value: number) {
 		this.latencyMs = Math.max(10, Math.min(50, value));
-		this.syncConfig();
+		this.syncConfig(); this.persist();
 	}
 
 	/** Set gain with bounds checking and sync. */
 	setGain(value: number) {
 		this.gain = Math.max(0.1, Math.min(2.0, Math.round(value * 20) / 20));
-		this.syncConfig();
+		this.syncConfig(); this.persist();
 	}
 
 	/** Set string confidence with bounds checking and sync. */
 	setStringConfidence(value: number) {
 		this.stringConfidence = Math.max(0.1, Math.min(1.0, Math.round(value * 20) / 20));
-		this.syncConfig();
+		this.syncConfig(); this.persist();
 	}
 
 	/** Enumerate available audio input devices via the Web Audio API. */
@@ -313,6 +405,7 @@ class GuitarInputStore {
 	selectDevice(deviceId: string) {
 		this.selectedDeviceId = deviceId;
 		this.selectedChannel = 1;
+		this.persist();
 
 		// Try to determine channel count by opening a stream with the device
 		this.probeChannelCount(deviceId);
@@ -321,10 +414,28 @@ class GuitarInputStore {
 	/** Select an input channel (1-indexed). */
 	selectChannel(channel: number) {
 		this.selectedChannel = channel;
+		this.persist();
+	}
+
+	/** Set a manual channel count override, or null to auto-detect. */
+	setManualMaxChannels(count: number | null) {
+		this.manualMaxChannels = count;
+		if (count != null && count > 0) {
+			this.maxChannels = count;
+		} else if (this.selectedDeviceId) {
+			// Re-probe to restore auto-detected value
+			this.probeChannelCount(this.selectedDeviceId);
+		}
 	}
 
 	/** Probe the max channel count for a given device. */
 	private async probeChannelCount(deviceId: string) {
+		// Skip probing if manual override is set
+		if (this.manualMaxChannels != null && this.manualMaxChannels > 0) {
+			this.maxChannels = this.manualMaxChannels;
+			return;
+		}
+
 		if (typeof navigator === 'undefined' || !navigator.mediaDevices) return;
 
 		try {
