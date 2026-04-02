@@ -202,6 +202,7 @@ class GuitarInputStore {
 				echoCancellation: false,
 				noiseSuppression: false,
 				autoGainControl: false,
+				channelCount: { ideal: 32 },
 			},
 		};
 
@@ -210,7 +211,10 @@ class GuitarInputStore {
 		const ctx = new AudioContext({ sampleRate: 48000 });
 		this.tunerContext = ctx;
 		const source = ctx.createMediaStreamSource(stream);
-		const proc = ctx.createScriptProcessor(2048, source.channelCount, 1);
+		const inputChannels = Math.max(channelIndex + 1, source.channelCount);
+		const proc = ctx.createScriptProcessor(2048, inputChannels, 1);
+		proc.channelCountMode = 'explicit';
+		proc.channelInterpretation = 'discrete';
 		this.tunerProcessor = proc;
 
 		proc.onaudioprocess = (event) => {

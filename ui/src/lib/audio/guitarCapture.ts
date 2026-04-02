@@ -75,14 +75,17 @@ export class GuitarAudioCapture {
 		this.currentNote = null;
 		this.silenceFrameCount = 0;
 
-		// Open audio stream
+		// Request ALL channels from the device so we can pick the right one.
+		// Using { ideal: 32 } asks for the maximum the device supports.
+		// Without this, the browser gives a stereo downmix of the first pair,
+		// making it impossible to access inputs beyond channel 1.
 		const constraints: MediaStreamConstraints = {
 			audio: {
 				deviceId: deviceId ? { exact: deviceId } : undefined,
 				echoCancellation: false,
 				noiseSuppression: false,
 				autoGainControl: false,
-				channelCount: { ideal: channelIndex + 1 }
+				channelCount: { ideal: 32 }
 			}
 		};
 
@@ -90,10 +93,12 @@ export class GuitarAudioCapture {
 		this.audioContext = new AudioContext();
 		this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
 
-		// Request the full channel count from the source so we can pick the
-		// correct channel. Using channelCountMode='explicit' + 'discrete'
-		// prevents the browser from downmixing to mono.
-		const inputChannels = Math.max(channelIndex + 1, this.sourceNode.channelCount);
+		// Log actual channel count for debugging
+		const actualChannels = this.sourceNode.channelCount;
+		console.log(`[guitar] Device gave ${actualChannels} channels, want index ${channelIndex}`);
+
+		// Pass through all channels discretely so we can pick the correct one
+		const inputChannels = Math.max(channelIndex + 1, actualChannels);
 		this.processorNode = this.audioContext.createScriptProcessor(BUFFER_SIZE, inputChannels, 1);
 		this.processorNode.channelCountMode = 'explicit';
 		this.processorNode.channelInterpretation = 'discrete';
@@ -243,7 +248,8 @@ export class GuitarAudioCapture {
 				deviceId: deviceId ? { exact: deviceId } : undefined,
 				echoCancellation: false,
 				noiseSuppression: false,
-				autoGainControl: false
+				autoGainControl: false,
+				channelCount: { ideal: 32 }
 			}
 		});
 
