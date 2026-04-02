@@ -46,8 +46,9 @@ const enum NoteState {
 
 /** Number of consecutive frames with same pitch to confirm a note. */
 const PITCH_CONFIRM_FRAMES = 3;
-/** Attack timeout in frames (~50ms at 2048 buffer / 48kHz ≈ 43ms per frame). */
-const ATTACK_TIMEOUT_FRAMES = 2;
+/** Attack timeout in frames. Must be > PITCH_CONFIRM_FRAMES to allow confirmation.
+ *  5 frames ≈ 215ms at 2048/48kHz — gives time for attack transient to stabilize. */
+const ATTACK_TIMEOUT_FRAMES = 5;
 /** Decay timeout in frames (~500ms). */
 const DECAY_TIMEOUT_FRAMES = 12;
 /** Cooldown after NoteOn in frames (~100ms). */
@@ -238,8 +239,9 @@ export class GuitarAudioCapture {
 						if (allSame) {
 							// Pitch confirmed — emit NoteOn
 							const confirmedNote = last3[0];
-							if (self.currentNote !== null && self.currentNote !== confirmedNote) {
-								self.callbacks.onNoteOff(self.currentNote);
+							const previousNote = self.currentNote; // capture BEFORE overwrite
+							if (previousNote !== null && previousNote !== confirmedNote) {
+								self.callbacks.onNoteOff(previousNote);
 							}
 							self.currentNote = confirmedNote;
 							const velocity = Math.max(1, Math.min(127, Math.round(rms * 800)));
@@ -248,9 +250,10 @@ export class GuitarAudioCapture {
 							self.stateFrameCount = 0;
 							self.cooldownRemaining = COOLDOWN_FRAMES;
 
-							// Set up frequency suppression for the previous note
-							if (self.suppressedNote !== confirmedNote) {
-								self.suppressedNote = self.currentNote;
+							// Suppress the OLD note's frequency (±1 semitone)
+							// to prevent sympathetic ringing from retriggering
+							if (previousNote !== null && previousNote !== confirmedNote) {
+								self.suppressedNote = previousNote;
 								self.suppressionRemaining = SUPPRESSION_FRAMES;
 							}
 							break;
@@ -329,6 +332,10 @@ export class GuitarAudioCapture {
 		}
 
 		if (this.state === NoteState.Sustain || this.state === NoteState.Decay) {
+			if (this.state === NoteState.Sustain) {
+				// Reset frame count when first entering Decay from Sustain
+				this.stateFrameCount = 0;
+			}
 			this.state = NoteState.Decay;
 			this.stateFrameCount++;
 			if (this.stateFrameCount >= DECAY_TIMEOUT_FRAMES) {
