@@ -2041,7 +2041,6 @@ pub fn simple_string_fret(midi_note: u8) -> (usize, usize) {
 /// Pitch detection using McLeod algorithm from the `pitch_detection` crate.
 ///
 /// Returns `(frequency_hz, clarity)` or `None` if no pitch detected.
-#[cfg(not(target_arch = "wasm32"))]
 pub fn detect_pitch_mcleod(
     audio: &[f32],
     sample_rate: usize,
@@ -2055,7 +2054,6 @@ pub fn detect_pitch_mcleod(
         return None;
     }
 
-    // McLeod needs the buffer size and padding
     let padding = n / 2;
     let mut detector = McLeodDetector::new(n, padding);
 
@@ -2066,16 +2064,6 @@ pub fn detect_pitch_mcleod(
     }
 
     Some((pitch.frequency, pitch.clarity))
-}
-
-/// Stub for WASM (pitch detection crate not available).
-#[cfg(target_arch = "wasm32")]
-pub fn detect_pitch_mcleod(
-    _audio: &[f32],
-    _sample_rate: usize,
-    _min_clarity: f64,
-) -> Option<(f32, f32)> {
-    None
 }
 
 /// Get string display names.

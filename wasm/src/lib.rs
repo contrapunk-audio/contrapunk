@@ -514,6 +514,9 @@ impl WasmGuitarInput {
         let config = GuitarInputConfig {
             buffer_size,
             sample_rate,
+            onset_threshold: 0.015,         // match demo
+            string_confidence_min: 0.4,      // match demo
+            cooldown_samples: sample_rate / 10, // 100ms at actual sample rate
             ..GuitarInputConfig::default()
         };
         console_log!(
