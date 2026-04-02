@@ -2,19 +2,23 @@
  * Guitar Audio Capture — Web Audio API pitch-to-MIDI bridge
  *
  * Opens a microphone/audio input via getUserMedia, runs per-block
- * autocorrelation pitch detection, and emits NoteOn/NoteOff callbacks
- * compatible with the Contrapunk adapter interface.
+ * pitch detection with a 4-state note machine matching the Rust
+ * GuitarInput pipeline's noise rejection techniques:
+ *
+ * 1. Noise gate (RMS threshold)
+ * 2. Onset detection (amplitude slope — RMS must jump 2× previous frame)
+ * 3. Note state machine (Idle→Attack→Sustain→Decay) with 3-frame pitch confirmation
+ * 4. Frequency suppression (±1 semitone of previous note for 100ms after onset)
+ * 5. Adaptive threshold (20-frame running mean for self-calibrating noise floor)
+ * 6. Cooldown (100ms lockout after each NoteOn)
  */
 
 import { detectPitch, frequencyToMidi, midiToNoteName } from './pitchDetector';
 
 /** Callbacks for guitar capture events. */
 export interface GuitarCaptureCallbacks {
-	/** Fired when a new note is detected. */
 	onNoteOn(note: number, velocity: number): void;
-	/** Fired when the current note ends (silence or new note). */
 	onNoteOff(note: number): void;
-	/** Fired every detection frame with debug info. */
 	onDetection?(info: {
 		frequency: number | null;
 		clarity: number;
@@ -29,16 +33,30 @@ export interface GuitarCaptureCallbacks {
 const GUITAR_MIDI_MIN = 28;
 const GUITAR_MIDI_MAX = 96;
 
-/** Number of consecutive silent frames before sending NoteOff. */
-const SILENCE_FRAMES_THRESHOLD = 15;
+const DEFAULT_BUFFER_SIZE = 2048;
 
-/** ScriptProcessor buffer size — 2048 samples at 44.1kHz ~ 46ms latency. */
-const BUFFER_SIZE = 2048;
+// ── Note State Machine ────────────────────────────────────────────
 
-/**
- * Captures audio from a browser audio input device,
- * runs pitch detection per block, and generates MIDI-like events.
- */
+const enum NoteState {
+	Idle,    // Waiting for onset
+	Attack,  // Onset detected, confirming pitch (3 frames)
+	Sustain, // Note confirmed, tracking
+	Decay,   // Signal dropping, waiting for silence or re-attack
+}
+
+/** Number of consecutive frames with same pitch to confirm a note. */
+const PITCH_CONFIRM_FRAMES = 3;
+/** Attack timeout in frames (~50ms at 2048 buffer / 48kHz ≈ 43ms per frame). */
+const ATTACK_TIMEOUT_FRAMES = 2;
+/** Decay timeout in frames (~500ms). */
+const DECAY_TIMEOUT_FRAMES = 12;
+/** Cooldown after NoteOn in frames (~100ms). */
+const COOLDOWN_FRAMES = 3;
+/** Frequency suppression duration in frames (~100ms). */
+const SUPPRESSION_FRAMES = 3;
+/** Running mean window for adaptive threshold. */
+const ADAPTIVE_WINDOW = 20;
+
 export class GuitarAudioCapture {
 	private audioContext: AudioContext | null = null;
 	private mediaStream: MediaStream | null = null;
@@ -46,51 +64,43 @@ export class GuitarAudioCapture {
 	private processorNode: ScriptProcessorNode | null = null;
 	private callbacks: GuitarCaptureCallbacks | null = null;
 
-	// Note tracking state
+	// Note state machine
+	private state: NoteState = NoteState.Idle;
 	private currentNote: number | null = null;
-	private silenceFrameCount = 0;
+	private stateFrameCount = 0;
+	private pitchVoteBuffer: number[] = [];
+	private cooldownRemaining = 0;
+	private prevRms = 0;
+
+	// Frequency suppression
+	private suppressedNote: number | null = null;
+	private suppressionRemaining = 0;
+
+	// Adaptive threshold
+	private rmsHistory: number[] = [];
+
 	private _isRunning = false;
 	private _actualChannel = 0;
 
-	get isRunning(): boolean {
-		return this._isRunning;
-	}
+	get isRunning(): boolean { return this._isRunning; }
+	get actualChannel(): number { return this._actualChannel; }
 
-	/** The channel index actually being used (may differ from requested if device has fewer channels). */
-	get actualChannel(): number {
-		return this._actualChannel;
-	}
-
-	/**
-	 * Start capturing audio and detecting pitch.
-	 *
-	 * @param deviceId     - MediaDevices deviceId for the audio input
-	 * @param channelIndex - 0-based channel index to analyze (for multi-channel interfaces)
-	 * @param callbacks    - NoteOn/NoteOff/Detection callbacks
-	 */
 	/** Live gate thresholds — updated from the UI while capture is running. */
 	noiseGateThreshold = 0.01;
-	clarityThreshold = 0.7;
 	noiseGateEnabled = true;
-	clarityGateEnabled = true;
+	clarityGateEnabled = false;
+	clarityThreshold = 0.7;
 
 	async start(
 		deviceId: string,
 		channelIndex: number,
 		callbacks: GuitarCaptureCallbacks
 	): Promise<void> {
-		if (this._isRunning) {
-			await this.stop();
-		}
+		if (this._isRunning) await this.stop();
 
 		this.callbacks = callbacks;
-		this.currentNote = null;
-		this.silenceFrameCount = 0;
+		this.resetState();
 
-		// Request ALL channels from the device so we can pick the right one.
-		// Using { ideal: 32 } asks for the maximum the device supports.
-		// Without this, the browser gives a stereo downmix of the first pair,
-		// making it impossible to access inputs beyond channel 1.
 		const constraints: MediaStreamConstraints = {
 			audio: {
 				deviceId: deviceId ? { exact: deviceId } : undefined,
@@ -105,30 +115,24 @@ export class GuitarAudioCapture {
 		this.audioContext = new AudioContext();
 		this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
 
-		// Log actual channel count for debugging
 		const actualChannels = this.sourceNode.channelCount;
 		console.log(`[guitar] Device gave ${actualChannels} channels, want index ${channelIndex}`);
 
-		// Pass through all channels discretely so we can pick the correct one
 		const inputChannels = Math.max(channelIndex + 1, actualChannels);
-		this.processorNode = this.audioContext.createScriptProcessor(BUFFER_SIZE, inputChannels, 1);
+		this.processorNode = this.audioContext.createScriptProcessor(DEFAULT_BUFFER_SIZE, inputChannels, 1);
 		this.processorNode.channelCountMode = 'explicit';
 		this.processorNode.channelInterpretation = 'discrete';
 
 		const sampleRate = this.audioContext.sampleRate;
 		const self = this;
-
-		// Track the actual channel being used for UI feedback
 		let actualChannelLogged = false;
-		this._actualChannel = channelIndex; // optimistic
+		this._actualChannel = channelIndex;
 
 		this.processorNode.onaudioprocess = (event: AudioProcessingEvent) => {
 			if (!self._isRunning || !self.callbacks) return;
 
 			const inputBuffer = event.inputBuffer;
 			const availableChannels = inputBuffer.numberOfChannels;
-
-			// Use requested channel, or fall back to 0 if unavailable
 			const useChannel = channelIndex < availableChannels ? channelIndex : 0;
 			if (!actualChannelLogged) {
 				console.log(`[guitar] Processing: requested ch=${channelIndex}, available=${availableChannels}, using ch=${useChannel}`);
@@ -137,146 +141,253 @@ export class GuitarAudioCapture {
 			}
 			const channelData = inputBuffer.getChannelData(useChannel);
 
-			// Compute RMS for velocity estimation
+			// ── Compute RMS ──────────────────────────────────────
 			let rmsSum = 0;
 			for (let i = 0; i < channelData.length; i++) {
 				rmsSum += channelData[i] * channelData[i];
 			}
 			const rms = Math.sqrt(rmsSum / channelData.length);
 
-			// Noise gate: skip detection if signal is below threshold
-			if (self.noiseGateEnabled && rms < self.noiseGateThreshold) {
-				// Still fire detection callback for graph updates
-				self.silenceFrameCount++;
+			// ── [5] Adaptive threshold — update running mean ─────
+			self.rmsHistory.push(rms);
+			if (self.rmsHistory.length > ADAPTIVE_WINDOW) self.rmsHistory.shift();
+			const adaptiveFloor = self.rmsHistory.reduce((a, b) => a + b, 0) / self.rmsHistory.length;
+
+			// ── [1] Noise gate ───────────────────────────────────
+			const effectiveThreshold = self.noiseGateEnabled
+				? Math.max(self.noiseGateThreshold, adaptiveFloor * 1.5)
+				: 0;
+
+			if (rms < effectiveThreshold) {
+				self.handleSilence(rms);
+				self.prevRms = rms;
+				return;
+			}
+
+			// ── [2] Onset detection (amplitude slope) ────────────
+			const isOnset = rms > self.prevRms * 2.0 && rms > effectiveThreshold * 2.0;
+
+			// ── Pitch detection ──────────────────────────────────
+			const result = detectPitch(channelData, sampleRate);
+			let midi = -1;
+			let noteName = '-';
+			let clarity = 0;
+
+			if (result) {
+				const midiInfo = frequencyToMidi(result.frequency);
+				midi = midiInfo.note;
+				noteName = midiToNoteName(midi);
+				clarity = result.clarity;
+
+				if (self.callbacks.onDetection) {
+					self.callbacks.onDetection({
+						frequency: result.frequency, clarity, noteName,
+						midi, cents: midiInfo.cents, rms
+					});
+				}
+			} else {
 				if (self.callbacks.onDetection) {
 					self.callbacks.onDetection({
 						frequency: null, clarity: 0, noteName: '-', midi: 0, cents: 0, rms
 					});
 				}
-				if (self.currentNote !== null && self.silenceFrameCount >= SILENCE_FRAMES_THRESHOLD) {
-					self.callbacks.onNoteOff(self.currentNote);
-					self.currentNote = null;
-				}
+			}
+
+			// ── [6] Cooldown ─────────────────────────────────────
+			if (self.cooldownRemaining > 0) {
+				self.cooldownRemaining--;
+				self.prevRms = rms;
 				return;
 			}
 
-			// Run pitch detection with live clarity threshold
-			const result = detectPitch(channelData, sampleRate,
-				self.clarityGateEnabled ? self.clarityThreshold : 0.3);
-
-			if (result) {
-				const midiInfo = frequencyToMidi(result.frequency);
-				const midi = midiInfo.note;
-
-				// Fire detection callback
-				if (self.callbacks.onDetection) {
-					self.callbacks.onDetection({
-						frequency: result.frequency,
-						clarity: result.clarity,
-						noteName: midiToNoteName(midi),
-						midi,
-						cents: midiInfo.cents,
-						rms
-					});
-				}
-
-				// Valid guitar range check
-				if (midi >= GUITAR_MIDI_MIN && midi <= GUITAR_MIDI_MAX) {
-					self.silenceFrameCount = 0;
-
-					if (self.currentNote !== midi) {
-						if (self.currentNote !== null) {
-							self.callbacks.onNoteOff(self.currentNote);
-						}
-						const velocity = Math.max(1, Math.min(127, Math.round(rms * 800)));
-						self.currentNote = midi;
-						self.callbacks.onNoteOn(midi, velocity);
+			// ── [4] Frequency suppression ────────────────────────
+			if (self.suppressionRemaining > 0) {
+				self.suppressionRemaining--;
+				if (self.suppressedNote !== null && midi >= 0) {
+					const dist = Math.abs(midi - self.suppressedNote);
+					if (dist <= 1) {
+						// Within ±1 semitone of suppressed note — ignore
+						self.prevRms = rms;
+						return;
 					}
 				}
-			} else {
-				// No pitch detected — count silence frames
-				self.silenceFrameCount++;
-
-				if (self.callbacks.onDetection) {
-					self.callbacks.onDetection({
-						frequency: null,
-						clarity: 0,
-						noteName: '-',
-						midi: 0,
-						cents: 0,
-						rms
-					});
-				}
-
-				if (
-					self.currentNote !== null &&
-					self.silenceFrameCount >= SILENCE_FRAMES_THRESHOLD
-				) {
-					self.callbacks.onNoteOff(self.currentNote);
-					self.currentNote = null;
-				}
 			}
+
+			// ── [3] Note state machine ───────────────────────────
+			const validMidi = midi >= GUITAR_MIDI_MIN && midi <= GUITAR_MIDI_MAX;
+
+			switch (self.state) {
+				case NoteState.Idle:
+					if (isOnset && validMidi) {
+						self.state = NoteState.Attack;
+						self.stateFrameCount = 0;
+						self.pitchVoteBuffer = [midi];
+					}
+					break;
+
+				case NoteState.Attack:
+					self.stateFrameCount++;
+					if (validMidi) {
+						self.pitchVoteBuffer.push(midi);
+					}
+
+					// Check if pitch is stable (3 consecutive same-pitch frames)
+					if (self.pitchVoteBuffer.length >= PITCH_CONFIRM_FRAMES) {
+						const last3 = self.pitchVoteBuffer.slice(-PITCH_CONFIRM_FRAMES);
+						const allSame = last3.every(n => n === last3[0]);
+
+						if (allSame) {
+							// Pitch confirmed — emit NoteOn
+							const confirmedNote = last3[0];
+							if (self.currentNote !== null && self.currentNote !== confirmedNote) {
+								self.callbacks.onNoteOff(self.currentNote);
+							}
+							self.currentNote = confirmedNote;
+							const velocity = Math.max(1, Math.min(127, Math.round(rms * 800)));
+							self.callbacks.onNoteOn(confirmedNote, velocity);
+							self.state = NoteState.Sustain;
+							self.stateFrameCount = 0;
+							self.cooldownRemaining = COOLDOWN_FRAMES;
+
+							// Set up frequency suppression for the previous note
+							if (self.suppressedNote !== confirmedNote) {
+								self.suppressedNote = self.currentNote;
+								self.suppressionRemaining = SUPPRESSION_FRAMES;
+							}
+							break;
+						}
+					}
+
+					// Attack timeout — false trigger, go back to Idle
+					if (self.stateFrameCount >= ATTACK_TIMEOUT_FRAMES) {
+						self.state = NoteState.Idle;
+						self.pitchVoteBuffer = [];
+					}
+					break;
+
+				case NoteState.Sustain:
+					self.stateFrameCount++;
+
+					// Check for re-attack (new pluck on a different note)
+					if (isOnset && validMidi && midi !== self.currentNote) {
+						self.state = NoteState.Attack;
+						self.stateFrameCount = 0;
+						self.pitchVoteBuffer = [midi];
+						break;
+					}
+
+					// Transition to Decay when signal drops
+					const sustainThreshold = effectiveThreshold * 0.3;
+					if (rms < sustainThreshold) {
+						self.state = NoteState.Decay;
+						self.stateFrameCount = 0;
+					}
+					break;
+
+				case NoteState.Decay:
+					self.stateFrameCount++;
+
+					// Recovery — signal came back
+					if (rms > effectiveThreshold && validMidi && midi === self.currentNote) {
+						self.state = NoteState.Sustain;
+						self.stateFrameCount = 0;
+						break;
+					}
+
+					// New onset — new note
+					if (isOnset && validMidi) {
+						self.state = NoteState.Attack;
+						self.stateFrameCount = 0;
+						self.pitchVoteBuffer = [midi];
+						break;
+					}
+
+					// Decay timeout — emit NoteOff
+					if (self.stateFrameCount >= DECAY_TIMEOUT_FRAMES || rms < adaptiveFloor * 2.0) {
+						if (self.currentNote !== null) {
+							self.callbacks.onNoteOff(self.currentNote);
+							self.currentNote = null;
+						}
+						self.state = NoteState.Idle;
+					}
+					break;
+			}
+
+			self.prevRms = rms;
 		};
 
-		// Connect the graph: source -> processor -> destination (required for ScriptProcessor)
 		this.sourceNode.connect(this.processorNode);
 		this.processorNode.connect(this.audioContext.destination);
-
 		this._isRunning = true;
 	}
 
-	/**
-	 * Stop capturing and release all resources.
-	 */
+	/** Handle silence (below noise gate). */
+	private handleSilence(rms: number) {
+		if (this.callbacks?.onDetection) {
+			this.callbacks.onDetection({
+				frequency: null, clarity: 0, noteName: '-', midi: 0, cents: 0, rms
+			});
+		}
+
+		if (this.state === NoteState.Sustain || this.state === NoteState.Decay) {
+			this.state = NoteState.Decay;
+			this.stateFrameCount++;
+			if (this.stateFrameCount >= DECAY_TIMEOUT_FRAMES) {
+				if (this.currentNote !== null && this.callbacks) {
+					this.callbacks.onNoteOff(this.currentNote);
+					this.currentNote = null;
+				}
+				this.state = NoteState.Idle;
+			}
+		} else if (this.state === NoteState.Attack) {
+			// Attack interrupted by silence — false trigger
+			this.state = NoteState.Idle;
+			this.pitchVoteBuffer = [];
+		}
+	}
+
+	private resetState() {
+		this.state = NoteState.Idle;
+		this.currentNote = null;
+		this.stateFrameCount = 0;
+		this.pitchVoteBuffer = [];
+		this.cooldownRemaining = 0;
+		this.suppressedNote = null;
+		this.suppressionRemaining = 0;
+		this.prevRms = 0;
+		this.rmsHistory = [];
+	}
+
 	async stop(): Promise<void> {
 		this._isRunning = false;
 
-		// Send final NoteOff if a note is still active
 		if (this.currentNote !== null && this.callbacks) {
 			this.callbacks.onNoteOff(this.currentNote);
 			this.currentNote = null;
 		}
 
-		// Disconnect audio graph
 		if (this.processorNode) {
 			this.processorNode.onaudioprocess = null;
 			this.processorNode.disconnect();
 			this.processorNode = null;
 		}
-
 		if (this.sourceNode) {
 			this.sourceNode.disconnect();
 			this.sourceNode = null;
 		}
-
-		// Close audio context
 		if (this.audioContext) {
-			try {
-				await this.audioContext.close();
-			} catch {
-				// Already closed
-			}
+			try { await this.audioContext.close(); } catch {}
 			this.audioContext = null;
 		}
-
-		// Stop media stream tracks
 		if (this.mediaStream) {
 			this.mediaStream.getTracks().forEach((t) => t.stop());
 			this.mediaStream = null;
 		}
 
 		this.callbacks = null;
-		this.silenceFrameCount = 0;
+		this.resetState();
 	}
 
-	/**
-	 * Measure noise floor RMS over a specified duration.
-	 * Used for simple browser-side calibration.
-	 *
-	 * @param deviceId  - Audio input device ID
-	 * @param durationMs - Duration to measure in milliseconds (default 3000)
-	 * @returns Average RMS over the measurement period
-	 */
 	async measureNoiseFloor(deviceId: string, durationMs = 3000, channelIndex = 0): Promise<number> {
 		const stream = await navigator.mediaDevices.getUserMedia({
 			audio: {
@@ -291,7 +402,7 @@ export class GuitarAudioCapture {
 		const ctx = new AudioContext();
 		const source = ctx.createMediaStreamSource(stream);
 		const inputChannels = Math.max(channelIndex + 1, source.channelCount);
-		const processor = ctx.createScriptProcessor(BUFFER_SIZE, inputChannels, 1);
+		const processor = ctx.createScriptProcessor(DEFAULT_BUFFER_SIZE, inputChannels, 1);
 		processor.channelCountMode = 'explicit';
 		processor.channelInterpretation = 'discrete';
 
@@ -319,7 +430,6 @@ export class GuitarAudioCapture {
 				source.disconnect();
 				ctx.close().catch(() => {});
 				stream.getTracks().forEach((t) => t.stop());
-
 				resolve(frameCount > 0 ? totalRms / frameCount : 0);
 			}, durationMs);
 		});
