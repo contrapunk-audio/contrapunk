@@ -16,8 +16,12 @@
 
 	let detectionLine = $derived(
 		guitar.detecting
-			? `Detecting: ${guitar.currentNote}  String: ${guitar.currentString} f${guitar.currentFret}  ${guitar.confidence}%`
+			? `${guitar.currentNote || '---'}  ${guitar.confidence}%  [ch${guitar.activeChannel}]`
 			: 'No signal'
+	);
+
+	let channelMismatch = $derived(
+		guitar.detecting && guitar.activeChannel !== guitar.selectedChannel
 	);
 
 	let deviceOptions = $derived(
@@ -274,6 +278,11 @@
 		<div class="detection-status font-pixel" class:detecting={guitar.detecting}>
 			{detectionLine}
 		</div>
+		{#if channelMismatch}
+			<div class="channel-warning font-pixel">
+				Using ch{guitar.activeChannel} (wanted ch{guitar.selectedChannel} — restart to change)
+			</div>
+		{/if}
 	</div>
 {/if}
 
@@ -555,6 +564,14 @@
 
 	.detection-status.detecting {
 		color: var(--color-text-secondary);
+	}
+
+	.channel-warning {
+		font-size: 6px;
+		color: var(--color-accent-amber);
+		padding: 2px 4px;
+		background: rgba(255, 170, 0, 0.1);
+		border: 1px solid var(--color-accent-amber);
 	}
 
 	/* =============================== */

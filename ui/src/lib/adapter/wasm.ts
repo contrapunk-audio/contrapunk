@@ -358,6 +358,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 			}
 		);
 
+		// Update UI with the actual channel being used (may differ if device has fewer channels)
+		guitar.activeChannel = this.guitarCapture.actualChannel + 1; // 1-indexed for display
 		this._isRunning = true;
 	}
 

@@ -72,6 +72,8 @@ class GuitarInputStore {
 
 	// -- Live detection state (updated from backend when wired) --
 	detecting = $state(false);
+	/** The actual channel being used by the audio capture (1-indexed, for display). */
+	activeChannel = $state(0);
 	currentNote = $state('');
 	currentString = $state('');
 	currentFret = $state(0);

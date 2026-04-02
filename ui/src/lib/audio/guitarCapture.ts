@@ -50,9 +50,15 @@ export class GuitarAudioCapture {
 	private currentNote: number | null = null;
 	private silenceFrameCount = 0;
 	private _isRunning = false;
+	private _actualChannel = 0;
 
 	get isRunning(): boolean {
 		return this._isRunning;
+	}
+
+	/** The channel index actually being used (may differ from requested if device has fewer channels). */
+	get actualChannel(): number {
+		return this._actualChannel;
 	}
 
 	/**
@@ -106,15 +112,24 @@ export class GuitarAudioCapture {
 		const sampleRate = this.audioContext.sampleRate;
 		const self = this;
 
+		// Track the actual channel being used for UI feedback
+		let actualChannelLogged = false;
+		this._actualChannel = channelIndex; // optimistic
+
 		this.processorNode.onaudioprocess = (event: AudioProcessingEvent) => {
 			if (!self._isRunning || !self.callbacks) return;
 
-			// Get the mono channel data
 			const inputBuffer = event.inputBuffer;
-			const channelData =
-				channelIndex < inputBuffer.numberOfChannels
-					? inputBuffer.getChannelData(channelIndex)
-					: inputBuffer.getChannelData(0);
+			const availableChannels = inputBuffer.numberOfChannels;
+
+			// Use requested channel, or fall back to 0 if unavailable
+			const useChannel = channelIndex < availableChannels ? channelIndex : 0;
+			if (!actualChannelLogged) {
+				console.log(`[guitar] Processing: requested ch=${channelIndex}, available=${availableChannels}, using ch=${useChannel}`);
+				self._actualChannel = useChannel;
+				actualChannelLogged = true;
+			}
+			const channelData = inputBuffer.getChannelData(useChannel);
 
 			// Compute RMS for velocity estimation
 			let rmsSum = 0;
