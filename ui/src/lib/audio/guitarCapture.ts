@@ -166,7 +166,10 @@ export class GuitarAudioCapture {
 			}
 
 			// ── [2] Onset detection (amplitude slope) ────────────
-			const isOnset = rms > self.prevRms * 2.0 && rms > effectiveThreshold * 2.0;
+			// Primary: amplitude jump (pluck attack)
+			// Secondary: signal above threshold with valid pitch (for sustained notes)
+			const isOnset = (rms > self.prevRms * 1.5 && rms > effectiveThreshold)
+				|| (rms > effectiveThreshold * 1.5);
 
 			// ── Pitch detection ──────────────────────────────────
 			const result = detectPitch(channelData, sampleRate);
@@ -218,7 +221,8 @@ export class GuitarAudioCapture {
 
 			switch (self.state) {
 				case NoteState.Idle:
-					if (isOnset && validMidi) {
+					// Enter Attack if onset detected OR signal is clearly above noise with valid pitch
+					if (validMidi && (isOnset || rms > effectiveThreshold)) {
 						self.state = NoteState.Attack;
 						self.stateFrameCount = 0;
 						self.pitchVoteBuffer = [midi];
