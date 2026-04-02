@@ -56,6 +56,8 @@ export class GuitarAudioCapture {
 	private _isRunning = false;
 	private _actualChannel = 0;
 
+	private _frameCount = 0;
+
 	get isRunning(): boolean { return this._isRunning; }
 	get actualChannel(): number { return this._actualChannel; }
 
@@ -141,23 +143,34 @@ export class GuitarAudioCapture {
 				return;
 			}
 
+			// Log RMS every ~1 second to verify audio is flowing
+			self._frameCount++;
+			if (self._frameCount % 25 === 0) {
+				console.log(`[guitar] frame=${self._frameCount} rms=${rms.toFixed(4)} ch=${useChannel}`);
+			}
+
 			// Send audio to Rust WASM DSP pipeline
 			const eventsJson = self.dsp.process_block(samples);
 			let events: any[];
 			try {
 				events = JSON.parse(eventsJson);
-			} catch {
+			} catch (err) {
+				console.error('[guitar] Failed to parse WASM events:', eventsJson, err);
 				return;
+			}
+
+			// Log events when they occur
+			if (events.length > 0) {
+				console.log(`[guitar] WASM events (${events.length}):`, JSON.stringify(events));
 			}
 
 			// Fire detection callback for UI (rms every frame)
 			if (self.callbacks.onDetection) {
-				// Find the most recent NoteOn for display
 				const lastNoteOn = events.findLast?.((e: any) => e.type === 'note_on');
 				if (lastNoteOn) {
 					self.callbacks.onDetection({
-						frequency: null, // WASM doesn't expose raw freq
-						clarity: 1.0, // Rust pipeline confirmed it
+						frequency: null,
+						clarity: 1.0,
 						noteName: midiToNoteName(lastNoteOn.note),
 						midi: lastNoteOn.note,
 						cents: 0,
@@ -174,9 +187,11 @@ export class GuitarAudioCapture {
 			for (const e of events) {
 				switch (e.type) {
 					case 'note_on':
+						console.log(`[midi] NOTE ON: ${midiToNoteName(e.note)} (${e.note}) vel=${e.velocity} ch=${e.channel}`);
 						self.callbacks.onNoteOn(e.note, e.velocity);
 						break;
 					case 'note_off':
+						console.log(`[midi] NOTE OFF: ${midiToNoteName(e.note)} (${e.note}) ch=${e.channel}`);
 						self.callbacks.onNoteOff(e.note);
 						break;
 					case 'pitch_bend':

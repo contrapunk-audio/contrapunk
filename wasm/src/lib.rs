@@ -10,6 +10,11 @@ use contrapunk::harmony::VoiceLeadingStyle;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode};
 use contrapunk::preset::PresetManager;
 
+/// Log to browser console from Rust WASM.
+macro_rules! console_log {
+    ($($t:tt)*) => (web_sys::console::log_1(&format!($($t)*).into()))
+}
+
 // Initialize panic hook for better error messages in the browser console.
 #[wasm_bindgen(start)]
 pub fn init_panic_hook() {
@@ -498,6 +503,7 @@ use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent}
 #[wasm_bindgen]
 pub struct WasmGuitarInput {
     inner: GuitarInput,
+    frame_count: u64,
 }
 
 #[wasm_bindgen]
@@ -510,8 +516,13 @@ impl WasmGuitarInput {
             sample_rate,
             ..GuitarInputConfig::default()
         };
+        console_log!(
+            "[wasm-guitar] Created: sr={} buf={} onset={} clarity={} gain={}",
+            sample_rate, buffer_size, config.onset_threshold, config.min_clarity, config.input_gain
+        );
         Self {
             inner: GuitarInput::new(config),
+            frame_count: 0,
         }
     }
 
@@ -520,6 +531,18 @@ impl WasmGuitarInput {
     /// Output: JSON array of event objects.
     pub fn process_block(&mut self, samples: &[f32]) -> String {
         let events = self.inner.process_block(samples);
+
+        // Log periodically + on any events
+        self.frame_count += 1;
+        if self.frame_count % 50 == 0 {
+            // Compute RMS for logging
+            let rms: f32 = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+            console_log!("[wasm-guitar] frame={} samples={} rms={:.4}", self.frame_count, samples.len(), rms);
+        }
+        if !events.is_empty() {
+            console_log!("[wasm-guitar] {} events at frame {}", events.len(), self.frame_count);
+        }
+
         if events.is_empty() {
             return "[]".to_string();
         }
