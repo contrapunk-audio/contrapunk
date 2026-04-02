@@ -532,12 +532,28 @@ impl WasmGuitarInput {
     pub fn process_block(&mut self, samples: &[f32]) -> String {
         let events = self.inner.process_block(samples);
 
-        // Log periodically + on any events
         self.frame_count += 1;
+
+        // Log internal DSP state every 50 frames
         if self.frame_count % 50 == 0 {
-            // Compute RMS for logging
             let rms: f32 = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
-            console_log!("[wasm-guitar] frame={} samples={} rms={:.4}", self.frame_count, samples.len(), rms);
+            let state = match self.inner.note_state_name() {
+                0 => "Idle",
+                1 => "Attack",
+                2 => "Sustain",
+                3 => "Decay",
+                _ => "?",
+            };
+            let note = self.inner.current_note()
+                .map(|n| format!("midi={}", n.midi_note))
+                .unwrap_or_else(|| "none".to_string());
+            let prev_rms = self.inner.prev_rms();
+            let cooldown = self.inner.cooldown_remaining();
+            console_log!(
+                "[wasm-guitar] frame={} rms={:.4} prevRms={:.4} state={} note={} cooldown={} ring_pos={} total={}",
+                self.frame_count, rms, prev_rms, state, note, cooldown,
+                self.inner.ring_pos(), self.inner.total_samples()
+            );
         }
         if !events.is_empty() {
             console_log!("[wasm-guitar] {} events at frame {}", events.len(), self.frame_count);

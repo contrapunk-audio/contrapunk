@@ -392,6 +392,28 @@ impl GuitarInput {
         &mut self.config
     }
 
+    /// Get note state as a number (0=Idle, 1=Attack, 2=Sustain, 3=Decay).
+    pub fn note_state_name(&self) -> u8 {
+        match self.note_state {
+            NoteState::Idle => 0,
+            NoteState::Attack => 1,
+            NoteState::Sustain => 2,
+            NoteState::Decay => 3,
+        }
+    }
+
+    /// Get previous frame's RMS.
+    pub fn prev_rms(&self) -> f32 { self.prev_rms }
+
+    /// Get cooldown remaining (samples).
+    pub fn cooldown_remaining(&self) -> usize { self.cooldown_remaining }
+
+    /// Get ring buffer position.
+    pub fn ring_pos(&self) -> usize { self.ring_pos }
+
+    /// Get total samples processed.
+    pub fn total_samples(&self) -> usize { self.total_samples }
+
     /// Get the currently active note, if any.
     pub fn current_note(&self) -> Option<&DetectedNote> {
         self.current_note.as_ref()
