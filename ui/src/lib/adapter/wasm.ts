@@ -343,9 +343,15 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.guitarCapture.noiseGateEnabled = guitar.noiseGateEnabled;
 		this.guitarCapture.clarityGateEnabled = false;
 
+		// Read device/channel directly from guitar store (not stale adapter properties)
+		// because the user may have changed settings after the last syncDevice() call
+		const deviceId = guitar.selectedDeviceId || this._guitarDeviceId;
+		const channelIndex = Math.max(0, guitar.selectedChannel - 1); // 1-indexed → 0-indexed
+		console.log(`[wasm] startGuitarCapture: device='${deviceId}' channel=${channelIndex} (store.selectedChannel=${guitar.selectedChannel})`);
+
 		await this.guitarCapture.start(
-			this._guitarDeviceId,
-			this._guitarChannel,
+			deviceId,
+			channelIndex,
 			{
 				onNoteOn(note: number, velocity: number) {
 					self.injectNoteOn(note, velocity).catch(() => {});
