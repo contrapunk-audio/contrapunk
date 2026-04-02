@@ -145,15 +145,9 @@ export class GuitarAudioCapture {
 			for (let i = 0; i < samples.length; i++) rmsSum += samples[i] * samples[i];
 			const rms = Math.sqrt(rmsSum / samples.length);
 
-			// Noise gate (JS-side, before WASM for efficiency)
-			if (self.noiseGateEnabled && rms < self.noiseGateThreshold) {
-				if (self.callbacks.onDetection) {
-					self.callbacks.onDetection({
-						frequency: null, clarity: 0, noteName: '-', midi: 0, cents: 0, rms
-					});
-				}
-				return;
-			}
+			// No JS-side noise gate — the Rust pipeline handles gating
+			// internally (matching the guitar_input_demo which sends ALL
+			// audio to process_block without pre-filtering)
 
 			self._frameCount++;
 			if (self._frameCount % 25 === 0) {
