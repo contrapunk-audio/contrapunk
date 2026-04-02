@@ -197,7 +197,7 @@ export class GuitarAudioCapture {
 			if (self.cooldownRemaining > 0) {
 				self.cooldownRemaining--;
 				self.prevRms = rms;
-				return;
+				return; // onDetection already fired above
 			}
 
 			// ── [4] Frequency suppression ────────────────────────
@@ -206,9 +206,8 @@ export class GuitarAudioCapture {
 				if (self.suppressedNote !== null && midi >= 0) {
 					const dist = Math.abs(midi - self.suppressedNote);
 					if (dist <= 1) {
-						// Within ±1 semitone of suppressed note — ignore
 						self.prevRms = rms;
-						return;
+						return; // onDetection already fired above
 					}
 				}
 			}

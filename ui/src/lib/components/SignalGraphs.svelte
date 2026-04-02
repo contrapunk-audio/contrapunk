@@ -71,7 +71,7 @@
 	}
 
 	$effect(() => {
-		if (guitar.detecting && ampCanvas && clarityCanvas) {
+		if (guitar.detecting && ampCanvas) {
 			if (!animFrame) render();
 		}
 		return () => {
