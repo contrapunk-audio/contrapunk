@@ -69,7 +69,7 @@
 			drawGraph(ampCanvas, guitar.amplitudeHistory, noiseThreshold, '#00e5cc', '#ffaa00');
 		}
 		if (clarityCanvas) {
-			const clarityThreshold = guitar.freqGateEnabled ? 0.7 : null; // matches pitchDetector default
+			const clarityThreshold = guitar.freqGateEnabled ? guitar.stringConfidence : null;
 			drawGraph(clarityCanvas, guitar.clarityHistory, clarityThreshold, '#ff3399', '#ffaa00');
 		}
 		animFrame = requestAnimationFrame(render);
@@ -92,25 +92,45 @@
 	<div class="graph-row">
 		<span class="graph-label font-pixel">AMP</span>
 		<canvas bind:this={ampCanvas} width={WIDTH} height={HEIGHT} class="signal-canvas"></canvas>
-		<div class="gate-toggle">
+		<div class="gate-controls">
 			<button
 				class="gate-btn font-pixel"
 				class:gate-on={guitar.noiseGateEnabled}
 				onclick={() => { guitar.noiseGateEnabled = !guitar.noiseGateEnabled; }}
 				title="Noise Gate"
 			>NG</button>
+			<input
+				type="range"
+				class="gate-slider"
+				min="0.001"
+				max="0.1"
+				step="0.001"
+				value={guitar.noiseGateThreshold}
+				oninput={(e) => { guitar.noiseGateThreshold = parseFloat((e.target as HTMLInputElement).value); }}
+				title={`Threshold: ${(guitar.noiseGateThreshold * 1000).toFixed(0)} mRMS`}
+			/>
 		</div>
 	</div>
 	<div class="graph-row">
 		<span class="graph-label font-pixel">CLR</span>
 		<canvas bind:this={clarityCanvas} width={WIDTH} height={HEIGHT} class="signal-canvas"></canvas>
-		<div class="gate-toggle">
+		<div class="gate-controls">
 			<button
 				class="gate-btn font-pixel"
 				class:gate-on={guitar.freqGateEnabled}
 				onclick={() => { guitar.freqGateEnabled = !guitar.freqGateEnabled; }}
 				title="Frequency/Clarity Gate"
 			>FG</button>
+			<input
+				type="range"
+				class="gate-slider"
+				min="0.3"
+				max="0.95"
+				step="0.05"
+				value={guitar.stringConfidence}
+				oninput={(e) => { guitar.stringConfidence = parseFloat((e.target as HTMLInputElement).value); }}
+				title={`Clarity: ${Math.round(guitar.stringConfidence * 100)}%`}
+			/>
 		</div>
 	</div>
 </div>
@@ -144,9 +164,12 @@
 		image-rendering: pixelated;
 	}
 
-	.gate-toggle {
+	.gate-controls {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
+		gap: 2px;
+		width: 32px;
 	}
 
 	.gate-btn {
@@ -162,5 +185,25 @@
 		background: var(--color-accent-teal);
 		color: #fff;
 		border-color: var(--color-accent-cyan-dim);
+	}
+
+	.gate-slider {
+		width: 28px;
+		height: 8px;
+		-webkit-appearance: none;
+		appearance: none;
+		background: var(--color-bg-panel);
+		border: 1px solid var(--color-border);
+		outline: none;
+		cursor: pointer;
+	}
+
+	.gate-slider::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		width: 6px;
+		height: 10px;
+		background: var(--color-accent-amber);
+		border: none;
+		cursor: pointer;
 	}
 </style>
