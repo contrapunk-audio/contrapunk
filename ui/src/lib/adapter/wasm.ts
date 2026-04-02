@@ -15,6 +15,7 @@ import type {
 	Preset
 } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
+import { guitar } from '$lib/stores/guitar.svelte';
 
 /**
  * Dynamically imported WASM module.
@@ -335,6 +336,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.guitarCapture = new GuitarAudioCapture();
 		const self = this;
 
+		guitar.detecting = true;
+
 		await this.guitarCapture.start(
 			this._guitarDeviceId,
 			this._guitarChannel,
@@ -344,6 +347,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 				},
 				onNoteOff(note: number) {
 					self.injectNoteOff(note).catch(() => {});
+				},
+				onDetection(info) {
+					if (info.frequency !== null) {
+						guitar.currentNote = info.noteName;
+						guitar.confidence = Math.round(info.clarity * 100);
+						guitar.velocity = Math.round(info.rms * 800);
+					}
 				}
 			}
 		);
@@ -356,6 +366,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 		if (this.guitarCapture) {
 			await this.guitarCapture.stop();
 			this.guitarCapture = null;
+			guitar.detecting = false;
+			guitar.currentNote = '';
+			guitar.confidence = 0;
+			guitar.velocity = 0;
 		}
 
 		// Send All-Notes-Off (CC 123) to every active output to prevent stuck notes

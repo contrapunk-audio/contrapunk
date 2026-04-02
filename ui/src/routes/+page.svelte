@@ -176,10 +176,11 @@
 		<div class="content-area">
 			<!-- Left column: MIDI devices + Guitar Input + Presets -->
 			<div class="column column-left">
-				<MidiDevices />
-				{#if isGuitarAudioSelected}
-					<GuitarInputPanel />
-				{/if}
+				<MidiDevices>
+					{#if isGuitarAudioSelected}
+						<GuitarInputPanel />
+					{/if}
+				</MidiDevices>
 				<PresetManager />
 			</div>
 

@@ -71,13 +71,18 @@ class MidiStore {
 			// Try to restore saved selections by name
 			const saved = loadMidiSettings();
 			if (saved) {
-				// Restore input by name
+				// Restore input by name (check virtual inputs first)
 				if (saved.inputName) {
-					const match = newInputs.find((d) => d.name === saved.inputName);
-					if (match) {
-						this.selectedInput = match.index;
+					const virtualId = MidiStore.VIRTUAL_IDS[saved.inputName];
+					if (virtualId !== undefined) {
+						this.selectedInput = virtualId;
 					} else {
-						this.selectedInput = null;
+						const match = newInputs.find((d) => d.name === saved.inputName);
+						if (match) {
+							this.selectedInput = match.index;
+						} else {
+							this.selectedInput = null;
+						}
 					}
 				}
 
@@ -115,6 +120,20 @@ class MidiStore {
 		});
 	}
 
+	/** Map virtual sentinel values to persistent names. */
+	private static readonly VIRTUAL_NAMES: Record<number, string> = {
+		999_999: '__virtual_note_generator__',
+		999_998: '__virtual_computer_keyboard__',
+		999_997: '__virtual_guitar_audio__',
+	};
+
+	/** Reverse lookup: persistent name → sentinel value. */
+	private static readonly VIRTUAL_IDS: Record<string, number> = {
+		'__virtual_note_generator__': 999_999,
+		'__virtual_computer_keyboard__': 999_998,
+		'__virtual_guitar_audio__': 999_997,
+	};
+
 	/**
 	 * Select a MIDI input device by index.
 	 */
@@ -123,6 +142,14 @@ class MidiStore {
 			this.selectedInput = index;
 			this.persist();
 		}
+	}
+
+	/**
+	 * Select a virtual input (Guitar Audio, Computer Keyboard, Note Generator).
+	 */
+	selectVirtualInput(index: number) {
+		this.selectedInput = index;
+		this.persist();
 	}
 
 	/**
@@ -166,9 +193,12 @@ class MidiStore {
 
 	/**
 	 * Get the name of the selected input device, or null.
+	 * Returns virtual names for sentinel values (e.g. "__virtual_guitar_audio__").
 	 */
 	get selectedInputName(): string | null {
 		if (this.selectedInput === null) return null;
+		const virtualName = MidiStore.VIRTUAL_NAMES[this.selectedInput];
+		if (virtualName) return virtualName;
 		return this.inputs.find((d) => d.index === this.selectedInput)?.name ?? null;
 	}
 

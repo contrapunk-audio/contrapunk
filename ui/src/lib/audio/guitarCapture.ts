@@ -90,10 +90,13 @@ export class GuitarAudioCapture {
 		this.audioContext = new AudioContext();
 		this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
 
-		// ScriptProcessorNode for per-block processing
-		// Using ScriptProcessorNode because AudioWorklet requires a separate file
-		// and complicates the build pipeline for this use case.
-		this.processorNode = this.audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+		// Request the full channel count from the source so we can pick the
+		// correct channel. Using channelCountMode='explicit' + 'discrete'
+		// prevents the browser from downmixing to mono.
+		const inputChannels = Math.max(channelIndex + 1, this.sourceNode.channelCount);
+		this.processorNode = this.audioContext.createScriptProcessor(BUFFER_SIZE, inputChannels, 1);
+		this.processorNode.channelCountMode = 'explicit';
+		this.processorNode.channelInterpretation = 'discrete';
 
 		const sampleRate = this.audioContext.sampleRate;
 		const self = this;
@@ -234,7 +237,7 @@ export class GuitarAudioCapture {
 	 * @param durationMs - Duration to measure in milliseconds (default 3000)
 	 * @returns Average RMS over the measurement period
 	 */
-	async measureNoiseFloor(deviceId: string, durationMs = 3000): Promise<number> {
+	async measureNoiseFloor(deviceId: string, durationMs = 3000, channelIndex = 0): Promise<number> {
 		const stream = await navigator.mediaDevices.getUserMedia({
 			audio: {
 				deviceId: deviceId ? { exact: deviceId } : undefined,
@@ -246,14 +249,18 @@ export class GuitarAudioCapture {
 
 		const ctx = new AudioContext();
 		const source = ctx.createMediaStreamSource(stream);
-		const processor = ctx.createScriptProcessor(BUFFER_SIZE, 1, 1);
+		const inputChannels = Math.max(channelIndex + 1, source.channelCount);
+		const processor = ctx.createScriptProcessor(BUFFER_SIZE, inputChannels, 1);
+		processor.channelCountMode = 'explicit';
+		processor.channelInterpretation = 'discrete';
 
 		let totalRms = 0;
 		let frameCount = 0;
 
 		return new Promise<number>((resolve) => {
 			processor.onaudioprocess = (event: AudioProcessingEvent) => {
-				const data = event.inputBuffer.getChannelData(0);
+				const ch = Math.min(channelIndex, event.inputBuffer.numberOfChannels - 1);
+				const data = event.inputBuffer.getChannelData(ch);
 				let sum = 0;
 				for (let i = 0; i < data.length; i++) {
 					sum += data[i] * data[i];

@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { midi } from '$lib/stores/midi.svelte';
 	import PixelSelect from './PixelSelect.svelte';
+	import type { Snippet } from 'svelte';
+
+	let { children }: { children?: Snippet } = $props();
 
 	// Virtual input sentinel values — must match src-tauri/src/commands/engine.rs
 	const VIRTUAL_NOTE_GENERATOR = 999_999;
@@ -29,7 +32,7 @@
 		} else {
 			const idx = parseInt(value, 10);
 			if (idx === VIRTUAL_NOTE_GENERATOR || idx === VIRTUAL_COMPUTER_KEYBOARD || idx === VIRTUAL_GUITAR_AUDIO) {
-				midi.selectedInput = idx;
+				midi.selectVirtualInput(idx);
 			} else {
 				midi.selectInput(idx);
 			}
@@ -97,6 +100,9 @@
 		<div class="error-text font-pixel">{midi.error}</div>
 	{/if}
 </div>
+
+<!-- Slot for Guitar Input panel (rendered between INPUT and OUTPUTS) -->
+{@render children?.()}
 
 <!-- Output Device Section -->
 <div class="midi-section pixel-card">

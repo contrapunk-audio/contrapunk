@@ -159,7 +159,7 @@ class GuitarInputStore {
 			try {
 				// Phase 1: Noise floor
 				const capture = new GuitarAudioCapture();
-				const noisePromise = capture.measureNoiseFloor(this.selectedDeviceId, 3000);
+				const noisePromise = capture.measureNoiseFloor(this.selectedDeviceId, 3000, this.selectedChannel - 1);
 
 				// Animate progress bar for noise floor
 				const noiseStart = Date.now();
