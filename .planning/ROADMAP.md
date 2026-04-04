@@ -30,11 +30,12 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6.9: Repo Cleanup & Documentation** - Remove legacy Python scripts, clean up README, create comprehensive docs (INSERTED)
 - [ ] **Phase 6.10: Docs** - Additional documentation work (INSERTED)
 - [ ] **Phase 6.10.1: UI Modernization** - Move from egui to a more sophisticated GUI framework (INSERTED)
-- [ ] **Phase 6.11: Logo** - Programmatic SVG logo for Contrapunk — generated in code, used in app, favicon, and docs (INSERTED)
+- [ ] **Phase 6.11: Logo** - Gold illuminated manuscript C logo — integrated in app, favicon, and docs (INSERTED, design complete)
 - [ ] **Phase 7: Performance Mode** - Auto-detect chords/key/BPM from backing track + beat-aware accompaniment generation from accumulated playing
 - [ ] **Phase 8: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 9: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection (95% complete on guitar-input-clean branch)
+- [ ] **Phase 6.12: DMG Distribution** - Ship Contrapunk as a signed macOS DMG with app icon, codesigning, and notarization (INSERTED)
 - ~~**Phase 11: Trackpad Beat Input**~~ - DROPPED
 
 ## Phase Details
@@ -373,7 +374,27 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 6.11 to break down)
+- [x] Design gold illuminated manuscript C logo with HLD accents (brainstorming complete)
+- [x] Save logo SVG to ui/static/logo.svg
+- [x] Integrate logo into StatusBar brand area
+- [x] Add SVG favicon to app.html
+- [ ] Generate PNG app icons from SVG for Tauri (32x32, 128x128, 128x128@2x, icon.png)
+- [ ] Create monochrome variant for light backgrounds
+
+### Phase 6.12: DMG Distribution (INSERTED)
+**Goal**: Ship Contrapunk as a properly signed and notarized macOS DMG installer with custom app icon, background, and drag-to-Applications UX
+**Depends on**: Phase 6.11 (Logo — need app icon), Phase 6.10.1 (UI Modernization — Tauri build)
+**Requirements**: DMG-01
+**Success Criteria** (what must be TRUE):
+  1. `cargo tauri build` produces a working .app bundle
+  2. .app has the Contrapunk logo as its icon (icns format)
+  3. DMG is created with custom background showing drag-to-Applications arrow
+  4. DMG is code-signed with a valid Apple Developer ID
+  5. DMG is notarized with Apple and passes Gatekeeper
+  6. DMG file size is reasonable (< 50MB)
+  7. Users can download, open DMG, drag to /Applications, and launch without security warnings
+**Plans**:
+- [ ] TBD (run /gsd:plan-phase 6.12 to break down)
 
 ### Phase 7: Performance Mode
 **Goal**: Two-part performance mode: (A) auto-detect chords, key/scale, and BPM from a backing track audio stream to configure the harmony engine in real-time, and (B) beat-aware accompaniment generation from accumulated played notes over bars

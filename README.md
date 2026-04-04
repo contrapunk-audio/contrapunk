@@ -1,4 +1,8 @@
-# Contrapunk
+<p align="center">
+  <img src="ui/static/logo.svg" alt="Contrapunk" width="200" />
+</p>
+
+<h1 align="center">Contrapunk</h1>
 
 Real-time MIDI harmony generator with classical voice leading rules, built in Rust.
 
