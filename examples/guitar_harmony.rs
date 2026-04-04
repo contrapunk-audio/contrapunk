@@ -28,7 +28,7 @@ const OVERLAP_PCT: u8 = 75;
 const MIN_CONFIDENCE: f64 = 0.55;
 const MIN_RMS: f32 = 0.015;
 const VELOCITY: u8 = 100;
-const SILENCE_FRAMES: u32 = 10;   // ~53ms at 5.3ms/frame before note-off
+const SILENCE_FRAMES: u32 = 10; // ~53ms at 5.3ms/frame before note-off
 const CORRECTION_FRAMES: u32 = 3; // ~16ms window to correct pitch after onset
 
 // ── Onset-Locked Note State ──────────────────────────────────────────
@@ -49,7 +49,10 @@ enum PipelineEvent {
     NoteOn(u8),
     NoteOff(u8),
     /// Correction: release old, play new (within correction window).
-    Correct { off: u8, on: u8 },
+    Correct {
+        off: u8,
+        on: u8,
+    },
 }
 
 /// Onset-locked tracker: only fires on pluck, locks during sustain.
@@ -189,7 +192,10 @@ impl OnsetLockedTracker {
         }
 
         // Sort by count desc, then confidence desc
-        counts.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)));
+        counts.sort_by(|a, b| {
+            b.1.cmp(&a.1)
+                .then(b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal))
+        });
         counts[0].0
     }
 }
@@ -235,7 +241,10 @@ impl AudioPipeline {
                 m.set_profile(p.clone());
                 (n, m)
             }
-            None => (AudioNormalizer::default_uncalibrated(), GuitarPitchMatcher::with_defaults()),
+            None => (
+                AudioNormalizer::default_uncalibrated(),
+                GuitarPitchMatcher::with_defaults(),
+            ),
         };
 
         Self {
@@ -267,7 +276,8 @@ impl AudioPipeline {
         for frame in frames {
             let rms = (frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt();
             let half = frame.len() / 2;
-            let bright_rms = (frame[half..].iter().map(|s| s * s).sum::<f32>() / half as f32).sqrt();
+            let bright_rms =
+                (frame[half..].iter().map(|s| s * s).sum::<f32>() / half as f32).sqrt();
 
             // ── Normalizer: noise gate + brightness filter ───
             // Do a preliminary pitch detection to get confidence for the normalizer
@@ -280,9 +290,9 @@ impl AudioPipeline {
                 .map(|p| p.clarity as f32)
                 .unwrap_or(0.0);
 
-            let norm = self.normalizer.normalize(
-                rms, bright_rms, pre_confidence, self.last_string_hint,
-            );
+            let norm =
+                self.normalizer
+                    .normalize(rms, bright_rms, pre_confidence, self.last_string_hint);
 
             match norm {
                 NormalizeResult::Rejected => {
@@ -377,7 +387,9 @@ fn simple_magnitude_spectrum(samples: &[f32]) -> Vec<f32> {
 fn list_midi_outputs() -> Vec<(usize, String)> {
     let midi_out = MidiOutput::new("contrapunk-list").unwrap();
     let ports = midi_out.ports();
-    ports.iter().enumerate()
+    ports
+        .iter()
+        .enumerate()
         .map(|(i, p)| (i, midi_out.port_name(p).unwrap_or("Unknown".into())))
         .collect()
 }
@@ -388,7 +400,9 @@ fn connect_midi_output(port_idx: usize) -> MidiOutputConnection {
     let port = &ports[port_idx];
     let name = midi_out.port_name(port).unwrap_or("Unknown".into());
     println!("  Connected to MIDI output: {}", name);
-    midi_out.connect(port, "contrapunk-guitar-out").expect("Failed to connect MIDI output")
+    midi_out
+        .connect(port, "contrapunk-guitar-out")
+        .expect("Failed to connect MIDI output")
 }
 
 fn prompt_selection(prompt: &str, max: usize) -> usize {
@@ -405,8 +419,15 @@ fn build_meter(cents: i8) -> String {
     let mut bar = vec!['-'; width];
     bar[center] = '|';
     let pos = ((cents as f32 / 50.0) * center as f32 + center as f32)
-        .round().clamp(0.0, (width - 1) as f32) as usize;
-    let indicator = if cents.abs() <= 5 { '*' } else if cents.abs() <= 15 { '=' } else { '#' };
+        .round()
+        .clamp(0.0, (width - 1) as f32) as usize;
+    let indicator = if cents.abs() <= 5 {
+        '*'
+    } else if cents.abs() <= 15 {
+        '='
+    } else {
+        '#'
+    };
     bar[pos] = indicator;
     format!("[{}]", bar.iter().collect::<String>())
 }
@@ -420,19 +441,30 @@ fn main() {
     // ── Load calibration profile ───────────────────────
     // Check --profile flag first, then auto-load from default path
     let args: Vec<String> = std::env::args().collect();
-    let profile_path = args.iter().position(|a| a == "--profile")
+    let profile_path = args
+        .iter()
+        .position(|a| a == "--profile")
         .and_then(|idx| args.get(idx + 1).cloned())
         .unwrap_or_else(|| "guitar_calibration_profile.json".into());
 
     let profile = match std::fs::read_to_string(&profile_path) {
         Ok(json) => match GuitarCalibrationProfile::from_json(&json) {
             Ok(p) => {
-                println!("  Loaded profile: {} ({} plucks)\n", profile_path,
-                    p.strings.iter().map(|s| s.soft_samples.len() + s.strong_samples.len()).sum::<usize>());
+                println!(
+                    "  Loaded profile: {} ({} plucks)\n",
+                    profile_path,
+                    p.strings
+                        .iter()
+                        .map(|s| s.soft_samples.len() + s.strong_samples.len())
+                        .sum::<usize>()
+                );
                 Some(p)
             }
-            Err(e) => { eprintln!("  Bad profile: {} — using defaults\n", e); None }
-        }
+            Err(e) => {
+                eprintln!("  Bad profile: {} — using defaults\n", e);
+                None
+            }
+        },
         Err(_) => {
             println!("  No profile found. Run guitar_tuner first to auto-calibrate.\n");
             None
@@ -442,23 +474,37 @@ fn main() {
     // ── Audio Input ──────────────────────────────────────
     let host = cpal::default_host();
     let devices: Vec<_> = host.input_devices().expect("No input devices").collect();
-    if devices.is_empty() { eprintln!("No audio input devices!"); return; }
+    if devices.is_empty() {
+        eprintln!("No audio input devices!");
+        return;
+    }
 
     println!("Audio Input Devices:");
     for (i, d) in devices.iter().enumerate() {
         println!("  [{}] {}", i, d.name().unwrap_or_default());
     }
-    let audio_idx = prompt_selection(&format!("\nSelect [0-{}]: ", devices.len()-1), devices.len()-1);
+    let audio_idx = prompt_selection(
+        &format!("\nSelect [0-{}]: ", devices.len() - 1),
+        devices.len() - 1,
+    );
     let audio_device = &devices[audio_idx];
     println!("  Using: {}\n", audio_device.name().unwrap_or_default());
 
     // ── MIDI Output ──────────────────────────────────────
     let midi_outputs = list_midi_outputs();
-    if midi_outputs.is_empty() { eprintln!("No MIDI outputs!"); return; }
+    if midi_outputs.is_empty() {
+        eprintln!("No MIDI outputs!");
+        return;
+    }
 
     println!("MIDI Output Devices:");
-    for (i, name) in &midi_outputs { println!("  [{}] {}", i, name); }
-    let midi_idx = prompt_selection(&format!("\nSelect [0-{}]: ", midi_outputs.len()-1), midi_outputs.len()-1);
+    for (i, name) in &midi_outputs {
+        println!("  [{}] {}", i, name);
+    }
+    let midi_idx = prompt_selection(
+        &format!("\nSelect [0-{}]: ", midi_outputs.len() - 1),
+        midi_outputs.len() - 1,
+    );
     let midi_conn = Arc::new(Mutex::new(connect_midi_output(midi_idx)));
 
     // ── Harmony Setup ────────────────────────────────────
@@ -471,40 +517,72 @@ fn main() {
         ("4", "Strict Counterpoint", HarmonyMode::StrictCounterpoint),
         ("5", "Barry Harris", HarmonyMode::BarryHarris),
     ];
-    for (i, label, _) in &modes { println!("  [{}] {}", i, label); }
+    for (i, label, _) in &modes {
+        println!("  [{}] {}", i, label);
+    }
     let mode_idx = prompt_selection("\nSelect mode [0-5]: ", 5);
     let harmony_mode = modes[mode_idx].2.clone();
 
     let keys = [
-        ("0","C",Key::C), ("1","Db",Key::Db), ("2","D",Key::D), ("3","Eb",Key::Eb),
-        ("4","E",Key::E), ("5","F",Key::F), ("6","Gb",Key::Gb), ("7","G",Key::G),
-        ("8","Ab",Key::Ab), ("9","A",Key::A), ("10","Bb",Key::Bb), ("11","B",Key::B),
+        ("0", "C", Key::C),
+        ("1", "Db", Key::Db),
+        ("2", "D", Key::D),
+        ("3", "Eb", Key::Eb),
+        ("4", "E", Key::E),
+        ("5", "F", Key::F),
+        ("6", "Gb", Key::Gb),
+        ("7", "G", Key::G),
+        ("8", "Ab", Key::Ab),
+        ("9", "A", Key::A),
+        ("10", "Bb", Key::Bb),
+        ("11", "B", Key::B),
     ];
     println!("\nKeys:");
-    for (i, label, _) in &keys { print!(" [{}]{}", i, label); }
+    for (i, label, _) in &keys {
+        print!(" [{}]{}", i, label);
+    }
     println!();
     let key_idx = prompt_selection("Select key [0-11]: ", 11);
     let mut engine = HarmonyEngine::new(keys[key_idx].2.clone(), harmony_mode.clone());
 
     // ── Audio Stream ─────────────────────────────────────
-    let config = audio_device.default_input_config().expect("No input config");
+    let config = audio_device
+        .default_input_config()
+        .expect("No input config");
     let sample_rate = config.sample_rate().0 as usize;
     let channels = config.channels() as usize;
 
-    println!("\n  Engine: key={} mode={:?}", keys[key_idx].1, harmony_mode);
-    println!("  Audio: {}ch {}Hz | Buf:{} | Overlap:{}% | Correction:{}frames",
-        channels, sample_rate, BUFFER_SIZE, OVERLAP_PCT, CORRECTION_FRAMES);
+    println!(
+        "\n  Engine: key={} mode={:?}",
+        keys[key_idx].1, harmony_mode
+    );
+    println!(
+        "  Audio: {}ch {}Hz | Buf:{} | Overlap:{}% | Correction:{}frames",
+        channels, sample_rate, BUFFER_SIZE, OVERLAP_PCT, CORRECTION_FRAMES
+    );
 
     println!("  Device has {} channels.", channels);
-    let target_channel = prompt_selection(&format!("  Select channel [0-{}]: ", channels-1), channels-1);
+    let target_channel = prompt_selection(
+        &format!("  Select channel [0-{}]: ", channels - 1),
+        channels - 1,
+    );
     println!("  Using channel {}\n", target_channel);
 
     let state = Arc::new(Mutex::new((
         Vec::<PipelineEvent>::new(),
-        String::new(), 0i8, None::<(usize, u8)>, 0.0f32, 0.0f32,
+        String::new(),
+        0i8,
+        None::<(usize, u8)>,
+        0.0f32,
+        0.0f32,
     )));
 
-    let pipeline = Arc::new(Mutex::new(AudioPipeline::new(channels, target_channel, sample_rate, profile)));
+    let pipeline = Arc::new(Mutex::new(AudioPipeline::new(
+        channels,
+        target_channel,
+        sample_rate,
+        profile,
+    )));
 
     let state_c = Arc::clone(&state);
     let pipeline_c = Arc::clone(&pipeline);
@@ -519,11 +597,15 @@ fn main() {
                 let mut s = state_c.lock().unwrap();
                 s.0.extend(events);
                 if let Some(d) = display {
-                    s.1 = d.note_name; s.2 = d.cents; s.3 = d.string_match;
-                    s.4 = d.confidence; s.5 = d.rms;
+                    s.1 = d.note_name;
+                    s.2 = d.cents;
+                    s.3 = d.string_match;
+                    s.4 = d.confidence;
+                    s.5 = d.rms;
                 }
             },
-            |e| eprintln!("Audio error: {}", e), None,
+            |e| eprintln!("Audio error: {}", e),
+            None,
         ),
         cpal::SampleFormat::I16 => {
             let state_c2 = Arc::clone(&state);
@@ -537,20 +619,31 @@ fn main() {
                     let mut s = state_c2.lock().unwrap();
                     s.0.extend(events);
                     if let Some(d) = display {
-                        s.1 = d.note_name; s.2 = d.cents; s.3 = d.string_match;
-                        s.4 = d.confidence; s.5 = d.rms;
+                        s.1 = d.note_name;
+                        s.2 = d.cents;
+                        s.3 = d.string_match;
+                        s.4 = d.confidence;
+                        s.5 = d.rms;
                     }
                 },
-                |e| eprintln!("Audio error: {}", e), None,
+                |e| eprintln!("Audio error: {}", e),
+                None,
             )
         }
-        f => { eprintln!("Unsupported: {:?}", f); return; }
-    }.expect("Failed to build stream");
+        f => {
+            eprintln!("Unsupported: {:?}", f);
+            return;
+        }
+    }
+    .expect("Failed to build stream");
 
     stream.play().expect("Failed to start stream");
 
     println!("Listening... Play your guitar! (Ctrl+C to quit)\n");
-    println!("  {:>6} {:>5} {:>6} {:>4}  {:>20}  {}", "Note", "Cents", "String", "Fret", "Harmony", "Meter");
+    println!(
+        "  {:>6} {:>5} {:>6} {:>4}  {:>20}  {}",
+        "Note", "Cents", "String", "Fret", "Harmony", "Meter"
+    );
     println!("  {}", "-".repeat(68));
 
     let mut active_harmony: Vec<u8> = Vec::new();
@@ -570,21 +663,27 @@ fn main() {
                     let wmidi_note = Note::from_u8_lossy(*off);
                     let release = engine.harmonize_note_off(wmidi_note);
                     let mut conn = midi_conn.lock().unwrap();
-                    for n in &release { let _ = conn.send(&[0x80, u8::from(*n), 0]); }
+                    for n in &release {
+                        let _ = conn.send(&[0x80, u8::from(*n), 0]);
+                    }
                     active_harmony.clear();
                 }
                 PipelineEvent::NoteOn(on) => {
                     // Release previous
                     if !active_harmony.is_empty() {
                         let mut conn = midi_conn.lock().unwrap();
-                        for &m in &active_harmony { let _ = conn.send(&[0x80, m, 0]); }
+                        for &m in &active_harmony {
+                            let _ = conn.send(&[0x80, m, 0]);
+                        }
                     }
                     let wmidi_note = Note::from_u8_lossy(*on);
                     let harmony = engine.harmonize_note_on(wmidi_note);
                     let mut sorted: Vec<u8> = harmony.iter().map(|n| u8::from(*n)).collect();
                     sorted.sort();
                     let mut conn = midi_conn.lock().unwrap();
-                    for &m in &sorted { let _ = conn.send(&[0x90, m, VELOCITY]); }
+                    for &m in &sorted {
+                        let _ = conn.send(&[0x90, m, VELOCITY]);
+                    }
                     active_harmony = sorted;
                 }
                 PipelineEvent::Correct { off, on } => {
@@ -593,14 +692,18 @@ fn main() {
                         let wmidi_off = Note::from_u8_lossy(*off);
                         let release = engine.harmonize_note_off(wmidi_off);
                         let mut conn = midi_conn.lock().unwrap();
-                        for n in &release { let _ = conn.send(&[0x80, u8::from(*n), 0]); }
+                        for n in &release {
+                            let _ = conn.send(&[0x80, u8::from(*n), 0]);
+                        }
                     }
                     let wmidi_on = Note::from_u8_lossy(*on);
                     let harmony = engine.harmonize_note_on(wmidi_on);
                     let mut sorted: Vec<u8> = harmony.iter().map(|n| u8::from(*n)).collect();
                     sorted.sort();
                     let mut conn = midi_conn.lock().unwrap();
-                    for &m in &sorted { let _ = conn.send(&[0x90, m, VELOCITY]); }
+                    for &m in &sorted {
+                        let _ = conn.send(&[0x90, m, VELOCITY]);
+                    }
                     active_harmony = sorted;
                 }
             }
@@ -609,17 +712,39 @@ fn main() {
         // Display
         let has_signal = rms >= MIN_RMS && conf > MIN_CONFIDENCE as f32;
         if !events.is_empty() || has_signal {
-            let cents_str = if cents >= 0 { format!("+{}¢", cents) } else { format!("{}¢", cents) };
+            let cents_str = if cents >= 0 {
+                format!("+{}¢", cents)
+            } else {
+                format!("{}¢", cents)
+            };
             let (s_str, f_str) = match string_match {
                 Some((idx, fret)) => (STRING_NAMES[idx].to_string(), format!("{}", fret)),
                 None => ("?".into(), "?".into()),
             };
-            let h: Vec<String> = active_harmony.iter().map(|&m| midi_to_note_name(m)).collect();
-            let h_str = if h.is_empty() { "---".into() } else { h.join(" ") };
-            print!("\r  {:>6} {:>5} {:>6} {:>4}  {:>20}  {}", name, cents_str, s_str, f_str, h_str, build_meter(cents));
+            let h: Vec<String> = active_harmony
+                .iter()
+                .map(|&m| midi_to_note_name(m))
+                .collect();
+            let h_str = if h.is_empty() {
+                "---".into()
+            } else {
+                h.join(" ")
+            };
+            print!(
+                "\r  {:>6} {:>5} {:>6} {:>4}  {:>20}  {}",
+                name,
+                cents_str,
+                s_str,
+                f_str,
+                h_str,
+                build_meter(cents)
+            );
             std::io::stdout().flush().unwrap();
         } else if active_harmony.is_empty() {
-            print!("\r  {:>6} {:>5} {:>6} {:>4}  {:>20}  {:21}", "---", "", "", "", "", "");
+            print!(
+                "\r  {:>6} {:>5} {:>6} {:>4}  {:>20}  {:21}",
+                "---", "", "", "", "", ""
+            );
             std::io::stdout().flush().unwrap();
         }
     }

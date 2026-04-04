@@ -94,7 +94,11 @@ impl BacfDetector {
                     0
                 }
             } else {
-                let lo = if idx < words.len() { words[idx] >> bit_offset } else { 0 };
+                let lo = if idx < words.len() {
+                    words[idx] >> bit_offset
+                } else {
+                    0
+                };
                 let hi = if idx + 1 < words.len() {
                     words[idx + 1] << (64 - bit_offset)
                 } else {
@@ -127,9 +131,8 @@ impl BacfDetector {
         }
 
         // Check for silence
-        let rms = (samples.iter().map(|&s| (s * s) as f64).sum::<f64>()
-            / samples.len() as f64)
-            .sqrt();
+        let rms =
+            (samples.iter().map(|&s| (s * s) as f64).sum::<f64>() / samples.len() as f64).sqrt();
         if rms < 1e-6 {
             return None;
         }
@@ -551,7 +554,9 @@ mod tests {
         let mut state: u64 = 0xDEAD_BEEF_CAFE_BABE;
         (0..num_samples)
             .map(|_| {
-                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let val = ((state >> 33) as f32 / u32::MAX as f32) * 2.0 - 1.0;
                 val * amplitude
             })
@@ -741,10 +746,7 @@ mod tests {
         let mut det = AmdfDetector::new();
         let result = det.detect(&samples, 44100);
         // Extremely low amplitude should be treated as silence
-        assert!(
-            result.is_none(),
-            "AMDF should return None for near-silence"
-        );
+        assert!(result.is_none(), "AMDF should return None for near-silence");
     }
 
     // -----------------------------------------------------------------------

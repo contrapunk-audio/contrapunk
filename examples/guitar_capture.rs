@@ -21,10 +21,10 @@
 //!   [S]      — skip current position
 //!   [Q]      — quit and save what we have
 
-use contrapunk::audio::guitar::*;
-use contrapunk::audio::pitch::freq_to_midi;
 #[allow(unused_imports)]
 use contrapunk::audio::detectors::GoertzelBank;
+use contrapunk::audio::guitar::*;
+use contrapunk::audio::pitch::freq_to_midi;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use pitch_detection::detector::mcleod::McLeodDetector;
@@ -155,20 +155,31 @@ fn main() {
     };
     println!("  Guitar: {}\n", guitar_name);
 
-    println!("  {} strings x {} positions (open + {} frets) x {} plucks = {} samples + noise\n",
-        6, FRETS + 1, FRETS, PLUCKS_PER_POSITION,
-        6 * (FRETS + 1) * PLUCKS_PER_POSITION);
+    println!(
+        "  {} strings x {} positions (open + {} frets) x {} plucks = {} samples + noise\n",
+        6,
+        FRETS + 1,
+        FRETS,
+        PLUCKS_PER_POSITION,
+        6 * (FRETS + 1) * PLUCKS_PER_POSITION
+    );
 
     // ── Audio Setup ──────────────────────────────────────
     let host = cpal::default_host();
     let devices: Vec<_> = host.input_devices().expect("No input devices").collect();
-    if devices.is_empty() { eprintln!("No audio input devices!"); return; }
+    if devices.is_empty() {
+        eprintln!("No audio input devices!");
+        return;
+    }
 
     println!("Audio Inputs:");
     for (i, d) in devices.iter().enumerate() {
         println!("  [{}] {}", i, d.name().unwrap_or_default());
     }
-    let dev_idx = prompt_usize(&format!("\nSelect [0-{}]: ", devices.len()-1), devices.len()-1);
+    let dev_idx = prompt_usize(
+        &format!("\nSelect [0-{}]: ", devices.len() - 1),
+        devices.len() - 1,
+    );
     let device = &devices[dev_idx];
     let device_name = device.name().unwrap_or_default();
     println!("  Using: {}", device_name);
@@ -177,14 +188,19 @@ fn main() {
     let sr = config.sample_rate().0 as usize;
     let ch = config.channels() as usize;
     println!("  {}ch {}Hz", ch, sr);
-    let tch = prompt_usize(&format!("  Channel [0-{}]: ", ch-1), ch-1);
+    let tch = prompt_usize(&format!("  Channel [0-{}]: ", ch - 1), ch - 1);
 
     let capture_samples = (sr as f32 * SAMPLE_DURATION_SECS) as usize;
 
     // ── Start Audio ──────────────────────────────────────
     let state = Arc::new(Mutex::new(AudioState {
-        rms: 0.0, peak: 0.0, frequency: 0.0, confidence: 0.0,
-        midi_note: 0, note_name: String::new(), prev_rms: 0.0,
+        rms: 0.0,
+        peak: 0.0,
+        frequency: 0.0,
+        confidence: 0.0,
+        midi_note: 0,
+        note_name: String::new(),
+        prev_rms: 0.0,
         capture_buffer: Vec::with_capacity(capture_samples),
         capturing: false,
         capture_target: capture_samples,
@@ -200,8 +216,11 @@ fn main() {
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &stream_config,
-            move |data: &[f32], _| { audio_process(data, ch, tch, sr, &buffer_c, &state_c); },
-            |e| eprintln!("Audio error: {}", e), None,
+            move |data: &[f32], _| {
+                audio_process(data, ch, tch, sr, &buffer_c, &state_c);
+            },
+            |e| eprintln!("Audio error: {}", e),
+            None,
         ),
         cpal::SampleFormat::I16 => {
             let sc2 = Arc::clone(&state);
@@ -212,11 +231,16 @@ fn main() {
                     let f: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
                     audio_process(&f, ch, tch, sr, &bc2, &sc2);
                 },
-                |e| eprintln!("Audio error: {}", e), None,
+                |e| eprintln!("Audio error: {}", e),
+                None,
             )
         }
-        f => { eprintln!("Unsupported: {:?}", f); return; }
-    }.expect("Failed to build stream");
+        f => {
+            eprintln!("Unsupported: {:?}", f);
+            return;
+        }
+    }
+    .expect("Failed to build stream");
 
     stream.play().expect("Failed to start stream");
 
@@ -225,13 +249,19 @@ fn main() {
     std::thread::sleep(Duration::from_millis(1200));
     let noise_floor = { state.lock().unwrap().rms };
     let pluck_threshold = (noise_floor * 5.0).max(0.012);
-    println!("  Noise: {:.4}  Pluck threshold: {:.4}\n", noise_floor, pluck_threshold);
+    println!(
+        "  Noise: {:.4}  Pluck threshold: {:.4}\n",
+        noise_floor, pluck_threshold
+    );
 
     // ── Dataset ──────────────────────────────────────────
     let noise_categories = vec![
-        "ambient".to_string(), "string_muting".to_string(),
-        "pick_scrapes".to_string(), "finger_slides".to_string(),
-        "string_brushes".to_string(), "accidental_touches".to_string(),
+        "ambient".to_string(),
+        "string_muting".to_string(),
+        "pick_scrapes".to_string(),
+        "finger_slides".to_string(),
+        "string_brushes".to_string(),
+        "accidental_touches".to_string(),
     ];
 
     let mut dataset = TrainingDataset {
@@ -258,11 +288,14 @@ fn main() {
 
     if std::path::Path::new(DATASET_PATH).exists() {
         let existing_data = std::fs::read(DATASET_PATH).expect("Failed to read existing dataset");
-        let existing: TrainingDataset = rmp_serde::from_slice(&existing_data)
-            .expect("Failed to deserialize existing dataset");
+        let existing: TrainingDataset =
+            rmp_serde::from_slice(&existing_data).expect("Failed to deserialize existing dataset");
 
         // Show what's already captured
-        println!("  Found existing dataset: {} samples", existing.samples.len());
+        println!(
+            "  Found existing dataset: {} samples",
+            existing.samples.len()
+        );
         println!();
 
         // Per-string/fret coverage
@@ -276,17 +309,29 @@ fn main() {
             }
         }
 
-        println!("  Coverage (samples per position, target = {}):", PLUCKS_PER_POSITION);
+        println!(
+            "  Coverage (samples per position, target = {}):",
+            PLUCKS_PER_POSITION
+        );
         for si in 0..6 {
             let total: u32 = coverage[si].iter().sum();
-            let complete = coverage[si].iter().filter(|&&c| c >= PLUCKS_PER_POSITION as u32).count();
-            print!("    {}: {}/{} positions done, {} total",
-                STRING_NAMES[si], complete, FRETS + 1, total);
+            let complete = coverage[si]
+                .iter()
+                .filter(|&&c| c >= PLUCKS_PER_POSITION as u32)
+                .count();
+            print!(
+                "    {}: {}/{} positions done, {} total",
+                STRING_NAMES[si],
+                complete,
+                FRETS + 1,
+                total
+            );
             if complete == FRETS + 1 {
                 println!(" ✓");
             } else {
                 // Show first incomplete position
-                let first_incomplete = coverage[si].iter()
+                let first_incomplete = coverage[si]
+                    .iter()
                     .position(|&c| c < PLUCKS_PER_POSITION as u32)
                     .unwrap_or(0);
                 println!(" (next: fret {})", first_incomplete);
@@ -321,8 +366,10 @@ fn main() {
                 for si in 0..6 {
                     let target = STRING_BASE_PITCH[si];
                     let target_name = midi_to_note_name(target);
-                    println!("  {} ({}) — pluck and tune, press Enter when done:",
-                        STRING_NAMES[si], target_name);
+                    println!(
+                        "  {} ({}) — pluck and tune, press Enter when done:",
+                        STRING_NAMES[si], target_name
+                    );
 
                     // Show live detection while waiting for Enter
                     // Since stdin blocks, we show a few seconds of detection first
@@ -331,15 +378,21 @@ fn main() {
                         let s = state.lock().unwrap();
                         if s.rms > noise_floor * 2.0 && s.confidence > 0.45 {
                             let (_, cents) = freq_to_midi(s.frequency);
-                            let arrow = if cents > 5 { "sharp ↓" }
-                                else if cents < -5 { "flat ↑" }
-                                else { "IN TUNE" };
-                            print!("\r    {:>5} {:>+4}¢  {}     ",
-                                s.note_name, cents, arrow);
+                            let arrow = if cents > 5 {
+                                "sharp ↓"
+                            } else if cents < -5 {
+                                "flat ↑"
+                            } else {
+                                "IN TUNE"
+                            };
+                            print!("\r    {:>5} {:>+4}¢  {}     ", s.note_name, cents, arrow);
                             std::io::stdout().flush().unwrap();
                         }
                     }
-                    print!("\r    Press Enter when {} is tuned...     ", STRING_NAMES[si]);
+                    print!(
+                        "\r    Press Enter when {} is tuned...     ",
+                        STRING_NAMES[si]
+                    );
                     std::io::stdout().flush().unwrap();
                     wait_enter();
                     println!("    {} done.", STRING_NAMES[si]);
@@ -370,9 +423,15 @@ fn main() {
                         start_string = 6;
                     }
                 }
-                println!("  Resuming from {} fret {}.\n",
-                    if start_string < 6 { STRING_NAMES[start_string] } else { "noise" },
-                    start_fret);
+                println!(
+                    "  Resuming from {} fret {}.\n",
+                    if start_string < 6 {
+                        STRING_NAMES[start_string]
+                    } else {
+                        "noise"
+                    },
+                    start_fret
+                );
             }
             "" => {
                 // Resume: find last captured position, continue from next
@@ -403,9 +462,15 @@ fn main() {
                         start_string = 6;
                     }
                 }
-                println!("  Resuming from {} fret {}.\n",
-                    if start_string < 6 { STRING_NAMES[start_string] } else { "noise" },
-                    start_fret);
+                println!(
+                    "  Resuming from {} fret {}.\n",
+                    if start_string < 6 {
+                        STRING_NAMES[start_string]
+                    } else {
+                        "noise"
+                    },
+                    start_fret
+                );
             }
             "j" => {
                 // Jump to specific position
@@ -414,10 +479,12 @@ fn main() {
 
                 println!("  Strings: 0=Low E  1=A  2=D  3=G  4=B  5=High E");
                 start_string = prompt_usize("  Start from string [0-5]: ", 5);
-                start_fret = prompt_usize(
-                    &format!("  Start from fret [0-{}]: ", FRETS), FRETS) as u8;
-                println!("  Jumping to {} fret {}.\n",
-                    STRING_NAMES[start_string], start_fret);
+                start_fret =
+                    prompt_usize(&format!("  Start from fret [0-{}]: ", FRETS), FRETS) as u8;
+                println!(
+                    "  Jumping to {} fret {}.\n",
+                    STRING_NAMES[start_string], start_fret
+                );
             }
             "r" => {
                 // Redo a specific position (remove existing samples for that position first)
@@ -425,18 +492,19 @@ fn main() {
 
                 println!("  Strings: 0=Low E  1=A  2=D  3=G  4=B  5=High E");
                 let redo_string = prompt_usize("  Redo string [0-5]: ", 5);
-                let redo_fret = prompt_usize(
-                    &format!("  Redo fret [0-{}]: ", FRETS), FRETS) as u8;
+                let redo_fret = prompt_usize(&format!("  Redo fret [0-{}]: ", FRETS), FRETS) as u8;
 
                 let before = dataset.samples.len();
-                dataset.samples.retain(|s| {
-                    !(s.string_idx == redo_string as u8 && s.fret == redo_fret)
-                });
+                dataset
+                    .samples
+                    .retain(|s| !(s.string_idx == redo_string as u8 && s.fret == redo_fret));
                 let removed = before - dataset.samples.len();
                 total_captured = dataset.samples.len();
 
-                println!("  Removed {} samples for {} fret {}. Will re-capture.\n",
-                    removed, STRING_NAMES[redo_string], redo_fret);
+                println!(
+                    "  Removed {} samples for {} fret {}. Will re-capture.\n",
+                    removed, STRING_NAMES[redo_string], redo_fret
+                );
 
                 start_string = redo_string;
                 start_fret = redo_fret;
@@ -466,21 +534,33 @@ fn main() {
     let mut total_rejected = 0;
 
     for string_idx in start_string..6 {
-        if quit { break; }
+        if quit {
+            break;
+        }
         let string_name = STRING_NAMES[string_idx];
         let base_midi = STRING_BASE_PITCH[string_idx];
 
         println!("╔══════════════════════════════════════════════╗");
-        println!("║  String {}/6: {} (open = {}){}║",
-            string_idx + 1, string_name, midi_to_note_name(base_midi),
-            " ".repeat(44 - 25 - midi_to_note_name(base_midi).len()));
+        println!(
+            "║  String {}/6: {} (open = {}){}║",
+            string_idx + 1,
+            string_name,
+            midi_to_note_name(base_midi),
+            " ".repeat(44 - 25 - midi_to_note_name(base_midi).len())
+        );
         println!("╚══════════════════════════════════════════════╝");
         println!("  Press Enter to start this string...");
         wait_enter();
 
-        let fret_start = if string_idx == start_string { start_fret } else { 0 };
+        let fret_start = if string_idx == start_string {
+            start_fret
+        } else {
+            0
+        };
         for fret in fret_start..=(FRETS as u8) {
-            if quit { break; }
+            if quit {
+                break;
+            }
 
             let expected_midi = base_midi + fret;
             let expected_note = midi_to_note_name(expected_midi);
@@ -488,24 +568,44 @@ fn main() {
             let label = format!("string_{}_fret_{}", string_idx, fret);
 
             loop {
-                println!("\n  ── {} fret {} ({}, MIDI {}) ──",
-                    string_name, fret, expected_note, expected_midi);
+                println!(
+                    "\n  ── {} fret {} ({}, MIDI {}) ──",
+                    string_name, fret, expected_note, expected_midi
+                );
 
                 let (plucks, rejected) = capture_position_validated(
-                    &state, pluck_threshold, sr, capture_samples,
-                    expected_midi, PLUCKS_PER_POSITION,
+                    &state,
+                    pluck_threshold,
+                    sr,
+                    capture_samples,
+                    expected_midi,
+                    PLUCKS_PER_POSITION,
                 );
 
                 total_rejected += rejected;
 
-                println!("\n  Captured {}/{} plucks ({} rejected by pitch validation).",
-                    plucks.len(), PLUCKS_PER_POSITION, rejected);
+                println!(
+                    "\n  Captured {}/{} plucks ({} rejected by pitch validation).",
+                    plucks.len(),
+                    PLUCKS_PER_POSITION,
+                    rejected
+                );
                 println!("  [Enter] accept  [P] playback  [R] redo  [S] skip  [Q] quit");
 
                 match prompt_action() {
                     Action::Accept => {
-                        for (audio, detected_midi, conf, rms, peak, validated,
-                             goertzel_harmonics, harmonic_ratios, spectral_centroid) in &plucks {
+                        for (
+                            audio,
+                            detected_midi,
+                            conf,
+                            rms,
+                            peak,
+                            validated,
+                            goertzel_harmonics,
+                            harmonic_ratios,
+                            spectral_centroid,
+                        ) in &plucks
+                        {
                             dataset.samples.push(TrainingSample {
                                 audio: audio.clone(),
                                 label: label.clone(),
@@ -530,7 +630,8 @@ fn main() {
                         break;
                     }
                     Action::Playback => {
-                        let play_data: Vec<PluckData> = plucks.iter()
+                        let play_data: Vec<PluckData> = plucks
+                            .iter()
                             .map(|(a, d, c, r, p, _, _, _, _)| (a.clone(), *d, *c, *r, *p))
                             .collect();
                         playback_samples(&play_data, sr, expected_note.clone());
@@ -560,26 +661,55 @@ fn main() {
         println!("╚══════════════════════════════════════════════╝\n");
 
         let noise_instructions = [
-            ("ambient", "Don't touch the guitar. Room noise, fan, cable hum."),
-            ("string_muting", "Rest palm on strings, tap lightly, shift hand."),
-            ("pick_scrapes", "Scrape pick along strings, tap pick on body."),
-            ("finger_slides", "Slide fingers up/down neck without plucking."),
-            ("string_brushes", "Brush across strings without clean plucks."),
-            ("accidental_touches", "Bump strings, fret without plucking, light touches."),
+            (
+                "ambient",
+                "Don't touch the guitar. Room noise, fan, cable hum.",
+            ),
+            (
+                "string_muting",
+                "Rest palm on strings, tap lightly, shift hand.",
+            ),
+            (
+                "pick_scrapes",
+                "Scrape pick along strings, tap pick on body.",
+            ),
+            (
+                "finger_slides",
+                "Slide fingers up/down neck without plucking.",
+            ),
+            (
+                "string_brushes",
+                "Brush across strings without clean plucks.",
+            ),
+            (
+                "accidental_touches",
+                "Bump strings, fret without plucking, light touches.",
+            ),
         ];
 
         for (category, instruction) in &noise_instructions {
-            if quit { break; }
+            if quit {
+                break;
+            }
             println!("  ── Noise: {} ──", category);
             println!("  {}", instruction);
-            println!("  Record for {:.0} seconds. Press Enter to start...",
-                NOISE_DURATION_PER_CATEGORY_SECS);
+            println!(
+                "  Record for {:.0} seconds. Press Enter to start...",
+                NOISE_DURATION_PER_CATEGORY_SECS
+            );
             wait_enter();
 
             let noise_samples = capture_noise_category(
-                &state, sr, capture_samples, NOISE_DURATION_PER_CATEGORY_SECS,
+                &state,
+                sr,
+                capture_samples,
+                NOISE_DURATION_PER_CATEGORY_SECS,
             );
-            println!("  Captured {} noise samples for '{}'.\n", noise_samples.len(), category);
+            println!(
+                "  Captured {} noise samples for '{}'.\n",
+                noise_samples.len(),
+                category
+            );
 
             for (audio, rms, peak) in &noise_samples {
                 dataset.samples.push(TrainingSample {
@@ -612,24 +742,40 @@ fn main() {
     println!("══════════════════════════════════════════════\n");
 
     // Summary
-    let mut class_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut class_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     for s in &dataset.samples {
         *class_counts.entry(s.label.clone()).or_insert(0) += 1;
     }
 
-    println!("  Total samples: {} ({} rejected by pitch validation)",
-        total_captured, total_rejected);
+    println!(
+        "  Total samples: {} ({} rejected by pitch validation)",
+        total_captured, total_rejected
+    );
     println!("  Classes: {}", class_counts.len());
 
     // Per-string summary
     for si in 0..6 {
-        let count = dataset.samples.iter().filter(|s| s.string_idx == si as u8).count();
-        let validated = dataset.samples.iter()
-            .filter(|s| s.string_idx == si as u8 && s.pitch_validated).count();
-        println!("  {}: {} samples ({} pitch-validated)",
-            STRING_NAMES[si], count, validated);
+        let count = dataset
+            .samples
+            .iter()
+            .filter(|s| s.string_idx == si as u8)
+            .count();
+        let validated = dataset
+            .samples
+            .iter()
+            .filter(|s| s.string_idx == si as u8 && s.pitch_validated)
+            .count();
+        println!(
+            "  {}: {} samples ({} pitch-validated)",
+            STRING_NAMES[si], count, validated
+        );
     }
-    let noise_count = dataset.samples.iter().filter(|s| s.string_idx == 255).count();
+    let noise_count = dataset
+        .samples
+        .iter()
+        .filter(|s| s.string_idx == 255)
+        .count();
     println!("  Noise: {} samples", noise_count);
 
     // Final save
@@ -717,7 +863,9 @@ fn compute_goertzel_features(
     // Compute spectral centroid from harmonic magnitudes
     let total_magnitude: f32 = harmonics.iter().sum();
     let spectral_centroid = if total_magnitude > 1e-10 {
-        let weighted_sum: f32 = harmonics.iter().enumerate()
+        let weighted_sum: f32 = harmonics
+            .iter()
+            .enumerate()
             .map(|(i, &mag)| fundamental_freq * (i + 1) as f32 * mag)
             .sum();
         weighted_sum / total_magnitude
@@ -782,8 +930,17 @@ fn capture_position_validated(
             let (goertzel_harmonics, harmonic_ratios, spectral_centroid) =
                 compute_goertzel_features(&audio, fundamental_freq, sample_rate as f32);
 
-            plucks.push((audio, detected_midi, conf, rms, peak, validated,
-                         goertzel_harmonics, harmonic_ratios, spectral_centroid));
+            plucks.push((
+                audio,
+                detected_midi,
+                conf,
+                rms,
+                peak,
+                validated,
+                goertzel_harmonics,
+                harmonic_ratios,
+                spectral_centroid,
+            ));
             print!("{} ", plucks.len());
             std::io::stdout().flush().unwrap();
 
@@ -838,7 +995,7 @@ fn capture_noise_category(
 
             // Wait for capture to complete
             std::thread::sleep(Duration::from_millis(
-                (SAMPLE_DURATION_SECS * 1000.0) as u64 + 50
+                (SAMPLE_DURATION_SECS * 1000.0) as u64 + 50,
             ));
 
             let completed = {
@@ -871,17 +1028,30 @@ fn playback_samples(plucks: &[PluckData], sample_rate: usize, note_name: String)
     let host = cpal::default_host();
     let output_device = match host.default_output_device() {
         Some(d) => d,
-        None => { println!("  No audio output device for playback!"); return; }
+        None => {
+            println!("  No audio output device for playback!");
+            return;
+        }
     };
 
-    let output_config = output_device.default_output_config()
+    let output_config = output_device
+        .default_output_config()
         .expect("No output config");
 
-    println!("  Playing back {} plucks for {}...", plucks.len().min(5), note_name);
+    println!(
+        "  Playing back {} plucks for {}...",
+        plucks.len().min(5),
+        note_name
+    );
 
     for (i, (audio, detected, conf, rms, _)) in plucks.iter().take(5).enumerate() {
-        println!("    Pluck {}: detected={} conf={:.0}% rms={:.3}",
-            i + 1, midi_to_note_name(*detected), conf * 100.0, rms);
+        println!(
+            "    Pluck {}: detected={} conf={:.0}% rms={:.3}",
+            i + 1,
+            midi_to_note_name(*detected),
+            conf * 100.0,
+            rms
+        );
 
         let audio_data = Arc::new(Mutex::new((audio.clone(), 0usize)));
         let ad = Arc::clone(&audio_data);
@@ -889,31 +1059,36 @@ fn playback_samples(plucks: &[PluckData], sample_rate: usize, note_name: String)
         let config: cpal::StreamConfig = output_config.clone().into();
         let out_channels = config.channels as usize;
 
-        let stream = output_device.build_output_stream(
-            &config,
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                let mut ad = ad.lock().unwrap();
-                let (ref audio, ref mut pos) = *ad;
-                for frame in data.chunks_mut(out_channels) {
-                    let sample = if *pos < audio.len() { audio[*pos] } else { 0.0 };
-                    for s in frame.iter_mut() { *s = sample; }
-                    *pos += 1;
-                }
-            },
-            |e| eprintln!("Playback error: {}", e),
-            None,
-        ).expect("Failed to build output stream");
+        let stream = output_device
+            .build_output_stream(
+                &config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    let mut ad = ad.lock().unwrap();
+                    let (ref audio, ref mut pos) = *ad;
+                    for frame in data.chunks_mut(out_channels) {
+                        let sample = if *pos < audio.len() { audio[*pos] } else { 0.0 };
+                        for s in frame.iter_mut() {
+                            *s = sample;
+                        }
+                        *pos += 1;
+                    }
+                },
+                |e| eprintln!("Playback error: {}", e),
+                None,
+            )
+            .expect("Failed to build output stream");
 
         stream.play().expect("Failed to play");
-        let play_duration = Duration::from_secs_f32(
-            audio.len() as f32 / sample_rate as f32 + 0.1
-        );
+        let play_duration = Duration::from_secs_f32(audio.len() as f32 / sample_rate as f32 + 0.1);
         std::thread::sleep(play_duration);
     }
 }
 
 fn review_dataset(dataset: &TrainingDataset, sample_rate: usize) {
-    println!("\n=== Dataset Review ({}) ===\n", dataset.metadata.guitar_name);
+    println!(
+        "\n=== Dataset Review ({}) ===\n",
+        dataset.metadata.guitar_name
+    );
     println!("  Total samples: {}", dataset.samples.len());
 
     let mut class_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
@@ -923,23 +1098,38 @@ fn review_dataset(dataset: &TrainingDataset, sample_rate: usize) {
     println!("  Classes: {}\n", class_counts.len());
 
     for string_idx in 0..6u8 {
-        let string_samples: Vec<&TrainingSample> = dataset.samples.iter()
-            .filter(|s| s.string_idx == string_idx).collect();
-        if string_samples.is_empty() { continue; }
+        let string_samples: Vec<&TrainingSample> = dataset
+            .samples
+            .iter()
+            .filter(|s| s.string_idx == string_idx)
+            .collect();
+        if string_samples.is_empty() {
+            continue;
+        }
 
-        let avg_conf = string_samples.iter().map(|s| s.confidence).sum::<f32>() / string_samples.len() as f32;
+        let avg_conf =
+            string_samples.iter().map(|s| s.confidence).sum::<f32>() / string_samples.len() as f32;
         let validated = string_samples.iter().filter(|s| s.pitch_validated).count();
-        let correct = string_samples.iter()
+        let correct = string_samples
+            .iter()
             .filter(|s| (s.detected_midi as i16 - s.expected_midi as i16).abs() <= 1)
             .count();
 
-        println!("  {}: {} samples, avg conf {:.0}%, validated {}, pitch accuracy {:.0}%",
+        println!(
+            "  {}: {} samples, avg conf {:.0}%, validated {}, pitch accuracy {:.0}%",
             STRING_NAMES[string_idx as usize],
-            string_samples.len(), avg_conf * 100.0, validated,
-            correct as f32 / string_samples.len() as f32 * 100.0);
+            string_samples.len(),
+            avg_conf * 100.0,
+            validated,
+            correct as f32 / string_samples.len() as f32 * 100.0
+        );
     }
 
-    let noise_count = dataset.samples.iter().filter(|s| s.string_idx == 255).count();
+    let noise_count = dataset
+        .samples
+        .iter()
+        .filter(|s| s.string_idx == 255)
+        .count();
     println!("  Noise: {} samples\n", noise_count);
 
     println!("  Browse: enter a label to play (or 'q' to quit):");
@@ -952,24 +1142,43 @@ fn review_dataset(dataset: &TrainingDataset, sample_rate: usize) {
         std::io::stdin().read_line(&mut input).unwrap();
         let query = input.trim();
 
-        if query == "q" || query.is_empty() { break; }
+        if query == "q" || query.is_empty() {
+            break;
+        }
 
-        let matches: Vec<&TrainingSample> = dataset.samples.iter()
-            .filter(|s| s.label == query).collect();
+        let matches: Vec<&TrainingSample> = dataset
+            .samples
+            .iter()
+            .filter(|s| s.label == query)
+            .collect();
 
         if matches.is_empty() {
             println!("    No samples for '{}'. Available:", query);
             let mut labels: Vec<&str> = class_counts.keys().copied().collect();
             labels.sort();
-            for l in labels.iter().take(15) { print!("    {} ", l); }
-            if labels.len() > 15 { print!("... +{} more", labels.len() - 15); }
+            for l in labels.iter().take(15) {
+                print!("    {} ", l);
+            }
+            if labels.len() > 15 {
+                print!("... +{} more", labels.len() - 15);
+            }
             println!();
             continue;
         }
 
         println!("    Found {} samples. Playing first 5...", matches.len());
-        let plucks: Vec<PluckData> = matches.iter().take(5)
-            .map(|s| (s.audio.clone(), s.detected_midi, s.confidence, s.rms, s.peak))
+        let plucks: Vec<PluckData> = matches
+            .iter()
+            .take(5)
+            .map(|s| {
+                (
+                    s.audio.clone(),
+                    s.detected_midi,
+                    s.confidence,
+                    s.rms,
+                    s.peak,
+                )
+            })
             .collect();
         playback_samples(&plucks, sample_rate, query.to_string());
     }
@@ -978,8 +1187,12 @@ fn review_dataset(dataset: &TrainingDataset, sample_rate: usize) {
 // ── Audio Processing (FIX #1: VecDeque + FIX #3: onset-forward) ─────
 
 fn audio_process(
-    data: &[f32], channels: usize, target_ch: usize, sample_rate: usize,
-    buffer: &Arc<Mutex<VecDeque<f32>>>, state: &Arc<Mutex<AudioState>>,
+    data: &[f32],
+    channels: usize,
+    target_ch: usize,
+    sample_rate: usize,
+    buffer: &Arc<Mutex<VecDeque<f32>>>,
+    state: &Arc<Mutex<AudioState>>,
 ) {
     let mut buf = buffer.lock().unwrap();
 
@@ -1054,12 +1267,22 @@ fn audio_process(
 
 // ── UI Helpers ───────────────────────────────────────────────────────
 
-enum Action { Accept, Playback, Redo, Skip, Quit }
+enum Action {
+    Accept,
+    Playback,
+    Redo,
+    Skip,
+    Quit,
+}
 
 fn save_dataset(dataset: &TrainingDataset, total: usize) {
     let packed = rmp_serde::to_vec(dataset).expect("Failed to serialize");
     std::fs::write(DATASET_PATH, &packed).expect("Failed to write");
-    println!("  [saved: {} samples, {:.1} MB]", total, packed.len() as f64 / 1_000_000.0);
+    println!(
+        "  [saved: {} samples, {:.1} MB]",
+        total,
+        packed.len() as f64 / 1_000_000.0
+    );
 }
 
 fn prompt_action() -> Action {
@@ -1093,8 +1316,11 @@ fn wait_enter() {
 }
 
 fn chrono_now() -> String {
-    format!("{:?}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs())
+    format!(
+        "{:?}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    )
 }

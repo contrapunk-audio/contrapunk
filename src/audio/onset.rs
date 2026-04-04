@@ -25,8 +25,8 @@
 //! contribution of the samples that enter, achieving O(lag) per hop.
 
 use super::config::{
-    DEFAULT_AMPLITUDE_SLOPE_THRESHOLD, DEFAULT_FLUX_THRESHOLD_RATIO,
-    DEFAULT_HFC_THRESHOLD_RATIO, DEFAULT_HISTORY_LEN,
+    DEFAULT_AMPLITUDE_SLOPE_THRESHOLD, DEFAULT_FLUX_THRESHOLD_RATIO, DEFAULT_HFC_THRESHOLD_RATIO,
+    DEFAULT_HISTORY_LEN,
 };
 
 // ---------------------------------------------------------------------------
@@ -166,7 +166,11 @@ impl PluckDetector {
             .zip(cur.iter())
             .map(|(&p, &c)| {
                 let diff = c - p;
-                if diff > 0.0 { diff } else { 0.0 }
+                if diff > 0.0 {
+                    diff
+                } else {
+                    0.0
+                }
             })
             .sum()
     }
@@ -467,10 +471,7 @@ mod tests {
                 triggered = true;
             }
         }
-        assert!(
-            !triggered,
-            "gradual ramp should not trigger a pluck onset"
-        );
+        assert!(!triggered, "gradual ramp should not trigger a pluck onset");
     }
 
     // -- PluckDetector: spectral flux calculation ---------------------------
@@ -489,7 +490,10 @@ mod tests {
         let prev = vec![5.0, 5.0, 5.0];
         let cur = vec![1.0, 1.0, 1.0];
         let flux = PluckDetector::spectral_flux(&prev, &cur);
-        assert!((flux - 0.0).abs() < 1e-6, "flux should be zero for pure decay");
+        assert!(
+            (flux - 0.0).abs() < 1e-6,
+            "flux should be zero for pure decay"
+        );
     }
 
     // -- spectral_centroid --------------------------------------------------

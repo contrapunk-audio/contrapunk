@@ -142,49 +142,63 @@ mod tests {
         let signal = sine(440.0, 44100, 0.1, 1.0);
         assert_eq!(signal.len(), 4410);
         // Check zero crossings: 440Hz → ~88 zero crossings in 0.1s
-        let crossings: usize = signal.windows(2)
+        let crossings: usize = signal
+            .windows(2)
             .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
             .count();
-        assert!((crossings as i32 - 88).abs() <= 2, "Expected ~88 crossings, got {}", crossings);
+        assert!(
+            (crossings as i32 - 88).abs() <= 2,
+            "Expected ~88 crossings, got {}",
+            crossings
+        );
     }
 
     #[test]
     fn test_guitar_pluck_has_harmonics() {
         let signal = guitar_pluck(110.0, 44100, 0.5, 1.0);
         // Peak should be near the start (attack)
-        let peak_idx = signal.iter().enumerate()
+        let peak_idx = signal
+            .iter()
+            .enumerate()
             .max_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
-            .map(|(i, _)| i).unwrap();
-        assert!(peak_idx < 500, "Peak should be near start, got idx {}", peak_idx);
+            .map(|(i, _)| i)
+            .unwrap();
+        assert!(
+            peak_idx < 500,
+            "Peak should be near start, got idx {}",
+            peak_idx
+        );
 
         // End should be quieter (decay)
-        let end_rms: f32 = (signal[signal.len()-1000..].iter()
-            .map(|s| s * s).sum::<f32>() / 1000.0).sqrt();
-        let start_rms: f32 = (signal[..1000].iter()
-            .map(|s| s * s).sum::<f32>() / 1000.0).sqrt();
-        assert!(end_rms < start_rms * 0.5, "End should be quieter than start");
+        let end_rms: f32 = (signal[signal.len() - 1000..]
+            .iter()
+            .map(|s| s * s)
+            .sum::<f32>()
+            / 1000.0)
+            .sqrt();
+        let start_rms: f32 = (signal[..1000].iter().map(|s| s * s).sum::<f32>() / 1000.0).sqrt();
+        assert!(
+            end_rms < start_rms * 0.5,
+            "End should be quieter than start"
+        );
     }
 
     #[test]
     fn test_pluck_onset_has_silence_then_attack() {
         let signal = pluck_onset(220.0, 44100, 0.1, 0.3, 0.8);
         // First 4410 samples should be ~silence
-        let silence_rms: f32 = (signal[..4410].iter()
-            .map(|s| s * s).sum::<f32>() / 4410.0).sqrt();
+        let silence_rms: f32 = (signal[..4410].iter().map(|s| s * s).sum::<f32>() / 4410.0).sqrt();
         assert!(silence_rms < 0.001);
 
         // After silence, should have energy
-        let attack_rms: f32 = (signal[4410..4410+1000].iter()
-            .map(|s| s * s).sum::<f32>() / 1000.0).sqrt();
+        let attack_rms: f32 =
+            (signal[4410..4410 + 1000].iter().map(|s| s * s).sum::<f32>() / 1000.0).sqrt();
         assert!(attack_rms > 0.1);
     }
 
     #[test]
     fn test_note_sequence_timing() {
-        let (signal, expected) = note_sequence(
-            &[(60, 0.2), (64, 0.2), (67, 0.2)],
-            44100, 0.1, 0.5,
-        );
+        let (signal, expected) = note_sequence(&[(60, 0.2), (64, 0.2), (67, 0.2)], 44100, 0.1, 0.5);
         assert_eq!(expected.len(), 3);
         assert!((expected[0].0 - 0.0).abs() < 0.001);
         // Second note starts after first note (0.2s) + gap (0.1s) = 0.3s

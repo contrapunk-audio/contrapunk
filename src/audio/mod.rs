@@ -43,9 +43,9 @@ pub use buffer::{BufferReady, DualBufferAnalyzer, OverlapManager, RingBuffer};
 
 // Guitar-specific
 pub use guitar::{
-    AudioNormalizer, CalibrationSample, ChordEvent, GuitarCalibrationProfile,
-    GuitarMatchConfig, GuitarPitchEvent, GuitarPitchMatcher, NormalizeResult,
-    OnsetGrouper, StringCalibration, StringMatch,
+    AudioNormalizer, CalibrationSample, ChordEvent, GuitarCalibrationProfile, GuitarMatchConfig,
+    GuitarPitchEvent, GuitarPitchMatcher, NormalizeResult, OnsetGrouper, StringCalibration,
+    StringMatch,
 };
 
 // Guitar input DSP pipeline

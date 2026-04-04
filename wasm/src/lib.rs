@@ -514,14 +514,18 @@ impl WasmGuitarInput {
         let config = GuitarInputConfig {
             buffer_size,
             sample_rate,
-            onset_threshold: 0.015,         // match demo
-            string_confidence_min: 0.4,      // match demo
+            onset_threshold: 0.015,             // match demo
+            string_confidence_min: 0.4,         // match demo
             cooldown_samples: sample_rate / 10, // 100ms at actual sample rate
             ..GuitarInputConfig::default()
         };
         console_log!(
             "[wasm-guitar] Created: sr={} buf={} onset={} clarity={} gain={}",
-            sample_rate, buffer_size, config.onset_threshold, config.min_clarity, config.input_gain
+            sample_rate,
+            buffer_size,
+            config.onset_threshold,
+            config.min_clarity,
+            config.input_gain
         );
         Self {
             inner: GuitarInput::new(config),
@@ -539,9 +543,14 @@ impl WasmGuitarInput {
 
         // Log internal DSP state every 20 frames
         if self.frame_count % 20 == 0 {
-            let rms: f32 = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+            let rms: f32 =
+                (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
             let state = match self.inner.note_state_name() {
-                0 => "Idle", 1 => "Attack", 2 => "Sustain", 3 => "Decay", _ => "?",
+                0 => "Idle",
+                1 => "Attack",
+                2 => "Sustain",
+                3 => "Decay",
+                _ => "?",
             };
             let pitch_str = match self.inner.last_debug_pitch {
                 Some((f, c)) => format!("freq={:.1} clr={:.2}", f, c),
@@ -559,29 +568,66 @@ impl WasmGuitarInput {
             );
         }
         if !events.is_empty() {
-            console_log!("[wasm-guitar] {} events at frame {}", events.len(), self.frame_count);
+            console_log!(
+                "[wasm-guitar] {} events at frame {}",
+                events.len(),
+                self.frame_count
+            );
         }
 
         if events.is_empty() {
             return "[]".to_string();
         }
 
-        let json_events: Vec<String> = events.iter().map(|e| match e {
-            MidiEvent::NoteOn { channel, note, velocity } =>
-                format!(r#"{{"type":"note_on","channel":{},"note":{},"velocity":{}}}"#, channel, note, velocity),
-            MidiEvent::NoteOff { channel, note, velocity } =>
-                format!(r#"{{"type":"note_off","channel":{},"note":{},"velocity":{}}}"#, channel, note, velocity),
-            MidiEvent::PitchBend { channel, cents } =>
-                format!(r#"{{"type":"pitch_bend","channel":{},"cents":{}}}"#, channel, cents),
-            MidiEvent::MidiPitchBend { channel, value } =>
-                format!(r#"{{"type":"midi_pitch_bend","channel":{},"value":{}}}"#, channel, value),
-            MidiEvent::ChannelPressure { channel, pressure } =>
-                format!(r#"{{"type":"channel_pressure","channel":{},"pressure":{}}}"#, channel, pressure),
-            MidiEvent::CC { channel, controller, value } =>
-                format!(r#"{{"type":"cc","channel":{},"controller":{},"value":{}}}"#, channel, controller, value),
-            MidiEvent::VibratoStatus { active, rate_hz, depth_cents } =>
-                format!(r#"{{"type":"vibrato","active":{},"rate_hz":{},"depth_cents":{}}}"#, active, rate_hz, depth_cents),
-        }).collect();
+        let json_events: Vec<String> = events
+            .iter()
+            .map(|e| match e {
+                MidiEvent::NoteOn {
+                    channel,
+                    note,
+                    velocity,
+                } => format!(
+                    r#"{{"type":"note_on","channel":{},"note":{},"velocity":{}}}"#,
+                    channel, note, velocity
+                ),
+                MidiEvent::NoteOff {
+                    channel,
+                    note,
+                    velocity,
+                } => format!(
+                    r#"{{"type":"note_off","channel":{},"note":{},"velocity":{}}}"#,
+                    channel, note, velocity
+                ),
+                MidiEvent::PitchBend { channel, cents } => format!(
+                    r#"{{"type":"pitch_bend","channel":{},"cents":{}}}"#,
+                    channel, cents
+                ),
+                MidiEvent::MidiPitchBend { channel, value } => format!(
+                    r#"{{"type":"midi_pitch_bend","channel":{},"value":{}}}"#,
+                    channel, value
+                ),
+                MidiEvent::ChannelPressure { channel, pressure } => format!(
+                    r#"{{"type":"channel_pressure","channel":{},"pressure":{}}}"#,
+                    channel, pressure
+                ),
+                MidiEvent::CC {
+                    channel,
+                    controller,
+                    value,
+                } => format!(
+                    r#"{{"type":"cc","channel":{},"controller":{},"value":{}}}"#,
+                    channel, controller, value
+                ),
+                MidiEvent::VibratoStatus {
+                    active,
+                    rate_hz,
+                    depth_cents,
+                } => format!(
+                    r#"{{"type":"vibrato","active":{},"rate_hz":{},"depth_cents":{}}}"#,
+                    active, rate_hz, depth_cents
+                ),
+            })
+            .collect();
 
         format!("[{}]", json_events.join(","))
     }

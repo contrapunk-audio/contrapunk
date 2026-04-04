@@ -228,10 +228,18 @@ impl MidiEvent {
     /// Returns empty vec for informational-only events.
     pub fn to_midi_bytes(&self, pitch_bend_range: u8) -> Vec<u8> {
         match self {
-            MidiEvent::NoteOn { channel, note, velocity } => {
+            MidiEvent::NoteOn {
+                channel,
+                note,
+                velocity,
+            } => {
                 vec![0x90 | (channel & 0x0F), *note & 0x7F, *velocity & 0x7F]
             }
-            MidiEvent::NoteOff { channel, note, velocity } => {
+            MidiEvent::NoteOff {
+                channel,
+                note,
+                velocity,
+            } => {
                 vec![0x80 | (channel & 0x0F), *note & 0x7F, *velocity & 0x7F]
             }
             MidiEvent::PitchBend { channel, cents } => {
@@ -245,7 +253,11 @@ impl MidiEvent {
                 let msb = ((*value >> 7) & 0x7F) as u8;
                 vec![0xE0 | (channel & 0x0F), lsb, msb]
             }
-            MidiEvent::CC { channel, controller, value } => {
+            MidiEvent::CC {
+                channel,
+                controller,
+                value,
+            } => {
                 vec![0xB0 | (channel & 0x0F), *controller & 0x7F, *value & 0x7F]
             }
             MidiEvent::ChannelPressure { channel, pressure } => {
@@ -376,9 +388,7 @@ impl GuitarInput {
             note_onset_rms: 0.0,
             last_sent_pressure: 0,
             last_brightness: 0,
-            single_cycle: super::single_cycle::SingleCycleDetector::new(
-                sr, 75.0, 1400.0,
-            ),
+            single_cycle: super::single_cycle::SingleCycleDetector::new(sr, 75.0, 1400.0),
             early_pitch: None,
             last_debug_onset: false,
             last_debug_rms_onset: false,
@@ -429,16 +439,24 @@ impl GuitarInput {
     }
 
     /// Get previous frame's RMS.
-    pub fn prev_rms(&self) -> f32 { self.prev_rms }
+    pub fn prev_rms(&self) -> f32 {
+        self.prev_rms
+    }
 
     /// Get cooldown remaining (samples).
-    pub fn cooldown_remaining(&self) -> usize { self.cooldown_remaining }
+    pub fn cooldown_remaining(&self) -> usize {
+        self.cooldown_remaining
+    }
 
     /// Get ring buffer position.
-    pub fn ring_pos(&self) -> usize { self.ring_pos }
+    pub fn ring_pos(&self) -> usize {
+        self.ring_pos
+    }
 
     /// Get total samples processed.
-    pub fn total_samples(&self) -> usize { self.total_samples }
+    pub fn total_samples(&self) -> usize {
+        self.total_samples
+    }
 
     /// Get the currently active note, if any.
     pub fn current_note(&self) -> Option<&DetectedNote> {
@@ -529,11 +547,8 @@ impl GuitarInput {
             && rms > self.prev_rms * 1.2;
 
         // 4. Pitch detection (McLeod)
-        let pitch_result = detect_pitch_mcleod(
-            &buf,
-            self.config.sample_rate,
-            self.config.min_clarity,
-        );
+        let pitch_result =
+            detect_pitch_mcleod(&buf, self.config.sample_rate, self.config.min_clarity);
 
         // Store debug info for WASM logging (read by wrapper)
         self.last_debug_onset = onset;
@@ -544,7 +559,8 @@ impl GuitarInput {
 
         // Tick down cooldown
         if self.cooldown_remaining > 0 {
-            self.cooldown_remaining = self.cooldown_remaining
+            self.cooldown_remaining = self
+                .cooldown_remaining
                 .saturating_sub(self.config.buffer_size);
         }
 
@@ -636,7 +652,11 @@ impl GuitarInput {
                             let attack_rms = compute_rms(&buf[..attack_end]);
 
                             let velocity = if let Some(cal) = &self.calibration {
-                                rms_to_velocity_calibrated(attack_rms, cal.noise_floor, cal.signal_peak)
+                                rms_to_velocity_calibrated(
+                                    attack_rms,
+                                    cal.noise_floor,
+                                    cal.signal_peak,
+                                )
                             } else {
                                 rms_to_velocity(attack_rms)
                             };
@@ -665,17 +685,26 @@ impl GuitarInput {
                             // Fix 1: Send PitchBend BEFORE NoteOn
                             let initial_bend = cents as i16;
                             if initial_bend.abs() > 0 {
-                                events.push(MidiEvent::PitchBend { channel, cents: initial_bend });
+                                events.push(MidiEvent::PitchBend {
+                                    channel,
+                                    cents: initial_bend,
+                                });
                                 events.push(MidiEvent::MidiPitchBend {
                                     channel,
-                                    value: cents_to_midi_pitch_bend(initial_bend, self.config.pitch_bend_range),
+                                    value: cents_to_midi_pitch_bend(
+                                        initial_bend,
+                                        self.config.pitch_bend_range,
+                                    ),
                                 });
                             }
 
                             // Fix 3: Send CC74 brightness BEFORE NoteOn
                             if self.config.brightness_enabled {
                                 let harmonics_data = measure_harmonics(
-                                    &buf, freq, self.config.n_harmonics, self.config.sample_rate,
+                                    &buf,
+                                    freq,
+                                    self.config.n_harmonics,
+                                    self.config.sample_rate,
                                 );
                                 let harmonic_pairs: Vec<(f32, f32)> = harmonics_data
                                     .iter()
@@ -684,7 +713,11 @@ impl GuitarInput {
                                     .collect();
                                 let centroid = compute_spectral_centroid(&harmonic_pairs);
                                 let cc74 = centroid_to_cc74(centroid);
-                                events.push(MidiEvent::CC { channel, controller: 74, value: cc74 });
+                                events.push(MidiEvent::CC {
+                                    channel,
+                                    controller: 74,
+                                    value: cc74,
+                                });
                                 self.last_brightness = cc74;
                             }
 
@@ -693,7 +726,10 @@ impl GuitarInput {
                             self.note_onset_rms = attack_rms;
                             if self.config.pressure_enabled {
                                 let initial_pressure = self.compute_pressure(attack_rms);
-                                events.push(MidiEvent::ChannelPressure { channel, pressure: initial_pressure });
+                                events.push(MidiEvent::ChannelPressure {
+                                    channel,
+                                    pressure: initial_pressure,
+                                });
                                 self.last_sent_pressure = initial_pressure;
                                 self.last_pressure = initial_pressure;
                             }
@@ -834,17 +870,26 @@ impl GuitarInput {
                                 // Fix 1: Send PitchBend BEFORE NoteOn (legato)
                                 let legato_cents = cents as i16;
                                 if legato_cents.abs() > 0 {
-                                    events.push(MidiEvent::PitchBend { channel: new_channel, cents: legato_cents });
+                                    events.push(MidiEvent::PitchBend {
+                                        channel: new_channel,
+                                        cents: legato_cents,
+                                    });
                                     events.push(MidiEvent::MidiPitchBend {
                                         channel: new_channel,
-                                        value: cents_to_midi_pitch_bend(legato_cents, self.config.pitch_bend_range),
+                                        value: cents_to_midi_pitch_bend(
+                                            legato_cents,
+                                            self.config.pitch_bend_range,
+                                        ),
                                     });
                                 }
 
                                 // Fix 3: Send CC74 brightness BEFORE NoteOn (legato)
                                 if self.config.brightness_enabled {
                                     let harmonics_data = measure_harmonics(
-                                        &buf, freq, self.config.n_harmonics, self.config.sample_rate,
+                                        &buf,
+                                        freq,
+                                        self.config.n_harmonics,
+                                        self.config.sample_rate,
                                     );
                                     let harmonic_pairs: Vec<(f32, f32)> = harmonics_data
                                         .iter()
@@ -853,7 +898,11 @@ impl GuitarInput {
                                         .collect();
                                     let centroid = compute_spectral_centroid(&harmonic_pairs);
                                     let cc74 = centroid_to_cc74(centroid);
-                                    events.push(MidiEvent::CC { channel: new_channel, controller: 74, value: cc74 });
+                                    events.push(MidiEvent::CC {
+                                        channel: new_channel,
+                                        controller: 74,
+                                        value: cc74,
+                                    });
                                     self.last_brightness = cc74;
                                 }
 
@@ -861,7 +910,10 @@ impl GuitarInput {
                                 self.note_onset_rms = rms;
                                 if self.config.pressure_enabled {
                                     let initial_pressure = self.compute_pressure(rms);
-                                    events.push(MidiEvent::ChannelPressure { channel: new_channel, pressure: initial_pressure });
+                                    events.push(MidiEvent::ChannelPressure {
+                                        channel: new_channel,
+                                        pressure: initial_pressure,
+                                    });
                                     self.last_sent_pressure = initial_pressure;
                                     self.last_pressure = initial_pressure;
                                 }
@@ -876,7 +928,10 @@ impl GuitarInput {
                                 self.clear_pitch_history();
                                 self.clear_slide_history();
                                 self.clear_vibrato_state();
-                            } else if semitone_diff >= 1 && is_rapid_jump && !self.config.legato_enabled {
+                            } else if semitone_diff >= 1
+                                && is_rapid_jump
+                                && !self.config.legato_enabled
+                            {
                                 // Rapid pitch jump without legato enabled: treat as missed onset
                                 self.note_state = NoteState::Attack;
                                 self.state_samples = 0;
@@ -899,16 +954,13 @@ impl GuitarInput {
                                     });
 
                                     // Slide velocity decays gradually
-                                    let slide_vel = ((note_vel as f32
-                                        * self.slide_velocity_decay)
+                                    let slide_vel = ((note_vel as f32 * self.slide_velocity_decay)
                                         .min(127.0)
                                         as u8)
                                         .max(1);
 
                                     let (string_idx, fret, string_conf) =
-                                        self.identify_string_and_fret(
-                                            &buf, freq, new_midi,
-                                        );
+                                        self.identify_string_and_fret(&buf, freq, new_midi);
 
                                     // Fix 2: MPE channel offset
                                     let new_channel = if self.config.per_string_channels {
@@ -930,17 +982,26 @@ impl GuitarInput {
                                     // Fix 1: Send PitchBend BEFORE NoteOn (slide)
                                     let slide_bend = new_cents_val as i16;
                                     if slide_bend.abs() > 0 {
-                                        events.push(MidiEvent::PitchBend { channel: new_channel, cents: slide_bend });
+                                        events.push(MidiEvent::PitchBend {
+                                            channel: new_channel,
+                                            cents: slide_bend,
+                                        });
                                         events.push(MidiEvent::MidiPitchBend {
                                             channel: new_channel,
-                                            value: cents_to_midi_pitch_bend(slide_bend, self.config.pitch_bend_range),
+                                            value: cents_to_midi_pitch_bend(
+                                                slide_bend,
+                                                self.config.pitch_bend_range,
+                                            ),
                                         });
                                     }
 
                                     // Fix 3: Send CC74 brightness BEFORE NoteOn (slide)
                                     if self.config.brightness_enabled {
                                         let harmonics_data = measure_harmonics(
-                                            &buf, freq, self.config.n_harmonics, self.config.sample_rate,
+                                            &buf,
+                                            freq,
+                                            self.config.n_harmonics,
+                                            self.config.sample_rate,
                                         );
                                         let harmonic_pairs: Vec<(f32, f32)> = harmonics_data
                                             .iter()
@@ -949,7 +1010,11 @@ impl GuitarInput {
                                             .collect();
                                         let centroid = compute_spectral_centroid(&harmonic_pairs);
                                         let cc74 = centroid_to_cc74(centroid);
-                                        events.push(MidiEvent::CC { channel: new_channel, controller: 74, value: cc74 });
+                                        events.push(MidiEvent::CC {
+                                            channel: new_channel,
+                                            controller: 74,
+                                            value: cc74,
+                                        });
                                         self.last_brightness = cc74;
                                     }
 
@@ -957,7 +1022,10 @@ impl GuitarInput {
                                     self.note_onset_rms = rms;
                                     if self.config.pressure_enabled {
                                         let initial_pressure = self.compute_pressure(rms);
-                                        events.push(MidiEvent::ChannelPressure { channel: new_channel, pressure: initial_pressure });
+                                        events.push(MidiEvent::ChannelPressure {
+                                            channel: new_channel,
+                                            pressure: initial_pressure,
+                                        });
                                         self.last_sent_pressure = initial_pressure;
                                         self.last_pressure = initial_pressure;
                                     }
@@ -1013,7 +1081,10 @@ impl GuitarInput {
                                                 });
                                                 events.push(MidiEvent::MidiPitchBend {
                                                     channel,
-                                                    value: cents_to_midi_pitch_bend(0, self.config.pitch_bend_range),
+                                                    value: cents_to_midi_pitch_bend(
+                                                        0,
+                                                        self.config.pitch_bend_range,
+                                                    ),
                                                 });
                                                 if let Some(ref mut note) = self.current_note {
                                                     note.bend_cents = 0;
@@ -1031,7 +1102,10 @@ impl GuitarInput {
                                                     });
                                                     events.push(MidiEvent::MidiPitchBend {
                                                         channel,
-                                                        value: cents_to_midi_pitch_bend(cents_from_base, self.config.pitch_bend_range),
+                                                        value: cents_to_midi_pitch_bend(
+                                                            cents_from_base,
+                                                            self.config.pitch_bend_range,
+                                                        ),
                                                     });
                                                     if let Some(ref mut note) = self.current_note {
                                                         note.bend_cents = cents_from_base;
@@ -1045,7 +1119,10 @@ impl GuitarInput {
                                                 });
                                                 events.push(MidiEvent::MidiPitchBend {
                                                     channel,
-                                                    value: cents_to_midi_pitch_bend(0, self.config.pitch_bend_range),
+                                                    value: cents_to_midi_pitch_bend(
+                                                        0,
+                                                        self.config.pitch_bend_range,
+                                                    ),
                                                 });
                                                 if let Some(ref mut note) = self.current_note {
                                                     note.bend_cents = 0;
@@ -1077,7 +1154,10 @@ impl GuitarInput {
                                                     });
                                                     events.push(MidiEvent::MidiPitchBend {
                                                         channel,
-                                                        value: cents_to_midi_pitch_bend(cents_from_base, self.config.pitch_bend_range),
+                                                        value: cents_to_midi_pitch_bend(
+                                                            cents_from_base,
+                                                            self.config.pitch_bend_range,
+                                                        ),
                                                     });
                                                     if let Some(ref mut note) = self.current_note {
                                                         note.bend_cents = cents_from_base;
@@ -1091,7 +1171,10 @@ impl GuitarInput {
                                                 });
                                                 events.push(MidiEvent::MidiPitchBend {
                                                     channel,
-                                                    value: cents_to_midi_pitch_bend(0, self.config.pitch_bend_range),
+                                                    value: cents_to_midi_pitch_bend(
+                                                        0,
+                                                        self.config.pitch_bend_range,
+                                                    ),
                                                 });
                                                 if let Some(ref mut note) = self.current_note {
                                                     note.bend_cents = 0;
@@ -1102,8 +1185,7 @@ impl GuitarInput {
                                 } else {
                                     // Vibrato detection disabled; just do bends
                                     if self.config.bends_enabled {
-                                        if cents_from_base.abs() > 5
-                                            && cents_from_base.abs() < 200
+                                        if cents_from_base.abs() > 5 && cents_from_base.abs() < 200
                                         {
                                             if (cents_from_base - note_bend).abs() > 3 {
                                                 events.push(MidiEvent::PitchBend {
@@ -1112,7 +1194,10 @@ impl GuitarInput {
                                                 });
                                                 events.push(MidiEvent::MidiPitchBend {
                                                     channel,
-                                                    value: cents_to_midi_pitch_bend(cents_from_base, self.config.pitch_bend_range),
+                                                    value: cents_to_midi_pitch_bend(
+                                                        cents_from_base,
+                                                        self.config.pitch_bend_range,
+                                                    ),
                                                 });
                                                 if let Some(ref mut note) = self.current_note {
                                                     note.bend_cents = cents_from_base;
@@ -1120,13 +1205,13 @@ impl GuitarInput {
                                                 }
                                             }
                                         } else if cents_from_base.abs() <= 5 && note_bend != 0 {
-                                            events.push(MidiEvent::PitchBend {
-                                                channel,
-                                                cents: 0,
-                                            });
+                                            events.push(MidiEvent::PitchBend { channel, cents: 0 });
                                             events.push(MidiEvent::MidiPitchBend {
                                                 channel,
-                                                value: cents_to_midi_pitch_bend(0, self.config.pitch_bend_range),
+                                                value: cents_to_midi_pitch_bend(
+                                                    0,
+                                                    self.config.pitch_bend_range,
+                                                ),
                                             });
                                             if let Some(ref mut note) = self.current_note {
                                                 note.bend_cents = 0;
@@ -1139,7 +1224,8 @@ impl GuitarInput {
                                 if self.config.pressure_enabled {
                                     let pressure = self.compute_pressure(rms);
                                     if pressure != self.last_pressure {
-                                        events.push(MidiEvent::ChannelPressure { channel, pressure });
+                                        events
+                                            .push(MidiEvent::ChannelPressure { channel, pressure });
                                         self.last_pressure = pressure;
                                         self.last_sent_pressure = pressure;
                                     }
@@ -1148,7 +1234,10 @@ impl GuitarInput {
                                 // Fix 3: CC74 brightness updates during Sustain
                                 if self.config.brightness_enabled {
                                     let harmonics_data = measure_harmonics(
-                                        &buf, freq, self.config.n_harmonics, self.config.sample_rate,
+                                        &buf,
+                                        freq,
+                                        self.config.n_harmonics,
+                                        self.config.sample_rate,
                                     );
                                     let harmonic_pairs: Vec<(f32, f32)> = harmonics_data
                                         .iter()
@@ -1158,8 +1247,14 @@ impl GuitarInput {
                                     let centroid = compute_spectral_centroid(&harmonic_pairs);
                                     let cc74 = centroid_to_cc74(centroid);
                                     // Only send when value changes by > 2 to reduce message flood
-                                    if (cc74 as i16 - self.last_brightness as i16).unsigned_abs() > 2 {
-                                        events.push(MidiEvent::CC { channel, controller: 74, value: cc74 });
+                                    if (cc74 as i16 - self.last_brightness as i16).unsigned_abs()
+                                        > 2
+                                    {
+                                        events.push(MidiEvent::CC {
+                                            channel,
+                                            controller: 74,
+                                            value: cc74,
+                                        });
                                         self.last_brightness = cc74;
                                     }
                                 }
@@ -1167,8 +1262,7 @@ impl GuitarInput {
                         }
                     }
                     NoteState::Decay => {
-                        let decay_timeout_samples =
-                            (self.config.sample_rate as f32 * 0.5) as usize;
+                        let decay_timeout_samples = (self.config.sample_rate as f32 * 0.5) as usize;
 
                         if onset {
                             // New onset during decay -> Attack
@@ -1325,9 +1419,15 @@ impl GuitarInput {
     /// Get the previous cents value from slide history (for detecting rapid jumps).
     fn slide_history_prev_cents(&self) -> i16 {
         let len = self.slide_history.len();
-        if len == 0 { return 0; }
+        if len == 0 {
+            return 0;
+        }
         // Previous index (one before current write position)
-        let prev_idx = if self.slide_history_idx == 0 { len - 1 } else { self.slide_history_idx - 1 };
+        let prev_idx = if self.slide_history_idx == 0 {
+            len - 1
+        } else {
+            self.slide_history_idx - 1
+        };
         self.slide_history[prev_idx]
     }
 
@@ -1436,8 +1536,7 @@ impl GuitarInput {
 
         // 3. Estimate frequency from zero-crossing rate
         //    Each analysis frame is buffer_size / sample_rate seconds
-        let frame_duration =
-            self.config.buffer_size as f32 / self.config.sample_rate as f32;
+        let frame_duration = self.config.buffer_size as f32 / self.config.sample_rate as f32;
         let duration_secs = ordered.len() as f32 * frame_duration;
         if duration_secs < 0.05 {
             return None;
@@ -1623,10 +1722,7 @@ impl GuitarInput {
 
         Some(StringProfile {
             name: STRING_NAMES.get(string_idx).copied().unwrap_or("?"),
-            open_midi: STRING_BASE_PITCH
-                .get(string_idx)
-                .copied()
-                .unwrap_or(40),
+            open_midi: STRING_BASE_PITCH.get(string_idx).copied().unwrap_or(40),
             open_frequency: freq,
             inharmonicity_b: b_open,
             inharmonicity_b_fret5: b_fret5,
@@ -1851,12 +1947,12 @@ pub fn identify_string_with_plausibility(
 
     // Also measure harmonic ratios for spectral shape matching
     let measured_harmonics = measure_harmonics(audio, fundamental, n_harmonics, sample_rate);
-    let h1 = measured_harmonics.first().copied().unwrap_or(1.0).max(1e-10);
-    let measured_ratios: Vec<f32> = measured_harmonics
-        .iter()
-        .skip(1)
-        .map(|&h| h / h1)
-        .collect();
+    let h1 = measured_harmonics
+        .first()
+        .copied()
+        .unwrap_or(1.0)
+        .max(1e-10);
+    let measured_ratios: Vec<f32> = measured_harmonics.iter().skip(1).map(|&h| h / h1).collect();
 
     let mut best_string: Option<usize> = None;
     let mut best_confidence = 0.0f32;
@@ -1881,9 +1977,7 @@ pub fn identify_string_with_plausibility(
         };
 
         // Harmonic ratio similarity (cosine-like distance)
-        let harmonic_sim = if !profile.harmonic_ratios.is_empty()
-            && !measured_ratios.is_empty()
-        {
+        let harmonic_sim = if !profile.harmonic_ratios.is_empty() && !measured_ratios.is_empty() {
             let n = profile.harmonic_ratios.len().min(measured_ratios.len());
             let mut dot = 0.0f32;
             let mut mag_a = 0.0f32;
@@ -1949,7 +2043,10 @@ fn interpolate_b(profile: &StringProfile, fret: u8) -> f32 {
     let b_open = profile.inharmonicity_b;
 
     // If we have fret-specific measurements, use linear interpolation
-    match (profile.inharmonicity_b_fret5, profile.inharmonicity_b_fret12) {
+    match (
+        profile.inharmonicity_b_fret5,
+        profile.inharmonicity_b_fret12,
+    ) {
         (Some(b5), Some(b12)) => {
             if fret <= 5 {
                 // Interpolate between open and fret 5
@@ -2152,13 +2249,11 @@ mod tests {
     ) -> Vec<f32> {
         let mut signal = vec![0.0f32; num_samples];
         for n in 1..=6 {
-            let harmonic_freq =
-                fundamental * n as f32 * (1.0 + b_coeff * (n * n) as f32).sqrt();
+            let harmonic_freq = fundamental * n as f32 * (1.0 + b_coeff * (n * n) as f32).sqrt();
             let amplitude = 1.0 / n as f32; // natural harmonic decay
             for i in 0..num_samples {
-                signal[i] += amplitude
-                    * (2.0 * PI * harmonic_freq * i as f32 / sample_rate as f32)
-                        .sin();
+                signal[i] +=
+                    amplitude * (2.0 * PI * harmonic_freq * i as f32 / sample_rate as f32).sin();
             }
         }
         signal
@@ -2172,7 +2267,11 @@ mod tests {
         let freq = 440.0;
         let signal = sine_wave(freq, sr, 2048);
         let mag = goertzel(&signal, sr, freq);
-        assert!(mag > 10.0, "Goertzel should find strong signal at 440Hz, got {}", mag);
+        assert!(
+            mag > 10.0,
+            "Goertzel should find strong signal at 440Hz, got {}",
+            mag
+        );
     }
 
     #[test]
@@ -2193,7 +2292,11 @@ mod tests {
     fn goertzel_silent_returns_zero() {
         let silence = vec![0.0f32; 1024];
         let mag = goertzel(&silence, 48000, 440.0);
-        assert!(mag.abs() < 1e-6, "silence should give near-zero, got {}", mag);
+        assert!(
+            mag.abs() < 1e-6,
+            "silence should give near-zero, got {}",
+            mag
+        );
     }
 
     #[test]
@@ -2259,7 +2362,12 @@ mod tests {
     fn plausible_open_strings() {
         // Each open string's own pitch is plausible on that string
         for (idx, &open) in STRING_BASE_PITCH.iter().enumerate() {
-            assert!(is_plausible(open, idx), "open string {} should be plausible on string {}", open, idx);
+            assert!(
+                is_plausible(open, idx),
+                "open string {} should be plausible on string {}",
+                open,
+                idx
+            );
         }
     }
 
@@ -2472,7 +2580,11 @@ mod tests {
     fn spectral_flux_zero_for_identical_spectra() {
         let spec = vec![1.0, 2.0, 3.0, 4.0];
         let flux = spectral_flux(&spec, &spec);
-        assert!(flux.abs() < 1e-10, "identical spectra should have zero flux, got {}", flux);
+        assert!(
+            flux.abs() < 1e-10,
+            "identical spectra should have zero flux, got {}",
+            flux
+        );
     }
 
     #[test]
@@ -2480,7 +2592,11 @@ mod tests {
         let prev = vec![0.0, 0.0, 0.0, 0.0];
         let curr = vec![1.0, 2.0, 3.0, 4.0];
         let flux = spectral_flux(&prev, &curr);
-        assert!(flux > 0.0, "increasing energy should produce positive flux, got {}", flux);
+        assert!(
+            flux > 0.0,
+            "increasing energy should produce positive flux, got {}",
+            flux
+        );
     }
 
     #[test]
@@ -2489,7 +2605,11 @@ mod tests {
         let prev = vec![10.0, 10.0, 10.0, 10.0];
         let curr = vec![5.0, 5.0, 5.0, 5.0]; // all decreasing
         let flux = spectral_flux(&prev, &curr);
-        assert!(flux.abs() < 1e-10, "decreasing energy should give zero flux, got {}", flux);
+        assert!(
+            flux.abs() < 1e-10,
+            "decreasing energy should give zero flux, got {}",
+            flux
+        );
     }
 
     // -- input_gain tests (#8) ──────────────────────────────────────
@@ -2498,7 +2618,11 @@ mod tests {
     fn input_gain_normalization() {
         let gain = GuitarInput::compute_input_gain(0.4);
         // 0.8 / 0.4 = 2.0
-        assert!((gain - 2.0).abs() < 0.01, "gain should be 2.0, got {}", gain);
+        assert!(
+            (gain - 2.0).abs() < 0.01,
+            "gain should be 2.0, got {}",
+            gain
+        );
     }
 
     #[test]
@@ -2550,11 +2674,19 @@ mod tests {
         };
         // With no fretted data, should use theoretical model
         let b0 = interpolate_b(&profile, 0);
-        assert!((b0 - 0.006).abs() < 0.001, "open B should be 0.006, got {}", b0);
+        assert!(
+            (b0 - 0.006).abs() < 0.001,
+            "open B should be 0.006, got {}",
+            b0
+        );
 
         let b12 = interpolate_b(&profile, 12);
         // Theoretical: 0.006 * 2^(12/6) = 0.006 * 4 = 0.024
-        assert!((b12 - 0.024).abs() < 0.002, "fret 12 B should be ~0.024, got {}", b12);
+        assert!(
+            (b12 - 0.024).abs() < 0.002,
+            "fret 12 B should be ~0.024, got {}",
+            b12
+        );
     }
 
     #[test]
@@ -2574,11 +2706,19 @@ mod tests {
 
         // At fret 5 (should be 0.010)
         let b5 = interpolate_b(&profile, 5);
-        assert!((b5 - 0.010).abs() < 0.001, "fret 5 should be 0.010, got {}", b5);
+        assert!(
+            (b5 - 0.010).abs() < 0.001,
+            "fret 5 should be 0.010, got {}",
+            b5
+        );
 
         // At fret 12 (should be 0.020)
         let b12 = interpolate_b(&profile, 12);
-        assert!((b12 - 0.020).abs() < 0.001, "fret 12 should be 0.020, got {}", b12);
+        assert!(
+            (b12 - 0.020).abs() < 0.001,
+            "fret 12 should be 0.020, got {}",
+            b12
+        );
     }
 
     // -- plausibility_score tests (#3) ──────────────────────────────
@@ -2636,19 +2776,18 @@ mod tests {
         let audio = guitar_signal(e2_freq, 0.006, sr, 4096);
 
         let result = identify_string(
-            &audio,
-            e2_freq,
-            40, // MIDI E2
-            &profiles,
-            sr,
-            6,
-            0.3,
+            &audio, e2_freq, 40, // MIDI E2
+            &profiles, sr, 6, 0.3,
         );
 
         assert!(result.is_some(), "should identify a string");
         let (string_idx, confidence) = result.unwrap();
         assert_eq!(string_idx, 0, "should identify as Low E");
-        assert!(confidence > 0.3, "confidence should be reasonable, got {}", confidence);
+        assert!(
+            confidence > 0.3,
+            "confidence should be reasonable, got {}",
+            confidence
+        );
     }
 
     #[test]
@@ -2659,7 +2798,10 @@ mod tests {
         let audio = sine_wave(midi_to_freq(30), sr, 2048);
         let profiles = make_test_profiles();
         let result = identify_string(&audio, midi_to_freq(30), 30, &profiles, sr, 6, 0.3);
-        assert!(result.is_none(), "MIDI 30 is not playable on any standard-tuned string");
+        assert!(
+            result.is_none(),
+            "MIDI 30 is not playable on any standard-tuned string"
+        );
     }
 
     // -- measure_harmonics tests ─────────────────────────────────────
@@ -2711,7 +2853,11 @@ mod tests {
         assert_eq!(rms_to_velocity(0.0), 30); // below min maps to 30
         assert_eq!(rms_to_velocity(1.0), 127); // above max clamps to 127
         let mid = rms_to_velocity(0.25);
-        assert!(mid > 30 && mid < 127, "mid velocity {} should be in range", mid);
+        assert!(
+            mid > 30 && mid < 127,
+            "mid velocity {} should be in range",
+            mid
+        );
     }
 
     // -- compute_inharmonicity_b tests ───────────────────────────────
@@ -2721,11 +2867,7 @@ mod tests {
         let sr = 48000;
         let audio = sine_wave(110.0, sr, 4096);
         let b = compute_inharmonicity_b(&audio, 110.0, sr);
-        assert!(
-            b < 0.005,
-            "Pure sine should have near-zero B, got {}",
-            b
-        );
+        assert!(b < 0.005, "Pure sine should have near-zero B, got {}", b);
     }
 
     #[test]
@@ -2784,8 +2926,14 @@ mod tests {
             .collect();
         let events2 = pipeline.process_block(&a4);
         // Should get a NoteOn somewhere in here
-        let has_note_on = events2.iter().any(|e| matches!(e, MidiEvent::NoteOn { .. }));
-        assert!(has_note_on, "should detect NoteOn for A4, events: {:?}", events2);
+        let has_note_on = events2
+            .iter()
+            .any(|e| matches!(e, MidiEvent::NoteOn { .. }));
+        assert!(
+            has_note_on,
+            "should detect NoteOn for A4, events: {:?}",
+            events2
+        );
     }
 
     // -- Helper ──────────────────────────────────────────────────────
@@ -2954,9 +3102,10 @@ mod tests {
     fn detect_vibrato_rejects_random_noise() {
         let mut pipeline = GuitarInput::with_defaults();
         // Fill with small random-ish values (not periodic)
-        let values = [2.0, -1.0, 3.0, 0.5, -2.0, 1.5, -0.5, 2.5, -1.5, 0.0,
-                      3.0, -2.0, 1.0, -1.0, 2.0, -3.0, 0.5, 1.5, -0.5, 2.0,
-                      -1.0, 3.0, -2.0, 1.0];
+        let values = [
+            2.0, -1.0, 3.0, 0.5, -2.0, 1.5, -0.5, 2.5, -1.5, 0.0, 3.0, -2.0, 1.0, -1.0, 2.0, -3.0,
+            0.5, 1.5, -0.5, 2.0, -1.0, 3.0, -2.0, 1.0,
+        ];
         for &v in &values {
             pipeline.push_vibrato_cents(v);
         }
@@ -3076,10 +3225,7 @@ mod tests {
             expected_vel,
             original_vel
         );
-        assert!(
-            expected_vel > 0,
-            "slide velocity should still be positive"
-        );
+        assert!(expected_vel > 0, "slide velocity should still be positive");
 
         // Verify the note hasn't changed yet (slide hasn't been processed)
         assert_eq!(
@@ -3152,7 +3298,11 @@ mod tests {
         let vel = rms_to_velocity_calibrated(0.126, 0.001, 0.5);
         // 0.126 normalized in [0.001, 0.5]: (0.126-0.001)/(0.5-0.001) = 0.25
         // curved = sqrt(0.25) = 0.5, vel = 1 + 0.5*126 = 64
-        assert!(vel >= 60 && vel <= 68, "mid-range calibrated vel should be ~64, got {}", vel);
+        assert!(
+            vel >= 60 && vel <= 68,
+            "mid-range calibrated vel should be ~64, got {}",
+            vel
+        );
     }
 
     #[test]
@@ -3207,14 +3357,22 @@ mod tests {
         // 100 cents = half of 200 cent range
         let val = cents_to_midi_pitch_bend(100, 2);
         // normalized = 0.5, value = 0.5*8191 + 8192 = 12287.5 -> 12287
-        assert!(val > 12000 && val < 12500, "half bend up should be ~12288, got {}", val);
+        assert!(
+            val > 12000 && val < 12500,
+            "half bend up should be ~12288, got {}",
+            val
+        );
     }
 
     #[test]
     fn pitch_bend_different_range() {
         // 200 cents with range 4 semitones (400 cents) = half
         let val = cents_to_midi_pitch_bend(200, 4);
-        assert!(val > 12000 && val < 12500, "200c in 4-semitone range should be ~12288, got {}", val);
+        assert!(
+            val > 12000 && val < 12500,
+            "200c in 4-semitone range should be ~12288, got {}",
+            val
+        );
     }
 
     // -- rms_to_pressure tests ────────────────────────────────────────
@@ -3236,7 +3394,11 @@ mod tests {
         // midpoint: rms = (0.01 + 0.3) / 2 = 0.155
         // normalized = (0.155 - 0.01) / (0.3 - 0.01) = 0.5
         let p = rms_to_pressure(0.155, 0.01);
-        assert!(p >= 60 && p <= 67, "mid-range pressure should be ~63, got {}", p);
+        assert!(
+            p >= 60 && p <= 67,
+            "mid-range pressure should be ~63, got {}",
+            p
+        );
     }
 
     #[test]
@@ -3269,7 +3431,8 @@ mod tests {
         assert!(
             attack_rms > full_rms * 1.5,
             "attack RMS ({:.4}) should be much higher than full-buffer RMS ({:.4})",
-            attack_rms, full_rms
+            attack_rms,
+            full_rms
         );
     }
 
@@ -3336,7 +3499,11 @@ mod tests {
     fn cc74_at_high_centroid() {
         // 2000 Hz = top of range -> 127
         let cc = centroid_to_cc74(2000.0);
-        assert_eq!(cc, 127, "2000 Hz centroid should map to CC74=127, got {}", cc);
+        assert_eq!(
+            cc, 127,
+            "2000 Hz centroid should map to CC74=127, got {}",
+            cc
+        );
     }
 
     #[test]
@@ -3348,7 +3515,8 @@ mod tests {
         assert!(
             cc >= 58 && cc <= 70,
             "geometric mid centroid ({:.0} Hz) should map to ~63, got {}",
-            mid_freq, cc
+            mid_freq,
+            cc
         );
     }
 
@@ -3377,11 +3545,7 @@ mod tests {
         pipeline.note_onset_rms = 0.5;
         // At onset, current = onset -> ratio = 1.0
         let p = pipeline.compute_pressure(0.5);
-        assert!(
-            p >= 120,
-            "pressure at onset should be near max, got {}",
-            p
-        );
+        assert!(p >= 120, "pressure at onset should be near max, got {}", p);
     }
 
     #[test]
@@ -3394,7 +3558,8 @@ mod tests {
         assert!(
             p_half < p_full,
             "pressure at half RMS ({}) should be less than at full RMS ({})",
-            p_half, p_full
+            p_half,
+            p_full
         );
     }
 
@@ -3419,7 +3584,8 @@ mod tests {
         assert!(
             p_hold > p_no_hold,
             "pressure with hold ({}) should be higher than without ({})",
-            p_hold, p_no_hold
+            p_hold,
+            p_no_hold
         );
     }
 
@@ -3429,11 +3595,7 @@ mod tests {
         pipeline.note_onset_rms = 0.5;
         let p = pipeline.compute_pressure(0.001);
         // Even with hold=0.3, near-silence should still be relatively low
-        assert!(
-            p < 60,
-            "pressure near silence should be low, got {}",
-            p
-        );
+        assert!(p < 60, "pressure near silence should be low, got {}", p);
     }
 
     // -- MPE message ordering tests ──────────────────────────────────
@@ -3478,10 +3640,15 @@ mod tests {
         let events = pipeline.process_block(&a4);
 
         // Find the first NoteOn
-        if let Some(note_on_idx) = events.iter().position(|e| matches!(e, MidiEvent::NoteOn { .. })) {
+        if let Some(note_on_idx) = events
+            .iter()
+            .position(|e| matches!(e, MidiEvent::NoteOn { .. }))
+        {
             // Check that any PitchBend events before NoteOn come before it
             for (i, event) in events.iter().enumerate() {
-                if i >= note_on_idx { break; }
+                if i >= note_on_idx {
+                    break;
+                }
                 // Events before NoteOn should be PitchBend, CC74, or ChannelPressure -- not NoteOff for another note
                 match event {
                     MidiEvent::PitchBend { .. }
@@ -3492,7 +3659,10 @@ mod tests {
                         // These are fine before NoteOn
                     }
                     MidiEvent::NoteOn { .. } => {
-                        panic!("found an earlier NoteOn at index {} before expected NoteOn at {}", i, note_on_idx);
+                        panic!(
+                            "found an earlier NoteOn at index {} before expected NoteOn at {}",
+                            i, note_on_idx
+                        );
                     }
                     _ => {}
                 }
@@ -3556,19 +3726,30 @@ mod tests {
 
     #[test]
     fn midi_event_to_bytes_note_on() {
-        let event = MidiEvent::NoteOn { channel: 1, note: 60, velocity: 100 };
+        let event = MidiEvent::NoteOn {
+            channel: 1,
+            note: 60,
+            velocity: 100,
+        };
         assert_eq!(event.to_midi_bytes(2), vec![0x91, 60, 100]);
     }
 
     #[test]
     fn midi_event_to_bytes_note_off() {
-        let event = MidiEvent::NoteOff { channel: 0, note: 64, velocity: 0 };
+        let event = MidiEvent::NoteOff {
+            channel: 0,
+            note: 64,
+            velocity: 0,
+        };
         assert_eq!(event.to_midi_bytes(2), vec![0x80, 64, 0]);
     }
 
     #[test]
     fn midi_event_to_bytes_pitch_bend_center() {
-        let event = MidiEvent::MidiPitchBend { channel: 2, value: 8192 };
+        let event = MidiEvent::MidiPitchBend {
+            channel: 2,
+            value: 8192,
+        };
         let bytes = event.to_midi_bytes(2);
         assert_eq!(bytes[0], 0xE2);
         assert_eq!(bytes.len(), 3);
@@ -3576,13 +3757,21 @@ mod tests {
 
     #[test]
     fn midi_event_to_bytes_cc74() {
-        let event = MidiEvent::CC { channel: 3, controller: 74, value: 100 };
+        let event = MidiEvent::CC {
+            channel: 3,
+            controller: 74,
+            value: 100,
+        };
         assert_eq!(event.to_midi_bytes(2), vec![0xB3, 74, 100]);
     }
 
     #[test]
     fn midi_event_to_bytes_vibrato_is_empty() {
-        let event = MidiEvent::VibratoStatus { active: true, rate_hz: 5.0, depth_cents: 30.0 };
+        let event = MidiEvent::VibratoStatus {
+            active: true,
+            rate_hz: 5.0,
+            depth_cents: 30.0,
+        };
         assert!(event.to_midi_bytes(2).is_empty());
     }
 }

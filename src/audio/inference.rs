@@ -316,8 +316,28 @@ impl GuitarClassifier {
         let (mut h, mut w_dim) = (MEL_BINS, TIME_FRAMES);
 
         // ---- Block 1: Conv(1->32) + BN + ReLU + MaxPool ----
-        let mut x = conv2d(mel_spectrogram, &w.conv1_w, &w.conv1_b, 1, 32, h, w_dim, 3, 1);
-        x = batchnorm(&x, &w.bn1_w, &w.bn1_b, &w.bn1_mean, &w.bn1_var, 32, h, w_dim, BN_EPS);
+        let mut x = conv2d(
+            mel_spectrogram,
+            &w.conv1_w,
+            &w.conv1_b,
+            1,
+            32,
+            h,
+            w_dim,
+            3,
+            1,
+        );
+        x = batchnorm(
+            &x,
+            &w.bn1_w,
+            &w.bn1_b,
+            &w.bn1_mean,
+            &w.bn1_var,
+            32,
+            h,
+            w_dim,
+            BN_EPS,
+        );
         relu(&mut x);
         x = maxpool2d(&x, 32, h, w_dim);
         h /= 2; // 32
@@ -325,7 +345,17 @@ impl GuitarClassifier {
 
         // ---- Block 2: Conv(32->64) + BN + ReLU + MaxPool ----
         x = conv2d(&x, &w.conv2_w, &w.conv2_b, 32, 64, h, w_dim, 3, 1);
-        x = batchnorm(&x, &w.bn2_w, &w.bn2_b, &w.bn2_mean, &w.bn2_var, 64, h, w_dim, BN_EPS);
+        x = batchnorm(
+            &x,
+            &w.bn2_w,
+            &w.bn2_b,
+            &w.bn2_mean,
+            &w.bn2_var,
+            64,
+            h,
+            w_dim,
+            BN_EPS,
+        );
         relu(&mut x);
         x = maxpool2d(&x, 64, h, w_dim);
         h /= 2; // 16
@@ -333,7 +363,17 @@ impl GuitarClassifier {
 
         // ---- Block 3: Conv(64->128) + BN + ReLU + MaxPool ----
         x = conv2d(&x, &w.conv3_w, &w.conv3_b, 64, 128, h, w_dim, 3, 1);
-        x = batchnorm(&x, &w.bn3_w, &w.bn3_b, &w.bn3_mean, &w.bn3_var, 128, h, w_dim, BN_EPS);
+        x = batchnorm(
+            &x,
+            &w.bn3_w,
+            &w.bn3_b,
+            &w.bn3_mean,
+            &w.bn3_var,
+            128,
+            h,
+            w_dim,
+            BN_EPS,
+        );
         relu(&mut x);
         x = maxpool2d(&x, 128, h, w_dim);
         h /= 2; // 8
@@ -341,7 +381,17 @@ impl GuitarClassifier {
 
         // ---- Block 4: Conv(128->256) + BN + ReLU + AdaptiveAvgPool(1,1) ----
         x = conv2d(&x, &w.conv4_w, &w.conv4_b, 128, 256, h, w_dim, 3, 1);
-        x = batchnorm(&x, &w.bn4_w, &w.bn4_b, &w.bn4_mean, &w.bn4_var, 256, h, w_dim, BN_EPS);
+        x = batchnorm(
+            &x,
+            &w.bn4_w,
+            &w.bn4_b,
+            &w.bn4_mean,
+            &w.bn4_var,
+            256,
+            h,
+            w_dim,
+            BN_EPS,
+        );
         relu(&mut x);
         x = global_avg_pool(&x, 256, h, w_dim);
         // x is now (256,)
@@ -720,7 +770,11 @@ mod tests {
     fn test_softmax() {
         let probs = softmax(&[1.0, 2.0, 3.0]);
         let sum: f32 = probs.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-6, "Softmax should sum to 1, got {}", sum);
+        assert!(
+            (sum - 1.0).abs() < 1e-6,
+            "Softmax should sum to 1, got {}",
+            sum
+        );
         // Values should be in ascending order
         assert!(probs[0] < probs[1]);
         assert!(probs[1] < probs[2]);
@@ -843,7 +897,11 @@ mod tests {
         let pred = classifier.predict(&input);
 
         // Output should have a valid class
-        assert!(pred.class_id < NUM_CLASSES, "class_id {} out of range", pred.class_id);
+        assert!(
+            pred.class_id < NUM_CLASSES,
+            "class_id {} out of range",
+            pred.class_id
+        );
         assert!(pred.string_idx < 6);
         assert!(pred.fret < FRETS_PER_STRING);
 
@@ -862,7 +920,11 @@ mod tests {
         assert!(pred.top3[1].1 >= pred.top3[2].1);
         for &(cls, conf) in &pred.top3 {
             assert!(cls < NUM_CLASSES, "top3 class {} out of range", cls);
-            assert!(conf >= 0.0 && conf <= 1.0, "top3 confidence {} out of range", conf);
+            assert!(
+                conf >= 0.0 && conf <= 1.0,
+                "top3 confidence {} out of range",
+                conf
+            );
         }
     }
 
