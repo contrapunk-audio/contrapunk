@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "contrapunk"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "Real-time MIDI harmony generation"
 authors = ["Contrapunk Team"]
@@ -23,6 +23,7 @@ wmidi = "4.0"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+pitch-detection = "0.3"
 [features]
 default = []
 web-midi = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "getrandom"]
@@ -31,7 +32,6 @@ web-midi = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "getran
 midir = "0.10"
 clap = { version = "4", features = ["derive"] }
 cpal = "0.15"
-pitch-detection = "0.3"
 rmp-serde = "1.3"
 
 [dependencies.wasm-bindgen]

@@ -1,4 +1,8 @@
-# Contrapunk
+<p align="center">
+  <img src="ui/static/logo.svg" alt="Contrapunk" width="200" />
+</p>
+
+<h1 align="center">Contrapunk</h1>
 
 Real-time MIDI harmony generator with classical voice leading rules, built in Rust.
 
@@ -56,7 +60,7 @@ Browser version: [contrapunk.fly.dev](https://contrapunk.fly.dev/)
 
 ### Native (MIDI controller)
 ```bash
-git clone https://github.com/waveywaves/contrapunk.git
+git clone https://github.com/contrapunk-audio/contrapunk.git
 cd contrapunk
 cargo build --release
 ./target/release/contrapunk

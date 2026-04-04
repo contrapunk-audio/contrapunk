@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { guitar } from '$lib/stores/guitar.svelte';
 	import PixelSelect from './PixelSelect.svelte';
+	import SignalGraphs from './SignalGraphs.svelte';
 
 	const techniques = [
 		{ key: 'bends' as const, label: 'BENDS', get active() { return guitar.bendsEnabled; } },
@@ -16,8 +17,12 @@
 
 	let detectionLine = $derived(
 		guitar.detecting
-			? `Detecting: ${guitar.currentNote}  String: ${guitar.currentString} f${guitar.currentFret}  ${guitar.confidence}%`
+			? `${guitar.currentNote || '---'}  ${guitar.confidence}%  [ch${guitar.activeChannel}]`
 			: 'No signal'
+	);
+
+	let channelMismatch = $derived(
+		guitar.detecting && guitar.activeChannel !== guitar.selectedChannel
 	);
 
 	let deviceOptions = $derived(
@@ -180,7 +185,24 @@
 						onchange={handleDeviceChange}
 					/>
 				</div>
-				<span class="device-label font-pixel channel-label">CHANNEL</span>
+				<div class="channel-header">
+					<span class="device-label font-pixel channel-label">CHANNEL</span>
+					<label class="channel-override font-pixel">
+						CH#
+						<input
+							type="number"
+							class="channel-count-input font-pixel"
+							min="1"
+							max="32"
+							value={guitar.maxChannels}
+							onchange={(e) => {
+								const val = parseInt((e.target as HTMLInputElement).value, 10);
+								if (val >= 1 && val <= 32) guitar.setManualMaxChannels(val);
+							}}
+							title="Override detected channel count for your audio interface"
+						/>
+					</label>
+				</div>
 				<div class="channel-row">
 					{#each channelNumbers as ch}
 						<button
@@ -257,6 +279,14 @@
 		<div class="detection-status font-pixel" class:detecting={guitar.detecting}>
 			{detectionLine}
 		</div>
+		{#if channelMismatch}
+			<div class="channel-warning font-pixel">
+				Using ch{guitar.activeChannel} (wanted ch{guitar.selectedChannel} — restart to change)
+			</div>
+		{/if}
+
+		<!-- Signal graphs (MiGiC-style) -->
+		<SignalGraphs />
 	</div>
 {/if}
 
@@ -292,6 +322,31 @@
 
 	.channel-label {
 		margin-top: 4px;
+	}
+
+	.channel-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-top: 4px;
+	}
+
+	.channel-override {
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		font-size: 6px;
+		color: var(--color-text-dim);
+	}
+
+	.channel-count-input {
+		width: 32px;
+		padding: 1px 3px;
+		font-size: 7px;
+		background: var(--color-bg-panel);
+		color: var(--color-text);
+		border: 1px solid var(--color-border);
+		text-align: center;
 	}
 
 	.device-select-row {
@@ -529,6 +584,14 @@
 
 	.detection-status.detecting {
 		color: var(--color-text-secondary);
+	}
+
+	.channel-warning {
+		font-size: 6px;
+		color: var(--color-accent-amber);
+		padding: 2px 4px;
+		background: rgba(255, 170, 0, 0.1);
+		border: 1px solid var(--color-accent-amber);
 	}
 
 	/* =============================== */

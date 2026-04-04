@@ -6,7 +6,11 @@
 <domain>
 ## Phase Boundary
 
-Beat-aware performance mode where Contrapunk accumulates played notes over bars (using BeatClock) and generates musically-contextual accompaniment patterns based on phrase-level state, rather than harmonizing note-by-note. The system analyzes chord progressions, rhythmic density, melodic contour, and key/mode from accumulated input to drive intelligent accompaniment generation.
+Beat-aware performance mode with two major capabilities:
+
+1. **Backing Track Analysis** — Listen to a separate audio input (backing track, song, or room mic) and auto-detect chords, key/scale, and BPM in real-time. Detected parameters auto-configure the harmony engine (root note, scale, tempo). The user's guitar plays through the normal pitch→MIDI pipeline on one audio channel while the backing track analysis runs on a second channel.
+
+2. **Accompaniment Generation** — Accumulate played notes over bars (using BeatClock) and generate musically-contextual accompaniment patterns based on phrase-level state, rather than harmonizing note-by-note. The system analyzes chord progressions, rhythmic density, melodic contour, and key/mode from accumulated input to drive intelligent accompaniment generation.
 
 </domain>
 
@@ -48,7 +52,23 @@ Beat-aware performance mode where Contrapunk accumulates played notes over bars 
 - **Both MIDI CC and keyboard shortcut** for quick toggle during performance
 - Deactivation: **fade out over 1-2 bars** for smooth transition
 
-### Musical Analysis
+### Backing Track Analysis (Audio DSP)
+- **Second audio input**: separate device/channel from guitar (e.g., Audient iD14 ch3/4 for backing, ch1/2 for guitar)
+- **Chromagram extraction**: FFT → 12-bin pitch class histogram (C, C#, D, ..., B), updated every ~100ms
+- **Chord detection** (~500ms updates): template-match chromagram against chord profiles (Maj, min, 7, m7, Maj7, dim, aug, sus2, sus4, add9, etc.)
+  - Auto-sets harmony engine root note + chord quality
+- **Key/scale detection** (~4-8 second window): Krumhansl-Schmuckler algorithm — correlate accumulated chroma with 24 key profiles (12 major + 12 minor)
+  - Auto-sets scale/mode in harmony engine
+  - Confidence threshold required before locking (prevent false switching)
+- **BPM detection** (~4-8 second window): onset detection on backing track → inter-onset interval histogram → dominant tempo
+  - Autocorrelation on onset function as secondary estimator
+  - Locks BeatClock tempo for rhythmic features (arpeggiator, humanize timing, accompaniment)
+- **Lock buttons**: user can lock any auto-detected parameter to prevent it from changing (e.g., lock key but let chords float)
+- **Confidence indicators**: visual display showing how certain each detection is
+- Must work in both native (cpal second input) and WASM (browser second getUserMedia / system audio)
+- Chromagram computation reuses FFT data already computed in the audio pipeline
+
+### Musical Analysis (MIDI-based, from user's playing)
 - Four analysis features, all active during Performance Mode:
   1. **Chord progression detection** with **pattern matching** (ii-V-I, I-vi-IV-V, 12-bar blues, etc.)
   2. **Rhythmic density/pattern** tracking (notes per beat, motif detection)
@@ -61,6 +81,7 @@ Beat-aware performance mode where Contrapunk accumulates played notes over bars 
 - Time signature is user-set (no automatic meter detection)
 - User selects accompaniment style manually (no genre auto-detection)
 - All analysis results **visible in the UI** (detected key, chord, density, contour)
+- **Backing track analysis takes priority** over MIDI-based analysis when both are active (the song defines the key/chords, user's playing is harmonized against it)
 
 ### Visual Feedback
 - Performance Mode side panel (resizable) contains:

@@ -10,6 +10,11 @@ use contrapunk::harmony::VoiceLeadingStyle;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode};
 use contrapunk::preset::PresetManager;
 
+/// Log to browser console from Rust WASM.
+macro_rules! console_log {
+    ($($t:tt)*) => (web_sys::console::log_1(&format!($($t)*).into()))
+}
+
 // Initialize panic hook for better error messages in the browser console.
 #[wasm_bindgen(start)]
 pub fn init_panic_hook() {
@@ -489,6 +494,135 @@ impl Engine {
             )))
         }
     }
+}
+
+// === WASM-exported GuitarInput wrapper ===
+
+use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent};
+
+#[wasm_bindgen]
+pub struct WasmGuitarInput {
+    inner: GuitarInput,
+    frame_count: u64,
+}
+
+#[wasm_bindgen]
+impl WasmGuitarInput {
+    /// Create a new GuitarInput DSP pipeline with the given sample rate and buffer size.
+    #[wasm_bindgen(constructor)]
+    pub fn new(sample_rate: usize, buffer_size: usize) -> Self {
+        let config = GuitarInputConfig {
+            buffer_size,
+            sample_rate,
+            onset_threshold: 0.015,         // match demo
+            string_confidence_min: 0.4,      // match demo
+            cooldown_samples: sample_rate / 10, // 100ms at actual sample rate
+            ..GuitarInputConfig::default()
+        };
+        console_log!(
+            "[wasm-guitar] Created: sr={} buf={} onset={} clarity={} gain={}",
+            sample_rate, buffer_size, config.onset_threshold, config.min_clarity, config.input_gain
+        );
+        Self {
+            inner: GuitarInput::new(config),
+            frame_count: 0,
+        }
+    }
+
+    /// Process an audio block and return MIDI events as a JSON string.
+    /// Input: Float32Array of mono audio samples.
+    /// Output: JSON array of event objects.
+    pub fn process_block(&mut self, samples: &[f32]) -> String {
+        let events = self.inner.process_block(samples);
+
+        self.frame_count += 1;
+
+        // Log internal DSP state every 20 frames
+        if self.frame_count % 20 == 0 {
+            let rms: f32 = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+            let state = match self.inner.note_state_name() {
+                0 => "Idle", 1 => "Attack", 2 => "Sustain", 3 => "Decay", _ => "?",
+            };
+            let pitch_str = match self.inner.last_debug_pitch {
+                Some((f, c)) => format!("freq={:.1} clr={:.2}", f, c),
+                None => "None".to_string(),
+            };
+            console_log!(
+                "[analyze] rms={:.4} prevRms={:.4} onset={} (rms={} flux={} f={:.3}) pitch={} state={}",
+                rms, self.inner.prev_rms(),
+                self.inner.last_debug_onset,
+                self.inner.last_debug_rms_onset,
+                self.inner.last_debug_flux_onset,
+                self.inner.last_debug_flux,
+                pitch_str,
+                state
+            );
+        }
+        if !events.is_empty() {
+            console_log!("[wasm-guitar] {} events at frame {}", events.len(), self.frame_count);
+        }
+
+        if events.is_empty() {
+            return "[]".to_string();
+        }
+
+        let json_events: Vec<String> = events.iter().map(|e| match e {
+            MidiEvent::NoteOn { channel, note, velocity } =>
+                format!(r#"{{"type":"note_on","channel":{},"note":{},"velocity":{}}}"#, channel, note, velocity),
+            MidiEvent::NoteOff { channel, note, velocity } =>
+                format!(r#"{{"type":"note_off","channel":{},"note":{},"velocity":{}}}"#, channel, note, velocity),
+            MidiEvent::PitchBend { channel, cents } =>
+                format!(r#"{{"type":"pitch_bend","channel":{},"cents":{}}}"#, channel, cents),
+            MidiEvent::MidiPitchBend { channel, value } =>
+                format!(r#"{{"type":"midi_pitch_bend","channel":{},"value":{}}}"#, channel, value),
+            MidiEvent::ChannelPressure { channel, pressure } =>
+                format!(r#"{{"type":"channel_pressure","channel":{},"pressure":{}}}"#, channel, pressure),
+            MidiEvent::CC { channel, controller, value } =>
+                format!(r#"{{"type":"cc","channel":{},"controller":{},"value":{}}}"#, channel, controller, value),
+            MidiEvent::VibratoStatus { active, rate_hz, depth_cents } =>
+                format!(r#"{{"type":"vibrato","active":{},"rate_hz":{},"depth_cents":{}}}"#, active, rate_hz, depth_cents),
+        }).collect();
+
+        format!("[{}]", json_events.join(","))
+    }
+
+    /// Set onset threshold (default 0.015).
+    pub fn set_onset_threshold(&mut self, val: f32) {
+        self.inner.config_mut().onset_threshold = val;
+    }
+
+    /// Set string confidence minimum (default 0.4).
+    pub fn set_string_confidence(&mut self, val: f32) {
+        self.inner.config_mut().string_confidence_min = val;
+    }
+
+    /// Set input gain (default 1.0).
+    pub fn set_input_gain(&mut self, val: f32) {
+        self.inner.config_mut().input_gain = val;
+    }
+
+    /// Enable/disable pitch bend detection.
+    pub fn set_bends_enabled(&mut self, val: bool) {
+        self.inner.config_mut().bends_enabled = val;
+    }
+
+    /// Enable/disable legato detection.
+    pub fn set_legato_enabled(&mut self, val: bool) {
+        self.inner.config_mut().legato_enabled = val;
+    }
+
+    /// Enable/disable slide detection.
+    pub fn set_slides_enabled(&mut self, val: bool) {
+        self.inner.config_mut().slides_enabled = val;
+    }
+
+    /// Enable/disable vibrato detection.
+    pub fn set_vibrato_enabled(&mut self, val: bool) {
+        self.inner.config_mut().vibrato_detection = val;
+    }
+
+    /// Free resources.
+    pub fn free(self) {}
 }
 
 /// Convert a MIDI note number (0-127) to its note name (e.g. 60 -> "C4").

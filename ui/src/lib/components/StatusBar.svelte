@@ -92,6 +92,7 @@
 	</button>
 
 	<!-- Brand -->
+	<img src="/logo.svg" alt="Contrapunk" class="brand-logo" />
 	<span class="brand font-pixel">Contrapunk</span>
 </div>
 
@@ -196,6 +197,12 @@
 		border-color: var(--color-border);
 		color: var(--color-text-dim);
 		box-shadow: none;
+	}
+
+	.brand-logo {
+		height: 20px;
+		width: auto;
+		opacity: 0.8;
 	}
 
 	.brand {

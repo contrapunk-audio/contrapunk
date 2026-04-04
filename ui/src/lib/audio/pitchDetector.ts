@@ -1,9 +1,11 @@
 /**
- * Autocorrelation-based Pitch Detector
+ * Pitch Detector — Normalized Square Difference Function (McLeod method)
  *
- * Detects the fundamental frequency of an audio signal using
- * normalized autocorrelation (McLeod Pitch Method simplified).
- * Designed for monophonic guitar input.
+ * Detects the fundamental frequency of a monophonic audio signal.
+ * Uses the NSDF with first-peak-above-threshold selection to avoid
+ * octave errors common with global-max autocorrelation approaches.
+ *
+ * Reference: McLeod & Wyvill, "A Smarter Way to Find Pitch" (2005)
  */
 
 /** Result of a single pitch detection frame. */
@@ -25,18 +27,21 @@ export interface MidiNoteInfo {
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 
 /**
- * Detect the pitch of a mono audio buffer using normalized autocorrelation.
+ * Detect the pitch of a mono audio buffer using the NSDF (McLeod method).
  *
- * Returns null if no clear pitch is found (noise, silence, polyphonic content).
+ * The key difference from naive autocorrelation: instead of picking the
+ * global maximum correlation, we find zero-crossings of the NSDF and
+ * pick the FIRST peak that exceeds `clarityThreshold`. This avoids
+ * locking onto harmonics (octave-down errors).
  *
  * @param buffer  - Float32Array of audio samples (mono)
- * @param sampleRate - Sample rate in Hz (e.g. 44100, 48000)
- * @param clarityThreshold - Minimum clarity to accept a detection (default 0.9)
+ * @param sampleRate - Sample rate in Hz
+ * @param clarityThreshold - Minimum NSDF peak to accept (default 0.7)
  */
 export function detectPitch(
 	buffer: Float32Array,
 	sampleRate: number,
-	clarityThreshold = 0.9
+	clarityThreshold = 0.7
 ): PitchResult | null {
 	const size = buffer.length;
 
@@ -48,95 +53,91 @@ export function detectPitch(
 	const rms = Math.sqrt(rmsSum / size);
 	if (rms < 0.01) return null;
 
-	// --- Normalized autocorrelation ---
 	// Guitar fundamental range: ~82 Hz (E2) to ~1319 Hz (E6)
-	// At 44100 Hz: period for 1319 Hz = 33 samples, for 82 Hz = 538 samples
-	const minPeriod = Math.floor(sampleRate / 1400); // above highest expected
-	const maxPeriod = Math.ceil(sampleRate / 60);     // below lowest expected
+	const minPeriod = Math.floor(sampleRate / 1400);
+	const maxPeriod = Math.ceil(sampleRate / 60);
+	const searchMax = Math.min(maxPeriod, size - 1);
 
-	// Compute autocorrelation for each lag
-	let bestCorrelation = -1;
-	let bestPeriod = -1;
+	// Compute the Normalized Square Difference Function (NSDF)
+	// NSDF(tau) = 2 * r(tau) / (m(0) + m(tau))
+	// where r(tau) is autocorrelation and m(tau) = sum of squared samples
+	const nsdf = new Float32Array(searchMax + 1);
 
-	// Use normalized autocorrelation (NSDF-like)
-	for (let lag = minPeriod; lag <= maxPeriod && lag < size; lag++) {
-		let correlation = 0;
-		let norm1 = 0;
-		let norm2 = 0;
-		const windowSize = size - lag;
+	for (let tau = minPeriod; tau <= searchMax; tau++) {
+		let acf = 0;  // autocorrelation
+		let m = 0;    // energy normalization term
+		const windowSize = size - tau;
 
 		for (let i = 0; i < windowSize; i++) {
-			correlation += buffer[i] * buffer[i + lag];
-			norm1 += buffer[i] * buffer[i];
-			norm2 += buffer[i + lag] * buffer[i + lag];
+			acf += buffer[i] * buffer[i + tau];
+			m += buffer[i] * buffer[i] + buffer[i + tau] * buffer[i + tau];
 		}
 
-		const normFactor = Math.sqrt(norm1 * norm2);
-		if (normFactor > 0) {
-			correlation /= normFactor;
-		} else {
-			correlation = 0;
-		}
+		nsdf[tau] = m > 0 ? (2 * acf) / m : 0;
+	}
 
-		if (correlation > bestCorrelation) {
-			bestCorrelation = correlation;
-			bestPeriod = lag;
+	// Find peaks by looking for positive zero crossings, then the max in each positive lobe.
+	// Pick the FIRST peak above the threshold — this is the fundamental, not a harmonic.
+	let bestPeriod = -1;
+	let bestClarity = -1;
+
+	let inPositiveLobe = false;
+	let lobePeakVal = -1;
+	let lobePeakIdx = -1;
+
+	for (let tau = minPeriod; tau <= searchMax; tau++) {
+		if (nsdf[tau] > 0) {
+			if (!inPositiveLobe) {
+				// Entering a new positive lobe
+				inPositiveLobe = true;
+				lobePeakVal = nsdf[tau];
+				lobePeakIdx = tau;
+			} else if (nsdf[tau] > lobePeakVal) {
+				lobePeakVal = nsdf[tau];
+				lobePeakIdx = tau;
+			}
+		} else if (inPositiveLobe) {
+			// Leaving a positive lobe — check if its peak exceeds threshold
+			if (lobePeakVal >= clarityThreshold) {
+				bestPeriod = lobePeakIdx;
+				bestClarity = lobePeakVal;
+				break; // First peak above threshold = fundamental
+			}
+			inPositiveLobe = false;
 		}
 	}
 
-	if (bestPeriod < 0 || bestCorrelation < clarityThreshold) {
-		return null;
+	// Check the last lobe if we ended in one
+	if (inPositiveLobe && bestPeriod < 0 && lobePeakVal >= clarityThreshold) {
+		bestPeriod = lobePeakIdx;
+		bestClarity = lobePeakVal;
 	}
 
-	// --- Parabolic interpolation for sub-sample accuracy ---
+	if (bestPeriod < 0) return null;
+
+	// Parabolic interpolation for sub-sample accuracy
 	let refinedPeriod = bestPeriod;
-	if (bestPeriod > minPeriod && bestPeriod < maxPeriod && bestPeriod < size - 1) {
-		const corrPrev = computeNormalizedCorrelation(buffer, bestPeriod - 1);
-		const corrNext = computeNormalizedCorrelation(buffer, bestPeriod + 1);
-		const corrCurr = bestCorrelation;
-
-		const denom = 2 * (2 * corrCurr - corrPrev - corrNext);
+	if (bestPeriod > minPeriod && bestPeriod < searchMax) {
+		const prev = nsdf[bestPeriod - 1];
+		const curr = nsdf[bestPeriod];
+		const next = nsdf[bestPeriod + 1];
+		const denom = 2 * (2 * curr - prev - next);
 		if (Math.abs(denom) > 1e-10) {
-			const shift = (corrPrev - corrNext) / denom;
-			refinedPeriod = bestPeriod + shift;
+			refinedPeriod = bestPeriod + (prev - next) / denom;
 		}
 	}
-
-	const frequency = sampleRate / refinedPeriod;
 
 	return {
-		frequency,
-		clarity: bestCorrelation
+		frequency: sampleRate / refinedPeriod,
+		clarity: bestClarity
 	};
-}
-
-/** Helper: compute normalized correlation at a specific lag. */
-function computeNormalizedCorrelation(buffer: Float32Array, lag: number): number {
-	const size = buffer.length;
-	if (lag >= size || lag < 0) return 0;
-
-	let correlation = 0;
-	let norm1 = 0;
-	let norm2 = 0;
-	const windowSize = size - lag;
-
-	for (let i = 0; i < windowSize; i++) {
-		correlation += buffer[i] * buffer[i + lag];
-		norm1 += buffer[i] * buffer[i];
-		norm2 += buffer[i + lag] * buffer[i + lag];
-	}
-
-	const normFactor = Math.sqrt(norm1 * norm2);
-	return normFactor > 0 ? correlation / normFactor : 0;
 }
 
 /**
  * Convert a frequency in Hz to the nearest MIDI note number and cent offset.
- *
  * Uses A4 = 440 Hz standard tuning. MIDI note 69 = A4.
  */
 export function frequencyToMidi(freq: number): MidiNoteInfo {
-	// MIDI note = 69 + 12 * log2(freq / 440)
 	const midiFloat = 69 + 12 * Math.log2(freq / 440);
 	const note = Math.round(midiFloat);
 	const cents = Math.round((midiFloat - note) * 100);
@@ -149,7 +150,6 @@ export function frequencyToMidi(freq: number): MidiNoteInfo {
 
 /**
  * Convert a MIDI note number to a human-readable note name with octave.
- *
  * Example: 60 -> "C4", 69 -> "A4", 40 -> "E2"
  */
 export function midiToNoteName(midi: number): string {

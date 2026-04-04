@@ -7,6 +7,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { guitar } from '$lib/stores/guitar.svelte';
 import type {
 	ContrapunkAdapter,
 	EngineState,
@@ -52,6 +53,7 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 
 export class TauriAdapter implements ContrapunkAdapter {
 	private _isRunning = false;
+	private _guitarSignalUnsub: UnlistenFn | null = null;
 
 	async init(): Promise<void> {
 		// Tauri is ready when this code runs in the webview.
@@ -211,6 +213,40 @@ export class TauriAdapter implements ContrapunkAdapter {
 		try {
 			await invoke('start_routing', { inputIdx, outputIndices });
 			this._isRunning = true;
+
+			// If guitar audio mode, listen for signal events and feed guitar store
+			const GUITAR_AUDIO_SENTINEL = 999_997;
+			if (inputIdx === GUITAR_AUDIO_SENTINEL) {
+				guitar.detecting = true;
+
+				// Throttle note display updates to ~10fps to reduce UI jitter
+				let lastNoteUpdate = 0;
+				const NOTE_UPDATE_INTERVAL = 100; // ms
+
+				this._guitarSignalUnsub = await listen<Record<string, unknown>>('guitar-signal', (event) => {
+					const p = event.payload;
+					const rms = p.rms as number;
+					const clarity = p.clarity as number;
+					const noteName = p.note_name as string;
+
+					// Signal graph data — push every frame (canvas renders independently)
+					guitar.pushSignalFrame(rms, clarity);
+
+					// Throttle reactive state updates to reduce re-renders
+					const now = performance.now();
+					if (now - lastNoteUpdate > NOTE_UPDATE_INTERVAL) {
+						lastNoteUpdate = now;
+						if (noteName) {
+							guitar.currentNote = noteName;
+							guitar.confidence = Math.round(clarity * 100);
+							guitar.velocity = Math.round(rms * 800);
+						} else {
+							guitar.currentNote = '';
+							guitar.confidence = 0;
+						}
+					}
+				});
+			}
 		} catch (e) {
 			throw new Error(`Failed to start routing: ${e}`);
 		}
@@ -220,6 +256,16 @@ export class TauriAdapter implements ContrapunkAdapter {
 		try {
 			await invoke('stop_routing');
 			this._isRunning = false;
+
+			// Clean up guitar signal listener
+			if (this._guitarSignalUnsub) {
+				this._guitarSignalUnsub();
+				this._guitarSignalUnsub = null;
+			}
+			guitar.detecting = false;
+			guitar.currentNote = '';
+			guitar.confidence = 0;
+			guitar.velocity = 0;
 		} catch (e) {
 			throw new Error(`Failed to stop routing: ${e}`);
 		}

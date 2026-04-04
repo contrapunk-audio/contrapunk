@@ -27,7 +27,12 @@ use crate::state::AppState;
 /// Sentinel value for the "Guitar Audio" virtual input.
 /// When `input_idx` equals this value, we spawn a GuitarBridge
 /// instead of connecting to a physical MIDI input port.
-const GUITAR_AUDIO_SENTINEL: usize = usize::MAX - 2;
+/// Virtual input sentinels — must match the values in MidiDevices.svelte.
+/// Using small memorable values instead of MAX_SAFE_INTEGER to avoid
+/// cross-language integer size mismatches.
+const VIRTUAL_NOTE_GENERATOR: usize = 999_999;
+const VIRTUAL_COMPUTER_KEYBOARD: usize = 999_998;
+const GUITAR_AUDIO_SENTINEL: usize = 999_997;
 
 /// Payload for the "note-update" Tauri event.
 #[derive(Clone, Serialize)]
@@ -37,6 +42,17 @@ pub struct NoteUpdatePayload {
     pub borrowed_notes: Vec<u8>,
     pub chord_name: String,
     pub last_borrowed_from: String,
+}
+
+/// Payload for the "guitar-signal" Tauri event (UI signal feedback).
+#[derive(Clone, Serialize)]
+pub struct GuitarSignalPayload {
+    pub rms: f32,
+    pub frequency: Option<f32>,
+    pub clarity: f32,
+    pub note_state: u8,
+    pub note_name: String,
+    pub midi_note: u8,
 }
 
 /// Returns the current note state snapshot.
@@ -117,6 +133,18 @@ pub fn start_routing(
     let chord_name = Arc::new(Mutex::new(String::new()));
     let stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+    // Stop any previous router thread before starting a new one
+    if let Ok(mut prev_stop) = state.stop_signal.lock() {
+        if let Some(prev) = prev_stop.take() {
+            prev.store(true, Ordering::SeqCst);
+        }
+    }
+
+    // Store the new stop signal so stop_routing can use it
+    if let Ok(mut sig) = state.stop_signal.lock() {
+        *sig = Some(Arc::clone(&stop_signal));
+    }
+
     // Store references in AppState for stop_routing and get_note_state
     {
         let mut app_input = state.input_notes.lock().map_err(|e| e.to_string())?;
@@ -169,6 +197,13 @@ pub fn start_routing(
 pub fn stop_routing(state: State<AppState>) -> Result<(), String> {
     if !state.is_running.load(Ordering::SeqCst) {
         return Err("Routing is not active".to_string());
+    }
+
+    // Signal the router thread to stop
+    if let Ok(mut sig) = state.stop_signal.lock() {
+        if let Some(stop) = sig.take() {
+            stop.store(true, Ordering::SeqCst);
+        }
     }
 
     state.is_running.store(false, Ordering::SeqCst);
@@ -233,11 +268,12 @@ fn run_tauri_router(
     let _midi_conn;
     let _guitar_bridge;
 
-    eprintln!("[tauri-router] is_guitar={} device='{}' channel={}", is_guitar, guitar_device, guitar_channel);
+    // Signal channel for guitar UI feedback (only used in guitar mode)
+    let (signal_tx, signal_rx) = mpsc::channel::<crate::guitar_bridge::GuitarSignalInfo>();
+
     if is_guitar {
         // Guitar Audio mode: spawn cpal capture -> DSP -> same tx channel
-        eprintln!("[tauri-router] Creating GuitarBridge...");
-        let bridge = GuitarBridge::new(&guitar_device, guitar_channel, guitar_config, tx)
+        let bridge = GuitarBridge::new(&guitar_device, guitar_channel, guitar_config, tx, Some(signal_tx))
             .map_err(|e| anyhow::anyhow!("Guitar bridge error: {}", e))?;
         bridge
             .start()
@@ -324,10 +360,17 @@ fn run_tauri_router(
                 let harm_notes = harmony_notes.lock().unwrap();
                 let borr_notes = borrowed_notes.lock().unwrap();
                 let ch_name = chord_name.lock().unwrap();
+                // Sort note arrays for stable ordering (HashSet iteration is non-deterministic)
+                let mut in_vec: Vec<u8> = in_notes.iter().copied().collect();
+                let mut harm_vec: Vec<u8> = harm_notes.iter().copied().collect();
+                let mut borr_vec: Vec<u8> = borr_notes.iter().copied().collect();
+                in_vec.sort_unstable();
+                harm_vec.sort_unstable();
+                borr_vec.sort_unstable();
                 NoteUpdatePayload {
-                    input_notes: in_notes.iter().copied().collect(),
-                    harmony_notes: harm_notes.iter().copied().collect(),
-                    borrowed_notes: borr_notes.iter().copied().collect(),
+                    input_notes: in_vec,
+                    harmony_notes: harm_vec,
+                    borrowed_notes: borr_vec,
                     chord_name: ch_name.clone(),
                     last_borrowed_from: engine
                         .last_borrowed_from()
@@ -336,6 +379,38 @@ fn run_tauri_router(
                 }
             };
             let _ = app_handle.emit("note-update", payload);
+
+            // Emit guitar signal info for UI (drain latest from channel)
+            if is_guitar {
+                let mut latest_signal = None;
+                while let Ok(sig) = signal_rx.try_recv() {
+                    latest_signal = Some(sig);
+                }
+                if let Some(sig) = latest_signal {
+                    let note_names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+                    let (note_name, midi_note) = if let Some(freq) = sig.frequency {
+                        if freq > 20.0 && sig.clarity > 0.3 {
+                            let midi = (12.0 * (freq / 440.0).log2() + 69.0).round() as i32;
+                            let midi_u8 = midi.clamp(0, 127) as u8;
+                            let name_idx = (midi_u8 % 12) as usize;
+                            let octave = (midi_u8 as i32 / 12) - 1;
+                            (format!("{}{}", note_names[name_idx], octave), midi_u8)
+                        } else {
+                            (String::new(), 0)
+                        }
+                    } else {
+                        (String::new(), 0)
+                    };
+                    let _ = app_handle.emit("guitar-signal", GuitarSignalPayload {
+                        rms: sig.rms,
+                        frequency: sig.frequency,
+                        clarity: sig.clarity,
+                        note_state: sig.note_state,
+                        note_name,
+                        midi_note,
+                    });
+                }
+            }
         }
     }
 

@@ -9,6 +9,20 @@
 import { adapter } from '$lib/adapter';
 import type { NoteState } from '$lib/adapter';
 
+/** Compare two note arrays (order-independent) to avoid unnecessary Svelte re-renders.
+ *  HashSet iteration order is non-deterministic, so we must sort before comparing. */
+function sameNotes(a: number[], b: number[]): boolean {
+	if (a.length !== b.length) return false;
+	if (a.length === 0) return true;
+	// Sort copies to compare regardless of HashSet ordering
+	const sa = [...a].sort();
+	const sb = [...b].sort();
+	for (let i = 0; i < sa.length; i++) {
+		if (sa[i] !== sb[i]) return false;
+	}
+	return true;
+}
+
 // === Type definitions ===
 
 export type KeyName =
@@ -639,16 +653,22 @@ class EngineStore {
 
 	/**
 	 * Subscribe to real-time note update events from the adapter.
+	 * Only assigns when values actually change to avoid Svelte re-renders.
 	 */
 	startNoteUpdates() {
 		if (this.unsubNotes) return;
 
 		this.unsubNotes = adapter.onNoteUpdate((state: NoteState) => {
-			this.inputNotes = state.inputNotes;
-			this.harmonyNotes = state.harmonyNotes;
-			this.borrowedNotes = state.borrowedNotes;
-			this.chordName = state.chordName;
-			this.lastBorrowedFrom = state.lastBorrowedFrom;
+			if (!sameNotes(this.inputNotes, state.inputNotes))
+				this.inputNotes = state.inputNotes;
+			if (!sameNotes(this.harmonyNotes, state.harmonyNotes))
+				this.harmonyNotes = state.harmonyNotes;
+			if (!sameNotes(this.borrowedNotes, state.borrowedNotes))
+				this.borrowedNotes = state.borrowedNotes;
+			if (this.chordName !== state.chordName)
+				this.chordName = state.chordName;
+			if (this.lastBorrowedFrom !== state.lastBorrowedFrom)
+				this.lastBorrowedFrom = state.lastBorrowedFrom;
 		});
 	}
 

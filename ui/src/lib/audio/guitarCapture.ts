@@ -1,12 +1,20 @@
 /**
- * Guitar Audio Capture — Web Audio API → WASM DSP pipeline
+ * Guitar Audio Capture — JS audio capture + Rust WASM DSP
  *
- * Captures audio via getUserMedia, feeds Float32Array blocks to the
- * WASM-compiled GuitarInput (full Rust DSP pipeline), and emits MIDI events.
+ * Audio path:
+ *   JS: getUserMedia → ScriptProcessor → Float32Array
+ *   WASM: WasmGuitarInput.process_block(samples) → JSON events
+ *   JS: parse events → NoteOn/Off/PitchBend callbacks
+ *
+ * All onset detection, pitch detection, note state machine, and
+ * expression output runs in the Rust GuitarInput pipeline compiled
+ * to WASM — identical to the guitar_input_demo.
  */
 
 // Dynamic import to avoid loading uninitialized WASM module
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let WasmGuitarInputClass: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getWasmGuitarInput(): Promise<any> {
 	if (!WasmGuitarInputClass) {
 		const mod = await import('$lib/wasm-pkg');
@@ -19,111 +27,228 @@ export interface GuitarCaptureCallbacks {
 	onNoteOn(note: number, velocity: number): void;
 	onNoteOff(note: number): void;
 	onPitchBend?(channel: number, cents: number): void;
+	onMidiPitchBend?(channel: number, value: number): void;
 	onCC?(channel: number, controller: number, value: number): void;
 	onChannelPressure?(channel: number, pressure: number): void;
 	onVibratoStatus?(active: boolean, rateHz: number, depthCents: number): void;
-	onDetection?(info: { noteName: string; midi: number; rms: number }): void;
+	/** Fired every frame with signal info for UI graphs. */
+	onDetection?(info: {
+		frequency: number | null;
+		clarity: number;
+		noteName: string;
+		midi: number;
+		cents: number;
+		rms: number;
+	}): void;
 }
 
-const BUFFER_SIZE = 1024;
+const DEFAULT_BUFFER_SIZE = 1024; // Match demo's default
 
 export class GuitarAudioCapture {
-	private context: AudioContext | null = null;
-	private stream: MediaStream | null = null;
-	private processor: ScriptProcessorNode | null = null;
-	private dsp: WasmGuitarInput | null = null;
+	private audioContext: AudioContext | null = null;
+	private mediaStream: MediaStream | null = null;
+	private sourceNode: MediaStreamAudioSourceNode | null = null;
+	private processorNode: ScriptProcessorNode | null = null;
+	private callbacks: GuitarCaptureCallbacks | null = null;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	private dsp: any = null; // WasmGuitarInput instance
+
+	private _isRunning = false;
+	private _actualChannel = 0;
+	private _frameCount = 0;
+
+	// Overlap buffer — 75% overlap means each hop (window/4) triggers analysis
+	private overlapBuffer: Float32Array | null = null;
+	private overlapWritePos = 0;
+	private hopSize = 0;
+	private windowSize = 0;
+
+	get isRunning(): boolean { return this._isRunning; }
+	get actualChannel(): number { return this._actualChannel; }
+
+	/** Live noise gate threshold — updated from UI. */
+	noiseGateThreshold = 0.01;
+	noiseGateEnabled = true;
+	// Unused but kept for interface compat
+	clarityGateEnabled = false;
+	clarityThreshold = 0.7;
 
 	async start(
-		deviceId: string | null,
+		deviceId: string,
 		channelIndex: number,
-		callbacks: GuitarCaptureCallbacks
-	) {
+		callbacks: GuitarCaptureCallbacks,
+		bufferSize: number = DEFAULT_BUFFER_SIZE
+	): Promise<void> {
+		if (this._isRunning) await this.stop();
+
+		this.callbacks = callbacks;
+
+		// Initialize WASM DSP pipeline
+		const WasmGuitarInput = await getWasmGuitarInput();
+		// Will be created after we know the sample rate
+
 		const constraints: MediaStreamConstraints = {
 			audio: {
-				...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+				deviceId: deviceId ? { exact: deviceId } : undefined,
 				echoCancellation: false,
 				noiseSuppression: false,
 				autoGainControl: false,
-			},
+				channelCount: { ideal: 32 }
+			}
 		};
 
-		this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-		this.context = new AudioContext({ sampleRate: 48000 });
-		const source = this.context.createMediaStreamSource(this.stream);
-		const numChannels = source.channelCount;
+		this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+		this.audioContext = new AudioContext();
+		this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
 
-		const WasmGuitarInput = await getWasmGuitarInput();
-		this.dsp = new WasmGuitarInput(this.context.sampleRate, BUFFER_SIZE);
-		// Match guitar_input_demo defaults
+		const actualChannels = this.sourceNode.channelCount;
+		const sampleRate = this.audioContext.sampleRate;
+		console.log(`[guitar] Device: ${actualChannels}ch @ ${sampleRate}Hz, want ch${channelIndex}, buffer=${bufferSize}`);
+
+		// Create WASM DSP with actual sample rate
+		// Use the bufferSize as the analysis window; hop = window/4 for 75% overlap
+		this.windowSize = bufferSize;
+		this.hopSize = Math.floor(bufferSize / 4);
+		this.overlapBuffer = new Float32Array(bufferSize);
+		this.overlapWritePos = 0;
+
+		this.dsp = new WasmGuitarInput(sampleRate, bufferSize);
 		this.dsp.set_onset_threshold(0.015);
 		this.dsp.set_string_confidence(0.4);
+		console.log(`[guitar] Overlap: window=${this.windowSize} hop=${this.hopSize} (75% overlap)`);
 
-		this.processor = this.context.createScriptProcessor(
-			BUFFER_SIZE,
-			numChannels,
-			1
-		);
+		const inputChannels = Math.max(channelIndex + 1, actualChannels);
+		this.processorNode = this.audioContext.createScriptProcessor(bufferSize, inputChannels, 1);
+		this.processorNode.channelCountMode = 'explicit';
+		this.processorNode.channelInterpretation = 'discrete';
 
-		let frameCount = 0;
-		this.processor.onaudioprocess = (event) => {
-			const input = event.inputBuffer;
-			const ch = Math.min(channelIndex, input.numberOfChannels - 1);
-			const samples = input.getChannelData(ch);
+		const self = this;
+		let actualChannelLogged = false;
+		this._actualChannel = channelIndex;
 
-			// Debug: log RMS every 50 frames (~1s) to verify audio is flowing
-			frameCount++;
-			if (frameCount % 50 === 0) {
-				let sum = 0;
-				for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
-				const rms = Math.sqrt(sum / samples.length);
-				console.log(`[guitar] frame=${frameCount} rms=${rms.toFixed(4)} ch=${ch}/${input.numberOfChannels}`);
+		this.processorNode.onaudioprocess = (event: AudioProcessingEvent) => {
+			if (!self._isRunning || !self.callbacks || !self.dsp) return;
+
+			const inputBuffer = event.inputBuffer;
+			const availableChannels = inputBuffer.numberOfChannels;
+			const useChannel = channelIndex < availableChannels ? channelIndex : 0;
+			if (!actualChannelLogged) {
+				console.log(`[guitar] Processing: requested ch=${channelIndex}, available=${availableChannels}, using ch=${useChannel}`);
+				self._actualChannel = useChannel;
+				actualChannelLogged = true;
 			}
 
-			const eventsJson = this.dsp!.process_block(samples);
-			let events: any[];
+			const samples = inputBuffer.getChannelData(useChannel);
+
+			// Compute RMS for UI signal graph
+			let rmsSum = 0;
+			for (let i = 0; i < samples.length; i++) rmsSum += samples[i] * samples[i];
+			const rms = Math.sqrt(rmsSum / samples.length);
+
+			// No JS-side noise gate — the Rust pipeline handles gating
+			// internally (matching the guitar_input_demo which sends ALL
+			// audio to process_block without pre-filtering)
+
+			self._frameCount++;
+			if (self._frameCount % 25 === 0) {
+				console.log(`[guitar] frame=${self._frameCount} rms=${rms.toFixed(4)} ch=${useChannel}`);
+			}
+
+			// Send raw audio directly to WASM — the Rust ring buffer handles windowing.
+			// (The demo's feed_pipeline sends raw cpal chunks, not overlapped.)
+			const eventsJson = self.dsp.process_block(samples);
+			let allEvents: any[];
 			try {
-				events = JSON.parse(eventsJson);
-			} catch {
+				allEvents = JSON.parse(eventsJson);
+			} catch (err) {
+				console.error('[guitar] Failed to parse WASM events:', err);
 				return;
 			}
 
-			for (const e of events) {
+			if (allEvents.length > 0) {
+				console.log(`[guitar] WASM events (${allEvents.length}):`, JSON.stringify(allEvents));
+			}
+
+			// Fire detection callback for UI
+			if (self.callbacks.onDetection) {
+				const lastNoteOn = allEvents.findLast?.((e: any) => e.type === 'note_on');
+				if (lastNoteOn) {
+					self.callbacks.onDetection({
+						frequency: null,
+						clarity: 1.0,
+						noteName: midiToNoteName(lastNoteOn.note),
+						midi: lastNoteOn.note,
+						cents: 0,
+						rms
+					});
+				} else {
+					self.callbacks.onDetection({
+						frequency: null, clarity: 0, noteName: '-', midi: 0, cents: 0, rms
+					});
+				}
+			}
+
+			// Dispatch MIDI events to callbacks
+			for (const e of allEvents) {
 				switch (e.type) {
 					case 'note_on':
-						callbacks.onNoteOn(e.note, e.velocity);
+						console.log(`[midi] NOTE ON: ${midiToNoteName(e.note)} (${e.note}) vel=${e.velocity} ch=${e.channel}`);
+						self.callbacks.onNoteOn(e.note, e.velocity);
 						break;
 					case 'note_off':
-						callbacks.onNoteOff(e.note);
+						console.log(`[midi] NOTE OFF: ${midiToNoteName(e.note)} (${e.note}) ch=${e.channel}`);
+						self.callbacks.onNoteOff(e.note);
 						break;
 					case 'pitch_bend':
-						callbacks.onPitchBend?.(e.channel, e.cents);
+						self.callbacks.onPitchBend?.(e.channel, e.cents);
+						break;
+					case 'midi_pitch_bend':
+						self.callbacks.onMidiPitchBend?.(e.channel, e.value);
 						break;
 					case 'cc':
-						callbacks.onCC?.(e.channel, e.controller, e.value);
+						self.callbacks.onCC?.(e.channel, e.controller, e.value);
 						break;
 					case 'channel_pressure':
-						callbacks.onChannelPressure?.(e.channel, e.pressure);
+						self.callbacks.onChannelPressure?.(e.channel, e.pressure);
 						break;
 					case 'vibrato':
-						callbacks.onVibratoStatus?.(e.active, e.rate_hz, e.depth_cents);
+						self.callbacks.onVibratoStatus?.(e.active, e.rate_hz, e.depth_cents);
 						break;
 				}
 			}
 		};
 
-		source.connect(this.processor);
-		this.processor.connect(this.context.destination);
+		this.sourceNode.connect(this.processorNode);
+		this.processorNode.connect(this.audioContext.destination);
+		this._isRunning = true;
 	}
 
-	stop() {
-		this.processor?.disconnect();
-		this.stream?.getTracks().forEach((t) => t.stop());
-		this.context?.close();
-		this.dsp?.free();
-		this.processor = null;
-		this.stream = null;
-		this.context = null;
-		this.dsp = null;
+	async stop(): Promise<void> {
+		this._isRunning = false;
+
+		if (this.processorNode) {
+			this.processorNode.onaudioprocess = null;
+			this.processorNode.disconnect();
+			this.processorNode = null;
+		}
+		if (this.sourceNode) {
+			this.sourceNode.disconnect();
+			this.sourceNode = null;
+		}
+		if (this.audioContext) {
+			try { await this.audioContext.close(); } catch {}
+			this.audioContext = null;
+		}
+		if (this.mediaStream) {
+			this.mediaStream.getTracks().forEach((t) => t.stop());
+			this.mediaStream = null;
+		}
+		if (this.dsp) {
+			try { this.dsp.free(); } catch {}
+			this.dsp = null;
+		}
+
+		this.callbacks = null;
 	}
 
 	setConfig(opts: {
@@ -145,38 +270,56 @@ export class GuitarAudioCapture {
 		if (opts.stringConfidence !== undefined) this.dsp.set_string_confidence(opts.stringConfidence);
 	}
 
-	async measureNoiseFloor(deviceId: string | null, durationMs = 3000): Promise<number> {
-		const constraints: MediaStreamConstraints = {
+	async measureNoiseFloor(deviceId: string, durationMs = 3000, channelIndex = 0): Promise<number> {
+		const stream = await navigator.mediaDevices.getUserMedia({
 			audio: {
-				...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+				deviceId: deviceId ? { exact: deviceId } : undefined,
 				echoCancellation: false,
 				noiseSuppression: false,
 				autoGainControl: false,
-			},
-		};
-		const stream = await navigator.mediaDevices.getUserMedia(constraints);
-		const ctx = new AudioContext({ sampleRate: 48000 });
-		const src = ctx.createMediaStreamSource(stream);
-		const proc = ctx.createScriptProcessor(2048, 1, 1);
-		const rmsValues: number[] = [];
+				channelCount: { ideal: 32 }
+			}
+		});
 
-		return new Promise((resolve) => {
-			proc.onaudioprocess = (e) => {
-				const buf = e.inputBuffer.getChannelData(0);
+		const ctx = new AudioContext();
+		const source = ctx.createMediaStreamSource(stream);
+		const inputChannels = Math.max(channelIndex + 1, source.channelCount);
+		const processor = ctx.createScriptProcessor(DEFAULT_BUFFER_SIZE, inputChannels, 1);
+		processor.channelCountMode = 'explicit';
+		processor.channelInterpretation = 'discrete';
+
+		let totalRms = 0;
+		let frameCount = 0;
+
+		return new Promise<number>((resolve) => {
+			processor.onaudioprocess = (event: AudioProcessingEvent) => {
+				const ch = Math.min(channelIndex, event.inputBuffer.numberOfChannels - 1);
+				const data = event.inputBuffer.getChannelData(ch);
 				let sum = 0;
-				for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-				rmsValues.push(Math.sqrt(sum / buf.length));
+				for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+				totalRms += Math.sqrt(sum / data.length);
+				frameCount++;
 			};
-			src.connect(proc);
-			proc.connect(ctx.destination);
+
+			source.connect(processor);
+			processor.connect(ctx.destination);
 
 			setTimeout(() => {
-				proc.disconnect();
+				processor.onaudioprocess = null;
+				processor.disconnect();
+				source.disconnect();
+				ctx.close().catch(() => {});
 				stream.getTracks().forEach((t) => t.stop());
-				ctx.close();
-				const avg = rmsValues.reduce((a, b) => a + b, 0) / Math.max(rmsValues.length, 1);
-				resolve(avg);
+				resolve(frameCount > 0 ? totalRms / frameCount : 0);
 			}, durationMs);
 		});
 	}
+}
+
+// Minimal helper — just for the onDetection display
+function midiToNoteName(midi: number): string {
+	const names = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+	const noteIndex = ((midi % 12) + 12) % 12;
+	const octave = Math.floor(midi / 12) - 1;
+	return `${names[noteIndex]}${octave}`;
 }

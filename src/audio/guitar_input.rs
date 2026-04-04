@@ -85,7 +85,7 @@ impl Default for GuitarInputConfig {
             vibrato_passthrough: true,
             filter_enabled: false,
             min_clarity: 0.40,
-            cooldown_samples: 4800, // 100ms @ 48kHz
+            cooldown_samples: 2400, // 50ms @ 48kHz — allows ~20 notes/sec
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
@@ -289,8 +289,8 @@ pub struct GuitarInput {
     /// Sample count at which suppression expires.
     suppress_until: usize,
 
-    // Multi-frame pitch voting (#7)
-    pitch_history: [Option<u8>; 3],
+    // Multi-frame pitch voting (#7) — 2-frame for lower latency
+    pitch_history: [Option<u8>; 2],
     pitch_history_idx: usize,
 
     // Spectral flux onset (#5)
@@ -325,12 +325,24 @@ pub struct GuitarInput {
     last_sent_pressure: u8,
     /// Last CC74 brightness value sent (to avoid duplicate events).
     last_brightness: u8,
+
+    // Single-cycle early pitch detector (runs sample-by-sample for lower latency)
+    single_cycle: super::single_cycle::SingleCycleDetector,
+    early_pitch: Option<(f32, f32)>,
+
+    // Debug state (read by WASM wrapper for logging)
+    pub last_debug_onset: bool,
+    pub last_debug_rms_onset: bool,
+    pub last_debug_flux_onset: bool,
+    pub last_debug_flux: f32,
+    pub last_debug_pitch: Option<(f32, f32)>, // (freq, clarity)
 }
 
 impl GuitarInput {
     /// Create a new pipeline with the given configuration.
     pub fn new(config: GuitarInputConfig) -> Self {
         let buf_size = config.buffer_size;
+        let sr = config.sample_rate;
         Self {
             config,
             calibration: None,
@@ -344,7 +356,7 @@ impl GuitarInput {
             total_samples: 0,
             suppress_frequency: None,
             suppress_until: 0,
-            pitch_history: [None; 3],
+            pitch_history: [None; 2],
             pitch_history_idx: 0,
             prev_spectrum: None,
             // Slide state: keep last 8 frames of cents values
@@ -364,6 +376,15 @@ impl GuitarInput {
             note_onset_rms: 0.0,
             last_sent_pressure: 0,
             last_brightness: 0,
+            single_cycle: super::single_cycle::SingleCycleDetector::new(
+                sr, 75.0, 1400.0,
+            ),
+            early_pitch: None,
+            last_debug_onset: false,
+            last_debug_rms_onset: false,
+            last_debug_flux_onset: false,
+            last_debug_flux: 0.0,
+            last_debug_pitch: None,
         }
     }
 
@@ -391,6 +412,33 @@ impl GuitarInput {
     pub fn config(&self) -> &GuitarInputConfig {
         &self.config
     }
+
+    /// Mutable access to config for runtime parameter changes.
+    pub fn config_mut(&mut self) -> &mut GuitarInputConfig {
+        &mut self.config
+    }
+
+    /// Get note state as a number (0=Idle, 1=Attack, 2=Sustain, 3=Decay).
+    pub fn note_state_name(&self) -> u8 {
+        match self.note_state {
+            NoteState::Idle => 0,
+            NoteState::Attack => 1,
+            NoteState::Sustain => 2,
+            NoteState::Decay => 3,
+        }
+    }
+
+    /// Get previous frame's RMS.
+    pub fn prev_rms(&self) -> f32 { self.prev_rms }
+
+    /// Get cooldown remaining (samples).
+    pub fn cooldown_remaining(&self) -> usize { self.cooldown_remaining }
+
+    /// Get ring buffer position.
+    pub fn ring_pos(&self) -> usize { self.ring_pos }
+
+    /// Get total samples processed.
+    pub fn total_samples(&self) -> usize { self.total_samples }
 
     /// Get the currently active note, if any.
     pub fn current_note(&self) -> Option<&DetectedNote> {
@@ -440,6 +488,15 @@ impl GuitarInput {
             self.ring_pos = (self.ring_pos + 1) % self.config.buffer_size;
             self.total_samples += 1;
 
+            // Feed single-cycle detector sample-by-sample during Attack
+            if matches!(self.note_state, NoteState::Attack) {
+                if let Some(result) = self.single_cycle.feed_sample(gained_sample) {
+                    if result.confidence > 0.6 {
+                        self.early_pitch = Some((result.frequency, result.confidence));
+                    }
+                }
+            }
+
             // Only analyze when the ring buffer wraps (one full window)
             if self.ring_pos == 0 {
                 let analysis_events = self.analyze_window();
@@ -465,6 +522,11 @@ impl GuitarInput {
         let rms_onset = self.detect_onset(rms);
         let flux_onset = flux > self.config.flux_threshold && self.cooldown_remaining == 0;
         let onset = rms_onset || flux_onset;
+        // Slope-only onset: true only when RMS jumped sharply from previous frame.
+        // Used by Sustain to distinguish re-plucks from sustained ringing.
+        let slope_onset = self.cooldown_remaining == 0
+            && rms > self.config.onset_threshold
+            && rms > self.prev_rms * 1.2;
 
         // 4. Pitch detection (McLeod)
         let pitch_result = detect_pitch_mcleod(
@@ -472,6 +534,13 @@ impl GuitarInput {
             self.config.sample_rate,
             self.config.min_clarity,
         );
+
+        // Store debug info for WASM logging (read by wrapper)
+        self.last_debug_onset = onset;
+        self.last_debug_rms_onset = rms_onset;
+        self.last_debug_flux_onset = flux_onset;
+        self.last_debug_flux = flux;
+        self.last_debug_pitch = pitch_result.map(|(f, c)| (f, c));
 
         // Tick down cooldown
         if self.cooldown_remaining > 0 {
@@ -510,6 +579,8 @@ impl GuitarInput {
                             // Idle -> Attack: onset detected
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
+                            self.single_cycle.reset();
+                            self.early_pitch = None;
                             // Record pitch in voting history (#7)
                             self.push_pitch(midi_note);
                         }
@@ -522,7 +593,19 @@ impl GuitarInput {
                         let attack_timeout_samples =
                             (self.config.sample_rate as f32 * 0.05) as usize;
 
-                        if self.is_pitch_stable() {
+                        // Early confirm: single-cycle agrees with McLeod within 1 semitone
+                        let early_confirmed = if let Some((sc_freq, sc_conf)) = self.early_pitch {
+                            if sc_conf > 0.6 {
+                                let sc_midi = freq_to_midi(sc_freq).0;
+                                (sc_midi as i8 - midi_note as i8).unsigned_abs() <= 1
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        if early_confirmed || self.is_pitch_stable() {
                             // Attack -> Sustain: pitch confirmed
                             let stable_midi = self.pitch_history[0].unwrap_or(midi_note);
 
@@ -626,12 +709,14 @@ impl GuitarInput {
                             self.note_state = NoteState::Sustain;
                             self.state_samples = 0;
                             self.last_sustain_rms = rms;
+                            self.early_pitch = None;
                             self.clear_slide_history();
                             self.clear_vibrato_state();
                         } else if self.state_samples > attack_timeout_samples {
                             // Attack -> Idle: false trigger
                             self.note_state = NoteState::Idle;
                             self.state_samples = 0;
+                            self.early_pitch = None;
                             self.clear_pitch_history();
                             self.clear_slide_history();
                             self.clear_vibrato_state();
@@ -639,16 +724,20 @@ impl GuitarInput {
                     }
                     NoteState::Sustain => {
                         // Sustain handler priority order:
-                        //   1. onset -> Attack (re-pluck)
+                        //   1. slope_onset -> Attack (genuine re-pluck, sharp RMS jump)
                         //   2. RMS below threshold -> Decay
                         //   3. pitch jump > 2 semitones -> legato or missed onset
                         //   4. pitch crosses semitone boundary gradually -> SLIDE
                         //   5. pitch oscillates periodically -> VIBRATO (informational)
                         //   6. pitch drifts < 2 semitones -> BEND
                         //   7. pitch stable -> nothing
+                        //
+                        // Uses slope_onset (not general onset) to distinguish
+                        // a new pluck from sustained ringing. A re-pluck always
+                        // has a sharp RMS jump; sustained signal doesn't.
 
-                        if onset {
-                            // 1. Sustain -> Attack: re-pluck detected
+                        if slope_onset {
+                            // 1. Sustain -> Attack: genuine re-pluck (RMS jumped)
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
@@ -1157,8 +1246,8 @@ impl GuitarInput {
             return false;
         }
         // Onset = RMS jumped above threshold and is significantly higher
-        // than the previous frame.
-        rms > self.config.onset_threshold && rms > self.prev_rms * 2.0
+        // than the previous frame. 1.2x for faster re-pluck detection.
+        rms > self.config.onset_threshold && rms > self.prev_rms * 1.2
     }
 
     // ── Octave error correction (#6) ──────────────────────────────
@@ -1210,7 +1299,7 @@ impl GuitarInput {
     /// Push a detected MIDI note into the voting history.
     fn push_pitch(&mut self, midi_note: u8) {
         self.pitch_history[self.pitch_history_idx] = Some(midi_note);
-        self.pitch_history_idx = (self.pitch_history_idx + 1) % 3;
+        self.pitch_history_idx = (self.pitch_history_idx + 1) % 2;
     }
 
     /// Check if the last 3 detected pitches agree.
@@ -1221,7 +1310,7 @@ impl GuitarInput {
 
     /// Clear the pitch voting history.
     fn clear_pitch_history(&mut self) {
-        self.pitch_history = [None; 3];
+        self.pitch_history = [None; 2];
         self.pitch_history_idx = 0;
     }
 
@@ -1997,7 +2086,6 @@ pub fn simple_string_fret(midi_note: u8) -> (usize, usize) {
 /// Pitch detection using McLeod algorithm from the `pitch_detection` crate.
 ///
 /// Returns `(frequency_hz, clarity)` or `None` if no pitch detected.
-#[cfg(not(target_arch = "wasm32"))]
 pub fn detect_pitch_mcleod(
     audio: &[f32],
     sample_rate: usize,
@@ -2011,7 +2099,6 @@ pub fn detect_pitch_mcleod(
         return None;
     }
 
-    // McLeod needs the buffer size and padding
     let padding = n / 2;
     let mut detector = McLeodDetector::new(n, padding);
 
@@ -2022,16 +2109,6 @@ pub fn detect_pitch_mcleod(
     }
 
     Some((pitch.frequency, pitch.clarity))
-}
-
-/// Stub for WASM (pitch detection crate not available).
-#[cfg(target_arch = "wasm32")]
-pub fn detect_pitch_mcleod(
-    _audio: &[f32],
-    _sample_rate: usize,
-    _min_clarity: f64,
-) -> Option<(f32, f32)> {
-    None
 }
 
 /// Get string display names.
@@ -2352,7 +2429,7 @@ mod tests {
     // -- Multi-frame voting tests (#7) ──────────────────────────────
 
     #[test]
-    fn pitch_voting_requires_three_agreements() {
+    fn pitch_voting_requires_two_agreements() {
         let mut pipeline = GuitarInput::with_defaults();
 
         // Not stable with no history
@@ -2362,11 +2439,7 @@ mod tests {
         pipeline.push_pitch(60);
         assert!(!pipeline.is_pitch_stable());
 
-        // Push second (same)
-        pipeline.push_pitch(60);
-        assert!(!pipeline.is_pitch_stable());
-
-        // Push third (same) -> stable
+        // Push second (same) -> stable
         pipeline.push_pitch(60);
         assert!(pipeline.is_pitch_stable());
     }
@@ -2375,7 +2448,6 @@ mod tests {
     fn pitch_voting_not_stable_with_disagreement() {
         let mut pipeline = GuitarInput::with_defaults();
 
-        pipeline.push_pitch(60);
         pipeline.push_pitch(60);
         pipeline.push_pitch(61); // disagreement!
 
@@ -2386,7 +2458,6 @@ mod tests {
     fn pitch_voting_clears_properly() {
         let mut pipeline = GuitarInput::with_defaults();
 
-        pipeline.push_pitch(60);
         pipeline.push_pitch(60);
         pipeline.push_pitch(60);
         assert!(pipeline.is_pitch_stable());

@@ -58,14 +58,7 @@ class MidiStore {
 		this.error = null;
 
 		try {
-			// Best-effort refresh — don't let it block device listing.
-			// list_midi_inputs/outputs already create fresh midir clients,
-			// so even if refresh fails we still get the current device list.
-			try {
-				await adapter.refreshMidiDevices();
-			} catch {
-				// Ignore — listing below will still enumerate ports
-			}
+			await adapter.refreshMidiDevices();
 
 			const [newInputs, newOutputs] = await Promise.all([
 				adapter.listMidiInputs(),
@@ -78,14 +71,11 @@ class MidiStore {
 			// Try to restore saved selections by name
 			const saved = loadMidiSettings();
 			if (saved) {
-				// Restore input by name
+				// Restore input by name (check virtual inputs first)
 				if (saved.inputName) {
-					if (saved.inputName === '__virtual_guitar_audio__') {
-						this.selectedInput = Number.MAX_SAFE_INTEGER - 2;
-					} else if (saved.inputName === '__virtual_computer_keyboard__') {
-						this.selectedInput = Number.MAX_SAFE_INTEGER - 1;
-					} else if (saved.inputName === '__virtual_note_generator__') {
-						this.selectedInput = Number.MAX_SAFE_INTEGER;
+					const virtualId = MidiStore.VIRTUAL_IDS[saved.inputName];
+					if (virtualId !== undefined) {
+						this.selectedInput = virtualId;
 					} else {
 						const match = newInputs.find((d) => d.name === saved.inputName);
 						if (match) {
@@ -130,6 +120,20 @@ class MidiStore {
 		});
 	}
 
+	/** Map virtual sentinel values to persistent names. */
+	private static readonly VIRTUAL_NAMES: Record<number, string> = {
+		999_999: '__virtual_note_generator__',
+		999_998: '__virtual_computer_keyboard__',
+		999_997: '__virtual_guitar_audio__',
+	};
+
+	/** Reverse lookup: persistent name → sentinel value. */
+	private static readonly VIRTUAL_IDS: Record<string, number> = {
+		'__virtual_note_generator__': 999_999,
+		'__virtual_computer_keyboard__': 999_998,
+		'__virtual_guitar_audio__': 999_997,
+	};
+
 	/**
 	 * Select a MIDI input device by index.
 	 */
@@ -138,6 +142,14 @@ class MidiStore {
 			this.selectedInput = index;
 			this.persist();
 		}
+	}
+
+	/**
+	 * Select a virtual input (Guitar Audio, Computer Keyboard, Note Generator).
+	 */
+	selectVirtualInput(index: number) {
+		this.selectedInput = index;
+		this.persist();
 	}
 
 	/**
@@ -181,12 +193,12 @@ class MidiStore {
 
 	/**
 	 * Get the name of the selected input device, or null.
+	 * Returns virtual names for sentinel values (e.g. "__virtual_guitar_audio__").
 	 */
 	get selectedInputName(): string | null {
 		if (this.selectedInput === null) return null;
-		if (this.selectedInput === Number.MAX_SAFE_INTEGER) return '__virtual_note_generator__';
-		if (this.selectedInput === Number.MAX_SAFE_INTEGER - 1) return '__virtual_computer_keyboard__';
-		if (this.selectedInput === Number.MAX_SAFE_INTEGER - 2) return '__virtual_guitar_audio__';
+		const virtualName = MidiStore.VIRTUAL_NAMES[this.selectedInput];
+		if (virtualName) return virtualName;
 		return this.inputs.find((d) => d.index === this.selectedInput)?.name ?? null;
 	}
 

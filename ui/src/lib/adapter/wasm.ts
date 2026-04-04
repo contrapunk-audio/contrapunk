@@ -15,6 +15,7 @@ import type {
 	Preset
 } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
+import { guitar } from '$lib/stores/guitar.svelte';
 
 /**
  * Dynamically imported WASM module.
@@ -30,7 +31,7 @@ let engine: any = null;
  * Sentinel input index used to signal "guitar audio input" rather than MIDI.
  * Must match the value used in the UI when starting guitar routing.
  */
-const GUITAR_AUDIO_SENTINEL = Number.MAX_SAFE_INTEGER - 2;
+const GUITAR_AUDIO_SENTINEL = 999_997;
 
 export class WasmAdapter implements ContrapunkAdapter {
 	private initialized = false;
@@ -319,9 +320,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	/**
-	 * Start guitar audio capture with full DSP pipeline.
-	 * Routes detected notes through the harmony engine via injectNoteOn/Off,
-	 * and forwards PitchBend, CC74, and ChannelPressure to MIDI outputs.
+	 * Start guitar audio capture with pitch detection.
+	 * Routes detected notes through the harmony engine via injectNoteOn/Off.
 	 */
 	private async startGuitarCapture(outputIndices: number[]): Promise<void> {
 		// Resolve MIDI outputs for sending harmony notes
@@ -336,9 +336,22 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.guitarCapture = new GuitarAudioCapture();
 		const self = this;
 
+		guitar.detecting = true;
+
+		// Set initial gate values from store (noise gate only)
+		this.guitarCapture.noiseGateThreshold = guitar.noiseGateThreshold;
+		this.guitarCapture.noiseGateEnabled = guitar.noiseGateEnabled;
+		this.guitarCapture.clarityGateEnabled = false;
+
+		// Read device/channel directly from guitar store (not stale adapter properties)
+		// because the user may have changed settings after the last syncDevice() call
+		const deviceId = guitar.selectedDeviceId || this._guitarDeviceId;
+		const channelIndex = Math.max(0, guitar.selectedChannel - 1); // 1-indexed → 0-indexed
+		console.log(`[wasm] startGuitarCapture: device='${deviceId}' channel=${channelIndex} (store.selectedChannel=${guitar.selectedChannel})`);
+
 		await this.guitarCapture.start(
-			this._guitarDeviceId,
-			this._guitarChannel,
+			deviceId,
+			channelIndex,
 			{
 				onNoteOn(note: number, velocity: number) {
 					self.injectNoteOn(note, velocity).catch(() => {});
@@ -346,29 +359,31 @@ export class WasmAdapter implements ContrapunkAdapter {
 				onNoteOff(note: number) {
 					self.injectNoteOff(note).catch(() => {});
 				},
-				onMidiPitchBend(channel: number, value: number) {
-					// Send 14-bit pitch bend to MIDI outputs
-					const lsb = value & 0x7f;
-					const msb = (value >> 7) & 0x7f;
-					for (const output of self.activeOutputs) {
-						output.send([0xe0 | (channel & 0x0f), lsb, msb]);
+				onDetection(info) {
+					// Sync noise gate + actual channel from capture every frame
+					if (self.guitarCapture) {
+						self.guitarCapture.noiseGateThreshold = guitar.noiseGateThreshold;
+						self.guitarCapture.noiseGateEnabled = guitar.noiseGateEnabled;
+						guitar.activeChannel = self.guitarCapture.actualChannel + 1;
 					}
-				},
-				onCC(channel: number, controller: number, ccValue: number) {
-					// Forward CC messages (e.g., CC74 brightness)
-					for (const output of self.activeOutputs) {
-						output.send([0xb0 | (channel & 0x0f), controller & 0x7f, ccValue & 0x7f]);
-					}
-				},
-				onChannelPressure(channel: number, pressure: number) {
-					// Forward channel pressure (aftertouch)
-					for (const output of self.activeOutputs) {
-						output.send([0xd0 | (channel & 0x0f), pressure & 0x7f]);
+
+					// Push signal data for graphs
+					guitar.pushSignalFrame(info.rms, info.clarity);
+
+					if (info.frequency !== null) {
+						guitar.currentNote = info.noteName;
+						guitar.confidence = Math.round(info.clarity * 100);
+						guitar.velocity = Math.round(info.rms * 800);
+					} else {
+						guitar.currentNote = '';
+						guitar.confidence = 0;
 					}
 				}
 			}
 		);
 
+		// Update UI with the actual channel being used (may differ if device has fewer channels)
+		guitar.activeChannel = this.guitarCapture.actualChannel + 1; // 1-indexed for display
 		this._isRunning = true;
 	}
 
@@ -377,6 +392,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 		if (this.guitarCapture) {
 			await this.guitarCapture.stop();
 			this.guitarCapture = null;
+			guitar.detecting = false;
+			guitar.currentNote = '';
+			guitar.confidence = 0;
+			guitar.velocity = 0;
 		}
 
 		// Send All-Notes-Off (CC 123) to every active output to prevent stuck notes
@@ -549,8 +568,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 	async setGuitarDevice(deviceName: string, channel: number): Promise<void> {
 		// Store for use when startRouting is called with guitar sentinel
+		// Channel arrives 0-indexed from syncDevice()
 		this._guitarDeviceId = deviceName;
-		this._guitarChannel = Math.max(0, channel - 1); // Convert 1-indexed to 0-indexed
+		this._guitarChannel = Math.max(0, channel);
 	}
 
 	async setGuitarConfig(_config: GuitarConfig): Promise<void> {

@@ -13,9 +13,9 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 
-	// Virtual input sentinels (must match MidiDevices.svelte)
-	const VIRTUAL_COMPUTER_KEYBOARD = Number.MAX_SAFE_INTEGER - 1;
-	const VIRTUAL_GUITAR_AUDIO = Number.MAX_SAFE_INTEGER - 2;
+	// Virtual input sentinels (must match MidiDevices.svelte and engine.rs)
+	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
+	const VIRTUAL_GUITAR_AUDIO = 999_997;
 
 	// Derived: is Guitar Audio selected as input?
 	let isGuitarAudioSelected = $derived(midi.selectedInput === VIRTUAL_GUITAR_AUDIO);
@@ -176,10 +176,11 @@
 		<div class="content-area">
 			<!-- Left column: MIDI devices + Guitar Input + Presets -->
 			<div class="column column-left">
-				<MidiDevices />
-				{#if isGuitarAudioSelected}
-					<GuitarInputPanel />
-				{/if}
+				<MidiDevices>
+					{#if isGuitarAudioSelected}
+						<GuitarInputPanel />
+					{/if}
+				</MidiDevices>
 				<PresetManager />
 			</div>
 

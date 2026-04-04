@@ -7,7 +7,6 @@
  */
 
 import { adapter } from '$lib/adapter';
-import { platformName } from '$lib/adapter';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { detectPitch, frequencyToMidi, midiToNoteName } from '$lib/audio/pitchDetector';
 
@@ -48,6 +47,10 @@ class GuitarInputStore {
 		if (saved.selectedDeviceId) this.selectedDeviceId = saved.selectedDeviceId;
 		if (saved.selectedChannel) this.selectedChannel = saved.selectedChannel;
 		if (saved.calibrated) this.calibrated = saved.calibrated;
+		if (saved.noiseGateEnabled !== undefined) this.noiseGateEnabled = saved.noiseGateEnabled;
+		if (saved.noiseGateThreshold !== undefined) this.noiseGateThreshold = saved.noiseGateThreshold;
+		if (saved.freqGateEnabled !== undefined) this.freqGateEnabled = saved.freqGateEnabled;
+		if (saved.freqGateRange !== undefined) this.freqGateRange = saved.freqGateRange;
 	}
 
 	private persist() {
@@ -63,6 +66,10 @@ class GuitarInputStore {
 				selectedDeviceId: this.selectedDeviceId,
 				selectedChannel: this.selectedChannel,
 				calibrated: this.calibrated,
+				noiseGateEnabled: this.noiseGateEnabled,
+				noiseGateThreshold: this.noiseGateThreshold,
+				freqGateEnabled: this.freqGateEnabled,
+				freqGateRange: this.freqGateRange,
 			}));
 		} catch {}
 	}
@@ -72,11 +79,46 @@ class GuitarInputStore {
 
 	// -- Live detection state (updated from backend when wired) --
 	detecting = $state(false);
+	/** The actual channel being used by the audio capture (1-indexed, for display). */
+	activeChannel = $state(0);
 	currentNote = $state('');
 	currentString = $state('');
 	currentFret = $state(0);
 	confidence = $state(0);
 	velocity = $state(0);
+	/** Current signal RMS level (0.0-1.0, updated every frame). Non-reactive — only read by canvas. */
+	signalLevel = 0;
+	/** Current pitch clarity (0.0-1.0, updated every frame). Non-reactive — only read by canvas. */
+	signalClarity = 0;
+
+	// -- Gate controls --
+	/** Noise gate: reject signals below this RMS threshold. */
+	noiseGateEnabled = $state(true);
+	noiseGateThreshold = $state(0.01);
+	/** Frequency gate: reject detections outside expected guitar range (cents from expected). */
+	freqGateEnabled = $state(true);
+	freqGateRange = $state(1200); // cents — 1 octave
+
+	// -- Signal history for graphs (rolling buffers) --
+	/** Last N amplitude values for the graph. */
+	amplitudeHistory: number[] = [];
+	/** Last N clarity values for the graph. */
+	clarityHistory: number[] = [];
+	private static readonly HISTORY_SIZE = 128;
+
+	/** Push a new frame of signal data (called from adapter). */
+	pushSignalFrame(rms: number, clarity: number) {
+		this.signalLevel = Math.min(1, rms * 5);
+		this.signalClarity = clarity;
+		this.amplitudeHistory.push(Math.min(1, rms * 5));
+		this.clarityHistory.push(clarity);
+		if (this.amplitudeHistory.length > GuitarInputStore.HISTORY_SIZE) {
+			this.amplitudeHistory.shift();
+		}
+		if (this.clarityHistory.length > GuitarInputStore.HISTORY_SIZE) {
+			this.clarityHistory.shift();
+		}
+	}
 
 	// -- Calibration state --
 	calibrated = $state(false);
@@ -145,49 +187,46 @@ class GuitarInputStore {
 	async startCalibration() {
 		if (this.calibrating) return;
 
-		if (platformName === 'browser') {
-			this.calibrating = true;
-			this.calibrated = false;
-			this.tunerActive = true;
-			this.tunerPhase = 'noise-floor';
+		// Calibration uses getUserMedia + JS pitch detection in both
+		// browser and Tauri webview — the webview supports Web Audio APIs.
+		this.calibrating = true;
+		this.calibrated = false;
+		this.tunerActive = true;
+		this.tunerPhase = 'noise-floor';
+		this.tunerStringIndex = 0;
+		this.tunerNoiseProgress = 0;
+		this.tunerStatus = 'waiting';
+		this.tunerHoldProgress = 0;
+		this.calibrationStatus = 'Measuring noise floor...';
+
+		try {
+			// Phase 1: Noise floor
+			const capture = new GuitarAudioCapture();
+			const noisePromise = capture.measureNoiseFloor(this.selectedDeviceId, 3000, this.selectedChannel - 1);
+
+			// Animate progress bar for noise floor
+			const noiseStart = Date.now();
+			const noiseTimer = setInterval(() => {
+				const elapsed = Date.now() - noiseStart;
+				this.tunerNoiseProgress = Math.min(1, elapsed / 3000);
+			}, 50);
+
+			const avgRms = await noisePromise;
+			clearInterval(noiseTimer);
+			this.tunerNoiseProgress = 1;
+			this.noiseFloorRms = avgRms;
+			this.calibrationStatus = `Noise floor: ${(avgRms * 1000).toFixed(1)} mRMS`;
+
+			// Phase 2: Per-string tuning
+			this.tunerPhase = 'tuning';
 			this.tunerStringIndex = 0;
-			this.tunerNoiseProgress = 0;
-			this.tunerStatus = 'waiting';
-			this.tunerHoldProgress = 0;
-			this.calibrationStatus = 'Measuring noise floor...';
-
-			try {
-				// Phase 1: Noise floor
-				const capture = new GuitarAudioCapture();
-				const noisePromise = capture.measureNoiseFloor(this.selectedDeviceId, 3000);
-
-				// Animate progress bar for noise floor
-				const noiseStart = Date.now();
-				const noiseTimer = setInterval(() => {
-					const elapsed = Date.now() - noiseStart;
-					this.tunerNoiseProgress = Math.min(1, elapsed / 3000);
-				}, 50);
-
-				const avgRms = await noisePromise;
-				clearInterval(noiseTimer);
-				this.tunerNoiseProgress = 1;
-				this.noiseFloorRms = avgRms;
-				this.calibrationStatus = `Noise floor: ${(avgRms * 1000).toFixed(1)} mRMS`;
-
-				// Phase 2: Per-string tuning
-				this.tunerPhase = 'tuning';
-				this.tunerStringIndex = 0;
-				await this.startTunerCapture();
-			} catch (err) {
-				this.calibrationStatus =
-					err instanceof Error ? `Calibration failed: ${err.message}` : 'Calibration failed';
-				this.calibrated = false;
-				this.tunerActive = false;
-				this.calibrating = false;
-			}
-		} else {
-			// Tauri: delegate to backend
-			console.log('[contrapunk] Guitar calibration requested (Tauri backend)');
+			await this.startTunerCapture();
+		} catch (err) {
+			this.calibrationStatus =
+				err instanceof Error ? `Calibration failed: ${err.message}` : 'Calibration failed';
+			this.calibrated = false;
+			this.tunerActive = false;
+			this.calibrating = false;
 		}
 	}
 
@@ -202,6 +241,7 @@ class GuitarInputStore {
 				echoCancellation: false,
 				noiseSuppression: false,
 				autoGainControl: false,
+				channelCount: { ideal: 32 },
 			},
 		};
 
@@ -210,7 +250,10 @@ class GuitarInputStore {
 		const ctx = new AudioContext({ sampleRate: 48000 });
 		this.tunerContext = ctx;
 		const source = ctx.createMediaStreamSource(stream);
-		const proc = ctx.createScriptProcessor(2048, source.channelCount, 1);
+		const inputChannels = Math.max(channelIndex + 1, source.channelCount);
+		const proc = ctx.createScriptProcessor(2048, inputChannels, 1);
+		proc.channelCountMode = 'explicit';
+		proc.channelInterpretation = 'discrete';
 		this.tunerProcessor = proc;
 
 		proc.onaudioprocess = (event) => {
@@ -253,6 +296,14 @@ class GuitarInputStore {
 			this.tunerCents = Math.round(centsFromTarget);
 
 			const absCents = Math.abs(this.tunerCents);
+
+			// More than 2 octaves away = noise/garbage, ignore completely
+			if (absCents > 2400) {
+				this.tunerStatus = 'waiting';
+				this.tunerHoldProgress = 0;
+				this.inTuneSince = null;
+				return;
+			}
 
 			if (absCents <= GuitarInputStore.IN_TUNE_CENTS) {
 				this.tunerStatus = 'holding';
@@ -355,7 +406,7 @@ class GuitarInputStore {
 
 	/** Set latency with bounds checking and sync. */
 	setLatency(value: number) {
-		this.latencyMs = Math.max(10, Math.min(50, value));
+		this.latencyMs = Math.max(1, Math.min(50, value));
 		this.syncConfig(); this.persist();
 	}
 
@@ -491,10 +542,12 @@ class GuitarInputStore {
 	/** Sync the selected device and channel to the backend. */
 	async syncDevice() {
 		try {
-			await adapter.setGuitarDevice(
-				this.selectedDeviceId,
-				this.selectedChannel,
-			);
+			// For Tauri: send the device label (cpal name) instead of browser deviceId hash,
+			// and convert 1-indexed UI channel to 0-indexed for cpal.
+			const device = this.audioDevices.find(d => d.deviceId === this.selectedDeviceId);
+			const deviceName = device?.label || this.selectedDeviceId;
+			const channel0 = Math.max(0, this.selectedChannel - 1);
+			await adapter.setGuitarDevice(deviceName, channel0);
 		} catch {
 			// Silently ignore — backend may not be ready yet
 		}
