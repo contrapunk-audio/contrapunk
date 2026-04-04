@@ -60,7 +60,7 @@ Browser version: [contrapunk.fly.dev](https://contrapunk.fly.dev/)
 
 ### Native (MIDI controller)
 ```bash
-git clone https://github.com/waveywaves/contrapunk.git
+git clone https://github.com/contrapunk-audio/contrapunk.git
 cd contrapunk
 cargo build --release
 ./target/release/contrapunk
