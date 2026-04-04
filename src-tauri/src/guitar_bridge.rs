@@ -3,10 +3,22 @@
 //! Spawns an audio capture thread that feeds audio blocks through
 //! GuitarInput::process_block(), converts MidiEvent to MIDI bytes,
 //! and sends them via an mpsc::Sender<Vec<u8>>.
+//!
+//! Also sends signal info (RMS, pitch, state) via a separate channel
+//! for UI feedback in the Tauri frontend.
 
 use contrapunk::audio::guitar_input::{GuitarCalibration, GuitarInput, GuitarInputConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{mpsc, Arc, Mutex};
+
+/// Signal info emitted every audio block for UI feedback.
+#[derive(Clone, Debug)]
+pub struct GuitarSignalInfo {
+    pub rms: f32,
+    pub frequency: Option<f32>,
+    pub clarity: f32,
+    pub note_state: u8, // 0=Idle, 1=Attack, 2=Sustain, 3=Decay
+}
 
 pub struct GuitarBridge {
     stream: Option<cpal::Stream>,
@@ -25,6 +37,7 @@ impl GuitarBridge {
         channel: usize,
         config: GuitarInputConfig,
         tx: mpsc::Sender<Vec<u8>>,
+        signal_tx: Option<mpsc::Sender<GuitarSignalInfo>>,
     ) -> Result<Self, String> {
         let host = cpal::default_host();
 
@@ -60,7 +73,13 @@ impl GuitarBridge {
         let pipeline = Arc::new(Mutex::new(GuitarInput::new(actual_config)));
 
         let pipeline_c = Arc::clone(&pipeline);
-        let stream_config: cpal::StreamConfig = supported_config.into();
+        // Request small buffer (128 samples = ~2.7ms at 48kHz) for lower latency.
+        // Falls back to driver default if the device doesn't support it.
+        let stream_config = cpal::StreamConfig {
+            channels: supported_config.channels(),
+            sample_rate: supported_config.sample_rate(),
+            buffer_size: cpal::BufferSize::Fixed(128),
+        };
 
         let stream = device
             .build_input_stream(
@@ -75,7 +94,20 @@ impl GuitarBridge {
                     // Process through DSP pipeline
                     let events = {
                         let mut pipe = pipeline_c.lock().unwrap();
-                        pipe.process_block(&mono)
+                        let evts = pipe.process_block(&mono);
+
+                        // Send signal info for UI feedback
+                        if let Some(ref sig_tx) = signal_tx {
+                            let info = GuitarSignalInfo {
+                                rms: pipe.prev_rms(),
+                                frequency: pipe.last_debug_pitch.map(|(f, _)| f),
+                                clarity: pipe.last_debug_pitch.map(|(_, c)| c).unwrap_or(0.0),
+                                note_state: pipe.note_state_name(),
+                            };
+                            let _ = sig_tx.send(info);
+                        }
+
+                        evts
                     };
 
                     // Convert events to MIDI bytes and send

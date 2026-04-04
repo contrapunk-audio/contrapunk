@@ -568,8 +568,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 	async setGuitarDevice(deviceName: string, channel: number): Promise<void> {
 		// Store for use when startRouting is called with guitar sentinel
+		// Channel arrives 0-indexed from syncDevice()
 		this._guitarDeviceId = deviceName;
-		this._guitarChannel = Math.max(0, channel - 1); // Convert 1-indexed to 0-indexed
+		this._guitarChannel = Math.max(0, channel);
 	}
 
 	async setGuitarConfig(_config: GuitarConfig): Promise<void> {

@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key};
@@ -50,6 +50,9 @@ pub struct AppState {
 
     /// Guitar audio channel index (0-based, e.g. 0 = left, 1 = right)
     pub guitar_channel: Mutex<usize>,
+
+    /// Stop signal for the router thread — set to true to stop the current routing
+    pub stop_signal: Mutex<Option<Arc<AtomicBool>>>,
 }
 
 impl Default for AppState {
@@ -66,6 +69,7 @@ impl Default for AppState {
             guitar_config: Mutex::new(None),
             guitar_device: Mutex::new(String::new()),
             guitar_channel: Mutex::new(0),
+            stop_signal: Mutex::new(None),
         }
     }
 }

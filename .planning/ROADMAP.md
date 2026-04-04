@@ -30,11 +30,12 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6.9: Repo Cleanup & Documentation** - Remove legacy Python scripts, clean up README, create comprehensive docs (INSERTED)
 - [ ] **Phase 6.10: Docs** - Additional documentation work (INSERTED)
 - [ ] **Phase 6.10.1: UI Modernization** - Move from egui to a more sophisticated GUI framework (INSERTED)
-- [ ] **Phase 7: Performance Mode** - Beat-aware performance where Contrapunk accumulates played notes over bars and generates context-aware responses
+- [ ] **Phase 6.11: Logo** - Programmatic SVG logo for Contrapunk — generated in code, used in app, favicon, and docs (INSERTED)
+- [ ] **Phase 7: Performance Mode** - Auto-detect chords/key/BPM from backing track + beat-aware accompaniment generation from accumulated playing
 - [ ] **Phase 8: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 9: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
-- [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection for monophonic and polyphonic note tracking
-- [ ] **Phase 11: Trackpad Beat Input** - Use computer trackpad as a MIDI beat pad for triggering notes and drums
+- [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection (95% complete on guitar-input-clean branch)
+- ~~**Phase 11: Trackpad Beat Input**~~ - DROPPED
 
 ## Phase Details
 
@@ -236,6 +237,7 @@ Plans:
 **Goal**: Add all 7 church modes plus harmonic/melodic minor scales, modal interchange for smarter chromatic note handling with visual feedback, and comprehensive chord detection (extended chords, slash chords, add chords)
 **Depends on**: Phase 6.3 (Style Update), Phase 2 (Harmony Engine)
 **Requirements**: MOD-01, MOD-02, MOD-03, CHD-01, CHD-02
+**Current status**: Code 100% implemented (audit 2026-04-04). UX/usage review needed — user wants to reconsider how modal harmony is surfaced and used in practice.
 **Success Criteria** (what must be TRUE):
   1. User can select scale mode (Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, Locrian) in addition to key
   2. Harmonic minor and melodic minor scale variants are available
@@ -248,15 +250,16 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 06.4-01-PLAN.md — ScaleMode enum, Scale::new() parameterization, modal interchange, engine wiring
-- [ ] 06.4-02-PLAN.md — Expanded chord detection (40+ patterns, slash chords, roman numerals)
-- [ ] 06.4-03-PLAN.md — GUI integration (scale dropdown, interchange controls, piano tinting, chord display)
-- [ ] 06.4-04-PLAN.md — Human verification checkpoint
+- [x] 06.4-01-PLAN.md — ScaleMode enum, Scale::new() parameterization, modal interchange, engine wiring
+- [x] 06.4-02-PLAN.md — Expanded chord detection (40+ patterns, slash chords, roman numerals)
+- [x] 06.4-03-PLAN.md — GUI integration (scale dropdown, interchange controls, piano tinting, chord display)
+- [ ] 06.4-04-PLAN.md — Human verification checkpoint (UX review pending)
 
-### Phase 6.5: Note Generator (INSERTED)
-**Goal**: Provide a virtual MIDI input source that generates notes using the shared beat clock, selectable in the IN dropdown alongside physical MIDI devices. Users can pick individual notes, chords, or algorithmic patterns that feed into the harmony engine.
+### Phase 6.5: Note Generator + WASM Feature Parity (INSERTED)
+**Goal**: Wire up the existing note generator engine to UI/routing, AND fix WASM feature parity so humanize and generator work in the browser — not just Tauri desktop.
 **Depends on**: Phase 6 (Humanization — beat clock), Phase 6.3 (Style Update — UI tabs/layout)
-**Requirements**: GEN-01, GEN-02, GEN-03, GEN-04, GEN-05
+**Requirements**: GEN-01, GEN-02, GEN-03, GEN-04, GEN-05, WASM-PARITY-01
+**Current status**: Rust engine complete + tested. Not wired to UI/routing. WASM adapter stubs out humanize.
 **Success Criteria** (what must be TRUE):
   1. "Note Generator" appears as a selectable option in the IN device dropdown
   2. User can select specific notes (click piano keys or note names) to feed into the harmony engine
@@ -266,6 +269,8 @@ Plans:
   6. Generator can run alongside a physical MIDI input (both sources merge into the engine)
   7. Generator uses the existing BeatClock (shared BPM/time-signature with metronome)
   8. Works in both native and WASM builds
+  9. Humanize panel works in WASM/browser (not just Tauri) — expose humanize config via wasm-bindgen
+  10. Generator works in WASM/browser — expose generator state/events via wasm-bindgen
 **Plans**: 4 plans
 
 Plans:
@@ -353,24 +358,52 @@ Plans:
 - [x] 06.10.1-08-PLAN.md — WASM build pipeline + Fly.io deployment + CI update
 - [x] 06.10.1-09-PLAN.md — Remove egui/CLI/Trunk + human verification
 
+### Phase 6.11: Logo (INSERTED)
+**Goal**: Create a programmatic SVG logo for Contrapunk — designed in code, usable as app icon, favicon, splash, and docs header
+**Depends on**: Phase 6.10.1 (UI Modernization — need to know the design language)
+**Requirements**: LOGO-01
+**Success Criteria** (what must be TRUE):
+  1. Logo is a pure SVG file generated programmatically (not a bitmap)
+  2. Logo reflects Contrapunk's identity: music, counterpoint, harmony, guitar-to-MIDI
+  3. Works at all sizes: 16x16 favicon, 64x64 app icon, 512x512 splash, wide header
+  4. Matches the existing HLD (Hyper Light Drifter) inspired dark theme — neon accents on dark background
+  5. SVG is clean, hand-editable, no external dependencies (no fonts that need loading)
+  6. Integrated into: Tauri app window icon, browser favicon, README header, Fly.io deployment
+  7. Variant: monochrome version for light backgrounds
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 6.11 to break down)
+
 ### Phase 7: Performance Mode
-**Goal**: Beat-aware performance mode where Contrapunk accumulates played notes over bars (using BeatClock) and generates musically-contextual responses based on phrase-level state, rather than harmonizing note-by-note
-**Depends on**: Phase 6 (Humanization — BeatClock), Phase 2 (Harmony Engine)
-**Requirements**: PERF-01, PERF-02, PERF-03
+**Goal**: Two-part performance mode: (A) auto-detect chords, key/scale, and BPM from a backing track audio stream to configure the harmony engine in real-time, and (B) beat-aware accompaniment generation from accumulated played notes over bars
+**Depends on**: Phase 6 (Humanization — BeatClock), Phase 2 (Harmony Engine), Phase 10 (Guitar Input — audio DSP infrastructure)
+**Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-05
 **Research-heavy**: This phase requires deep research into:
+  - Chromagram extraction from FFT for chord/key detection
+  - Krumhansl-Schmuckler key-finding algorithm
+  - Onset-based BPM detection (inter-onset interval histograms)
+  - Chord template matching (major, minor, 7th, extended chords)
+  - Second audio input management (separate from guitar channel)
   - Temporal MIDI buffering tied to BeatClock (accumulating notes across bars)
   - Phrase-level state management (what the user played in last N bars)
   - Generative algorithms that respond to musical context vs individual notes
   - How performance state interacts with existing harmony modes, voice leading, humanization
   - Real-time constraints on bar-aware processing
 **Success Criteria** (what must be TRUE):
-  1. Metronome runs in background and Contrapunk tracks bar boundaries
-  2. System accumulates user-played notes across configurable bar windows (1-4 bars)
-  3. Generated notes respond to the musical context of recent performance (not just current note)
-  4. Performance mode produces musically distinct output from standard harmony modes
-  5. Works with existing voice leading, humanization, and octave variation settings
-  6. GUI displays performance state (current bar, accumulated context)
-  7. Works in both native and WASM builds
+  1. User can select a second audio input (backing track source) independent of guitar input
+  2. System detects chords from backing track audio (~500ms updates) with confidence scores
+  3. System detects key/scale from backing track (~4-8s window) using Krumhansl-Schmuckler
+  4. System detects BPM from backing track (~4-8s window) using onset-based tempo estimation
+  5. Detected chord auto-sets harmony engine root note; detected key auto-sets scale/mode; detected BPM auto-sets tempo
+  6. Lock buttons allow user to freeze any auto-detected parameter
+  7. Metronome runs in background and Contrapunk tracks bar boundaries
+  8. System accumulates user-played notes across configurable bar windows (1-4 bars)
+  9. Generated notes respond to the musical context of recent performance (not just current note)
+  10. Performance mode produces musically distinct output from standard harmony modes
+  11. Works with existing voice leading, humanization, and octave variation settings
+  12. GUI displays performance state (detected chord, key, BPM, confidence, current bar, accumulated context)
+  13. Works in both native and WASM builds
 **Plans**: 0 plans
 
 Plans:
@@ -415,9 +448,10 @@ Plans:
 - [ ] TBD (run /gsd:plan-phase 9 to break down)
 
 ### Phase 10: Guitar Input
-**Goal**: Accept guitar audio input with pitch detection optimized for guitar frequency range and playing styles
+**Goal**: Accept guitar audio input with pitch detection optimized for guitar frequency range and playing styles, plus ML-based string+fret identification and browser calibration
 **Depends on**: Phase 8 (Mic Input — shares audio capture infrastructure)
-**Requirements**: GTR-01, GTR-02, GTR-03
+**Requirements**: GTR-01, GTR-02, GTR-03, GTR-04, GTR-05, GTR-06
+**Current status**: ~95% complete on `guitar-input-clean` branch (monophonic DSP pipeline, WASM bindings, browser capture)
 **Success Criteria** (what must be TRUE):
   1. User can select audio input for guitar (direct-in or mic'd amp)
   2. Monophonic pitch detection tracks single-note lines with low latency (<30ms)
@@ -425,6 +459,11 @@ Plans:
   4. Detected notes feed into harmony engine like any other MIDI input
   5. GUI displays detected guitar notes with string/fret visualization
   6. Works with electric guitar (direct input) and acoustic (via mic)
+  7. ML string+fret classifier (139 classes: 6 strings x 23 frets + noise) integrated into pipeline as refinement layer
+  8. Hybrid DSP+ML architecture: DSP primary (inharmonicity B-coefficient), ML for ambiguous cases
+  9. MiGiC-style AI calibration: play notes → auto-set latency, gain, and confidence threshold
+  10. Browser calibration path: set_calibration exposed via WASM bindings
+  11. NoteOff timing fix: sustain_threshold tuned for real guitar RMS levels (current 0.0045 too low)
 **Plans**: TBD
 
 Plans:
@@ -486,7 +525,8 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 6.7 -> 6.8 -> 6.9 -> 6.10 -> 6.10.1 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12 -> 13
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 6.7 -> 6.8 -> 6.9 -> 6.10 -> 6.10.1 -> 7 -> 8 -> 9 -> 10
+(Phase 11 dropped. Phases 12, 13 closed — already implemented.)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -500,22 +540,29 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 6.1 Humanization UI Fix (INSERTED) | 2/2 | Complete | 2026-01-30 |
 | 6.2 Voice Leading (INSERTED) | 4/4 | Complete | 2026-01-30 |
 | 6.3 Style Update (INSERTED) | 7/7 | Complete | 2026-01-31 |
-| 6.4 Modal Harmony & Chord Detection (INSERTED) | 0/4 | Planning complete | - |
-| 6.5 Note Generator (INSERTED) | 3/4 | Deferred (non-functional) | - |
+| 6.4 Modal Harmony & Chord Detection (INSERTED) | 4/4 | Code complete — UX/usage review needed | - |
+| 6.5 Note Generator + WASM Parity (INSERTED) | 3/4 | Deferred (engine done, not wired, WASM humanize/gen stubs) | - |
 | 6.6 Default MIDI Selection (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.7 Extended Scale Modes & Barry Harris (INSERTED) | 3/3 | Complete | 2026-02-02 |
 | 6.8 CI Fix (INSERTED) | 1/1 | Complete | 2026-02-02 |
 | 6.9 Repo Cleanup & Documentation (INSERTED) | 3/3 | Complete | 2026-02-02 |
 | 6.10 Docs (INSERTED) | 2/2 | Complete | 2026-02-05 |
-| 6.10.1 UI Modernization (INSERTED) | 9/9 | Human verification pending | - |
+| 6.10.1 UI Modernization (INSERTED) | 9/9 | Complete (code done, verified) | 2026-04-04 |
+| 6.11 Logo (INSERTED) | 0/? | Not started | - |
 | 7. Performance Mode | 0/? | Not started | - |
 | 8. Mic Input | 0/8 | Planning complete | - |
-| 9. Vocoder | 0/? | Not started | - |
-| 10. Guitar Input | 0/? | Not started | - |
-| 11. Trackpad Beat Input | 0/? | Not started | - |
-| 12. Advanced Voice Leading | 0/? | Not started | - |
-| 13. Voice Leading Test Suite | 0/? | Not started | - |
+| 9. Vocoder | 0/? | Not started (requires audio synthesis) | - |
+| 10. Guitar Input | ~95% | Code complete on guitar-input-clean branch | - |
+| ~~11. Trackpad Beat Input~~ | — | DROPPED (no research, niche) | - |
+| ~~12. Advanced Voice Leading~~ | — | CLOSED: already shipped (4 styles, motion control, suspensions) | 2026-01-30 |
+| ~~13. Voice Leading Test Suite~~ | — | CLOSED: tests exist inline in voice leading code | - |
+
+## Known Cross-Cutting Issues (from memory, not phase-specific)
+
+- [ ] **Desktop MIDI device enumeration** — Tauri may not enumerate devices properly (needs verification, may already be fixed)
+- [ ] **Fly.io redeployment** — latest changes from guitar-input-clean and main need redeployment to contrapunk.fly.dev
+- [ ] **Desktop settings persistence** — likely fixed by Phase 6.6, needs verification on Tauri build
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-02-25 — Renumbered: Performance Mode is Phase 7, Mic Input pushed to Phase 8, all subsequent phases shifted +1*
+*Last updated: 2026-04-04 — Phase audit: closed 12+13 (already done), dropped 11 (niche), marked 6.10.1 complete. Added ML classifier + calibration to Phase 10, WASM parity to Phase 6.5.*
