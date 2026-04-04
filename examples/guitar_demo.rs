@@ -32,7 +32,10 @@ fn main() {
         match result {
             Some(m) => println!(
                 "  Freq {:>8.2} Hz -> {} fret {} (MIDI {}) [conf: {:.0}%]",
-                freq, STRING_NAMES[m.string_idx], m.fret, m.midi_note,
+                freq,
+                STRING_NAMES[m.string_idx],
+                m.fret,
+                m.midi_note,
                 m.confidence * 100.0
             ),
             None => println!("  Freq {:>8.2} Hz -> no match", freq),
@@ -43,11 +46,11 @@ fn main() {
     // x-3-2-0-1-0 = C3, E3, G3, C4, E4
     println!("\n--- Simulating C Major Chord (open position) ---\n");
     let chord_notes = [
-        (1, 3, "A string fret 3 -> C3"),  // A string fret 3
-        (2, 2, "D string fret 2 -> E3"),  // D string fret 2
-        (3, 0, "G string open   -> G3"),  // G string open
-        (4, 1, "B string fret 1 -> C4"),  // B string fret 1
-        (5, 0, "E string open   -> E4"),  // high E string open
+        (1, 3, "A string fret 3 -> C3"), // A string fret 3
+        (2, 2, "D string fret 2 -> E3"), // D string fret 2
+        (3, 0, "G string open   -> G3"), // G string open
+        (4, 1, "B string fret 1 -> C4"), // B string fret 1
+        (5, 0, "E string open   -> E4"), // high E string open
     ];
     for (string_idx, fret, desc) in &chord_notes {
         let midi = STRING_BASE_PITCH[*string_idx] + *fret as u8;
@@ -57,7 +60,10 @@ fn main() {
         match result {
             Some(m) => println!(
                 "  {} -> detected: {} fret {} (MIDI {} = {})",
-                desc, STRING_NAMES[m.string_idx], m.fret, m.midi_note,
+                desc,
+                STRING_NAMES[m.string_idx],
+                m.fret,
+                m.midi_note,
                 midi_to_note_name(m.midi_note)
             ),
             None => println!("  {} -> no match", desc),
@@ -66,20 +72,23 @@ fn main() {
 
     // Test fret identification across strings
     println!("\n--- Fret Identification Test ---\n");
-    println!("  {:>10}  {:>6}  {:>4}  {:>6}  {:>4}", "Note", "String", "Fret", "Expect", "OK?");
+    println!(
+        "  {:>10}  {:>6}  {:>4}  {:>6}  {:>4}",
+        "Note", "String", "Fret", "Expect", "OK?"
+    );
     println!("  {}", "-".repeat(38));
     let test_cases: Vec<(u8, usize, u8)> = vec![
-        (40, 0, 0),  // E2 = Low E open
-        (43, 0, 3),  // G2 = Low E fret 3
-        (45, 1, 0),  // A2 = A open
-        (48, 1, 3),  // C3 = A fret 3
-        (50, 2, 0),  // D3 = D open
-        (55, 3, 0),  // G3 = G open
-        (57, 3, 2),  // A3 = G fret 2
-        (59, 4, 0),  // B3 = B open
-        (60, 4, 1),  // C4 = B fret 1
-        (64, 5, 0),  // E4 = High E open
-        (67, 5, 3),  // G4 = High E fret 3
+        (40, 0, 0), // E2 = Low E open
+        (43, 0, 3), // G2 = Low E fret 3
+        (45, 1, 0), // A2 = A open
+        (48, 1, 3), // C3 = A fret 3
+        (50, 2, 0), // D3 = D open
+        (55, 3, 0), // G3 = G open
+        (57, 3, 2), // A3 = G fret 2
+        (59, 4, 0), // B3 = B open
+        (60, 4, 1), // C4 = B fret 1
+        (64, 5, 0), // E4 = High E open
+        (67, 5, 3), // G4 = High E fret 3
     ];
     for (midi, expected_string, expected_fret) in &test_cases {
         let freq = midi_to_freq(*midi);
@@ -133,7 +142,11 @@ fn main() {
     println!("\n--- Calibration Profile ---\n");
     let profile = GuitarCalibrationProfile::default();
     let json = profile.to_json().unwrap();
-    println!("  Default profile: {} strings, {} bytes JSON", profile.strings.len(), json.len());
+    println!(
+        "  Default profile: {} strings, {} bytes JSON",
+        profile.strings.len(),
+        json.len()
+    );
     println!("  Load your TheStringTheory profile with:");
     println!("    GuitarCalibrationProfile::from_json(&std::fs::read_to_string(\"guitar_calibration_profile.json\").unwrap())");
 

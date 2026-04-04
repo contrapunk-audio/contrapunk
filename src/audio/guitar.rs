@@ -295,7 +295,10 @@ impl GuitarPitchMatcher {
 
     /// Create with default config and profile.
     pub fn with_defaults() -> Self {
-        Self::new(GuitarMatchConfig::default(), GuitarCalibrationProfile::default())
+        Self::new(
+            GuitarMatchConfig::default(),
+            GuitarCalibrationProfile::default(),
+        )
     }
 
     /// Update the calibration profile.
@@ -602,19 +605,35 @@ impl AudioNormalizer {
             noise_gates[i] = soft_rms * 0.4; // gate at 40% of softest pluck
 
             // Soft RMS average
-            let soft_vals: Vec<f32> = cal.soft_samples.iter()
-                .filter(|s| s.rms > 0.0).map(|s| s.rms).collect();
-            rms_soft[i] = if soft_vals.is_empty() { 0.01 }
-                else { soft_vals.iter().sum::<f32>() / soft_vals.len() as f32 };
+            let soft_vals: Vec<f32> = cal
+                .soft_samples
+                .iter()
+                .filter(|s| s.rms > 0.0)
+                .map(|s| s.rms)
+                .collect();
+            rms_soft[i] = if soft_vals.is_empty() {
+                0.01
+            } else {
+                soft_vals.iter().sum::<f32>() / soft_vals.len() as f32
+            };
 
             // Strong RMS average
-            let strong_vals: Vec<f32> = cal.strong_samples.iter()
-                .filter(|s| s.rms > 0.0).map(|s| s.rms).collect();
-            rms_strong[i] = if strong_vals.is_empty() { 0.1 }
-                else { strong_vals.iter().sum::<f32>() / strong_vals.len() as f32 };
+            let strong_vals: Vec<f32> = cal
+                .strong_samples
+                .iter()
+                .filter(|s| s.rms > 0.0)
+                .map(|s| s.rms)
+                .collect();
+            rms_strong[i] = if strong_vals.is_empty() {
+                0.1
+            } else {
+                strong_vals.iter().sum::<f32>() / strong_vals.len() as f32
+            };
 
             // Brightness ratio: bright_rms / total_rms from all samples
-            let bright_ratios: Vec<f32> = cal.soft_samples.iter()
+            let bright_ratios: Vec<f32> = cal
+                .soft_samples
+                .iter()
                 .chain(cal.strong_samples.iter())
                 .filter(|s| s.rms > 0.0 && s.bright_rms > 0.0)
                 .map(|s| s.bright_rms / s.rms)
@@ -623,9 +642,11 @@ impl AudioNormalizer {
             if !bright_ratios.is_empty() {
                 let mean = bright_ratios.iter().sum::<f32>() / bright_ratios.len() as f32;
                 bright_mean[i] = mean;
-                let variance = bright_ratios.iter()
+                let variance = bright_ratios
+                    .iter()
                     .map(|&r| (r - mean) * (r - mean))
-                    .sum::<f32>() / bright_ratios.len() as f32;
+                    .sum::<f32>()
+                    / bright_ratios.len() as f32;
                 bright_stddev[i] = variance.sqrt().max(0.05);
             }
 
@@ -690,20 +711,25 @@ impl AudioNormalizer {
             .unwrap_or(0.3);
         let brightness_threshold = expected_brightness * self.brightness_noise_multiplier;
 
-        let is_noise = brightness_ratio > brightness_threshold
-            && confidence < self.min_pluck_confidence;
+        let is_noise =
+            brightness_ratio > brightness_threshold && confidence < self.min_pluck_confidence;
 
         if is_noise {
             return NormalizeResult::Rejected;
         }
 
         // 4. Pluck-likeness: pluck has elevated brightness AND good confidence
-        let is_pluck_like = brightness_ratio > expected_brightness * 0.8
-            && confidence >= self.min_pluck_confidence;
+        let is_pluck_like =
+            brightness_ratio > expected_brightness * 0.8 && confidence >= self.min_pluck_confidence;
 
         // 5. Normalize RMS to 0.0-1.0 based on calibrated range
         let (soft, strong) = string_hint
-            .map(|si| (self.string_rms_soft[si.min(5)], self.string_rms_strong[si.min(5)]))
+            .map(|si| {
+                (
+                    self.string_rms_soft[si.min(5)],
+                    self.string_rms_strong[si.min(5)],
+                )
+            })
             .unwrap_or((0.02, 0.15));
 
         let range = (strong - soft).max(0.01);
@@ -850,9 +876,7 @@ impl OnsetGrouper {
                 }
 
                 // Check for release
-                if !self.active_chord.is_empty()
-                    && time - self.last_detection > self.release_time
-                {
+                if !self.active_chord.is_empty() && time - self.last_detection > self.release_time {
                     events.push(ChordEvent::ChordOff(self.active_chord.clone()));
                     self.active_chord.clear();
                     self.pending_notes.clear();
@@ -927,7 +951,11 @@ mod tests {
         for midi in 21..=108 {
             let name = midi_to_note_name(midi);
             let back = note_name_to_midi(&name);
-            assert_eq!(back, Some(midi), "Roundtrip failed for MIDI {midi} -> {name}");
+            assert_eq!(
+                back,
+                Some(midi),
+                "Roundtrip failed for MIDI {midi} -> {name}"
+            );
         }
     }
 

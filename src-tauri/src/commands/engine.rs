@@ -14,9 +14,9 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use wmidi::{Channel, MidiMessage, Note, Velocity};
 
+use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::chord::chord_display_with_analysis;
 use contrapunk::harmony::HarmonyEngine;
-use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::humanize::{DelayQueue, HumanizeConfig, HumanizedNote, Humanizer};
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
@@ -116,13 +116,19 @@ pub fn start_routing(
     // Capture guitar config for the router thread
     let is_guitar = input_idx == GUITAR_AUDIO_SENTINEL;
     let guitar_device = {
-        state.guitar_device.lock().map_err(|e| e.to_string())?.clone()
+        state
+            .guitar_device
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone()
     };
-    let guitar_channel = {
-        *state.guitar_channel.lock().map_err(|e| e.to_string())?
-    };
+    let guitar_channel = { *state.guitar_channel.lock().map_err(|e| e.to_string())? };
     let guitar_config = {
-        state.guitar_config.lock().map_err(|e| e.to_string())?.clone()
+        state
+            .guitar_config
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone()
             .unwrap_or_default()
     };
 
@@ -273,8 +279,14 @@ fn run_tauri_router(
 
     if is_guitar {
         // Guitar Audio mode: spawn cpal capture -> DSP -> same tx channel
-        let bridge = GuitarBridge::new(&guitar_device, guitar_channel, guitar_config, tx, Some(signal_tx))
-            .map_err(|e| anyhow::anyhow!("Guitar bridge error: {}", e))?;
+        let bridge = GuitarBridge::new(
+            &guitar_device,
+            guitar_channel,
+            guitar_config,
+            tx,
+            Some(signal_tx),
+        )
+        .map_err(|e| anyhow::anyhow!("Guitar bridge error: {}", e))?;
         bridge
             .start()
             .map_err(|e| anyhow::anyhow!("Guitar bridge start error: {}", e))?;
@@ -387,7 +399,9 @@ fn run_tauri_router(
                     latest_signal = Some(sig);
                 }
                 if let Some(sig) = latest_signal {
-                    let note_names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+                    let note_names = [
+                        "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
+                    ];
                     let (note_name, midi_note) = if let Some(freq) = sig.frequency {
                         if freq > 20.0 && sig.clarity > 0.3 {
                             let midi = (12.0 * (freq / 440.0).log2() + 69.0).round() as i32;
@@ -401,14 +415,17 @@ fn run_tauri_router(
                     } else {
                         (String::new(), 0)
                     };
-                    let _ = app_handle.emit("guitar-signal", GuitarSignalPayload {
-                        rms: sig.rms,
-                        frequency: sig.frequency,
-                        clarity: sig.clarity,
-                        note_state: sig.note_state,
-                        note_name,
-                        midi_note,
-                    });
+                    let _ = app_handle.emit(
+                        "guitar-signal",
+                        GuitarSignalPayload {
+                            rms: sig.rms,
+                            frequency: sig.frequency,
+                            clarity: sig.clarity,
+                            note_state: sig.note_state,
+                            note_name,
+                            midi_note,
+                        },
+                    );
                 }
             }
         }

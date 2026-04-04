@@ -46,13 +46,17 @@ impl GuitarBridge {
             host.default_input_device()
                 .ok_or("No default audio input device")?
         } else {
-            let found = host.input_devices()
+            let found = host
+                .input_devices()
                 .map_err(|e| format!("Failed to enumerate audio devices: {}", e))?
                 .find(|d| d.name().unwrap_or_default().contains(device_name));
             match found {
                 Some(d) => d,
                 None => {
-                    eprintln!("[guitar_bridge] Device '{}' not found, using default", device_name);
+                    eprintln!(
+                        "[guitar_bridge] Device '{}' not found, using default",
+                        device_name
+                    );
                     host.default_input_device()
                         .ok_or("No default audio input device")?
                 }

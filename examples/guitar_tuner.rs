@@ -62,13 +62,19 @@ fn main() {
     // ── Audio Setup ──────────────────────────────────────
     let host = cpal::default_host();
     let devices: Vec<_> = host.input_devices().expect("No input devices").collect();
-    if devices.is_empty() { eprintln!("No audio input devices!"); return; }
+    if devices.is_empty() {
+        eprintln!("No audio input devices!");
+        return;
+    }
 
     println!("Audio Inputs:");
     for (i, d) in devices.iter().enumerate() {
         println!("  [{}] {}", i, d.name().unwrap_or_default());
     }
-    let dev_idx = prompt(&format!("\nSelect [0-{}]: ", devices.len()-1), devices.len()-1);
+    let dev_idx = prompt(
+        &format!("\nSelect [0-{}]: ", devices.len() - 1),
+        devices.len() - 1,
+    );
     let device = &devices[dev_idx];
     println!("  Using: {}", device.name().unwrap_or_default());
 
@@ -76,13 +82,22 @@ fn main() {
     let sr = config.sample_rate().0 as usize;
     let ch = config.channels() as usize;
     println!("  {}ch {}Hz", ch, sr);
-    let tch = prompt(&format!("  Channel [0-{}]: ", ch-1), ch-1);
+    let tch = prompt(&format!("  Channel [0-{}]: ", ch - 1), ch - 1);
 
     // ── Start Audio ──────────────────────────────────────
     let state = Arc::new(Mutex::new(AudioState {
-        frequency: 0.0, confidence: 0.0, rms: 0.0, midi_note: 0,
-        cents: 0, note_name: String::new(), peak: 0.0, bright_rms: 0.0,
-        bright_peak: 0.0, slope: 0.0, prev_rms: 0.0, goertzel_note: None,
+        frequency: 0.0,
+        confidence: 0.0,
+        rms: 0.0,
+        midi_note: 0,
+        cents: 0,
+        note_name: String::new(),
+        peak: 0.0,
+        bright_rms: 0.0,
+        bright_peak: 0.0,
+        slope: 0.0,
+        prev_rms: 0.0,
+        goertzel_note: None,
     }));
 
     let overlap = Arc::new(Mutex::new(OverlapManager::new(BUFFER_SIZE, OVERLAP_PCT)));
@@ -98,23 +113,33 @@ fn main() {
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &stream_config,
-            move |data: &[f32], _| { audio_process(data, ch, tch, sr, &oc, &pc, &gc, &state_c); },
-            |e| eprintln!("Audio error: {}", e), None,
+            move |data: &[f32], _| {
+                audio_process(data, ch, tch, sr, &oc, &pc, &gc, &state_c);
+            },
+            |e| eprintln!("Audio error: {}", e),
+            None,
         ),
         cpal::SampleFormat::I16 => {
-            let sc2 = Arc::clone(&state); let oc2 = Arc::clone(&overlap);
-            let pc2 = Arc::clone(&pluck_det); let gc2 = Arc::clone(&goertzel);
+            let sc2 = Arc::clone(&state);
+            let oc2 = Arc::clone(&overlap);
+            let pc2 = Arc::clone(&pluck_det);
+            let gc2 = Arc::clone(&goertzel);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[i16], _| {
                     let f: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
                     audio_process(&f, ch, tch, sr, &oc2, &pc2, &gc2, &sc2);
                 },
-                |e| eprintln!("Audio error: {}", e), None,
+                |e| eprintln!("Audio error: {}", e),
+                None,
             )
         }
-        f => { eprintln!("Unsupported: {:?}", f); return; }
-    }.expect("Failed to build stream");
+        f => {
+            eprintln!("Unsupported: {:?}", f);
+            return;
+        }
+    }
+    .expect("Failed to build stream");
 
     stream.play().expect("Failed to start stream");
 
@@ -136,21 +161,28 @@ fn main() {
 
     for (pass_idx, (pass_name, string_order)) in passes.iter().enumerate() {
         println!("\n╔══════════════════════════════════════════════╗");
-        println!("║  {}{}║",
-            pass_name, " ".repeat(44 - pass_name.len()));
+        println!("║  {}{}║", pass_name, " ".repeat(44 - pass_name.len()));
         println!("╚══════════════════════════════════════════════╝\n");
 
         for (step, &string_idx) in string_order.iter().enumerate() {
             let total_strings = string_order.len();
             let pluck_count = tune_string(
-                string_idx, step + 1, total_strings, pass_idx,
-                &state, noise_floor, pluck_threshold, &mut all_plucks,
+                string_idx,
+                step + 1,
+                total_strings,
+                pass_idx,
+                &state,
+                noise_floor,
+                pluck_threshold,
+                &mut all_plucks,
             );
 
-            println!("\n  {} {}! ({} plucks)\n",
+            println!(
+                "\n  {} {}! ({} plucks)\n",
                 STRING_NAMES[string_idx],
                 if pass_idx == 2 { "confirmed" } else { "tuned" },
-                pluck_count);
+                pluck_count
+            );
         }
     }
 
@@ -162,12 +194,15 @@ fn main() {
     let mut profile = GuitarCalibrationProfile::default();
 
     for string_idx in 0..6 {
-        let mut plucks: Vec<&Pluck> = all_plucks.iter()
+        let mut plucks: Vec<&Pluck> = all_plucks
+            .iter()
             .filter(|(si, _)| *si == string_idx)
             .map(|(_, p)| p)
             .collect();
 
-        if plucks.is_empty() { continue; }
+        if plucks.is_empty() {
+            continue;
+        }
 
         plucks.sort_by(|a, b| a.rms.partial_cmp(&b.rms).unwrap());
         let split = plucks.len() / 2;
@@ -179,22 +214,37 @@ fn main() {
     }
 
     // Summary
-    println!("  {:>6}  {:>5}  {:>8}  {:>8}  {:>6}",
-        "String", "Count", "SoftRMS", "StrongRMS", "Conf");
+    println!(
+        "  {:>6}  {:>5}  {:>8}  {:>8}  {:>6}",
+        "String", "Count", "SoftRMS", "StrongRMS", "Conf"
+    );
     println!("  {}", "-".repeat(42));
 
     for (i, cal) in profile.strings.iter().enumerate() {
         let count = all_plucks.iter().filter(|(si, _)| *si == i).count();
-        let strong_rms = if cal.strong_samples.is_empty() { 0.0 }
-            else { cal.strong_samples.iter().map(|s| s.rms).sum::<f32>() / cal.strong_samples.len() as f32 };
-        println!("  {:>6}  {:>5}  {:>8.4}  {:>8.4}  {:>5.1}%",
-            STRING_NAMES[i], count, cal.soft_rms_threshold(), strong_rms,
-            cal.avg_confidence() * 100.0);
+        let strong_rms = if cal.strong_samples.is_empty() {
+            0.0
+        } else {
+            cal.strong_samples.iter().map(|s| s.rms).sum::<f32>() / cal.strong_samples.len() as f32
+        };
+        println!(
+            "  {:>6}  {:>5}  {:>8.4}  {:>8.4}  {:>5.1}%",
+            STRING_NAMES[i],
+            count,
+            cal.soft_rms_threshold(),
+            strong_rms,
+            cal.avg_confidence() * 100.0
+        );
     }
 
     let json = profile.to_json().expect("Failed to serialize");
     std::fs::write(PROFILE_PATH, &json).expect("Failed to write");
-    println!("\n  Saved: {} ({} plucks, {} bytes)", PROFILE_PATH, all_plucks.len(), json.len());
+    println!(
+        "\n  Saved: {} ({} plucks, {} bytes)",
+        PROFILE_PATH,
+        all_plucks.len(),
+        json.len()
+    );
     println!("\n  Now run:");
     println!("    cargo run --release --example guitar_harmony");
 }
@@ -217,8 +267,10 @@ fn tune_string(
 
     let pass_label = if pass_idx == 2 { "verify" } else { "tune" };
 
-    println!("  ── {}/{}: {} {} ({}, {:.1} Hz) ──",
-        step, total, pass_label, string_name, target_note, target_freq);
+    println!(
+        "  ── {}/{}: {} {} ({}, {:.1} Hz) ──",
+        step, total, pass_label, string_name, target_note, target_freq
+    );
 
     let mut in_tune_since: Option<Instant> = None;
     let mut string_plucks: Vec<Pluck> = Vec::new();
@@ -226,7 +278,11 @@ fn tune_string(
     let mut last_pluck_time = Instant::now();
 
     // Final pass has shorter hold time since strings should be stable
-    let hold_secs = if pass_idx == 2 { IN_TUNE_HOLD_SECS * 0.6 } else { IN_TUNE_HOLD_SECS };
+    let hold_secs = if pass_idx == 2 {
+        IN_TUNE_HOLD_SECS * 0.6
+    } else {
+        IN_TUNE_HOLD_SECS
+    };
 
     loop {
         std::thread::sleep(Duration::from_millis(40));
@@ -234,7 +290,9 @@ fn tune_string(
         let s = state.lock().unwrap();
 
         // Auto-capture plucks
-        if s.rms < pluck_threshold * 0.4 { was_quiet = true; }
+        if s.rms < pluck_threshold * 0.4 {
+            was_quiet = true;
+        }
 
         if was_quiet
             && s.rms > pluck_threshold
@@ -246,9 +304,14 @@ fn tune_string(
             let dist = (s.midi_note as i16 - target_midi as i16).abs();
             if dist <= 12 {
                 string_plucks.push(Pluck {
-                    midi_note: s.midi_note, freq: s.frequency, conf: s.confidence,
-                    rms: s.rms, peak: s.peak, bright_rms: s.bright_rms,
-                    bright_peak: s.bright_peak, slope: s.slope,
+                    midi_note: s.midi_note,
+                    freq: s.frequency,
+                    conf: s.confidence,
+                    rms: s.rms,
+                    peak: s.peak,
+                    bright_rms: s.bright_rms,
+                    bright_peak: s.bright_peak,
+                    slope: s.slope,
                 });
             }
         }
@@ -256,8 +319,10 @@ fn tune_string(
         // Tuner display
         if s.rms < noise_floor * 2.0 || s.confidence < MIN_CONFIDENCE as f32 {
             in_tune_since = None;
-            print!("\r    {:>5} {:>5} {:>6} {:>4}%  {:21}  {:20}",
-                "---", "", "", "", "", "pluck...");
+            print!(
+                "\r    {:>5} {:>5} {:>6} {:>4}%  {:21}  {:20}",
+                "---", "", "", "", "", "pluck..."
+            );
             std::io::stdout().flush().unwrap();
             continue;
         }
@@ -271,7 +336,9 @@ fn tune_string(
             in_tune_since = None;
             format!("{} — play {}", s.note_name, target_note)
         } else if cents.abs() <= IN_TUNE_CENTS {
-            if in_tune_since.is_none() { in_tune_since = Some(Instant::now()); }
+            if in_tune_since.is_none() {
+                in_tune_since = Some(Instant::now());
+            }
             let held_ms = in_tune_since.unwrap().elapsed().as_millis() as f32;
             let hold_ms = hold_secs * 1000.0;
             let progress = (held_ms / hold_ms).min(1.0);
@@ -284,36 +351,74 @@ fn tune_string(
                 for p in string_plucks {
                     all_plucks.push((string_idx, p));
                 }
-                let cents_str = if s.cents >= 0 { format!("+{}¢", s.cents) } else { format!("{}¢", s.cents) };
-                print!("\r    {:>5} {:>5} {:>6.1} {:>4.0}%  {}  IN TUNE [{}]   ",
-                    s.note_name, cents_str, s.frequency, s.confidence * 100.0, meter, bar);
+                let cents_str = if s.cents >= 0 {
+                    format!("+{}¢", s.cents)
+                } else {
+                    format!("{}¢", s.cents)
+                };
+                print!(
+                    "\r    {:>5} {:>5} {:>6.1} {:>4.0}%  {}  IN TUNE [{}]   ",
+                    s.note_name,
+                    cents_str,
+                    s.frequency,
+                    s.confidence * 100.0,
+                    meter,
+                    bar
+                );
                 std::io::stdout().flush().unwrap();
                 return count;
             }
             format!("hold [{}] x{}", bar, string_plucks.len())
         } else {
             in_tune_since = None;
-            if cents > 0 { "sharp ↓".into() } else { "flat ↑".into() }
+            if cents > 0 {
+                "sharp ↓".into()
+            } else {
+                "flat ↑".into()
+            }
         };
 
         let cents_str = if is_target {
-            if s.cents >= 0 { format!("+{}¢", s.cents) } else { format!("{}¢", s.cents) }
-        } else { "".into() };
+            if s.cents >= 0 {
+                format!("+{}¢", s.cents)
+            } else {
+                format!("{}¢", s.cents)
+            }
+        } else {
+            "".into()
+        };
 
-        print!("\r    {:>5} {:>5} {:>6.1} {:>4.0}%  {}  {}   ",
-            s.note_name, cents_str, s.frequency, s.confidence * 100.0, meter, status);
+        print!(
+            "\r    {:>5} {:>5} {:>6.1} {:>4.0}%  {}  {}   ",
+            s.note_name,
+            cents_str,
+            s.frequency,
+            s.confidence * 100.0,
+            meter,
+            status
+        );
         std::io::stdout().flush().unwrap();
     }
 }
 
 fn to_cal(p: &Pluck) -> CalibrationSample {
     CalibrationSample {
-        note: midi_to_note_name(p.midi_note), freq: p.freq, conf: p.conf,
-        peak: p.peak, rms: p.rms, bright_peak: p.bright_peak, bright_rms: p.bright_rms,
+        note: midi_to_note_name(p.midi_note),
+        freq: p.freq,
+        conf: p.conf,
+        peak: p.peak,
+        rms: p.rms,
+        bright_peak: p.bright_peak,
+        bright_rms: p.bright_rms,
         main_delta: 0.0,
         main_ratio: if p.rms > 0.0 { p.peak / p.rms } else { 0.0 },
-        main_slope: p.slope, bright_delta: 0.0,
-        bright_ratio: if p.bright_rms > 0.0 { p.bright_peak / p.bright_rms } else { 0.0 },
+        main_slope: p.slope,
+        bright_delta: 0.0,
+        bright_ratio: if p.bright_rms > 0.0 {
+            p.bright_peak / p.bright_rms
+        } else {
+            0.0
+        },
         bright_slope: 0.0,
     }
 }
@@ -321,14 +426,19 @@ fn to_cal(p: &Pluck) -> CalibrationSample {
 // ── Audio Processing ─────────────────────────────────────────────────
 
 fn audio_process(
-    data: &[f32], channels: usize, target_ch: usize, sample_rate: usize,
+    data: &[f32],
+    channels: usize,
+    target_ch: usize,
+    sample_rate: usize,
     overlap: &Arc<Mutex<OverlapManager>>,
     pluck_det: &Arc<Mutex<PluckDetector>>,
     goertzel: &Arc<Mutex<GoertzelBank>>,
     state: &Arc<Mutex<AudioState>>,
 ) {
-    let mono: Vec<f32> = data.chunks(channels)
-        .map(|f| f.get(target_ch).copied().unwrap_or(0.0)).collect();
+    let mono: Vec<f32> = data
+        .chunks(channels)
+        .map(|f| f.get(target_ch).copied().unwrap_or(0.0))
+        .collect();
 
     let frames = { overlap.lock().unwrap().feed(&mono) };
 
@@ -347,16 +457,22 @@ fn audio_process(
 
         let mut s = state.lock().unwrap();
         let slope = rms - s.prev_rms;
-        s.rms = rms; s.peak = peak; s.bright_rms = bright_rms;
-        s.bright_peak = bright_peak; s.slope = slope; s.prev_rms = rms;
+        s.rms = rms;
+        s.peak = peak;
+        s.bright_rms = bright_rms;
+        s.bright_peak = bright_peak;
+        s.slope = slope;
+        s.prev_rms = rms;
         s.goertzel_note = g_note;
 
         if let Some(p) = pitch {
             if p.clarity > MIN_CONFIDENCE {
                 let freq = p.frequency as f32;
                 let (midi, cents) = freq_to_midi(freq);
-                s.frequency = freq; s.confidence = p.clarity as f32;
-                s.midi_note = midi; s.cents = cents;
+                s.frequency = freq;
+                s.confidence = p.clarity as f32;
+                s.midi_note = midi;
+                s.cents = cents;
                 s.note_name = midi_to_note_name(midi);
             }
         }
@@ -379,8 +495,15 @@ fn build_meter(cents: i8) -> String {
     let mut bar = vec!['-'; width];
     bar[center] = '|';
     let pos = ((cents as f32 / 50.0) * center as f32 + center as f32)
-        .round().clamp(0.0, (width - 1) as f32) as usize;
-    let ch = if cents.abs() <= 5 { '*' } else if cents.abs() <= 15 { '=' } else { '#' };
+        .round()
+        .clamp(0.0, (width - 1) as f32) as usize;
+    let ch = if cents.abs() <= 5 {
+        '*'
+    } else if cents.abs() <= 15 {
+        '='
+    } else {
+        '#'
+    };
     bar[pos] = ch;
     format!("[{}]", bar.iter().collect::<String>())
 }

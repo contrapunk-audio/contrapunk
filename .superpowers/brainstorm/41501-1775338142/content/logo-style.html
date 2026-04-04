@@ -1,0 +1,139 @@
+<h2>What style of medieval "C" are you drawn to?</h2>
+<p class="subtitle">This sets the foundation — pixel grid, ornament level, and character</p>
+
+<div class="cards">
+  <div class="card" data-choice="illuminated" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0a0a1a; padding:32px; display:flex; align-items:center; justify-content:center;">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <!-- Illuminated manuscript C — ornate with flourishes -->
+        <rect x="0" y="0" width="120" height="120" fill="#0a0a1a"/>
+        <!-- Decorative border -->
+        <rect x="4" y="4" width="112" height="112" fill="none" stroke="#ff3388" stroke-width="2"/>
+        <rect x="8" y="8" width="104" height="104" fill="none" stroke="#33ddff" stroke-width="1" opacity="0.4"/>
+        <!-- Main C shape - pixel grid 12x12 -->
+        <g transform="translate(16,16)">
+          <!-- Top curve -->
+          <rect x="32" y="0" width="8" height="8" fill="#ff3388"/>
+          <rect x="40" y="0" width="8" height="8" fill="#ff3388"/>
+          <rect x="48" y="0" width="8" height="8" fill="#ff3388"/>
+          <rect x="56" y="0" width="8" height="8" fill="#ff3388"/>
+          <rect x="24" y="8" width="8" height="8" fill="#ff3388"/>
+          <rect x="64" y="8" width="8" height="8" fill="#ff3388"/>
+          <!-- Left side -->
+          <rect x="16" y="16" width="8" height="8" fill="#ff3388"/>
+          <rect x="16" y="24" width="8" height="8" fill="#ff3388"/>
+          <rect x="16" y="32" width="8" height="8" fill="#ff3388"/>
+          <rect x="16" y="40" width="8" height="8" fill="#ff3388"/>
+          <rect x="16" y="48" width="8" height="8" fill="#ff3388"/>
+          <rect x="16" y="56" width="8" height="8" fill="#ff3388"/>
+          <!-- Bottom curve -->
+          <rect x="24" y="64" width="8" height="8" fill="#ff3388"/>
+          <rect x="32" y="72" width="8" height="8" fill="#ff3388"/>
+          <rect x="40" y="72" width="8" height="8" fill="#ff3388"/>
+          <rect x="48" y="72" width="8" height="8" fill="#ff3388"/>
+          <rect x="56" y="72" width="8" height="8" fill="#ff3388"/>
+          <rect x="64" y="64" width="8" height="8" fill="#ff3388"/>
+          <!-- Decorative serifs / flourishes -->
+          <rect x="72" y="8" width="4" height="4" fill="#33ddff"/>
+          <rect x="72" y="64" width="4" height="4" fill="#33ddff"/>
+          <rect x="8" y="32" width="4" height="4" fill="#ffaa33"/>
+          <rect x="8" y="44" width="4" height="4" fill="#ffaa33"/>
+          <!-- Inner glow dots -->
+          <rect x="28" y="16" width="4" height="4" fill="#33ddff" opacity="0.5"/>
+          <rect x="28" y="56" width="4" height="4" fill="#33ddff" opacity="0.5"/>
+        </g>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>A. Illuminated Manuscript</h3>
+      <p>Ornate medieval letterform with decorative border, pixel-grid construction, neon flourishes. Like a page from a digital Book of Kells.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="runic" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0a0a1a; padding:32px; display:flex; align-items:center; justify-content:center;">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <!-- Runic / angular C — sharp geometric -->
+        <rect x="0" y="0" width="120" height="120" fill="#0a0a1a"/>
+        <g transform="translate(20,12)">
+          <!-- Angular C with sharp edges -->
+          <polygon points="72,0 24,0 0,24 0,72 24,96 72,96" fill="none" stroke="#00ccaa" stroke-width="3"/>
+          <!-- Inner pixel grid fill -->
+          <rect x="28" y="8" width="6" height="6" fill="#00ccaa"/>
+          <rect x="38" y="8" width="6" height="6" fill="#00ccaa"/>
+          <rect x="48" y="8" width="6" height="6" fill="#00ccaa"/>
+          <rect x="58" y="8" width="6" height="6" fill="#00ccaa"/>
+          <rect x="18" y="18" width="6" height="6" fill="#00ccaa"/>
+          <rect x="8" y="28" width="6" height="6" fill="#00ccaa"/>
+          <rect x="8" y="38" width="6" height="6" fill="#00ccaa"/>
+          <rect x="8" y="48" width="6" height="6" fill="#00ccaa"/>
+          <rect x="8" y="58" width="6" height="6" fill="#00ccaa"/>
+          <rect x="18" y="68" width="6" height="6" fill="#00ccaa"/>
+          <rect x="28" y="78" width="6" height="6" fill="#00ccaa"/>
+          <rect x="38" y="78" width="6" height="6" fill="#00ccaa"/>
+          <rect x="48" y="78" width="6" height="6" fill="#00ccaa"/>
+          <rect x="58" y="78" width="6" height="6" fill="#00ccaa"/>
+          <!-- Rune marks -->
+          <line x1="68" y1="4" x2="76" y2="12" stroke="#ffaa33" stroke-width="2"/>
+          <line x1="68" y1="84" x2="76" y2="92" stroke="#ffaa33" stroke-width="2"/>
+        </g>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>B. Runic / Angular</h3>
+      <p>Sharp geometric C with angular cuts, pixel-filled interior, rune-like accent marks. More Viking/Germanic than classical medieval.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="gothic" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0a0a1a; padding:32px; display:flex; align-items:center; justify-content:center;">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <!-- Gothic blackletter C — heavy strokes, pixel rendered -->
+        <rect x="0" y="0" width="120" height="120" fill="#0a0a1a"/>
+        <g transform="translate(16,8)">
+          <!-- Thick gothic C strokes via pixel blocks -->
+          <!-- Top -->
+          <rect x="28" y="0" width="10" height="10" fill="#ff3388"/>
+          <rect x="38" y="0" width="10" height="10" fill="#ff3388"/>
+          <rect x="48" y="0" width="10" height="10" fill="#ff3388"/>
+          <rect x="58" y="0" width="10" height="10" fill="#cc2266"/>
+          <rect x="18" y="0" width="10" height="10" fill="#cc2266"/>
+          <!-- Second row -->
+          <rect x="8" y="10" width="10" height="10" fill="#ff3388"/>
+          <rect x="18" y="10" width="10" height="10" fill="#ff3388"/>
+          <rect x="58" y="10" width="10" height="10" fill="#cc2266"/>
+          <rect x="68" y="10" width="10" height="10" fill="#cc2266"/>
+          <!-- Left thick stroke -->
+          <rect x="0" y="20" width="10" height="10" fill="#ff3388"/>
+          <rect x="10" y="20" width="10" height="10" fill="#ff3388"/>
+          <rect x="0" y="30" width="10" height="10" fill="#ff3388"/>
+          <rect x="10" y="30" width="10" height="10" fill="#ff3388"/>
+          <rect x="0" y="40" width="10" height="10" fill="#ff3388"/>
+          <rect x="10" y="40" width="10" height="10" fill="#ff3388"/>
+          <rect x="0" y="50" width="10" height="10" fill="#ff3388"/>
+          <rect x="10" y="50" width="10" height="10" fill="#ff3388"/>
+          <rect x="0" y="60" width="10" height="10" fill="#ff3388"/>
+          <rect x="10" y="60" width="10" height="10" fill="#ff3388"/>
+          <rect x="0" y="70" width="10" height="10" fill="#ff3388"/>
+          <rect x="10" y="70" width="10" height="10" fill="#ff3388"/>
+          <!-- Bottom -->
+          <rect x="8" y="80" width="10" height="10" fill="#ff3388"/>
+          <rect x="18" y="80" width="10" height="10" fill="#ff3388"/>
+          <rect x="58" y="80" width="10" height="10" fill="#cc2266"/>
+          <rect x="68" y="80" width="10" height="10" fill="#cc2266"/>
+          <rect x="18" y="90" width="10" height="10" fill="#cc2266"/>
+          <rect x="28" y="90" width="10" height="10" fill="#ff3388"/>
+          <rect x="38" y="90" width="10" height="10" fill="#ff3388"/>
+          <rect x="48" y="90" width="10" height="10" fill="#ff3388"/>
+          <rect x="58" y="90" width="10" height="10" fill="#cc2266"/>
+          <!-- Neon accent line -->
+          <rect x="20" y="45" width="50" height="2" fill="#33ddff" opacity="0.3"/>
+        </g>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>C. Gothic Blackletter</h3>
+      <p>Heavy, chunky blackletter C built from thick pixel blocks. Two-tone shading (magenta + dim magenta) gives depth. Cathedral weight meets 8-bit.</p>
+    </div>
+  </div>
+</div>

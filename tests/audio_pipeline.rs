@@ -30,9 +30,17 @@ fn accuracy_open_strings_mcleod() {
 
     println!("\n=== Open Strings Accuracy (McLeod) ===");
     let accuracy = check_accuracy(&results, &expected, 1);
-    println!("  Accuracy: {:.1}% ({}/{})", accuracy * 100.0,
-        (accuracy * expected.len() as f32) as usize, expected.len());
-    assert!(accuracy >= 0.83, "Open string accuracy should be >= 83%, got {:.1}%", accuracy * 100.0);
+    println!(
+        "  Accuracy: {:.1}% ({}/{})",
+        accuracy * 100.0,
+        (accuracy * expected.len() as f32) as usize,
+        expected.len()
+    );
+    assert!(
+        accuracy >= 0.83,
+        "Open string accuracy should be >= 83%, got {:.1}%",
+        accuracy * 100.0
+    );
 }
 
 #[test]
@@ -42,9 +50,17 @@ fn accuracy_open_strings_goertzel() {
 
     println!("\n=== Open Strings Accuracy (Goertzel) ===");
     let accuracy = check_accuracy(&results, &expected, 2);
-    println!("  Accuracy: {:.1}% ({}/{})", accuracy * 100.0,
-        (accuracy * expected.len() as f32) as usize, expected.len());
-    assert!(accuracy >= 0.66, "Goertzel open string accuracy should be >= 66%, got {:.1}%", accuracy * 100.0);
+    println!(
+        "  Accuracy: {:.1}% ({}/{})",
+        accuracy * 100.0,
+        (accuracy * expected.len() as f32) as usize,
+        expected.len()
+    );
+    assert!(
+        accuracy >= 0.66,
+        "Goertzel open string accuracy should be >= 66%, got {:.1}%",
+        accuracy * 100.0
+    );
 }
 
 #[test]
@@ -62,16 +78,34 @@ fn accuracy_chromatic_range() {
             if diff <= 1 {
                 correct += 1;
             } else {
-                println!("  MISS at {:.2}s: expected {} got {} (diff {})",
-                    time, midi_name(expected_midi), midi_name(detected), diff);
+                println!(
+                    "  MISS at {:.2}s: expected {} got {} (diff {})",
+                    time,
+                    midi_name(expected_midi),
+                    midi_name(detected),
+                    diff
+                );
             }
         } else {
-            println!("  MISS at {:.2}s: expected {} — no detection", time, midi_name(expected_midi));
+            println!(
+                "  MISS at {:.2}s: expected {} — no detection",
+                time,
+                midi_name(expected_midi)
+            );
         }
     }
     let accuracy = correct as f32 / total as f32;
-    println!("  Accuracy: {:.1}% ({}/{})", accuracy * 100.0, correct, total);
-    assert!(accuracy >= 0.80, "Chromatic accuracy should be >= 80%, got {:.1}%", accuracy * 100.0);
+    println!(
+        "  Accuracy: {:.1}% ({}/{})",
+        accuracy * 100.0,
+        correct,
+        total
+    );
+    assert!(
+        accuracy >= 0.80,
+        "Chromatic accuracy should be >= 80%, got {:.1}%",
+        accuracy * 100.0
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -90,8 +124,17 @@ fn latency_high_string() {
     match first_detection {
         Some((time, note)) => {
             let latency_ms = (time - onset_time) * 1000.0;
-            println!("  Detected {} at {:.3}s (latency: {:.1}ms)", midi_name(note), time, latency_ms);
-            assert!(latency_ms < 50.0, "High string latency should be < 50ms, got {:.1}ms", latency_ms);
+            println!(
+                "  Detected {} at {:.3}s (latency: {:.1}ms)",
+                midi_name(note),
+                time,
+                latency_ms
+            );
+            assert!(
+                latency_ms < 50.0,
+                "High string latency should be < 50ms, got {:.1}ms",
+                latency_ms
+            );
         }
         None => panic!("Failed to detect High E at all"),
     }
@@ -109,8 +152,17 @@ fn latency_low_string() {
     match first_detection {
         Some((time, note)) => {
             let latency_ms = (time - onset_time) * 1000.0;
-            println!("  Detected {} at {:.3}s (latency: {:.1}ms)", midi_name(note), time, latency_ms);
-            assert!(latency_ms < 80.0, "Low string latency should be < 80ms, got {:.1}ms", latency_ms);
+            println!(
+                "  Detected {} at {:.3}s (latency: {:.1}ms)",
+                midi_name(note),
+                time,
+                latency_ms
+            );
+            assert!(
+                latency_ms < 80.0,
+                "Low string latency should be < 80ms, got {:.1}ms",
+                latency_ms
+            );
         }
         None => panic!("Failed to detect Low E at all"),
     }
@@ -126,16 +178,23 @@ fn noise_rejection_white_noise() {
     let results = run_mcleod_detection(&signal, SAMPLE_RATE);
 
     println!("\n=== Noise Rejection: White Noise ===");
-    let guitar_range_detections: Vec<_> = results.iter()
+    let guitar_range_detections: Vec<_> = results
+        .iter()
         .filter(|&&(_, midi)| midi >= 40 && midi <= 88)
         .collect();
-    let false_trigger_rate = guitar_range_detections.len() as f32
-        / (results.len().max(1) as f32);
-    println!("  Total detections: {}, in guitar range: {}, false trigger rate: {:.1}%",
-        results.len(), guitar_range_detections.len(), false_trigger_rate * 100.0);
+    let false_trigger_rate = guitar_range_detections.len() as f32 / (results.len().max(1) as f32);
+    println!(
+        "  Total detections: {}, in guitar range: {}, false trigger rate: {:.1}%",
+        results.len(),
+        guitar_range_detections.len(),
+        false_trigger_rate * 100.0
+    );
     // Some false detections are OK but should be low
-    assert!(guitar_range_detections.len() <= 5,
-        "Too many false triggers from noise: {}", guitar_range_detections.len());
+    assert!(
+        guitar_range_detections.len() <= 5,
+        "Too many false triggers from noise: {}",
+        guitar_range_detections.len()
+    );
 }
 
 #[test]
@@ -149,7 +208,9 @@ fn noise_rejection_brush() {
     let mut total = 0;
 
     for chunk in signal.chunks(frame_size) {
-        if chunk.len() < frame_size { break; }
+        if chunk.len() < frame_size {
+            break;
+        }
         let rms = (chunk.iter().map(|s| s * s).sum::<f32>() / frame_size as f32).sqrt();
         let half = frame_size / 2;
         let bright_rms = (chunk[half..].iter().map(|s| s * s).sum::<f32>() / half as f32).sqrt();
@@ -164,8 +225,17 @@ fn noise_rejection_brush() {
 
     println!("\n=== Noise Rejection: Brush ===");
     let rejection_rate = rejected as f32 / total.max(1) as f32;
-    println!("  Frames: {}, rejected: {}, rate: {:.1}%", total, rejected, rejection_rate * 100.0);
-    assert!(rejection_rate >= 0.7, "Brush rejection should be >= 70%, got {:.1}%", rejection_rate * 100.0);
+    println!(
+        "  Frames: {}, rejected: {}, rate: {:.1}%",
+        total,
+        rejected,
+        rejection_rate * 100.0
+    );
+    assert!(
+        rejection_rate >= 0.7,
+        "Brush rejection should be >= 70%, got {:.1}%",
+        rejection_rate * 100.0
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -182,7 +252,9 @@ fn onset_detects_pluck_in_silence() {
     let mut first_onset: Option<f32> = None;
 
     for (i, chunk) in signal.chunks(frame_size).enumerate() {
-        if chunk.len() < frame_size { break; }
+        if chunk.len() < frame_size {
+            break;
+        }
         let spectrum = simple_mag_spectrum(chunk);
         if pluck_det.feed(&spectrum) && first_onset.is_none() {
             first_onset = Some(i as f32 * frame_size as f32 / SAMPLE_RATE as f32);
@@ -193,9 +265,15 @@ fn onset_detects_pluck_in_silence() {
     match first_onset {
         Some(t) => {
             let latency_ms = (t - onset_time) * 1000.0;
-            println!("  Onset at {:.3}s (latency: {:.1}ms from actual onset at {:.1}s)", t, latency_ms, onset_time);
-            assert!(latency_ms < 60.0 && latency_ms > -30.0,
-                "Onset latency should be reasonable, got {:.1}ms", latency_ms);
+            println!(
+                "  Onset at {:.3}s (latency: {:.1}ms from actual onset at {:.1}s)",
+                t, latency_ms, onset_time
+            );
+            assert!(
+                latency_ms < 60.0 && latency_ms > -30.0,
+                "Onset latency should be reasonable, got {:.1}ms",
+                latency_ms
+            );
         }
         None => panic!("Pluck onset not detected"),
     }
@@ -210,7 +288,9 @@ fn onset_no_false_trigger_on_silence() {
     let mut onset_count = 0;
 
     for chunk in signal.chunks(frame_size) {
-        if chunk.len() < frame_size { break; }
+        if chunk.len() < frame_size {
+            break;
+        }
         let spectrum = simple_mag_spectrum(chunk);
         if pluck_det.feed(&spectrum) {
             onset_count += 1;
@@ -269,29 +349,68 @@ fn detector_comparison_440hz() {
     };
 
     println!("\n=== Detector Comparison: 440 Hz ===");
-    println!("  McLeod:      {:>8}", mcleod_freq.map(|f| format!("{:.1} Hz", f)).unwrap_or("FAIL".into()));
-    println!("  BACF:        {:>8}", bacf_freq.map(|f| format!("{:.1} Hz", f)).unwrap_or("FAIL".into()));
-    println!("  AMDF:        {:>8}", amdf_freq.map(|f| format!("{:.1} Hz", f)).unwrap_or("FAIL".into()));
-    println!("  Goertzel:    {:>8}", goertzel_note.map(|n| format!("MIDI {} ({})", n, midi_name(n))).unwrap_or("FAIL".into()));
-    println!("  SingleCycle: {:>8}", sc_freq.map(|f| format!("{:.1} Hz", f)).unwrap_or("FAIL".into()));
+    println!(
+        "  McLeod:      {:>8}",
+        mcleod_freq
+            .map(|f| format!("{:.1} Hz", f))
+            .unwrap_or("FAIL".into())
+    );
+    println!(
+        "  BACF:        {:>8}",
+        bacf_freq
+            .map(|f| format!("{:.1} Hz", f))
+            .unwrap_or("FAIL".into())
+    );
+    println!(
+        "  AMDF:        {:>8}",
+        amdf_freq
+            .map(|f| format!("{:.1} Hz", f))
+            .unwrap_or("FAIL".into())
+    );
+    println!(
+        "  Goertzel:    {:>8}",
+        goertzel_note
+            .map(|n| format!("MIDI {} ({})", n, midi_name(n)))
+            .unwrap_or("FAIL".into())
+    );
+    println!(
+        "  SingleCycle: {:>8}",
+        sc_freq
+            .map(|f| format!("{:.1} Hz", f))
+            .unwrap_or("FAIL".into())
+    );
 
     // All should be within 5Hz of 440
-    if let Some(f) = mcleod_freq { assert!((f - 440.0).abs() < 5.0, "McLeod: {}", f); }
-    if let Some(f) = bacf_freq { assert!((f - 440.0).abs() < 5.0, "BACF: {}", f); }
-    if let Some(f) = amdf_freq { assert!((f - 440.0).abs() < 5.0, "AMDF: {}", f); }
-    if let Some(n) = goertzel_note { assert_eq!(n, 69, "Goertzel should detect A4=MIDI 69"); }
+    if let Some(f) = mcleod_freq {
+        assert!((f - 440.0).abs() < 5.0, "McLeod: {}", f);
+    }
+    if let Some(f) = bacf_freq {
+        assert!((f - 440.0).abs() < 5.0, "BACF: {}", f);
+    }
+    if let Some(f) = amdf_freq {
+        assert!((f - 440.0).abs() < 5.0, "AMDF: {}", f);
+    }
+    if let Some(n) = goertzel_note {
+        assert_eq!(n, 69, "Goertzel should detect A4=MIDI 69");
+    }
 }
 
 #[test]
 fn detector_comparison_all_open_strings() {
     let open_strings: [(u8, f32, &str); 6] = [
-        (40, 82.41, "E2"), (45, 110.0, "A2"), (50, 146.83, "D3"),
-        (55, 196.0, "G3"), (59, 246.94, "B3"), (64, 329.63, "E4"),
+        (40, 82.41, "E2"),
+        (45, 110.0, "A2"),
+        (50, 146.83, "D3"),
+        (55, 196.0, "G3"),
+        (59, 246.94, "B3"),
+        (64, 329.63, "E4"),
     ];
 
     println!("\n=== Detector Comparison: All Open Strings ===");
-    println!("  {:>4}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
-        "Note", "McLeod", "BACF", "AMDF", "Goertzel", "SngCyc");
+    println!(
+        "  {:>4}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
+        "Note", "McLeod", "BACF", "AMDF", "Goertzel", "SngCyc"
+    );
 
     let mut all_pass = true;
 
@@ -301,17 +420,20 @@ fn detector_comparison_all_open_strings() {
         let mcleod = {
             let s: Vec<f64> = signal[..1024].iter().map(|&v| v as f64).collect();
             let mut d = McLeodDetector::new(1024, 512);
-            d.get_pitch(&s, SAMPLE_RATE, 0.3, 0.3).map(|p| freq_to_midi(p.frequency as f32).0)
+            d.get_pitch(&s, SAMPLE_RATE, 0.3, 0.3)
+                .map(|p| freq_to_midi(p.frequency as f32).0)
         };
 
         let bacf = {
             let mut d = BacfDetector::new();
-            d.detect(&signal[..2048], SAMPLE_RATE).map(|(f, _)| freq_to_midi(f).0)
+            d.detect(&signal[..2048], SAMPLE_RATE)
+                .map(|(f, _)| freq_to_midi(f).0)
         };
 
         let amdf = {
             let mut d = AmdfDetector::new();
-            d.detect(&signal[..2048], SAMPLE_RATE).map(|(f, _)| freq_to_midi(f).0)
+            d.detect(&signal[..2048], SAMPLE_RATE)
+                .map(|(f, _)| freq_to_midi(f).0)
         };
 
         let goertzel = {
@@ -323,7 +445,9 @@ fn detector_comparison_all_open_strings() {
             let mut d = SingleCycleDetector::new(SAMPLE_RATE, 60.0, 2000.0);
             let mut last = None;
             for &s in &signal[..4000.min(signal.len())] {
-                if let Some(r) = d.feed_sample(s) { last = Some(freq_to_midi(r.frequency).0); }
+                if let Some(r) = d.feed_sample(s) {
+                    last = Some(freq_to_midi(r.frequency).0);
+                }
             }
             last
         };
@@ -331,13 +455,26 @@ fn detector_comparison_all_open_strings() {
         let mut fmt = |r: Option<u8>| -> String {
             match r {
                 Some(n) if (n as i16 - midi as i16).abs() <= 1 => format!("{}  ", midi_name(n)),
-                Some(n) => { all_pass = false; format!("{}!!", midi_name(n)) }
-                None => { all_pass = false; "FAIL".into() }
+                Some(n) => {
+                    all_pass = false;
+                    format!("{}!!", midi_name(n))
+                }
+                None => {
+                    all_pass = false;
+                    "FAIL".into()
+                }
             }
         };
 
-        println!("  {:>4}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
-            name, fmt(mcleod), fmt(bacf), fmt(amdf), fmt(goertzel), fmt(sc));
+        println!(
+            "  {:>4}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
+            name,
+            fmt(mcleod),
+            fmt(bacf),
+            fmt(amdf),
+            fmt(goertzel),
+            fmt(sc)
+        );
     }
 
     assert!(all_pass, "Some detectors failed on open strings");
@@ -362,7 +499,11 @@ fn note_tracker_rejects_octave_glitch() {
     // Glitch to E3 (octave) with low confidence — should be rejected
     assert!(tracker.update(52, 0.3).is_none());
     assert!(tracker.update(52, 0.3).is_none());
-    assert_eq!(tracker.current_note(), Some(40), "Octave glitch should be rejected");
+    assert_eq!(
+        tracker.current_note(),
+        Some(40),
+        "Octave glitch should be rejected"
+    );
 }
 
 #[test]
@@ -381,7 +522,11 @@ fn note_tracker_voting_absorbs_single_glitch() {
     // Back to normal
     tracker.update(60, 0.9);
 
-    assert_eq!(tracker.current_note(), Some(60), "Single glitch should be absorbed by voting");
+    assert_eq!(
+        tracker.current_note(),
+        Some(60),
+        "Single glitch should be absorbed by voting"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -439,18 +584,37 @@ fn full_pipeline_note_sequence() {
     }
 
     println!("\n=== Full Pipeline: Note Sequence ===");
-    println!("  Expected: {:?}", expected.iter().map(|(t, n)| format!("{:.1}s:{}", t, midi_name(*n))).collect::<Vec<_>>());
-    println!("  Detected: {:?}", detected_notes.iter().map(|(t, n)| format!("{:.1}s:{}", t, midi_name(*n))).collect::<Vec<_>>());
+    println!(
+        "  Expected: {:?}",
+        expected
+            .iter()
+            .map(|(t, n)| format!("{:.1}s:{}", t, midi_name(*n)))
+            .collect::<Vec<_>>()
+    );
+    println!(
+        "  Detected: {:?}",
+        detected_notes
+            .iter()
+            .map(|(t, n)| format!("{:.1}s:{}", t, midi_name(*n)))
+            .collect::<Vec<_>>()
+    );
 
     // Should detect at least 3 of 4 notes
     let mut matched = 0;
     for &(_, exp_midi) in &expected {
-        if detected_notes.iter().any(|&(_, det_midi)| (det_midi as i16 - exp_midi as i16).abs() <= 1) {
+        if detected_notes
+            .iter()
+            .any(|&(_, det_midi)| (det_midi as i16 - exp_midi as i16).abs() <= 1)
+        {
             matched += 1;
         }
     }
     println!("  Matched: {}/{}", matched, expected.len());
-    assert!(matched >= 3, "Should match at least 3/4 notes, got {}", matched);
+    assert!(
+        matched >= 3,
+        "Should match at least 3/4 notes, got {}",
+        matched
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -532,7 +696,8 @@ fn run_mcleod_first_detection(signal: &[f32], sample_rate: usize) -> Option<(f32
 }
 
 fn find_detection_near(results: &[(f32, u8)], time: f32, window: f32) -> Option<u8> {
-    results.iter()
+    results
+        .iter()
         .filter(|&&(t, _)| (t - time).abs() < window)
         .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
         .map(|&(_, midi)| midi)
@@ -551,7 +716,9 @@ fn check_accuracy(results: &[(f32, u8)], expected: &[(f32, u8)], tolerance: u8) 
 }
 
 fn midi_name(midi: u8) -> String {
-    const NAMES: [&str; 12] = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+    const NAMES: [&str; 12] = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
     format!("{}{}", NAMES[(midi % 12) as usize], (midi / 12) as i8 - 1)
 }
 
@@ -564,7 +731,8 @@ fn simple_mag_spectrum(samples: &[f32]) -> Vec<f32> {
         let start = i * bin_size;
         let end = (start + bin_size).min(n);
         if start < end {
-            *mag = (samples[start..end].iter().map(|s| s * s).sum::<f32>() / (end - start) as f32).sqrt();
+            *mag = (samples[start..end].iter().map(|s| s * s).sum::<f32>() / (end - start) as f32)
+                .sqrt();
         }
     }
     mags

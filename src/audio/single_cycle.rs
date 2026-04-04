@@ -129,8 +129,7 @@ impl PeakTracker {
                     None
                 } else {
                     // Signal turned downward — candidate is a local maximum.
-                    let prominence =
-                        (self.candidate_value - self.approach_value).abs();
+                    let prominence = (self.candidate_value - self.approach_value).abs();
 
                     if prominence >= self.min_prominence {
                         let peak = Peak {
@@ -161,8 +160,7 @@ impl PeakTracker {
                     None
                 } else {
                     // Signal turned upward — candidate is a local minimum.
-                    let prominence =
-                        (self.candidate_value - self.approach_value).abs();
+                    let prominence = (self.candidate_value - self.approach_value).abs();
 
                     if prominence >= self.min_prominence {
                         let peak = Peak {
@@ -449,10 +447,7 @@ mod tests {
     }
 
     /// Feed all samples into the detector and collect all results.
-    fn detect_all(
-        detector: &mut SingleCycleDetector,
-        samples: &[f32],
-    ) -> Vec<SingleCycleResult> {
+    fn detect_all(detector: &mut SingleCycleDetector, samples: &[f32]) -> Vec<SingleCycleResult> {
         samples
             .iter()
             .filter_map(|&s| detector.feed_sample(s))
@@ -530,10 +525,7 @@ mod tests {
 
         // On a clean sine, the later results should have high confidence
         // because both predictors agree.
-        let late_results: Vec<_> = results
-            .iter()
-            .filter(|r| r.confidence > 0.5)
-            .collect();
+        let late_results: Vec<_> = results.iter().filter(|r| r.confidence > 0.5).collect();
 
         assert!(
             !late_results.is_empty(),
@@ -541,10 +533,7 @@ mod tests {
         );
 
         // The best confidence should be quite high for a pure sine.
-        let max_confidence = results
-            .iter()
-            .map(|r| r.confidence)
-            .fold(0.0_f32, f32::max);
+        let max_confidence = results.iter().map(|r| r.confidence).fold(0.0_f32, f32::max);
         assert!(
             max_confidence > 0.7,
             "Best confidence on clean sine should be > 0.7, got {:.3}",
@@ -581,14 +570,12 @@ mod tests {
         let avg_clean = if clean_results.is_empty() {
             0.0
         } else {
-            clean_results.iter().map(|r| r.confidence).sum::<f32>()
-                / clean_results.len() as f32
+            clean_results.iter().map(|r| r.confidence).sum::<f32>() / clean_results.len() as f32
         };
         let avg_noisy = if noisy_results.is_empty() {
             0.0
         } else {
-            noisy_results.iter().map(|r| r.confidence).sum::<f32>()
-                / noisy_results.len() as f32
+            noisy_results.iter().map(|r| r.confidence).sum::<f32>() / noisy_results.len() as f32
         };
 
         assert!(
@@ -621,8 +608,7 @@ mod tests {
         for (name, freq) in &guitar_freqs {
             let num_samples = SAMPLE_RATE / 2; // 0.5 seconds
             let samples = generate_sine(*freq, SAMPLE_RATE, num_samples);
-            let mut detector =
-                SingleCycleDetector::new(SAMPLE_RATE, 70.0, 1400.0);
+            let mut detector = SingleCycleDetector::new(SAMPLE_RATE, 70.0, 1400.0);
 
             let results = detect_all(&mut detector, &samples);
             assert!(
@@ -696,14 +682,8 @@ mod tests {
         let maxima: Vec<_> = peaks.iter().filter(|p| p.is_maximum).collect();
         let minima: Vec<_> = peaks.iter().filter(|p| !p.is_maximum).collect();
 
-        assert!(
-            !maxima.is_empty(),
-            "Should detect at least one maximum"
-        );
-        assert!(
-            !minima.is_empty(),
-            "Should detect at least one minimum"
-        );
+        assert!(!maxima.is_empty(), "Should detect at least one maximum");
+        assert!(!minima.is_empty(), "Should detect at least one minimum");
 
         // The first maximum should be near value 1.0.
         assert!(
