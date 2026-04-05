@@ -7,23 +7,22 @@ Welcome to Contrapunk! This guide covers development setup, architecture overvie
 ### Prerequisites
 
 - **Rust stable** (via [rustup](https://rustup.rs/))
-- **Linux**: ALSA development libraries (`sudo apt-get install libasound2-dev`)
-- **WASM builds**: `cargo install trunk`
+- **Tauri CLI**: `cargo install tauri-cli`
+- **Node.js** and **npm** (for the SvelteKit frontend)
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`)
+- **Linux**: ALSA development libraries (`sudo apt-get install libasound2-dev`) + WebKitGTK
 
 ### Building
 
 ```bash
-# Native debug build
-cargo build
+# Desktop app (Tauri)
+cargo tauri dev
 
-# Native release build
+# Native library only
 cargo build --release
 
 # WASM build
-trunk build
-
-# WASM dev server (http://localhost:8080)
-trunk serve
+cd ui && npm install && npm run build:wasm && npm run dev
 ```
 
 ### Running Tests

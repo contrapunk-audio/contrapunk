@@ -19,3 +19,6 @@ ui/src/lib/wasm-pkg/
 
 # Logs
 *.log
+
+# HN monitoring data
+.hn-monitoring/
