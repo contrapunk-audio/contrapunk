@@ -170,4 +170,4 @@ MIT licensed. Counterpoint rules are centuries of accumulated human knowledge ab
 
 ## Credits
 
-Built with Rust, SvelteKit, Tauri, and a deep love for Renaissance polyphony.
+Built with Rust, SvelteKit, Tauri, and a deep love for music.
