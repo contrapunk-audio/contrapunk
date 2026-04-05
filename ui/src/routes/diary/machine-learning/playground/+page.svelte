@@ -16,7 +16,7 @@
 
 	type PlaygroundState = 'idle' | 'loading' | 'extracting' | 'ready' | 'inferring' | 'done' | 'error';
 
-	let state: PlaygroundState = $state('idle');
+	let pgState: PlaygroundState = $state('idle');
 	let errorMessage = $state('');
 
 	// Audio
@@ -67,7 +67,7 @@
 		melSpec = null;
 		modelInput = null;
 		audioBuffer = null;
-		state = 'loading';
+		pgState = 'loading';
 		errorMessage = '';
 		audioFileName = file.name;
 
@@ -81,12 +81,12 @@
 			drawWaveform();
 
 			// Extract mel spectrogram
-			state = 'extracting';
+			pgState = 'extracting';
 
 			// Give the UI a frame to render the "extracting" state
 			await new Promise((resolve) => requestAnimationFrame(resolve));
 
-			let audioData = audioBuffer.getChannelData(0);
+			let audioData: Float32Array = audioBuffer.getChannelData(0);
 
 			// Resample if needed
 			if (audioBuffer.sampleRate !== MODEL_PARAMS.targetSampleRate) {
@@ -104,11 +104,11 @@
 			});
 
 			modelInput = melSpectrogramToModelInput(melSpec, MODEL_PARAMS.targetFrames);
-			state = 'ready';
+			pgState = 'ready';
 
 			await ctx.close();
 		} catch (e) {
-			state = 'error';
+			pgState = 'error';
 			errorMessage = e instanceof Error ? e.message : 'Failed to process audio file';
 		}
 	}
@@ -167,14 +167,14 @@
 	async function runInference() {
 		if (!modelInput) return;
 
-		state = 'inferring';
+		pgState = 'inferring';
 
 		// Simulated delay to show the UI state
 		// In production, this will call onnxruntime-web inference session
 		await new Promise((resolve) => setTimeout(resolve, 800));
 
 		// Placeholder: show a "not yet connected" result
-		state = 'done';
+		pgState = 'done';
 		predictions = [];
 		errorMessage = 'Model inference not yet connected. Install onnxruntime-web to enable live classification.';
 	}
@@ -251,19 +251,17 @@
 	</section>
 
 	<!-- Processing Pipeline -->
-	{#if state !== 'idle'}
+	{#if pgState !== 'idle'}
 		<section class="pipeline-section">
 			<div class="label">PROCESSING PIPELINE</div>
 
 			<div class="pipeline-steps">
-				<div class="pipeline-step" class:active={state === 'loading'} class:done={state !== 'loading' && state !== 'idle'}>
+				<div class="pipeline-step" class:active={pgState === 'loading'} class:done={pgState !== 'loading'}>
 					<div class="step-indicator">
-						{#if state === 'loading'}
+						{#if pgState === 'loading'}
 							<div class="spinner"></div>
-						{:else if state !== 'idle'}
-							<div class="check">&#10003;</div>
 						{:else}
-							<div class="step-num">1</div>
+							<div class="check">&#10003;</div>
 						{/if}
 					</div>
 					<div class="step-info">
@@ -272,11 +270,11 @@
 					</div>
 				</div>
 
-				<div class="pipeline-step" class:active={state === 'extracting'} class:done={['ready', 'inferring', 'done'].includes(state)}>
+				<div class="pipeline-step" class:active={pgState === 'extracting'} class:done={['ready', 'inferring', 'done'].includes(pgState)}>
 					<div class="step-indicator">
-						{#if state === 'extracting'}
+						{#if pgState === 'extracting'}
 							<div class="spinner"></div>
-						{:else if ['ready', 'inferring', 'done'].includes(state)}
+						{:else if ['ready', 'inferring', 'done'].includes(pgState)}
 							<div class="check">&#10003;</div>
 						{:else}
 							<div class="step-num">2</div>
@@ -288,11 +286,11 @@
 					</div>
 				</div>
 
-				<div class="pipeline-step" class:active={state === 'inferring'} class:done={state === 'done'}>
+				<div class="pipeline-step" class:active={pgState === 'inferring'} class:done={pgState === 'done'}>
 					<div class="step-indicator">
-						{#if state === 'inferring'}
+						{#if pgState === 'inferring'}
 							<div class="spinner"></div>
-						{:else if state === 'done'}
+						{:else if pgState === 'done'}
 							<div class="check">&#10003;</div>
 						{:else}
 							<div class="step-num">3</div>
@@ -305,7 +303,7 @@
 				</div>
 			</div>
 
-			{#if state === 'error'}
+			{#if pgState === 'error'}
 				<div class="error-banner">
 					<strong>Error:</strong> {errorMessage}
 				</div>
@@ -344,11 +342,11 @@
 	{/if}
 
 	<!-- Inference Button + Results -->
-	{#if state === 'ready' || state === 'done'}
+	{#if pgState === 'ready' || pgState === 'done'}
 		<section class="results-section">
 			<div class="label">CLASSIFICATION</div>
 
-			{#if state === 'ready'}
+			{#if pgState === 'ready'}
 				<button class="classify-btn" onclick={runInference}>
 					Classify Guitar Position
 				</button>
@@ -357,7 +355,7 @@
 				</p>
 			{/if}
 
-			{#if state === 'done'}
+			{#if pgState === 'done'}
 				{#if predictions.length > 0}
 					<div class="results-grid">
 						{#each predictions as pred, i}

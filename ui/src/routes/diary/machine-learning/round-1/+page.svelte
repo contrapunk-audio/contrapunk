@@ -51,8 +51,8 @@
 		models: Record<string, { string_confusion: number[][] }>;
 	};
 
-	let fretData: FretAccuracyData | null = $state(null);
-	let confusionData: ConfusionData | null = $state(null);
+	let fretData = $state<FretAccuracyData | null>(null);
+	let confusionData = $state<ConfusionData | null>(null);
 
 	let currentFretGrid: number[][] = $derived(
 		fretData?.models[modelKeys[selectedModel]]?.grid ?? []
