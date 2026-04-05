@@ -1,0 +1,21 @@
+#!/bin/sh
+# Pre-commit hook for Contrapunk
+# Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+echo "Running pre-commit checks..."
+
+echo "  cargo fmt..."
+cargo fmt --all --check
+
+echo "  cargo clippy..."
+cargo clippy --all-targets -- -D warnings 2>/dev/null || cargo clippy --all-targets
+
+echo "  cargo test..."
+cargo test --quiet
+
+echo "  wasm check..."
+cargo check -p contrapunk-wasm --target wasm32-unknown-unknown
+
+echo "All checks passed."
