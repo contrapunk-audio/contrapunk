@@ -490,6 +490,46 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 10 to break down)
 
+### Phase 14: openDAW Device Integration
+
+**Depends on**: Phase 10 (Guitar Input — WASM API), Phase 5.1 (WASM)
+
+**Goal**: Integrate Contrapunk as a MIDI effect device inside openDAW, enabling real-time counterpoint harmony generation within the openDAW web-based DAW.
+
+**Research**: Complete — see `.planning/research/opendaw-integration.md`
+
+**Success Criteria**:
+- [ ] Contrapunk appears as a MIDI effect device in openDAW
+- [ ] MIDI notes in → original + harmony voices out
+- [ ] Parameters exposed: key, scale, mode, voice count, voice position, voice leading style
+- [ ] WASM core runs inside AudioWorklet (NAM pattern)
+- [ ] Works with openDAW's automation system
+
+**Steps**:
+1. Book Calendly call with André Michelle to discuss integration
+2. Prototype with `@opendaw/studio-sdk` (headless, LGPL)
+3. Fork openDAW, implement 5-layer device (Schema → Adapter → Processor → Editor → Registration)
+4. Submit focused PRs upstream
+5. Package as standalone device when runtime loading ships
+
+**Reference implementations**: NeuralAmpDevice (TONE3000), PitchDeviceProcessor, ArpeggioDeviceProcessor
+
+### Phase 15: Contrapunk Cloud
+
+**Depends on**: Phase 14 (openDAW integration), Phase 10 (Guitar Input)
+
+**Goal**: Online jamming platform with real-time counterpoint harmony across players.
+
+**Tagline**: "AI is not going to kill music till people keep playing music together. So let's jam!"
+
+**Success Criteria**:
+- [ ] Low-latency audio networking (Rust-based)
+- [ ] Harmony engine generates counterpoint across multiple player inputs
+- [ ] Shared sessions with automatic key/chord detection
+- [ ] Async collaboration mode (record, share, layer)
+
+**Waitlist**: Live at contrapunk.com/cloud — Cloudflare Worker + KV backend
+
 ### Phase 11: Trackpad Beat Input
 **Goal**: Use computer trackpad as a MIDI beat pad for triggering notes and drums, similar to hardware MIDI pad controllers
 **Depends on**: Phase 3 (GUI), Phase 6 (Humanization — beat clock)
@@ -577,6 +617,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | ~~11. Trackpad Beat Input~~ | — | DROPPED (no research, niche) | - |
 | ~~12. Advanced Voice Leading~~ | — | CLOSED: already shipped (4 styles, motion control, suspensions) | 2026-01-30 |
 | ~~13. Voice Leading Test Suite~~ | — | CLOSED: tests exist inline in voice leading code | - |
+| 14. openDAW Device Integration | 0/? | Research complete | - |
+| 15. Contrapunk Cloud | 0/? | Waitlist live, concept defined | - |
 
 ## Known Cross-Cutting Issues (from memory, not phase-specific)
 
@@ -586,4 +628,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-04-04 — Phase audit: closed 12+13 (already done), dropped 11 (niche), marked 6.10.1 complete. Added ML classifier + calibration to Phase 10, WASM parity to Phase 6.5.*
+*Last updated: 2026-04-05 — Added Phase 14 (openDAW integration, research complete) and Phase 15 (Contrapunk Cloud, waitlist live). HN launch day: 76 pts, 31 comments, 10 issues created, 4 waitlist signups.*
