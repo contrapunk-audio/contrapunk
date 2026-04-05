@@ -423,11 +423,6 @@ impl GuitarInput {
         &self.config
     }
 
-    /// Mutable access to config for runtime parameter changes.
-    pub fn config_mut(&mut self) -> &mut GuitarInputConfig {
-        &mut self.config
-    }
-
     /// Get note state as a number (0=Idle, 1=Attack, 2=Sustain, 3=Decay).
     pub fn note_state_name(&self) -> u8 {
         match self.note_state {

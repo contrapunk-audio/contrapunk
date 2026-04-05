@@ -39,7 +39,10 @@ impl GuitarBridge {
         tx: mpsc::Sender<Vec<u8>>,
         signal_tx: Option<mpsc::Sender<GuitarSignalInfo>>,
     ) -> Result<Self, String> {
-        eprintln!("[guitar_bridge] Creating bridge: device='{}' channel={}", device_name, channel);
+        eprintln!(
+            "[guitar_bridge] Creating bridge: device='{}' channel={}",
+            device_name, channel
+        );
         let host = cpal::default_host();
 
         // Find device by name, or fall back to default
@@ -64,11 +67,18 @@ impl GuitarBridge {
             }
         };
 
-        eprintln!("[guitar_bridge] Found device: {}", device.name().unwrap_or_default());
+        eprintln!(
+            "[guitar_bridge] Found device: {}",
+            device.name().unwrap_or_default()
+        );
         let supported_config = device
             .default_input_config()
             .map_err(|e| format!("No input config: {}", e))?;
-        eprintln!("[guitar_bridge] Config: {}ch {}Hz", supported_config.channels(), supported_config.sample_rate().0);
+        eprintln!(
+            "[guitar_bridge] Config: {}ch {}Hz",
+            supported_config.channels(),
+            supported_config.sample_rate().0
+        );
 
         let sample_rate = supported_config.sample_rate().0 as usize;
         let channels = supported_config.channels() as usize;

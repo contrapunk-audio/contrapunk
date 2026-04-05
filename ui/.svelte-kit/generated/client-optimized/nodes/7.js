@@ -1,0 +1,1 @@
+export { default as component } from "../../../../src/routes/diary/machine-learning/round-1/+page.svelte";

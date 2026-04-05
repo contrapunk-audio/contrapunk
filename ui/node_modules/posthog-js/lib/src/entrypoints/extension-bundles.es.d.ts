@@ -1,0 +1,14 @@
+import type { BundleTypes } from './module.slim.es';
+export declare const AllExtensions: typeof BundleTypes.AllExtensions;
+export declare const FeatureFlagsExtensions: typeof BundleTypes.FeatureFlagsExtensions;
+export declare const SessionReplayExtensions: typeof BundleTypes.SessionReplayExtensions;
+export declare const AnalyticsExtensions: typeof BundleTypes.AnalyticsExtensions;
+export declare const ErrorTrackingExtensions: typeof BundleTypes.ErrorTrackingExtensions;
+export declare const ProductToursExtensions: typeof BundleTypes.ProductToursExtensions;
+export declare const SiteAppsExtensions: typeof BundleTypes.SiteAppsExtensions;
+export declare const SurveysExtensions: typeof BundleTypes.SurveysExtensions;
+export declare const TracingExtensions: typeof BundleTypes.TracingExtensions;
+export declare const ToolbarExtensions: typeof BundleTypes.ToolbarExtensions;
+export declare const ExperimentsExtensions: typeof BundleTypes.ExperimentsExtensions;
+export declare const ConversationsExtensions: typeof BundleTypes.ConversationsExtensions;
+export declare const LogsExtensions: typeof BundleTypes.LogsExtensions;

@@ -701,7 +701,10 @@ impl WasmGuitarInput {
             buffer_size,
             ..GuitarInputConfig::default()
         };
-        Self { inner: GuitarInput::new(config), pb_range: 2 }
+        Self {
+            inner: GuitarInput::new(config),
+            pb_range: 2,
+        }
     }
 
     /// Process audio block, returns JSON array of MIDI events.
@@ -733,11 +736,25 @@ impl WasmGuitarInput {
         serde_json::to_string(&json_events).unwrap_or_else(|_| "[]".to_string())
     }
 
-    pub fn set_bends_enabled(&mut self, v: bool) { self.inner.config_mut().bends_enabled = v; }
-    pub fn set_legato_enabled(&mut self, v: bool) { self.inner.config_mut().legato_enabled = v; }
-    pub fn set_slides_enabled(&mut self, v: bool) { self.inner.config_mut().slides_enabled = v; }
-    pub fn set_vibrato_enabled(&mut self, v: bool) { self.inner.config_mut().vibrato_detection = v; }
-    pub fn set_input_gain(&mut self, v: f32) { self.inner.config_mut().input_gain = v; }
-    pub fn set_onset_threshold(&mut self, v: f32) { self.inner.config_mut().onset_threshold = v; }
-    pub fn set_string_confidence(&mut self, v: f32) { self.inner.config_mut().string_confidence_min = v; }
+    pub fn set_bends_enabled(&mut self, v: bool) {
+        self.inner.config_mut().bends_enabled = v;
+    }
+    pub fn set_legato_enabled(&mut self, v: bool) {
+        self.inner.config_mut().legato_enabled = v;
+    }
+    pub fn set_slides_enabled(&mut self, v: bool) {
+        self.inner.config_mut().slides_enabled = v;
+    }
+    pub fn set_vibrato_enabled(&mut self, v: bool) {
+        self.inner.config_mut().vibrato_detection = v;
+    }
+    pub fn set_input_gain(&mut self, v: f32) {
+        self.inner.config_mut().input_gain = v;
+    }
+    pub fn set_onset_threshold(&mut self, v: f32) {
+        self.inner.config_mut().onset_threshold = v;
+    }
+    pub fn set_string_confidence(&mut self, v: f32) {
+        self.inner.config_mut().string_confidence_min = v;
+    }
 }

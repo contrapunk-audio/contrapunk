@@ -94,7 +94,7 @@ pub fn list_audio_devices() -> Result<Vec<String>, String> {
 // ============================================================================
 
 /// Standard tuning open-string names and expected frequencies (Hz).
-const OPEN_STRINGS: [(& str, f64); 6] = [
+const OPEN_STRINGS: [(&str, f64); 6] = [
     ("E2", 82.41),
     ("A2", 110.00),
     ("D3", 146.83),
@@ -178,7 +178,14 @@ fn run_calibration(device_name: &str, channel: usize) -> Result<GuitarCalibratio
     let config: StreamConfig = supported.into();
 
     // ── Phase 1: Measure noise floor (3 seconds) ──────────────────
-    let noise_rms = capture_rms_segment(&device, &config, sample_format, channels, channel, Duration::from_secs(3))?;
+    let noise_rms = capture_rms_segment(
+        &device,
+        &config,
+        sample_format,
+        channels,
+        channel,
+        Duration::from_secs(3),
+    )?;
 
     // ── Phase 2: Capture each open string ─────────────────────────
     let pluck_threshold = (noise_rms * 5.0).max(0.005);
@@ -248,7 +255,14 @@ fn capture_rms_segment(
     target_channel: usize,
     duration: Duration,
 ) -> Result<f32, String> {
-    let samples = capture_audio_segment(device, config, sample_format, channels, target_channel, duration)?;
+    let samples = capture_audio_segment(
+        device,
+        config,
+        sample_format,
+        channels,
+        target_channel,
+        duration,
+    )?;
     Ok(compute_rms(&samples))
 }
 
@@ -270,7 +284,10 @@ fn capture_audio_segment(
             device.build_input_stream(
                 config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    let mono: Vec<f32> = data.chunks(channels).filter_map(|frame| frame.get(ch).copied()).collect();
+                    let mono: Vec<f32> = data
+                        .chunks(channels)
+                        .filter_map(|frame| frame.get(ch).copied())
+                        .collect();
                     let _ = tx.send(mono);
                 },
                 |err| eprintln!("[calibration] Stream error: {}", err),
@@ -282,7 +299,8 @@ fn capture_audio_segment(
             device.build_input_stream(
                 config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    let mono: Vec<f32> = data.chunks(channels)
+                    let mono: Vec<f32> = data
+                        .chunks(channels)
                         .filter_map(|frame| frame.get(ch).map(|&s| s as f32 / 32768.0))
                         .collect();
                     let _ = tx.send(mono);
@@ -296,7 +314,9 @@ fn capture_audio_segment(
     .map_err(|e| format!("Failed to build input stream: {}", e))?;
 
     use cpal::traits::StreamTrait;
-    stream.play().map_err(|e| format!("Failed to start stream: {}", e))?;
+    stream
+        .play()
+        .map_err(|e| format!("Failed to start stream: {}", e))?;
 
     let mut all_samples = Vec::new();
     let start = Instant::now();
@@ -332,7 +352,10 @@ fn capture_pluck(
             device.build_input_stream(
                 config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    let mono: Vec<f32> = data.chunks(channels).filter_map(|frame| frame.get(ch).copied()).collect();
+                    let mono: Vec<f32> = data
+                        .chunks(channels)
+                        .filter_map(|frame| frame.get(ch).copied())
+                        .collect();
                     let _ = tx.send(mono);
                 },
                 |err| eprintln!("[calibration] Stream error: {}", err),
@@ -344,7 +367,8 @@ fn capture_pluck(
             device.build_input_stream(
                 config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    let mono: Vec<f32> = data.chunks(channels)
+                    let mono: Vec<f32> = data
+                        .chunks(channels)
                         .filter_map(|frame| frame.get(ch).map(|&s| s as f32 / 32768.0))
                         .collect();
                     let _ = tx.send(mono);
@@ -358,7 +382,9 @@ fn capture_pluck(
     .map_err(|e| format!("Failed to build input stream: {}", e))?;
 
     use cpal::traits::StreamTrait;
-    stream.play().map_err(|e| format!("Failed to start stream: {}", e))?;
+    stream
+        .play()
+        .map_err(|e| format!("Failed to start stream: {}", e))?;
 
     let start = Instant::now();
     let mut detected = false;
