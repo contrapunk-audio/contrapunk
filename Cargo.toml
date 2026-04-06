@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "src-tauri", "wasm"]
+members = [".", "src-tauri", "wasm", "plugin", "xtask"]
 resolver = "2"
 
 [package]
