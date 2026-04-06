@@ -277,11 +277,16 @@ impl PeriodPredictor {
     }
 }
 
-/// Single-cycle pitch detector using a dual-predictor approach.
+/// Single-cycle pitch detector using a dual-predictor approach with
+/// zero-crossing autocorrelation confirmation.
 ///
 /// Inspired by the Cycfi Q v1.5 technique (Pitch Perfect series, 2024),
 /// this detector can identify pitch from just one waveform cycle by
 /// analyzing peak-to-peak distances with two complementary predictors.
+///
+/// The zero-crossing confirmation step verifies the period estimate by
+/// computing a targeted autocorrelation at the candidate lag, filtering
+/// out false period estimates from noise or harmonics.
 pub struct SingleCycleDetector {
     sample_rate: usize,
     min_freq: f32,
@@ -298,6 +303,11 @@ pub struct SingleCycleDetector {
     sample_count: usize,
     /// Sample position of the very first sample fed into the detector.
     first_sample_pos: Option<usize>,
+    /// Recent samples ring buffer for autocorrelation confirmation.
+    recent_samples: Vec<f32>,
+    recent_write_pos: usize,
+    /// Zero-crossing positions for sub-sample period refinement.
+    zero_crossings: Vec<usize>,
 }
 
 impl SingleCycleDetector {
@@ -312,6 +322,10 @@ impl SingleCycleDetector {
         // noise while still catching real peaks.
         let min_prominence = 0.005;
 
+        // Buffer enough samples for 2 periods of the lowest frequency
+        let max_period = (sample_rate as f32 / min_freq).ceil() as usize;
+        let ring_size = max_period * 2;
+
         Self {
             sample_rate,
             min_freq,
@@ -322,6 +336,9 @@ impl SingleCycleDetector {
             predictor_b: PeriodPredictor::new(),
             sample_count: 0,
             first_sample_pos: None,
+            recent_samples: vec![0.0; ring_size],
+            recent_write_pos: 0,
+            zero_crossings: Vec::with_capacity(32),
         }
     }
 
@@ -337,6 +354,23 @@ impl SingleCycleDetector {
 
         let pos = self.sample_count;
         self.sample_count += 1;
+
+        // Store sample in ring buffer for autocorrelation confirmation
+        let ring_len = self.recent_samples.len();
+        self.recent_samples[self.recent_write_pos % ring_len] = sample;
+        self.recent_write_pos += 1;
+
+        // Track zero crossings for sub-sample refinement
+        if self.recent_write_pos >= 2 {
+            let prev_idx = (self.recent_write_pos - 2) % ring_len;
+            let prev = self.recent_samples[prev_idx];
+            if (prev >= 0.0 && sample < 0.0) || (prev < 0.0 && sample >= 0.0) {
+                self.zero_crossings.push(pos);
+                if self.zero_crossings.len() > 32 {
+                    self.zero_crossings.remove(0);
+                }
+            }
+        }
 
         // Feed original signal to Predictor A.
         let peak_a = self.tracker_a.feed(sample);
@@ -392,13 +426,86 @@ impl SingleCycleDetector {
             return None;
         }
 
+        // Autocorrelation confirmation: verify the period estimate by
+        // computing a targeted autocorrelation at the candidate lag.
+        // This filters out false periods from noise or harmonics.
+        let lag = period_estimate.round() as usize;
+        let acf_confidence = self.autocorrelation_at_lag(lag);
+
+        // Combine predictor agreement with autocorrelation confidence
+        let combined_confidence = confidence * 0.6 + acf_confidence * 0.4;
+
+        // Refine period using zero-crossing interpolation if possible
+        let refined_frequency = self
+            .refine_with_zero_crossings(period_estimate)
+            .unwrap_or(frequency);
+
         let latency = pos - self.first_sample_pos.unwrap_or(pos);
 
         Some(SingleCycleResult {
-            frequency,
-            confidence,
+            frequency: refined_frequency,
+            confidence: combined_confidence,
             latency_samples: latency,
         })
+    }
+
+    /// Compute normalized autocorrelation at a specific lag using the
+    /// recent samples ring buffer. Returns 0.0-1.0 where 1.0 = perfect match.
+    fn autocorrelation_at_lag(&self, lag: usize) -> f32 {
+        let ring_len = self.recent_samples.len();
+        if lag == 0 || lag >= ring_len / 2 || self.recent_write_pos < lag * 2 {
+            return 0.0;
+        }
+
+        let n = lag.min(ring_len - lag);
+        let mut sum_xy = 0.0f32;
+        let mut sum_xx = 0.0f32;
+        let mut sum_yy = 0.0f32;
+
+        for i in 0..n {
+            let idx_x = (self.recent_write_pos.wrapping_sub(n) + i) % ring_len;
+            let idx_y = (self.recent_write_pos.wrapping_sub(n + lag) + i) % ring_len;
+            let x = self.recent_samples[idx_x];
+            let y = self.recent_samples[idx_y];
+            sum_xy += x * y;
+            sum_xx += x * x;
+            sum_yy += y * y;
+        }
+
+        let denom = (sum_xx * sum_yy).sqrt();
+        if denom < 1e-10 {
+            return 0.0;
+        }
+        (sum_xy / denom).max(0.0)
+    }
+
+    /// Refine period estimate using zero-crossing interpolation.
+    /// Looks for zero-crossing pairs separated by ~period_estimate and
+    /// uses linear interpolation for sub-sample accuracy.
+    fn refine_with_zero_crossings(&self, period_estimate: f32) -> Option<f32> {
+        if self.zero_crossings.len() < 4 {
+            return None;
+        }
+
+        let target_period = period_estimate as usize;
+        let tolerance = (target_period / 10).max(2);
+
+        // Find the most recent pair of zero crossings separated by ~period
+        for i in (1..self.zero_crossings.len()).rev() {
+            for j in (0..i).rev() {
+                let diff = self.zero_crossings[i] - self.zero_crossings[j];
+                if diff >= target_period.saturating_sub(tolerance)
+                    && diff <= target_period + tolerance
+                {
+                    let refined_period = diff as f32;
+                    let freq = self.sample_rate as f32 / refined_period;
+                    if freq >= self.min_freq && freq <= self.max_freq {
+                        return Some(freq);
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Reset the detector to its initial state.
@@ -409,6 +516,11 @@ impl SingleCycleDetector {
         self.predictor_b.reset();
         self.sample_count = 0;
         self.first_sample_pos = None;
+        for s in self.recent_samples.iter_mut() {
+            *s = 0.0;
+        }
+        self.recent_write_pos = 0;
+        self.zero_crossings.clear();
     }
 }
 

@@ -62,7 +62,7 @@ pub struct GuitarInputConfig {
     /// Use per-string MIDI channels (string 0 = ch 0, string 1 = ch 1, etc.)
     /// When false, all notes go on channel 0.
     pub per_string_channels: bool,
-    /// Pitch bend range in semitones (default 2, matching MiGiC default).
+    /// Pitch bend range in semitones (default 48 for MPE, 2 for standard MIDI).
     pub pitch_bend_range: u8,
     /// Enable MPE channel pressure from shaped amplitude envelope (default: true).
     /// Replaces the old `aftertouch_enabled` (which defaulted to false).
@@ -93,7 +93,7 @@ impl Default for GuitarInputConfig {
             input_gain: 1.0,
             flux_threshold: 0.5,
             per_string_channels: true,
-            pitch_bend_range: 2,
+            pitch_bend_range: 48, // MPE default; set to 2 for standard MIDI
             pressure_enabled: true,
             pressure_hold: 0.3,
             brightness_enabled: true,
@@ -529,9 +529,11 @@ impl GuitarInput {
             self.total_samples += 1;
 
             // Feed single-cycle detector continuously — always primed for
-            // instant pitch estimate on any onset, zero warm-up delay
+            // instant pitch estimate on any onset, zero warm-up delay.
+            // Amplitude gate: only accept results above noise floor to
+            // prevent noise-floor pitch estimates from polluting early_pitch.
             if let Some(result) = self.single_cycle.feed_sample(gained_sample) {
-                if result.confidence > 0.6 {
+                if result.confidence > 0.6 && gained_sample.abs() > self.noise_floor_ema * 2.0 {
                     self.early_pitch = Some((result.frequency, result.confidence));
                 }
             }
@@ -578,9 +580,16 @@ impl GuitarInput {
             && rms > self.adaptive_onset_threshold()
             && rms > self.prev_rms * 1.2;
 
-        // 4. Pitch detection (McLeod) with adaptive clarity
-        let pitch_result =
-            detect_pitch_mcleod(buf, self.config.sample_rate, self.adaptive_clarity());
+        // 4. Pitch detection: pMPM during onset/attack for robustness,
+        //    standard McLeod during sustain for speed
+        let pitch_result = if onset
+            || matches!(self.note_state, NoteState::Attack)
+            || matches!(self.note_state, NoteState::Idle)
+        {
+            detect_pitch_pmcleod(buf, self.config.sample_rate)
+        } else {
+            detect_pitch_mcleod(buf, self.config.sample_rate, self.adaptive_clarity())
+        };
 
         // Store debug info for WASM logging (read by wrapper)
         self.last_debug_onset = onset;
@@ -2377,6 +2386,63 @@ pub fn detect_pitch_mcleod(
     }
 
     Some((pitch.frequency, pitch.clarity))
+}
+
+/// Probabilistic McLeod (pMPM): run McLeod with multiple clarity thresholds
+/// and accumulate confidence. Returns the most probable pitch candidate
+/// with higher confidence than a single-threshold run.
+///
+/// Sweeps clarity from 0.3 to 0.9 in 0.05 steps (13 runs). Each threshold
+/// has equal weight. Candidates within 1 semitone are merged.
+pub fn detect_pitch_pmcleod(audio: &[f32], sample_rate: usize) -> Option<(f32, f32)> {
+    use pitch_detection::detector::mcleod::McLeodDetector;
+    use pitch_detection::detector::PitchDetector;
+
+    let n = audio.len();
+    if n < 64 {
+        return None;
+    }
+
+    let padding = n / 2;
+    // Collect candidates from multiple threshold sweeps
+    let mut candidates: Vec<(f32, f32)> = Vec::new(); // (freq, accumulated_weight)
+    let steps = 13;
+
+    for i in 0..steps {
+        let clarity_threshold = 0.3 + (i as f32) * 0.05; // 0.3 to 0.9
+        let mut detector = McLeodDetector::new(n, padding);
+        if let Some(pitch) = detector.get_pitch(audio, sample_rate, 0.5, clarity_threshold) {
+            let freq = pitch.frequency;
+            // Merge with existing candidate within 1 semitone
+            let mut merged = false;
+            for (cf, cw) in candidates.iter_mut() {
+                let ratio = freq / *cf;
+                // Within ~1 semitone (ratio 0.944 to 1.059)
+                if ratio > 0.944 && ratio < 1.059 {
+                    // Weighted average frequency, accumulate weight
+                    *cf = (*cf * *cw + freq) / (*cw + 1.0);
+                    *cw += 1.0;
+                    merged = true;
+                    break;
+                }
+            }
+            if !merged {
+                candidates.push((freq, 1.0));
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    // Pick the candidate with the highest accumulated weight
+    candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let (best_freq, best_weight) = candidates[0];
+    // Normalize confidence: weight/steps gives 0-1 range
+    let confidence = (best_weight / steps as f32).min(1.0);
+
+    Some((best_freq, confidence))
 }
 
 /// Get string display names.
