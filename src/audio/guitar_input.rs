@@ -88,7 +88,7 @@ impl Default for GuitarInputConfig {
             vibrato_passthrough: true,
             filter_enabled: false,
             min_clarity: 0.40,
-            cooldown_samples: 2400, // 50ms @ 48kHz — allows ~20 notes/sec
+            cooldown_samples: 960, // 20ms @ 48kHz — allows ~50 notes/sec
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
@@ -528,16 +528,11 @@ impl GuitarInput {
             self.ring_pos = (self.ring_pos + 1) % self.config.buffer_size;
             self.total_samples += 1;
 
-            // Feed single-cycle detector during Attack AND rising signal in Idle
-            // (gives the detector a head start before onset is confirmed)
-            if matches!(self.note_state, NoteState::Attack)
-                || (matches!(self.note_state, NoteState::Idle)
-                    && gained_sample.abs() > self.adaptive_onset_threshold() * 0.5)
-            {
-                if let Some(result) = self.single_cycle.feed_sample(gained_sample) {
-                    if result.confidence > 0.6 {
-                        self.early_pitch = Some((result.frequency, result.confidence));
-                    }
+            // Feed single-cycle detector continuously — always primed for
+            // instant pitch estimate on any onset, zero warm-up delay
+            if let Some(result) = self.single_cycle.feed_sample(gained_sample) {
+                if result.confidence > 0.6 {
+                    self.early_pitch = Some((result.frequency, result.confidence));
                 }
             }
 
