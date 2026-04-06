@@ -1,9 +1,26 @@
 //! Harmony configuration types.
 //!
 //! This module defines the enums used to configure the harmony engine:
-//! musical keys, harmony modes, octave modes, and scale modes.
+//! musical keys, harmony modes, octave modes, scale modes, and routing modes.
 
 use serde::{Deserialize, Serialize};
+
+/// MIDI routing mode for harmony voice output.
+///
+/// Controls how harmony voices are distributed to MIDI destinations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingMode {
+    /// Channel-based (MPE): all voices on one output, separated by MIDI channel.
+    /// Ch 1 = master, Ch 2 = melody, Ch 3-7 = harmony voices.
+    /// Default — works in VST/AU plugins and requires only one MIDI connection.
+    #[default]
+    ChannelBased,
+    /// Port-based: each voice goes to a separate MIDI output port.
+    /// Requires multiple IAC buses or MIDI outputs. Legacy mode for
+    /// multi-bus DAW routing.
+    PortBased,
+}
 
 /// Musical keys (C through B, 12 options).
 ///

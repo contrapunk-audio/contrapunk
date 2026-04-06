@@ -116,6 +116,8 @@ pub fn start_routing(
         config.clone()
     };
 
+    let routing_mode = { *state.routing_mode.lock().map_err(|e| e.to_string())? };
+
     // Capture guitar config for the router thread
     let is_guitar = input_idx == GUITAR_AUDIO_SENTINEL;
     let guitar_device = {
@@ -183,6 +185,7 @@ pub fn start_routing(
             &output_indices_clone,
             engine_config,
             humanize_config,
+            routing_mode,
             is_guitar,
             guitar_device,
             guitar_channel,
@@ -255,6 +258,7 @@ fn run_tauri_router(
     output_ports: &[usize],
     config: EngineConfig,
     humanize_config: HumanizeConfig,
+    routing_mode: contrapunk::harmony::RoutingMode,
     is_guitar: bool,
     guitar_device: String,
     guitar_channel: usize,
@@ -358,6 +362,7 @@ fn run_tauri_router(
                     &harmony_notes,
                     &borrowed_notes,
                     &chord_name,
+                    routing_mode,
                 );
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -460,6 +465,7 @@ fn process_midi_message(
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
+    routing_mode: contrapunk::harmony::RoutingMode,
 ) {
     let msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
@@ -485,6 +491,7 @@ fn process_midi_message(
                     harmony_notes,
                     borrowed_notes,
                     chord_name,
+                    routing_mode,
                 );
             } else {
                 handle_note_on(
@@ -500,6 +507,7 @@ fn process_midi_message(
                     harmony_notes,
                     borrowed_notes,
                     chord_name,
+                    routing_mode,
                 );
             }
         }
@@ -517,6 +525,7 @@ fn process_midi_message(
                 harmony_notes,
                 borrowed_notes,
                 chord_name,
+                routing_mode,
             );
         }
         _ => {
@@ -538,6 +547,7 @@ fn handle_note_on(
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
+    routing_mode: contrapunk::harmony::RoutingMode,
 ) {
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
@@ -576,27 +586,61 @@ fn handle_note_on(
         }
     }
 
-    // Send notes to outputs
+    // Send notes to outputs based on routing mode
     let port_map = engine.last_port_map();
-    for (i, &n) in notes.iter().enumerate() {
-        let port = if i < port_map.len() { port_map[i] } else { i };
-        if port >= num_outputs {
-            continue;
-        }
+    match routing_mode {
+        contrapunk::harmony::RoutingMode::ChannelBased => {
+            // MPE: all voices on port 0, each on its own MIDI channel.
+            // Ch 1 (index 0) = master, Ch 2+ = voices (melody first, then harmonies)
+            for (i, &n) in notes.iter().enumerate() {
+                // Voice i → MIDI channel i+1 (channel 2 = melody, 3 = harm1, etc.)
+                // Channel enum is 0-indexed: Ch2 = Channel::Ch2
+                let voice_channel = match i + 1 {
+                    1 => Channel::Ch2,
+                    2 => Channel::Ch3,
+                    3 => Channel::Ch4,
+                    4 => Channel::Ch5,
+                    5 => Channel::Ch6,
+                    6 => Channel::Ch7,
+                    _ => Channel::Ch8,
+                };
 
-        if i == 0 {
-            // Melody: send immediately
-            let msg = MidiMessage::NoteOn(channel, n, velocity);
-            let mut buf = vec![0u8; msg.bytes_size()];
-            let _ = msg.copy_to_slice(&mut buf);
-            let _ = output.send_to_port(port, &buf);
-        } else {
-            // Harmony: humanize
-            let hn = humanizer.humanize_note_on(n, channel, velocity, port);
-            if hn.delay_ms == 0 {
-                let _ = send_humanized_note(&hn, output);
-            } else {
-                delay_queue.push(hn, now_ms);
+                if i == 0 {
+                    let msg = MidiMessage::NoteOn(voice_channel, n, velocity);
+                    let mut buf = vec![0u8; msg.bytes_size()];
+                    let _ = msg.copy_to_slice(&mut buf);
+                    let _ = output.send_to_first(&buf);
+                } else {
+                    let hn = humanizer.humanize_note_on(n, voice_channel, velocity, 0);
+                    if hn.delay_ms == 0 {
+                        let _ = send_humanized_note(&hn, output);
+                    } else {
+                        delay_queue.push(hn, now_ms);
+                    }
+                }
+            }
+        }
+        contrapunk::harmony::RoutingMode::PortBased => {
+            // Legacy: each voice to a separate MIDI output port
+            for (i, &n) in notes.iter().enumerate() {
+                let port = if i < port_map.len() { port_map[i] } else { i };
+                if port >= num_outputs {
+                    continue;
+                }
+
+                if i == 0 {
+                    let msg = MidiMessage::NoteOn(channel, n, velocity);
+                    let mut buf = vec![0u8; msg.bytes_size()];
+                    let _ = msg.copy_to_slice(&mut buf);
+                    let _ = output.send_to_port(port, &buf);
+                } else {
+                    let hn = humanizer.humanize_note_on(n, channel, velocity, port);
+                    if hn.delay_ms == 0 {
+                        let _ = send_humanized_note(&hn, output);
+                    } else {
+                        delay_queue.push(hn, now_ms);
+                    }
+                }
             }
         }
     }
@@ -615,6 +659,7 @@ fn handle_note_off(
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     _chord_name: &Arc<Mutex<String>>,
+    routing_mode: contrapunk::harmony::RoutingMode,
 ) {
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
@@ -633,25 +678,56 @@ fn handle_note_off(
         }
     }
 
-    // Send note-offs
+    // Send note-offs based on routing mode
     let port_map = engine.last_port_map();
-    for (i, &n) in notes.iter().enumerate() {
-        let port = if i < port_map.len() { port_map[i] } else { i };
-        if port >= num_outputs {
-            continue;
-        }
+    match routing_mode {
+        contrapunk::harmony::RoutingMode::ChannelBased => {
+            for (i, &n) in notes.iter().enumerate() {
+                let voice_channel = match i + 1 {
+                    1 => Channel::Ch2,
+                    2 => Channel::Ch3,
+                    3 => Channel::Ch4,
+                    4 => Channel::Ch5,
+                    5 => Channel::Ch6,
+                    6 => Channel::Ch7,
+                    _ => Channel::Ch8,
+                };
 
-        if i == 0 {
-            let msg = MidiMessage::NoteOff(channel, n, velocity);
-            let mut buf = vec![0u8; msg.bytes_size()];
-            let _ = msg.copy_to_slice(&mut buf);
-            let _ = output.send_to_port(port, &buf);
-        } else {
-            let hn = humanizer.humanize_note_off(n, channel, velocity, port);
-            if hn.delay_ms == 0 {
-                let _ = send_humanized_note(&hn, output);
-            } else {
-                delay_queue.push(hn, now_ms);
+                if i == 0 {
+                    let msg = MidiMessage::NoteOff(voice_channel, n, velocity);
+                    let mut buf = vec![0u8; msg.bytes_size()];
+                    let _ = msg.copy_to_slice(&mut buf);
+                    let _ = output.send_to_first(&buf);
+                } else {
+                    let hn = humanizer.humanize_note_off(n, voice_channel, velocity, 0);
+                    if hn.delay_ms == 0 {
+                        let _ = send_humanized_note(&hn, output);
+                    } else {
+                        delay_queue.push(hn, now_ms);
+                    }
+                }
+            }
+        }
+        contrapunk::harmony::RoutingMode::PortBased => {
+            for (i, &n) in notes.iter().enumerate() {
+                let port = if i < port_map.len() { port_map[i] } else { i };
+                if port >= num_outputs {
+                    continue;
+                }
+
+                if i == 0 {
+                    let msg = MidiMessage::NoteOff(channel, n, velocity);
+                    let mut buf = vec![0u8; msg.bytes_size()];
+                    let _ = msg.copy_to_slice(&mut buf);
+                    let _ = output.send_to_port(port, &buf);
+                } else {
+                    let hn = humanizer.humanize_note_off(n, channel, velocity, port);
+                    if hn.delay_ms == 0 {
+                        let _ = send_humanized_note(&hn, output);
+                    } else {
+                        delay_queue.push(hn, now_ms);
+                    }
+                }
             }
         }
     }

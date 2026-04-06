@@ -197,7 +197,7 @@ mod scale;
 mod stateful;
 pub mod voice_leading;
 
-pub use config::{HarmonyMode, Key, OctaveMode, ScaleFamily, ScaleMode};
+pub use config::{HarmonyMode, Key, OctaveMode, RoutingMode, ScaleFamily, ScaleMode};
 pub use engine::HarmonyEngine;
 pub use key_detect::KeyDetector;
 pub use scale::Scale;

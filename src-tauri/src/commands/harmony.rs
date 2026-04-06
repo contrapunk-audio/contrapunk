@@ -25,6 +25,7 @@ pub struct EngineStateResponse {
     pub voice_position: usize,
     pub voice_count: usize,
     pub auto_key: bool,
+    pub routing_mode: String,
 }
 
 /// Returns a snapshot of the current engine configuration.
@@ -44,6 +45,10 @@ pub fn get_engine_state(state: State<AppState>) -> Result<EngineStateResponse, S
         voice_position: engine.voice_position(),
         voice_count: engine.voice_count(),
         auto_key: engine.auto_key(),
+        routing_mode: format!(
+            "{:?}",
+            *state.routing_mode.lock().map_err(|e| e.to_string())?
+        ),
     })
 }
 
@@ -119,6 +124,23 @@ pub fn set_voice_position(position: usize, state: State<AppState>) -> Result<(),
 pub fn set_auto_key(enabled: bool, state: State<AppState>) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     engine.set_auto_key(enabled);
+    Ok(())
+}
+
+/// Set the MIDI routing mode (channel-based MPE or port-based).
+#[tauri::command]
+pub fn set_routing_mode(mode: String, state: State<AppState>) -> Result<(), String> {
+    let parsed = match mode.as_str() {
+        "ChannelBased" | "channel_based" | "channel" | "mpe" => {
+            contrapunk::harmony::RoutingMode::ChannelBased
+        }
+        "PortBased" | "port_based" | "port" | "legacy" => {
+            contrapunk::harmony::RoutingMode::PortBased
+        }
+        other => return Err(format!("Unknown routing mode: {}", other)),
+    };
+    let mut routing = state.routing_mode.lock().map_err(|e| e.to_string())?;
+    *routing = parsed;
     Ok(())
 }
 

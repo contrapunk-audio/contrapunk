@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
-use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key};
+use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::humanize::HumanizeConfig;
 use contrapunk::preset::PresetManager;
 
@@ -51,6 +51,9 @@ pub struct AppState {
     /// Guitar audio channel index (0-based, e.g. 0 = left, 1 = right)
     pub guitar_channel: Mutex<usize>,
 
+    /// MIDI routing mode (channel-based MPE or port-based)
+    pub routing_mode: Mutex<RoutingMode>,
+
     /// Stop signal for the router thread — set to true to stop the current routing
     pub stop_signal: Mutex<Option<Arc<AtomicBool>>>,
 }
@@ -69,6 +72,7 @@ impl Default for AppState {
             guitar_config: Mutex::new(None),
             guitar_device: Mutex::new(String::new()),
             guitar_channel: Mutex::new(0),
+            routing_mode: Mutex::new(RoutingMode::default()),
             stop_signal: Mutex::new(None),
         }
     }
