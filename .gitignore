@@ -22,3 +22,6 @@ ui/src/lib/wasm-pkg/
 
 # HN monitoring data
 .hn-monitoring/
+
+# AU wrapper build artifacts
+au-wrapper/build/

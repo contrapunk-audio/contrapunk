@@ -8,6 +8,15 @@
 import type { ContrapunkAdapter } from './types';
 import { TauriAdapter } from './tauri';
 import { WasmAdapter } from './wasm';
+import { PluginAdapter } from './plugin';
+
+/**
+ * Detect whether we are running inside a nih-plug-webview plugin.
+ * The webview injects `window.plugin` with send/listen/resize methods.
+ */
+function isPlugin(): boolean {
+	return typeof window !== 'undefined' && 'plugin' in window && typeof window.plugin?.send === 'function';
+}
 
 /**
  * Detect whether we are running inside a Tauri webview.
@@ -24,7 +33,11 @@ function isTauri(): boolean {
 }
 
 /** The active platform name, for display purposes. */
-export const platformName: 'tauri' | 'browser' = isTauri() ? 'tauri' : 'browser';
+export const platformName: 'tauri' | 'browser' | 'plugin' = isPlugin()
+	? 'plugin'
+	: isTauri()
+		? 'tauri'
+		: 'browser';
 
 /**
  * Singleton adapter instance.
@@ -35,7 +48,11 @@ export const platformName: 'tauri' | 'browser' = isTauri() ? 'tauri' : 'browser'
  * await adapter.setKey('C');
  * ```
  */
-export const adapter: ContrapunkAdapter = isTauri() ? new TauriAdapter() : new WasmAdapter();
+export const adapter: ContrapunkAdapter = isPlugin()
+	? new PluginAdapter()
+	: isTauri()
+		? new TauriAdapter()
+		: new WasmAdapter();
 
 // Re-export types for convenience
 export type {

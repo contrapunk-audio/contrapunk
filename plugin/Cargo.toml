@@ -5,10 +5,16 @@ edition = "2021"
 description = "Contrapunk VST3/CLAP plugin — real-time counterpoint harmony"
 authors = ["Contrapunk Team"]
 
+[features]
+default = []
+embed-ui = []
+
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 nih_plug = { git = "https://github.com/contrapunk-audio/nih-plug.git", features = ["assert_process_allocs"] }
+nih_plug_webview = { git = "https://github.com/contrapunk-audio/nih-plug-webview.git" }
 contrapunk = { path = ".." }
 wmidi = "4.0"
+serde_json = "1.0"

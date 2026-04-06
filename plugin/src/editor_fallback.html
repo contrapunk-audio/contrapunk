@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 16px;
+  }
+  h1 { font-size: 28px; font-weight: 700; color: #fff; }
+  .params { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; width: 400px; }
+  .label { text-align: right; color: #888; font-size: 14px; }
+  .value { font-size: 14px; font-weight: 600; color: #6ee7b7; }
+  .hint { margin-top: 24px; color: #555; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>Contrapunk</h1>
+  <div class="params" id="params"></div>
+  <div class="hint">Fallback UI &mdash; build the Svelte UI for the full experience</div>
+  <script>
+    const paramsDiv = document.getElementById('params');
+
+    function render(state) {
+      // Clear existing content safely
+      while (paramsDiv.firstChild) paramsDiv.removeChild(paramsDiv.firstChild);
+
+      const fields = [
+        ['Key', state.key],
+        ['Mode', state.mode],
+        ['Voices', String(state.voiceCount)],
+        ['You Play', String(state.voicePosition)],
+        ['Octave', state.octaveMode],
+        ['Voice Leading', state.voiceLeading ? 'On' : 'Off'],
+        ['Auto Key', state.autoKey ? 'On' : 'Off'],
+        ['Input', state.inputMode],
+      ];
+      for (const [label, value] of fields) {
+        const labelEl = document.createElement('div');
+        labelEl.className = 'label';
+        labelEl.textContent = label;
+        const valueEl = document.createElement('div');
+        valueEl.className = 'value';
+        valueEl.textContent = value;
+        paramsDiv.appendChild(labelEl);
+        paramsDiv.appendChild(valueEl);
+      }
+    }
+
+    window.plugin.listen(function(msg) {
+      try {
+        const data = JSON.parse(msg);
+        if (data.type === 'paramsUpdate') render(data);
+      } catch (e) { /* ignore parse errors */ }
+    });
+
+    // Signal ready
+    window.plugin.send(JSON.stringify({ type: 'ready' }));
+  </script>
+</body>
+</html>

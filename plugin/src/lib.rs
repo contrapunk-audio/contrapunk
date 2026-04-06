@@ -10,6 +10,8 @@
 use nih_plug::prelude::*;
 use std::sync::Arc;
 
+mod editor;
+
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
 use contrapunk::harmony::{
     HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle,
@@ -149,6 +151,9 @@ struct ContrapunkParams {
 
     #[id = "voice_lead"]
     pub voice_leading: BoolParam,
+
+    #[persist = "webview_state"]
+    pub webview_state: Arc<nih_plug_webview::WebViewState>,
 }
 
 impl Default for ContrapunkParams {
@@ -162,6 +167,7 @@ impl Default for ContrapunkParams {
             octave_mode: EnumParam::new("Octave", PluginOctaveMode::None),
             auto_key: BoolParam::new("Auto Key", false),
             voice_leading: BoolParam::new("Voice Leading", false),
+            webview_state: editor::default_webview_state(),
         }
     }
 }
@@ -399,6 +405,13 @@ impl Plugin for ContrapunkPlugin {
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
+    }
+
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        Some(Box::new(editor::create_editor(
+            self.params.clone(),
+            &self.params.webview_state,
+        )))
     }
 
     fn initialize(
