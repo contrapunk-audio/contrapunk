@@ -164,10 +164,22 @@
 	{/if}
 </div>
 
-<!-- Voice Position -->
-{#if engine.voiceCount > 1}
-	<div class="card">
-		<div class="card-header font-pixel">Voice</div>
+<!-- Voice Count & Position -->
+<div class="card">
+	<div class="card-header font-pixel">Voices</div>
+	<div class="count-grid">
+		{#each [1, 2, 3, 4] as count}
+			<button
+				class="pixel-btn"
+				class:active={engine.voiceCount === count}
+				onclick={() => engine.setVoiceCount(count)}
+			>
+				{count}
+			</button>
+		{/each}
+	</div>
+	{#if engine.voiceCount > 1}
+		<div class="card-subheader font-pixel">You play</div>
 		<div class="voice-grid">
 			{#each Array.from({ length: engine.voiceCount }, (_, i) => i) as idx}
 				<button
@@ -179,8 +191,8 @@
 				</button>
 			{/each}
 		</div>
-	</div>
-{/if}
+	{/if}
+</div>
 
 <!-- Detune -->
 <div class="card">
@@ -252,6 +264,21 @@
 		grid-template-columns: repeat(4, 1fr);
 		gap: 2px;
 		margin-top: 4px;
+	}
+
+	.count-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 2px;
+		margin-bottom: 4px;
+	}
+
+	.card-subheader {
+		color: var(--color-text-secondary);
+		font-size: 7px;
+		margin: 4px 0 2px;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
 	}
 
 	.voice-grid {
