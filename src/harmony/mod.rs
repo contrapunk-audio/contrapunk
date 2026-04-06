@@ -191,6 +191,7 @@
 
 mod config;
 mod engine;
+mod key_detect;
 mod modes;
 mod scale;
 mod stateful;
@@ -198,6 +199,7 @@ pub mod voice_leading;
 
 pub use config::{HarmonyMode, Key, OctaveMode, ScaleFamily, ScaleMode};
 pub use engine::HarmonyEngine;
+pub use key_detect::KeyDetector;
 pub use scale::Scale;
 pub use stateful::{ContraryMotionState, CounterpointState};
 pub use voice_leading::VoiceLeadingStyle;

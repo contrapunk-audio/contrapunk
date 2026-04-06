@@ -33,13 +33,22 @@
 
 <!-- Key Selector -->
 <div class="card">
-	<div class="card-header font-pixel">Key</div>
+	<div class="card-header font-pixel">
+		Key
+		<button
+			class="pixel-btn auto-key-btn"
+			class:toggle-on={engine.autoKey}
+			onclick={() => engine.setAutoKey(!engine.autoKey)}
+		>
+			{engine.autoKey ? 'AUTO' : 'MANUAL'}
+		</button>
+	</div>
 	<div class="key-grid">
 		{#each ALL_KEYS as key}
 			<button
 				class="pixel-btn"
 				class:active={engine.key === key}
-				onclick={() => engine.setKey(key)}
+				onclick={() => { engine.setAutoKey(false); engine.setKey(key); }}
 			>
 				{KEY_DISPLAY[key]}
 			</button>
@@ -232,6 +241,25 @@
 		margin-bottom: 4px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
+	}
+
+	.card-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.auto-key-btn {
+		font-size: 6px !important;
+		padding: 2px 6px !important;
+		margin: 0;
+	}
+
+	.auto-key-btn.toggle-on {
+		background: var(--color-accent-teal);
+		border-color: var(--color-accent-cyan);
+		box-shadow: var(--glow-teal);
+		color: #ffffff;
 	}
 
 	.key-grid {

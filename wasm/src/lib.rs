@@ -325,6 +325,17 @@ impl Engine {
         Ok(())
     }
 
+    /// Enable or disable auto-key detection.
+    pub fn set_auto_key(&mut self, enabled: bool) -> Result<(), JsValue> {
+        self.inner.set_auto_key(enabled);
+        Ok(())
+    }
+
+    /// Returns the current key as a string (for UI to update after auto-detection).
+    pub fn current_key(&self) -> String {
+        format!("{}", self.inner.key())
+    }
+
     /// Harmonize a single MIDI note number.
     /// Returns a JS array of MIDI note numbers (u8).
     pub fn harmonize(&mut self, note: u8) -> Result<Vec<u8>, JsValue> {

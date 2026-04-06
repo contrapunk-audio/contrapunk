@@ -90,6 +90,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 				interchangeRange: raw.borrowing_range ?? 3,
 				voicePosition: raw.voice_position ?? 0,
 				voiceCount: raw.voice_count ?? 2,
+				autoKey: raw.auto_key ?? false,
 				isRunning: this._isRunning
 			};
 		} catch (e) {
@@ -166,6 +167,15 @@ export class WasmAdapter implements ContrapunkAdapter {
 			engine.set_voice_count(count);
 		} catch (e) {
 			throw new Error(`Failed to set voice count: ${e}`);
+		}
+	}
+
+	async setAutoKey(enabled: boolean): Promise<void> {
+		this.ensureInit();
+		try {
+			engine.set_auto_key(enabled);
+		} catch (e) {
+			throw new Error(`Failed to set auto key: ${e}`);
 		}
 	}
 
@@ -468,7 +478,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 				harmonyNotes: raw?.harmony_notes ?? [],
 				borrowedNotes: raw?.borrowed_notes ?? [],
 				chordName: raw?.chord_name ?? '',
-				lastBorrowedFrom: raw?.last_borrowed_from ?? ''
+				lastBorrowedFrom: raw?.last_borrowed_from ?? '',
+				currentKey: engine.current_key?.() ?? 'C'
 			};
 		} catch {
 			return {
@@ -476,7 +487,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 				harmonyNotes: [],
 				borrowedNotes: [],
 				chordName: '',
-				lastBorrowedFrom: ''
+				lastBorrowedFrom: '',
+				currentKey: 'C'
 			};
 		}
 	}

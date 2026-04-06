@@ -34,6 +34,7 @@ function mapEngineState(raw: Record<string, unknown>, isRunning: boolean): Engin
 		interchangeRange: raw.borrowing_range as number,
 		voicePosition: raw.voice_position as number,
 		voiceCount: raw.voice_count as number,
+		autoKey: raw.auto_key as boolean,
 		isRunning
 	};
 }
@@ -47,7 +48,8 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 		harmonyNotes: raw.harmony_notes as number[],
 		borrowedNotes: raw.borrowed_notes as number[],
 		chordName: raw.chord_name as string,
-		lastBorrowedFrom: raw.last_borrowed_from as string
+		lastBorrowedFrom: raw.last_borrowed_from as string,
+		currentKey: (raw.current_key as string) ?? 'C'
 	};
 }
 
@@ -131,6 +133,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 			await invoke('set_voice_count', { count });
 		} catch (e) {
 			throw new Error(`Failed to set voice count: ${e}`);
+		}
+	}
+
+	async setAutoKey(enabled: boolean): Promise<void> {
+		try {
+			await invoke('set_auto_key', { enabled });
+		} catch (e) {
+			throw new Error(`Failed to set auto key: ${e}`);
 		}
 	}
 

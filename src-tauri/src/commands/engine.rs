@@ -42,6 +42,7 @@ pub struct NoteUpdatePayload {
     pub borrowed_notes: Vec<u8>,
     pub chord_name: String,
     pub last_borrowed_from: String,
+    pub current_key: String,
 }
 
 /// Payload for the "guitar-signal" Tauri event (UI signal feedback).
@@ -63,12 +64,14 @@ pub fn get_note_state(state: State<AppState>) -> Result<NoteUpdatePayload, Strin
     let borrowed = state.borrowed_notes.lock().map_err(|e| e.to_string())?;
     let chord = state.chord_name.lock().map_err(|e| e.to_string())?;
 
+    let engine = state.engine.lock().map_err(|e| e.to_string())?;
     Ok(NoteUpdatePayload {
         input_notes: input.iter().copied().collect(),
         harmony_notes: harmony.iter().copied().collect(),
         borrowed_notes: borrowed.iter().copied().collect(),
         chord_name: chord.clone(),
         last_borrowed_from: String::new(),
+        current_key: format!("{}", engine.key()),
     })
 }
 
@@ -388,6 +391,7 @@ fn run_tauri_router(
                         .last_borrowed_from()
                         .map(|m| format!("{}", m))
                         .unwrap_or_default(),
+                    current_key: format!("{}", engine.key()),
                 }
             };
             let _ = app_handle.emit("note-update", payload);

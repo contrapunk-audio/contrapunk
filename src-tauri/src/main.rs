@@ -25,6 +25,7 @@ fn main() {
             commands::harmony::set_voice_leading,
             commands::harmony::set_interchange,
             commands::harmony::set_voice_position,
+            commands::harmony::set_auto_key,
             // MIDI device management
             commands::midi::list_midi_inputs,
             commands::midi::list_midi_outputs,

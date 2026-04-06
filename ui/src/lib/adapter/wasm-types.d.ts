@@ -18,6 +18,9 @@ declare module 'contrapunk-wasm' {
 		set_voice_leading(enabled: boolean, style: string): void;
 		set_interchange(enabled: boolean, range: number): void;
 		set_voice_position(position: number): void;
+		set_voice_count(count: number): void;
+		set_auto_key(enabled: boolean): void;
+		current_key(): string;
 		harmonize(note: number): Uint8Array;
 		get_state(): Record<string, unknown>;
 		get_note_state(): Record<string, unknown>;

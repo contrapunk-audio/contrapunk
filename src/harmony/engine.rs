@@ -253,6 +253,10 @@ pub struct HarmonyEngine {
     active_port_maps: HashMap<u8, Vec<usize>>,
     /// Voice leading post-processor
     voice_leading: VoiceLeadingProcessor,
+    /// Whether auto-key detection is enabled
+    auto_key: bool,
+    /// Key detector (accumulates pitch classes to infer tonic)
+    key_detector: super::key_detect::KeyDetector,
 }
 
 impl HarmonyEngine {
@@ -290,6 +294,8 @@ impl HarmonyEngine {
             last_arrangement_indices: Vec::new(),
             active_port_maps: HashMap::new(),
             voice_leading: VoiceLeadingProcessor::new(voice_count),
+            auto_key: false,
+            key_detector: super::key_detect::KeyDetector::new(ScaleMode::Ionian),
         }
     }
 
@@ -412,6 +418,24 @@ impl HarmonyEngine {
         self.voice_leading.reset();
     }
 
+    /// Returns whether auto-key detection is enabled.
+    pub fn auto_key(&self) -> bool {
+        self.auto_key
+    }
+
+    /// Enable or disable auto-key detection.
+    /// When enabled, the engine infers the tonic from played notes and
+    /// updates the key automatically. The scale mode stays as the user set it.
+    /// When disabled, resets the detector.
+    pub fn set_auto_key(&mut self, enabled: bool) {
+        self.auto_key = enabled;
+        if enabled {
+            self.key_detector.set_scale_mode(self.scale_mode);
+        } else {
+            self.key_detector.reset();
+        }
+    }
+
     /// Sets the harmony mode.
     /// Resets stateful mode state and active notes when switching modes.
     ///
@@ -443,6 +467,9 @@ impl HarmonyEngine {
         self.scale = Scale::new(self.key.semitones_from_c(), mode);
         self.scale.set_interchange_enabled(self.interchange_enabled);
         self.scale.set_borrowing_range(self.borrowing_range);
+        if self.auto_key {
+            self.key_detector.set_scale_mode(mode);
+        }
         for state in &mut self.contrary_motion_states {
             state.reset();
         }
@@ -857,6 +884,16 @@ impl HarmonyEngine {
     ///
     /// Vec of notes to send: original note first, harmony notes after.
     pub fn harmonize_note_on(&mut self, note: Note) -> Vec<Note> {
+        // Feed note to key detector if auto-key is on
+        if self.auto_key {
+            let midi = u8::from(note);
+            if let Some(detected) = self.key_detector.feed(midi) {
+                if detected != self.key {
+                    self.set_key(detected);
+                }
+            }
+        }
+
         let result = self.harmonize(note);
         // Copy last_borrowed_from from scale for UI access
         self.last_borrowed_from = self.scale.last_borrowed_from();

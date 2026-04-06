@@ -24,6 +24,7 @@ pub struct EngineStateResponse {
     pub borrowing_range: u8,
     pub voice_position: usize,
     pub voice_count: usize,
+    pub auto_key: bool,
 }
 
 /// Returns a snapshot of the current engine configuration.
@@ -42,6 +43,7 @@ pub fn get_engine_state(state: State<AppState>) -> Result<EngineStateResponse, S
         borrowing_range: engine.borrowing_range(),
         voice_position: engine.voice_position(),
         voice_count: engine.voice_count(),
+        auto_key: engine.auto_key(),
     })
 }
 
@@ -109,6 +111,14 @@ pub fn set_interchange(enabled: bool, range: u8, state: State<AppState>) -> Resu
 pub fn set_voice_position(position: usize, state: State<AppState>) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     engine.set_voice_position(position);
+    Ok(())
+}
+
+/// Enable or disable auto-key detection.
+#[tauri::command]
+pub fn set_auto_key(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.set_auto_key(enabled);
     Ok(())
 }
 

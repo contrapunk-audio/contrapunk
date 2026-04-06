@@ -24,6 +24,7 @@ export interface EngineState {
 	interchangeRange: number;
 	voicePosition: number;
 	voiceCount: number;
+	autoKey: boolean;
 	isRunning: boolean;
 }
 
@@ -34,6 +35,7 @@ export interface NoteState {
 	borrowedNotes: number[];
 	chordName: string;
 	lastBorrowedFrom: string;
+	currentKey: string;
 }
 
 /** Humanization engine configuration. */
@@ -112,6 +114,9 @@ export interface ContrapunkAdapter {
 
 	/** Set the number of output voices (1 = melody only, 2+ = melody + harmonies). */
 	setVoiceCount(count: number): Promise<void>;
+
+	/** Enable or disable auto-key detection. */
+	setAutoKey(enabled: boolean): Promise<void>;
 
 	// -- Humanization --
 

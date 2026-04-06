@@ -410,6 +410,9 @@ class EngineStore {
 	voicePosition = $state(0);
 	voiceCount = $state(2);
 
+	// -- Auto-key detection --
+	autoKey = $state(false);
+
 	// -- Detune --
 	detuneCents = $state(0);
 
@@ -594,6 +597,16 @@ class EngineStore {
 		}
 	}
 
+	async setAutoKey(enabled: boolean) {
+		this.autoKey = enabled;
+		try {
+			await adapter.setAutoKey(enabled);
+		} catch (e) {
+			this.autoKey = !enabled;
+			throw e;
+		}
+	}
+
 	setDetune(cents: number) {
 		this.detuneCents = cents;
 		adapter.setDetune(cents);
@@ -648,6 +661,7 @@ class EngineStore {
 		this.interchangeRange = state.interchangeRange;
 		this.voicePosition = state.voicePosition;
 		this.voiceCount = state.voiceCount;
+		this.autoKey = state.autoKey;
 		this.isRunning = state.isRunning;
 	}
 
@@ -669,6 +683,9 @@ class EngineStore {
 				this.chordName = state.chordName;
 			if (this.lastBorrowedFrom !== state.lastBorrowedFrom)
 				this.lastBorrowedFrom = state.lastBorrowedFrom;
+			// Update key display when auto-key detection changes the key
+			if (this.autoKey && state.currentKey && this.key !== state.currentKey)
+				this.key = state.currentKey as KeyName;
 		});
 	}
 
