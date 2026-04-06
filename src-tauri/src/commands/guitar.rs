@@ -52,6 +52,7 @@ pub fn set_guitar_config(
     let sample_rate = 48000; // default; updated by bridge on actual start
     let config = GuitarInputConfig {
         buffer_size: GuitarInputConfig::buffer_size_for_latency(latency_ms, sample_rate),
+        hop_size: 256,
         sample_rate,
         onset_threshold: 0.015,
         string_confidence_min: string_confidence,

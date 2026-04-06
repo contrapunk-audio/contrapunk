@@ -142,6 +142,7 @@ fn main() {
 
     let config = GuitarInputConfig {
         buffer_size,
+        hop_size: 256,
         sample_rate,
         onset_threshold: 0.015,
         string_confidence_min: 0.4,

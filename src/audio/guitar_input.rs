@@ -27,9 +27,11 @@ use super::pitch::freq_to_midi;
 pub struct GuitarInputConfig {
     /// Analysis window in samples (256-2048).
     pub buffer_size: usize,
+    /// Hop size in samples for sliding-window analysis (default 256 = 5.3ms at 48kHz).
+    pub hop_size: usize,
     /// Audio sample rate (typically 48000).
     pub sample_rate: usize,
-    /// RMS threshold for pluck / onset detection.
+    /// RMS threshold for pluck / onset detection (seed for adaptive mode).
     pub onset_threshold: f32,
     /// Minimum confidence for string identification.
     pub string_confidence_min: f32,
@@ -75,6 +77,7 @@ impl Default for GuitarInputConfig {
     fn default() -> Self {
         Self {
             buffer_size: 1024,
+            hop_size: 256,
             sample_rate: 48000,
             onset_threshold: 0.02,
             string_confidence_min: 0.5,
@@ -342,6 +345,21 @@ pub struct GuitarInput {
     single_cycle: super::single_cycle::SingleCycleDetector,
     early_pitch: Option<(f32, f32)>,
 
+    // Hop-based sliding window analysis
+    hop_counter: usize,
+    /// Pre-allocated buffer for linearized ring (avoids per-hop allocation)
+    linearized_buf: Vec<f32>,
+
+    // Adaptive thresholds
+    noise_floor_ema: f32,
+    signal_peak_ema: f32,
+
+    // Onset-ahead-of-pitch: pitch correction after early NoteOn
+    /// Pending pitch correction: (channel, initial_freq) to refine via pitch bend
+    pending_pitch_correction: Option<(u8, f32)>,
+    /// Analysis frames since last NoteOn (for correction window)
+    frames_since_note_on: usize,
+
     // Debug state (read by WASM wrapper for logging)
     pub last_debug_onset: bool,
     pub last_debug_rms_onset: bool,
@@ -390,6 +408,12 @@ impl GuitarInput {
             last_brightness: 0,
             single_cycle: super::single_cycle::SingleCycleDetector::new(sr, 75.0, 1400.0),
             early_pitch: None,
+            hop_counter: 0,
+            linearized_buf: vec![0.0; buf_size],
+            noise_floor_ema: 0.005,
+            signal_peak_ema: 0.1,
+            pending_pitch_correction: None,
+            frames_since_note_on: 0,
             last_debug_onset: false,
             last_debug_rms_onset: false,
             last_debug_flux_onset: false,
@@ -410,6 +434,9 @@ impl GuitarInput {
 
     /// Set the calibration data (measured from `calibrate_string`).
     pub fn set_calibration(&mut self, cal: GuitarCalibration) {
+        // Seed adaptive thresholds from calibration measurements
+        self.noise_floor_ema = cal.noise_floor;
+        self.signal_peak_ema = cal.signal_peak;
         self.calibration = Some(cal);
     }
 
@@ -501,8 +528,12 @@ impl GuitarInput {
             self.ring_pos = (self.ring_pos + 1) % self.config.buffer_size;
             self.total_samples += 1;
 
-            // Feed single-cycle detector sample-by-sample during Attack
-            if matches!(self.note_state, NoteState::Attack) {
+            // Feed single-cycle detector during Attack AND rising signal in Idle
+            // (gives the detector a head start before onset is confirmed)
+            if matches!(self.note_state, NoteState::Attack)
+                || (matches!(self.note_state, NoteState::Idle)
+                    && gained_sample.abs() > self.adaptive_onset_threshold() * 0.5)
+            {
                 if let Some(result) = self.single_cycle.feed_sample(gained_sample) {
                     if result.confidence > 0.6 {
                         self.early_pitch = Some((result.frequency, result.confidence));
@@ -510,8 +541,10 @@ impl GuitarInput {
                 }
             }
 
-            // Only analyze when the ring buffer wraps (one full window)
-            if self.ring_pos == 0 {
+            // Sliding-window analysis: trigger every hop_size samples
+            self.hop_counter += 1;
+            if self.hop_counter >= self.config.hop_size {
+                self.hop_counter = 0;
                 let analysis_events = self.analyze_window();
                 events.extend(analysis_events);
             }
@@ -523,27 +556,36 @@ impl GuitarInput {
     /// Analyze the current ring buffer contents.
     fn analyze_window(&mut self) -> Vec<MidiEvent> {
         let mut events = Vec::new();
-        let buf = self.linearize_ring_buffer();
+        self.linearize_ring_buffer_into();
+        // Safety: linearized_buf is always the same size as buffer_size
+        let buf = &self.linearized_buf.clone();
 
         // 1. Compute RMS for onset detection
-        let rms = compute_rms(&buf);
+        let rms = compute_rms(buf);
+
+        // Update adaptive thresholds based on current state
+        if matches!(self.note_state, NoteState::Idle) {
+            self.update_noise_floor(rms);
+        } else if matches!(self.note_state, NoteState::Sustain) {
+            self.update_signal_peak(rms);
+        }
 
         // 2. Spectral flux onset detection (#5)
-        let flux = self.compute_spectral_flux(&buf);
+        let flux = self.compute_spectral_flux(buf);
 
-        // 3. Onset detection: RMS spike OR spectral flux
+        // 3. Onset detection: RMS spike OR spectral flux (adaptive thresholds)
         let rms_onset = self.detect_onset(rms);
-        let flux_onset = flux > self.config.flux_threshold && self.cooldown_remaining == 0;
+        let flux_onset = flux > self.adaptive_flux_threshold() && self.cooldown_remaining == 0;
         let onset = rms_onset || flux_onset;
         // Slope-only onset: true only when RMS jumped sharply from previous frame.
         // Used by Sustain to distinguish re-plucks from sustained ringing.
         let slope_onset = self.cooldown_remaining == 0
-            && rms > self.config.onset_threshold
+            && rms > self.adaptive_onset_threshold()
             && rms > self.prev_rms * 1.2;
 
-        // 4. Pitch detection (McLeod)
+        // 4. Pitch detection (McLeod) with adaptive clarity
         let pitch_result =
-            detect_pitch_mcleod(&buf, self.config.sample_rate, self.config.min_clarity);
+            detect_pitch_mcleod(buf, self.config.sample_rate, self.adaptive_clarity());
 
         // Store debug info for WASM logging (read by wrapper)
         self.last_debug_onset = onset;
@@ -552,18 +594,16 @@ impl GuitarInput {
         self.last_debug_flux = flux;
         self.last_debug_pitch = pitch_result.map(|(f, c)| (f, c));
 
-        // Tick down cooldown
+        // Tick down cooldown (by hop_size, since we analyze every hop)
         if self.cooldown_remaining > 0 {
-            self.cooldown_remaining = self
-                .cooldown_remaining
-                .saturating_sub(self.config.buffer_size);
+            self.cooldown_remaining = self.cooldown_remaining.saturating_sub(self.config.hop_size);
         }
 
         // Advance state timer
-        self.state_samples += self.config.buffer_size;
+        self.state_samples += self.config.hop_size;
 
         // Sustain threshold for Decay transition
-        let sustain_threshold = self.config.onset_threshold * 0.3;
+        let sustain_threshold = self.adaptive_onset_threshold() * 0.3;
         let noise_floor = self
             .calibration
             .as_ref()
@@ -587,36 +627,53 @@ impl GuitarInput {
                 match self.note_state {
                     NoteState::Idle => {
                         if onset {
-                            // Idle -> Attack: onset detected
-                            self.note_state = NoteState::Attack;
-                            self.state_samples = 0;
-                            self.single_cycle.reset();
-                            self.early_pitch = None;
+                            // Onset-ahead-of-pitch: if single-cycle already has
+                            // a confident pitch, skip Attack and fire NoteOn now
+                            if let Some((sc_freq, sc_conf)) = self.early_pitch {
+                                if sc_conf > 0.6 {
+                                    let sc_corrected = self.correct_octave(sc_freq);
+                                    let (sc_midi, _) = freq_to_midi(sc_corrected);
+                                    // Use single-cycle pitch for immediate NoteOn
+                                    // McLeod will refine via pitch bend in Sustain
+                                    self.push_pitch(sc_midi);
+                                    self.note_state = NoteState::Attack;
+                                    self.state_samples = 0;
+                                    // Fall through to Attack handler which will
+                                    // fire immediately since we have a confident pitch
+                                }
+                            }
+                            if !matches!(self.note_state, NoteState::Attack) {
+                                // Normal path: onset detected, move to Attack
+                                self.note_state = NoteState::Attack;
+                                self.state_samples = 0;
+                                self.single_cycle.reset();
+                                self.early_pitch = None;
+                            }
                             // Record pitch in voting history (#7)
                             self.push_pitch(midi_note);
                         }
                     }
+                    _ => {}
+                }
+
+                // Attack handler (separate match to allow fall-through from Idle)
+                match self.note_state {
                     NoteState::Attack => {
                         // Record pitch in voting history
                         self.push_pitch(midi_note);
 
-                        // Attack timeout: if pitch not stable within 50ms, false trigger
+                        // Attack timeout: reduced to 25ms with faster hop rate
                         let attack_timeout_samples =
-                            (self.config.sample_rate as f32 * 0.05) as usize;
+                            (self.config.sample_rate as f32 * 0.025) as usize;
 
-                        // Early confirm: single-cycle agrees with McLeod within 1 semitone
-                        let early_confirmed = if let Some((sc_freq, sc_conf)) = self.early_pitch {
-                            if sc_conf > 0.6 {
-                                let sc_midi = freq_to_midi(sc_freq).0;
-                                (sc_midi as i8 - midi_note as i8).unsigned_abs() <= 1
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        };
+                        // Fire on FIRST confident detection from either source
+                        let has_confident_pitch = self
+                            .early_pitch
+                            .map(|(_, conf)| conf > 0.6)
+                            .unwrap_or(false)
+                            || self.is_pitch_stable();
 
-                        if early_confirmed || self.is_pitch_stable() {
+                        if has_confident_pitch {
                             // Attack -> Sustain: pitch confirmed
                             let stable_midi = self.pitch_history[0].unwrap_or(midi_note);
 
@@ -741,6 +798,10 @@ impl GuitarInput {
                             self.state_samples = 0;
                             self.last_sustain_rms = rms;
                             self.early_pitch = None;
+                            // Track for pitch correction: McLeod may refine
+                            // the pitch in the next 1-2 frames via pitch bend
+                            self.pending_pitch_correction = Some((channel, freq));
+                            self.frames_since_note_on = 0;
                             self.clear_slide_history();
                             self.clear_vibrato_state();
                         } else if self.state_samples > attack_timeout_samples {
@@ -754,6 +815,38 @@ impl GuitarInput {
                         }
                     }
                     NoteState::Sustain => {
+                        self.frames_since_note_on += 1;
+
+                        // Pitch correction: if McLeod refines pitch within 2 frames
+                        // of an early NoteOn, send a pitch bend correction.
+                        if let Some((corr_channel, initial_freq)) = self.pending_pitch_correction {
+                            if self.frames_since_note_on <= 2 {
+                                let (new_midi, _) = freq_to_midi(freq);
+                                if let Some(ref current) = self.current_note {
+                                    if new_midi != current.midi_note {
+                                        // Correction needed: bend to the McLeod-refined pitch
+                                        let correction_cents =
+                                            (1200.0 * (freq / initial_freq).log2()) as i16;
+                                        if correction_cents.abs() > 10 {
+                                            events.push(MidiEvent::PitchBend {
+                                                channel: corr_channel,
+                                                cents: correction_cents,
+                                            });
+                                            events.push(MidiEvent::MidiPitchBend {
+                                                channel: corr_channel,
+                                                value: cents_to_midi_pitch_bend(
+                                                    correction_cents,
+                                                    self.config.pitch_bend_range,
+                                                ),
+                                            });
+                                        }
+                                    }
+                                }
+                            } else {
+                                self.pending_pitch_correction = None;
+                            }
+                        }
+
                         // Sustain handler priority order:
                         //   1. slope_onset -> Attack (genuine re-pluck, sharp RMS jump)
                         //   2. RMS below threshold -> Decay
@@ -1288,6 +1381,7 @@ impl GuitarInput {
                             self.clear_pitch_history();
                         }
                     }
+                    NoteState::Idle => {} // Handled by first match above
                 }
             }
             None => {
@@ -1329,35 +1423,93 @@ impl GuitarInput {
         events
     }
 
+    // ── Adaptive thresholds ─────────────────────────────────────────
+
+    /// Adaptive onset threshold: 3x the running noise floor, with a minimum.
+    fn adaptive_onset_threshold(&self) -> f32 {
+        (self.noise_floor_ema * 3.0).max(0.005)
+    }
+
+    /// Adaptive pitch clarity threshold: lower in high-SNR environments.
+    fn adaptive_clarity(&self) -> f64 {
+        let snr = if self.noise_floor_ema > 1e-6 {
+            (self.signal_peak_ema / self.noise_floor_ema).log10() / 2.0
+        } else {
+            1.0
+        };
+        let snr_clamped = snr.clamp(0.0, 1.0);
+        0.3 + 0.3 * (1.0 - snr_clamped) as f64 // range [0.3, 0.6]
+    }
+
+    /// Adaptive spectral flux threshold.
+    fn adaptive_flux_threshold(&self) -> f32 {
+        (self.noise_floor_ema * 5.0).max(0.1)
+    }
+
+    /// Update noise floor EMA (call during silence / Idle).
+    fn update_noise_floor(&mut self, rms: f32) {
+        const ALPHA: f32 = 0.02;
+        self.noise_floor_ema = self.noise_floor_ema * (1.0 - ALPHA) + rms * ALPHA;
+    }
+
+    /// Update signal peak EMA (call during Sustain).
+    fn update_signal_peak(&mut self, rms: f32) {
+        const ALPHA: f32 = 0.02;
+        self.signal_peak_ema = self.signal_peak_ema * (1.0 - ALPHA) + rms * ALPHA;
+    }
+
     /// Detect whether the current frame is an onset (pluck).
     fn detect_onset(&self, rms: f32) -> bool {
         if self.cooldown_remaining > 0 {
             return false;
         }
-        // Onset = RMS jumped above threshold and is significantly higher
+        let threshold = self.adaptive_onset_threshold();
+        // Onset = RMS jumped above adaptive threshold and is significantly higher
         // than the previous frame. 1.2x for faster re-pluck detection.
-        rms > self.config.onset_threshold && rms > self.prev_rms * 1.2
+        rms > threshold && rms > self.prev_rms * 1.2
     }
 
     // ── Octave error correction (#6) ──────────────────────────────
 
-    /// Correct octave jumps caused by harmonic lock or subharmonic detection.
+    /// Correct octave jumps using harmonic template matching.
     ///
-    /// If the detected frequency is exactly an octave above the current note,
-    /// it is likely a harmonic lock and should be dropped an octave.
-    /// If exactly an octave below, it is a subharmonic and should be raised.
+    /// When a near-octave jump is detected, compare harmonic template scores
+    /// for both candidates (as-is vs octave-corrected). The candidate with
+    /// more present harmonics wins.
     fn correct_octave(&self, detected_freq: f32) -> f32 {
-        if let Some(prev) = &self.current_note {
-            let ratio = detected_freq / prev.frequency;
-            // Jumped exactly an octave up -> probably harmonic lock
-            if (ratio - 2.0).abs() < 0.05 {
+        let prev = match &self.current_note {
+            Some(p) => p,
+            None => return detected_freq,
+        };
+
+        let ratio = detected_freq / prev.frequency;
+
+        // Only intervene for near-octave jumps (within 10%)
+        if (ratio - 2.0).abs() >= 0.1 && (ratio - 0.5).abs() >= 0.1 {
+            return detected_freq;
+        }
+
+        let buf = self.linearize_ring_buffer();
+        let sr = self.config.sample_rate;
+
+        if (ratio - 2.0).abs() < 0.1 {
+            // Candidate is octave up — compare with octave down
+            let score_as_is = harmonic_template_score(&buf, detected_freq, sr);
+            let score_down = harmonic_template_score(&buf, detected_freq / 2.0, sr);
+            if score_down > score_as_is {
                 return detected_freq / 2.0;
             }
-            // Jumped exactly an octave down -> probably subharmonic
-            if (ratio - 0.5).abs() < 0.05 {
+        }
+
+        if (ratio - 0.5).abs() < 0.1 {
+            // Candidate is octave down — compare with octave up
+            let score_as_is = harmonic_template_score(&buf, detected_freq, sr);
+            let score_up = harmonic_template_score(&buf, detected_freq * 2.0, sr);
+            if score_up > score_as_is {
                 return detected_freq * 2.0;
             }
         }
+
         detected_freq
     }
 
@@ -1640,6 +1792,14 @@ impl GuitarInput {
         buf
     }
 
+    /// Copy ring buffer into pre-allocated linearized_buf (no allocation).
+    fn linearize_ring_buffer_into(&mut self) {
+        for i in 0..self.config.buffer_size {
+            self.linearized_buf[i] =
+                self.ring_buffer[(self.ring_pos + i) % self.config.buffer_size];
+        }
+    }
+
     // ── Calibration ────────────────────────────────────────────────
 
     /// Calibrate a single string from captured audio.
@@ -1839,6 +1999,27 @@ pub fn goertzel(samples: &[f32], sample_rate: usize, target_freq: f32) -> f32 {
 }
 
 // ── Harmonic measurement ───────────────────────────────────────────
+
+/// Score how well a candidate f0 matches the harmonic template in the audio.
+/// Returns a weighted score: fundamental strength + count of present harmonics.
+/// A true fundamental will have strong energy at f0 AND at its harmonics.
+fn harmonic_template_score(audio: &[f32], candidate_f0: f32, sample_rate: usize) -> f32 {
+    let magnitudes = measure_harmonics(audio, candidate_f0, 6, sample_rate);
+    let h1_mag = magnitudes[0];
+    if h1_mag < 1e-6 {
+        return 0.0;
+    }
+    // Fundamental strength: the raw Goertzel magnitude at f0
+    let mut score = h1_mag;
+    // Bonus for each present harmonic (above 5% of h1)
+    let noise_threshold = h1_mag * 0.05;
+    for &mag in &magnitudes[1..] {
+        if mag > noise_threshold {
+            score += mag * 0.5; // harmonics contribute less than fundamental
+        }
+    }
+    score
+}
 
 /// Measure magnitudes of the first N harmonics of a fundamental frequency.
 ///
@@ -2400,7 +2581,13 @@ mod tests {
 
     #[test]
     fn correct_octave_drops_harmonic_lock() {
+        let sr = 48000;
         let mut pipeline = GuitarInput::with_defaults();
+        // Fill ring buffer with a 110 Hz guitar signal (has harmonics at 220, 330, ...)
+        let audio = guitar_signal(110.0, 0.003, sr, 1024);
+        for (i, &s) in audio.iter().enumerate() {
+            pipeline.ring_buffer[i] = s;
+        }
         // Set a current note at A2 = 110 Hz
         pipeline.current_note = Some(DetectedNote {
             midi_note: 45,
@@ -2412,7 +2599,7 @@ mod tests {
             bend_cents: 0,
         });
 
-        // Detected 220 Hz (octave up) -> should correct to 110 Hz
+        // Detected 220 Hz (octave up) -> harmonic template should prefer 110 Hz
         let corrected = pipeline.correct_octave(220.0);
         assert!(
             (corrected - 110.0).abs() < 1.0,
@@ -2423,7 +2610,13 @@ mod tests {
 
     #[test]
     fn correct_octave_raises_subharmonic() {
+        let sr = 48000;
         let mut pipeline = GuitarInput::with_defaults();
+        // Fill ring buffer with a 110 Hz guitar signal
+        let audio = guitar_signal(110.0, 0.003, sr, 1024);
+        for (i, &s) in audio.iter().enumerate() {
+            pipeline.ring_buffer[i] = s;
+        }
         pipeline.current_note = Some(DetectedNote {
             midi_note: 45,
             frequency: 110.0,
@@ -2434,7 +2627,7 @@ mod tests {
             bend_cents: 0,
         });
 
-        // Detected 55 Hz (octave down) -> should correct to 110 Hz
+        // Detected 55 Hz (octave down) -> harmonic template should prefer 110 Hz
         let corrected = pipeline.correct_octave(55.0);
         assert!(
             (corrected - 110.0).abs() < 1.0,
@@ -2486,6 +2679,7 @@ mod tests {
         let sr = 48000;
         let config = GuitarInputConfig {
             buffer_size: 1024,
+            hop_size: 1024, // tests: analyze every full buffer for deterministic behavior
             sample_rate: sr,
             onset_threshold: 0.01,
             string_confidence_min: 0.3,
@@ -2886,6 +3080,7 @@ mod tests {
         let sr = 48000;
         let config = GuitarInputConfig {
             buffer_size: 1024,
+            hop_size: 1024, // tests: analyze every full buffer for deterministic behavior
             sample_rate: sr,
             onset_threshold: 0.01,
             string_confidence_min: 0.3,
@@ -3602,6 +3797,7 @@ mod tests {
         let sr = 48000;
         let config = GuitarInputConfig {
             buffer_size: 1024,
+            hop_size: 1024, // tests: analyze every full buffer for deterministic behavior
             sample_rate: sr,
             onset_threshold: 0.01,
             string_confidence_min: 0.3,
@@ -3673,6 +3869,7 @@ mod tests {
         let sr = 48000;
         let config = GuitarInputConfig {
             buffer_size: 1024,
+            hop_size: 1024, // tests: analyze every full buffer for deterministic behavior
             sample_rate: sr,
             onset_threshold: 0.01,
             string_confidence_min: 0.3,
