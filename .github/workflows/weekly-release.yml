@@ -1,0 +1,109 @@
+name: Weekly Release
+
+on:
+  schedule:
+    # Every Friday at 18:00 UTC (11:30 PM IST)
+    - cron: '0 18 * * 5'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check-changes:
+    name: Check for changes since last release
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get last release tag
+        id: last_release
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Check for new commits in source dirs
+        id: check
+        env:
+          LAST_TAG: ${{ steps.last_release.outputs.tag }}
+        run: |
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous release — will create first release"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            COMMITS=$(git log "${LAST_TAG}..HEAD" --oneline -- \
+              src/ plugin/ wasm/ src-tauri/ ui/src/ Cargo.toml Cargo.lock)
+            if [ -n "$COMMITS" ]; then
+              echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Compute version
+        id: version
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          DATE=$(date -u +%Y.%m.%d)
+          EXISTING=$(git tag -l "v${DATE}" 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            VERSION="v${DATE}.1"
+          else
+            VERSION="v${DATE}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        id: changelog
+        if: steps.check.outputs.has_changes == 'true'
+        env:
+          LAST_TAG: ${{ steps.last_release.outputs.tag }}
+        run: |
+          if [ -z "$LAST_TAG" ]; then
+            git log --oneline -20 > /tmp/changelog.txt
+          else
+            git log "${LAST_TAG}..HEAD" --oneline > /tmp/changelog.txt
+          fi
+          # Store as file artifact — avoids shell escaping issues
+          cat /tmp/changelog.txt
+
+      - name: Upload changelog
+        if: steps.check.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: /tmp/changelog.txt
+
+  release:
+    name: Create Release
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-changes.outputs.version }}
+        run: |
+          BODY="## Weekly Release — ${VERSION}
+
+          ### Changes since last release
+          $(cat changelog.txt)
+
+          ---
+          *Automated weekly release. Only created when source changes are detected.*"
+
+          gh release create "$VERSION" \
+            --title "Contrapunk ${VERSION}" \
+            --notes "$BODY"
