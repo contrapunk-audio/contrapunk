@@ -35,7 +35,7 @@ CATEGORIES = {
 
 
 def get_commits():
-    """Get commit log since last tag."""
+    """Get commit log since last tag, enriched with PR release notes when available."""
     if LAST_TAG:
         cmd = ["git", "log", f"{LAST_TAG}..HEAD", "--pretty=format:%H|%s|%an"]
     else:
@@ -45,42 +45,124 @@ def get_commits():
     if result.returncode != 0:
         return []
 
+    # Try to get merged PRs with their release notes and labels
+    pr_data = get_pr_data()
+
     commits = []
     for line in result.stdout.strip().splitlines():
         parts = line.split("|", 2)
         if len(parts) == 3:
-            commits.append({
-                "hash": parts[0][:7],
+            full_hash = parts[0]
+            commit = {
+                "hash": full_hash[:7],
+                "full_hash": full_hash,
                 "message": parts[1],
                 "author": parts[2],
-            })
+                "release_note": "",
+                "pr_labels": [],
+                "pr_number": None,
+            }
+            # Match commit to a PR
+            if full_hash in pr_data:
+                pr = pr_data[full_hash]
+                commit["release_note"] = pr.get("release_note", "")
+                commit["pr_labels"] = pr.get("labels", [])
+                commit["pr_number"] = pr.get("number")
+            commits.append(commit)
     return commits
 
 
+def get_pr_data():
+    """Fetch merged PR data (release notes, labels) keyed by merge commit SHA."""
+    try:
+        cmd = [
+            "gh", "pr", "list",
+            "--repo", "contrapunk-audio/contrapunk",
+            "--state", "merged",
+            "--limit", "100",
+            "--json", "number,title,body,labels,mergeCommit",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            return {}
+
+        import json
+        prs = json.loads(result.stdout)
+        data = {}
+        release_note_re = re.compile(
+            r"```release-note\s*\n(.*?)```", re.DOTALL
+        )
+        for pr in prs:
+            merge_sha = pr.get("mergeCommit", {}).get("oid", "")
+            if not merge_sha:
+                continue
+
+            # Extract release note from PR body
+            body = pr.get("body", "") or ""
+            match = release_note_re.search(body)
+            note = ""
+            if match:
+                note = match.group(1).strip()
+                if note.upper() == "NONE":
+                    note = ""
+
+            labels = [l["name"] for l in pr.get("labels", [])]
+
+            data[merge_sha] = {
+                "number": pr["number"],
+                "release_note": note,
+                "labels": labels,
+            }
+        return data
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        return {}
+
+
+LABEL_TO_CATEGORY = {
+    "kind/feature": "feat",
+    "kind/bug": "fix",
+    "kind/cleanup": "refactor",
+    "kind/docs": "docs",
+    "kind/ci": "ci",
+    "kind/perf": "perf",
+}
+
+
 def categorize(commits):
-    """Sort commits into categories based on conventional commit prefix."""
+    """Sort commits by PR labels first, then conventional commit prefix."""
     categorized = {}
     uncategorized = []
 
     prefix_re = re.compile(r"^(feat|fix|perf|refactor|docs|test|ci|chore|wip)(\(.+?\))?:\s*(.+)")
 
     for commit in commits:
+        # Try PR labels first
+        category = None
+        for label in commit.get("pr_labels", []):
+            if label in LABEL_TO_CATEGORY:
+                category = LABEL_TO_CATEGORY[label]
+                break
+
+        # Fall back to commit prefix
         match = prefix_re.match(commit["message"])
-        if match:
-            prefix = match.group(1)
-            scope = match.group(2) or ""
+        if category:
+            description = match.group(3) if match else commit["message"]
+            scope = match.group(2).strip("()") if match and match.group(2) else ""
+        elif match:
+            category = match.group(1)
+            scope = match.group(2).strip("()") if match.group(2) else ""
             description = match.group(3)
-            cat = CATEGORIES.get(prefix, ("📦", prefix.title(), 50))
-            key = prefix
-            if key not in categorized:
-                categorized[key] = []
-            categorized[key].append({
-                **commit,
-                "scope": scope.strip("()"),
-                "description": description,
-            })
         else:
             uncategorized.append(commit)
+            continue
+
+        if category not in categorized:
+            categorized[category] = []
+        categorized[category].append({
+            **commit,
+            "scope": scope,
+            "description": description,
+        })
 
     return categorized, uncategorized
 
@@ -131,7 +213,12 @@ def render(categorized, uncategorized, commits):
         lines.append("")
         for item in items:
             scope_str = f"**{item['scope']}**: " if item.get("scope") else ""
-            lines.append(f"- {scope_str}{item['description']} ({item['hash']})")
+            pr_ref = f" (#{item['pr_number']})" if item.get("pr_number") else f" ({item['hash']})"
+            lines.append(f"- {scope_str}{item['description']}{pr_ref}")
+            # Include PR release note if present
+            if item.get("release_note"):
+                for note_line in item["release_note"].splitlines():
+                    lines.append(f"  {note_line}")
         lines.append("")
 
     # Uncategorized

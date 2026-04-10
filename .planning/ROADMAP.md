@@ -37,6 +37,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection (95% complete on guitar-input-clean branch)
 - [ ] **Phase 6.12: DMG Distribution** - Ship Contrapunk as a signed macOS DMG with app icon, codesigning, and notarization (INSERTED)
 - ~~**Phase 11: Trackpad Beat Input**~~ - DROPPED
+- [ ] **Phase 16: VST3/CLAP/AU Plugin** - nih-plug plugin with webview GUI, AU wrapper via clap-wrapper (GitHub #15)
+- [ ] **Phase 17: Integration Test Pipeline** - Real guitar recordings + basic-pitch ground truth, pitch accuracy benchmarks (GitHub #27)
+- [ ] **Phase 18: Basic-Pitch Polyphonic Analysis** - tract-onnx integration for Performance Mode chord/key detection (GitHub #28)
+- [ ] **Phase 19: NeuralNote Real-Time Research** - Frame-by-frame CNN decomposition for real-time polyphonic detection (GitHub #29)
+- [ ] **Phase 20: Release Engineering** - Weekly patch + monthly minor releases, codename generator, backport workflow, Dependabot
 
 ## Phase Details
 
@@ -619,6 +624,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | ~~13. Voice Leading Test Suite~~ | — | CLOSED: tests exist inline in voice leading code | - |
 | 14. openDAW Device Integration | 0/? | Research complete | - |
 | 15. Contrapunk Cloud | 0/? | Waitlist live, concept defined | - |
+| 16. VST3/CLAP/AU Plugin | 4/7 | Plugin builds, AU works in Logic, webview GUI WIP | 2026-04-07 |
+| 17. Integration Test Pipeline | 1/3 | Synthetic benchmarks done (100%), real audio fixtures pending | 2026-04-10 |
+| 18. Basic-Pitch Polyphonic | 0/? | Research complete, tract-onnx path chosen | - |
+| 19. NeuralNote Research | 0/? | Research complete, NeuralNote frame-by-frame pattern documented | - |
+| 20. Release Engineering | ~80% | Workflows created, codename gen done, manual dispatch | 2026-04-10 |
 
 ## Known Cross-Cutting Issues (from memory, not phase-specific)
 
@@ -628,4 +638,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-04-05 — Added Phase 14 (openDAW integration, research complete) and Phase 15 (Contrapunk Cloud, waitlist live). HN launch day: 76 pts, 31 comments, 10 issues created, 4 waitlist signups.*
+*Last updated: 2026-04-10 — Added Phases 16-20: plugin (VST3/CLAP/AU), integration test pipeline, basic-pitch polyphonic analysis, NeuralNote research, release engineering. Debug page at /debug/guitar-midi. Pitch accuracy benchmarks all passing (100%).*
