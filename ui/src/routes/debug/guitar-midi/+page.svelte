@@ -31,6 +31,12 @@
 	let selectedMidiOutputId = $state('');
 	let midiOutputs: { id: string; name: string }[] = $state([]);
 
+	// Recording state
+	let recording = $state(false);
+	let recordedChunks: Float32Array[] = [];
+	let recordingDuration = $state(0);
+	let recordingTimer: number | null = null;
+
 	// Canvas refs
 	let waveformCanvas: HTMLCanvasElement;
 	let envelopeCanvas: HTMLCanvasElement;
@@ -328,6 +334,11 @@
 
 				// Copy waveform for display
 				waveformBuffer = new Float32Array(samples);
+
+				// Record raw audio if recording
+				if (recording) {
+					recordedChunks.push(new Float32Array(samples));
+				}
 
 				// Compute RMS
 				let sum = 0;
@@ -714,6 +725,85 @@
 		}
 	}
 
+	// ── Recording ────────────────────────────────────────────
+	function startRecording() {
+		recordedChunks = [];
+		recordingDuration = 0;
+		recording = true;
+		const startTime = Date.now();
+		recordingTimer = window.setInterval(() => {
+			recordingDuration = (Date.now() - startTime) / 1000;
+		}, 100);
+	}
+
+	function stopRecording() {
+		recording = false;
+		if (recordingTimer) { clearInterval(recordingTimer); recordingTimer = null; }
+	}
+
+	function downloadWav() {
+		if (recordedChunks.length === 0) return;
+		const sr = sampleRate;
+		// Concatenate all chunks
+		const totalSamples = recordedChunks.reduce((sum, c) => sum + c.length, 0);
+		const pcm = new Float32Array(totalSamples);
+		let offset = 0;
+		for (const chunk of recordedChunks) {
+			pcm.set(chunk, offset);
+			offset += chunk.length;
+		}
+		// Encode WAV
+		const wav = encodeWav(pcm, sr);
+		const blob = new Blob([wav], { type: 'audio/wav' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+		a.download = `guitar-recording-${timestamp}.wav`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
+	function encodeWav(samples: Float32Array, sr: number): ArrayBuffer {
+		const numChannels = 1;
+		const bitsPerSample = 16;
+		const bytesPerSample = bitsPerSample / 8;
+		const dataSize = samples.length * bytesPerSample;
+		const buffer = new ArrayBuffer(44 + dataSize);
+		const view = new DataView(buffer);
+
+		// RIFF header
+		writeString(view, 0, 'RIFF');
+		view.setUint32(4, 36 + dataSize, true);
+		writeString(view, 8, 'WAVE');
+		// fmt chunk
+		writeString(view, 12, 'fmt ');
+		view.setUint32(16, 16, true);
+		view.setUint16(20, 1, true); // PCM
+		view.setUint16(22, numChannels, true);
+		view.setUint32(24, sr, true);
+		view.setUint32(28, sr * numChannels * bytesPerSample, true);
+		view.setUint16(32, numChannels * bytesPerSample, true);
+		view.setUint16(34, bitsPerSample, true);
+		// data chunk
+		writeString(view, 36, 'data');
+		view.setUint32(40, dataSize, true);
+		// PCM samples (float32 → int16)
+		let pos = 44;
+		for (let i = 0; i < samples.length; i++) {
+			const s = Math.max(-1, Math.min(1, samples[i]));
+			view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+			pos += 2;
+		}
+		return buffer;
+	}
+
+	function writeString(view: DataView, offset: number, str: string) {
+		for (let i = 0; i < str.length; i++) {
+			view.setUint8(offset + i, str.charCodeAt(i));
+		}
+	}
+
 	// ── Init ─────────────────────────────────────────────────
 	$effect(() => {
 		enumerateDevices();
@@ -757,6 +847,16 @@
 		<button class="start-btn" onclick={() => running ? stop() : start()}>
 			{running ? 'Stop' : 'Start'}
 		</button>
+		{#if running}
+			<button class="rec-btn" class:rec-active={recording} onclick={() => recording ? stopRecording() : startRecording()}>
+				{recording ? `⏺ ${recordingDuration.toFixed(1)}s` : '⏺ Rec'}
+			</button>
+		{/if}
+		{#if !recording && recordedChunks.length > 0}
+			<button class="download-btn" onclick={downloadWav}>
+				↓ Download WAV ({recordingDuration.toFixed(1)}s)
+			</button>
+		{/if}
 	</section>
 
 	<!-- ── Detection display ─────────────────────────── -->
@@ -937,6 +1037,32 @@
 		font-family: inherit;
 	}
 	.start-btn:hover { background: #4f46e5; }
+
+	.rec-btn {
+		padding: 6px 14px;
+		background: #1a1a2e;
+		color: #f87171;
+		border: 1px solid #f8717140;
+		border-radius: 3px;
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+		font-family: inherit;
+	}
+	.rec-btn.rec-active { background: #f87171; color: #fff; border-color: #f87171; }
+
+	.download-btn {
+		padding: 6px 14px;
+		background: #1a2a1f;
+		color: #4ade80;
+		border: 1px solid #4ade8040;
+		border-radius: 3px;
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+		font-family: inherit;
+	}
+	.download-btn:hover { background: #0f3a1f; }
 
 	.detection {
 		display: flex;
