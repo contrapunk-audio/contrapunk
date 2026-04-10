@@ -1,10 +1,7 @@
-name: Weekly Patch Release
+name: Patch Release
 
 on:
-  schedule:
-    # Every Friday at 18:00 UTC (11:30 PM IST)
-    - cron: '0 18 * * 5'
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch: # Manual trigger only
 
 jobs:
   check-changes:

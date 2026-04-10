@@ -1,10 +1,7 @@
-name: Monthly Minor Release
+name: Minor Release
 
 on:
-  schedule:
-    # Every Friday at 18:00 UTC — job checks if it's the last Friday of the month
-    - cron: '0 18 * * 5'
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch: # Manual trigger only
 
 jobs:
   check-changes:
@@ -13,33 +10,13 @@ jobs:
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
       version: ${{ steps.version.outputs.version }}
-      is_last_friday: ${{ steps.date_check.outputs.is_last_friday }}
     steps:
-      - name: Check if last Friday of month
-        id: date_check
-        run: |
-          TODAY=$(date -u +%d)
-          # Next Friday would be 7 days from now
-          NEXT_FRIDAY_DAY=$(date -u -d "+7 days" +%d 2>/dev/null || date -u -v+7d +%d)
-          NEXT_FRIDAY_MONTH=$(date -u -d "+7 days" +%m 2>/dev/null || date -u -v+7d +%m)
-          THIS_MONTH=$(date -u +%m)
-          # If next Friday is in a different month, this is the last Friday
-          if [ "$NEXT_FRIDAY_MONTH" != "$THIS_MONTH" ]; then
-            echo "is_last_friday=true" >> "$GITHUB_OUTPUT"
-            echo "Last Friday of the month — proceeding with monthly release"
-          else
-            echo "is_last_friday=false" >> "$GITHUB_OUTPUT"
-            echo "Not the last Friday (next Friday is still in this month) — skipping"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.date_check.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch'
         with:
           fetch-depth: 0
 
       - name: Get last minor release tag
         id: last_release
-        if: steps.date_check.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           LAST_MINOR=$(git tag -l 'v*.*.*' --sort=-v:refname | grep '\.0$' | head -1)
           if [ -z "$LAST_MINOR" ]; then
@@ -49,7 +26,6 @@ jobs:
 
       - name: Check for commits
         id: check
-        if: steps.date_check.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch'
         env:
           LAST_TAG: ${{ steps.last_release.outputs.tag }}
         run: |
@@ -84,7 +60,7 @@ jobs:
   release:
     name: Create Minor Release
     needs: check-changes
-    if: needs.check-changes.outputs.has_changes == 'true' && (needs.check-changes.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch')
+    if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
