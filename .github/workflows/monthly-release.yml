@@ -1,0 +1,133 @@
+name: Monthly Minor Release
+
+on:
+  schedule:
+    # Every Friday at 18:00 UTC — job checks if it's the last Friday of the month
+    - cron: '0 18 * * 5'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check-changes:
+    name: Check for features since last minor release
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+      version: ${{ steps.version.outputs.version }}
+      is_last_friday: ${{ steps.date_check.outputs.is_last_friday }}
+    steps:
+      - name: Check if last Friday of month
+        id: date_check
+        run: |
+          TODAY=$(date -u +%d)
+          # Next Friday would be 7 days from now
+          NEXT_FRIDAY_DAY=$(date -u -d "+7 days" +%d 2>/dev/null || date -u -v+7d +%d)
+          NEXT_FRIDAY_MONTH=$(date -u -d "+7 days" +%m 2>/dev/null || date -u -v+7d +%m)
+          THIS_MONTH=$(date -u +%m)
+          # If next Friday is in a different month, this is the last Friday
+          if [ "$NEXT_FRIDAY_MONTH" != "$THIS_MONTH" ]; then
+            echo "is_last_friday=true" >> "$GITHUB_OUTPUT"
+            echo "Last Friday of the month — proceeding with monthly release"
+          else
+            echo "is_last_friday=false" >> "$GITHUB_OUTPUT"
+            echo "Not the last Friday (next Friday is still in this month) — skipping"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.date_check.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+
+      - name: Get last minor release tag
+        id: last_release
+        if: steps.date_check.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          LAST_MINOR=$(git tag -l 'v*.*.*' --sort=-v:refname | grep '\.0$' | head -1)
+          if [ -z "$LAST_MINOR" ]; then
+            LAST_MINOR=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          fi
+          echo "tag=$LAST_MINOR" >> "$GITHUB_OUTPUT"
+
+      - name: Check for commits
+        id: check
+        if: steps.date_check.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          LAST_TAG: ${{ steps.last_release.outputs.tag }}
+        run: |
+          if [ -z "$LAST_TAG" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            COMMITS=$(git log "${LAST_TAG}..HEAD" --oneline -- \
+              src/ plugin/ wasm/ src-tauri/ ui/src/ Cargo.toml Cargo.lock)
+            if [ -n "$COMMITS" ]; then
+              echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Compute minor version
+        id: version
+        if: (steps.date_check.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch') && steps.check.outputs.has_changes == 'true'
+        env:
+          LAST_TAG: ${{ steps.last_release.outputs.tag }}
+        run: |
+          if [[ "$LAST_TAG" =~ ^v([0-9]+)\.([0-9]+)\. ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            NEW_MINOR=$((MINOR + 1))
+            VERSION="v${MAJOR}.${NEW_MINOR}.0"
+          else
+            VERSION="v1.1.0"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Create Minor Release
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true' && (needs.check-changes.outputs.is_last_friday == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate codename
+        id: codename
+        run: |
+          NAME=$(python3 scripts/release-name.py --check-used)
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        env:
+          VERSION: ${{ needs.check-changes.outputs.version }}
+          CODENAME: ${{ steps.codename.outputs.name }}
+        run: |
+          LAST_MINOR=$(git tag -l 'v*.*.*' --sort=-v:refname | grep '\.0$' | head -1)
+          export LAST_TAG="${LAST_MINOR:-}"
+          python3 scripts/release-notes.py > /tmp/release-notes.md
+          cat /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-changes.outputs.version }}
+          CODENAME: ${{ steps.codename.outputs.name }}
+        run: |
+          gh release create "$VERSION" \
+            --title "Contrapunk ${VERSION} — ${CODENAME}" \
+            --notes-file /tmp/release-notes.md
+
+      - name: Create release branch for backports
+        env:
+          VERSION: ${{ needs.check-changes.outputs.version }}
+        run: |
+          BRANCH="release-${VERSION%.*}"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          echo "Created branch $BRANCH for backports"

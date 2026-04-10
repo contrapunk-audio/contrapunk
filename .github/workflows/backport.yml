@@ -1,0 +1,72 @@
+name: Backport to Release Branch
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  backport:
+    name: Cherry-pick to release branch
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find backport labels
+        id: labels
+        env:
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, '\n') }}
+        run: |
+          BRANCHES=$(echo "$PR_LABELS" | grep '^backport/' | sed 's|^backport/||' || echo "")
+          if [ -z "$BRANCHES" ]; then
+            echo "has_backports=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_backports=true" >> "$GITHUB_OUTPUT"
+            echo "$BRANCHES" > /tmp/backport-branches.txt
+          fi
+
+      - name: Cherry-pick and create backport PRs
+        if: steps.labels.outputs.has_backports == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          while IFS= read -r BRANCH; do
+            [ -z "$BRANCH" ] && continue
+
+            if ! git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+              echo "Branch $BRANCH does not exist — skipping"
+              continue
+            fi
+
+            SHORT_SHA="${MERGE_SHA:0:7}"
+            BACKPORT_BRANCH="backport/${SHORT_SHA}-to-${BRANCH}"
+            git checkout "origin/$BRANCH" -b "$BACKPORT_BRANCH"
+
+            if git cherry-pick "$MERGE_SHA" --no-commit && \
+               git commit -m "backport: $PR_TITLE (#$PR_NUMBER)"; then
+              git push origin "$BACKPORT_BRANCH"
+              gh pr create \
+                --base "$BRANCH" \
+                --head "$BACKPORT_BRANCH" \
+                --title "backport: $PR_TITLE (#$PR_NUMBER)" \
+                --body "Cherry-pick of #$PR_NUMBER to \`$BRANCH\`."
+            else
+              git cherry-pick --abort 2>/dev/null || true
+              gh issue comment "$PR_NUMBER" \
+                --body "Backport to \`$BRANCH\` failed due to conflicts. Please cherry-pick manually."
+            fi
+
+            git checkout main
+            git branch -D "$BACKPORT_BRANCH" 2>/dev/null || true
+          done < /tmp/backport-branches.txt

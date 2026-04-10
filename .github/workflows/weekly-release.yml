@@ -1,4 +1,4 @@
-name: Weekly Release
+name: Weekly Patch Release
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   check-changes:
-    name: Check for changes since last release
+    name: Check for bugfixes since last release
     runs-on: ubuntu-latest
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
@@ -24,39 +24,51 @@ jobs:
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Check for new commits in source dirs
+      - name: Check for bugfix/CVE commits only
         id: check
         env:
           LAST_TAG: ${{ steps.last_release.outputs.tag }}
         run: |
           if [ -z "$LAST_TAG" ]; then
-            echo "No previous release — will create first release"
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          else
-            COMMITS=$(git log "${LAST_TAG}..HEAD" --oneline -- \
-              src/ plugin/ wasm/ src-tauri/ ui/src/ Cargo.toml Cargo.lock)
-            if [ -n "$COMMITS" ]; then
-              echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            fi
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No previous release — skip weekly patch (use monthly for first release)"
+            exit 0
           fi
 
-      - name: Compute version
+          # Only look for fix: and security-related commits
+          FIX_COMMITS=$(git log "${LAST_TAG}..HEAD" --oneline --grep="^fix" --grep="^security" --grep="CVE" -- \
+            src/ plugin/ wasm/ src-tauri/ ui/src/ Cargo.toml Cargo.lock)
+          if [ -n "$FIX_COMMITS" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Bugfixes found since ${LAST_TAG}:"
+            echo "$FIX_COMMITS"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No bugfixes since ${LAST_TAG}"
+          fi
+
+      - name: Compute patch version
         id: version
         if: steps.check.outputs.has_changes == 'true'
+        env:
+          LAST_TAG: ${{ steps.last_release.outputs.tag }}
         run: |
-          DATE=$(date -u +%Y.%m.%d)
-          EXISTING=$(git tag -l "v${DATE}" 2>/dev/null || echo "")
-          if [ -n "$EXISTING" ]; then
-            VERSION="v${DATE}.1"
+          # Parse last tag: v1.2.3 → bump patch → v1.2.4
+          if [[ "$LAST_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            NEW_PATCH=$((PATCH + 1))
+            VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
           else
-            VERSION="v${DATE}"
+            # Fallback: date-based
+            VERSION="v1.0.1"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Patch version: $VERSION"
 
   release:
-    name: Create Release
+    name: Create Patch Release
     needs: check-changes
     if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
@@ -71,17 +83,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Generate codename
-        id: codename
-        run: |
-          NAME=$(python3 scripts/release-name.py --check-used)
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Generate categorized release notes
+      - name: Generate release notes (bugfixes only)
         env:
           LAST_TAG: ${{ steps.last_release.outputs.tag || '' }}
           VERSION: ${{ needs.check-changes.outputs.version }}
-          CODENAME: ${{ steps.codename.outputs.name }}
+          CODENAME: ""
+          RELEASE_TYPE: "patch"
         run: |
           python3 scripts/release-notes.py > /tmp/release-notes.md
           cat /tmp/release-notes.md
@@ -90,8 +97,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.check-changes.outputs.version }}
-          CODENAME: ${{ steps.codename.outputs.name }}
         run: |
           gh release create "$VERSION" \
-            --title "Contrapunk ${VERSION} — ${CODENAME}" \
+            --title "Contrapunk ${VERSION}" \
             --notes-file /tmp/release-notes.md
