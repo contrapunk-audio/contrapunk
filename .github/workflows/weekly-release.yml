@@ -55,27 +55,6 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Generate changelog
-        id: changelog
-        if: steps.check.outputs.has_changes == 'true'
-        env:
-          LAST_TAG: ${{ steps.last_release.outputs.tag }}
-        run: |
-          if [ -z "$LAST_TAG" ]; then
-            git log --oneline -20 > /tmp/changelog.txt
-          else
-            git log "${LAST_TAG}..HEAD" --oneline > /tmp/changelog.txt
-          fi
-          # Store as file artifact — avoids shell escaping issues
-          cat /tmp/changelog.txt
-
-      - name: Upload changelog
-        if: steps.check.outputs.has_changes == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: changelog
-          path: /tmp/changelog.txt
-
   release:
     name: Create Release
     needs: check-changes
@@ -85,25 +64,34 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download changelog
-        uses: actions/download-artifact@v4
         with:
-          name: changelog
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate codename
+        id: codename
+        run: |
+          NAME=$(python3 scripts/release-name.py --check-used)
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Generate categorized release notes
+        env:
+          LAST_TAG: ${{ steps.last_release.outputs.tag || '' }}
+          VERSION: ${{ needs.check-changes.outputs.version }}
+          CODENAME: ${{ steps.codename.outputs.name }}
+        run: |
+          python3 scripts/release-notes.py > /tmp/release-notes.md
+          cat /tmp/release-notes.md
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.check-changes.outputs.version }}
+          CODENAME: ${{ steps.codename.outputs.name }}
         run: |
-          BODY="## Weekly Release — ${VERSION}
-
-          ### Changes since last release
-          $(cat changelog.txt)
-
-          ---
-          *Automated weekly release. Only created when source changes are detected.*"
-
           gh release create "$VERSION" \
-            --title "Contrapunk ${VERSION}" \
-            --notes "$BODY"
+            --title "Contrapunk ${VERSION} — ${CODENAME}" \
+            --notes-file /tmp/release-notes.md
