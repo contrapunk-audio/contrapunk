@@ -833,7 +833,6 @@ impl HarmonyEngine {
                     vec![note]
                 }
             }
-            HarmonyMode::BarryHarris => modes::barry_harris_directed(note, &mut self.scale, above),
         }
     }
 
@@ -862,7 +861,6 @@ impl HarmonyEngine {
                     vec![note]
                 }
             }
-            HarmonyMode::BarryHarris => modes::barry_harris(note, &mut self.scale),
         }
     }
 
@@ -1631,13 +1629,15 @@ mod tests {
         }
     }
 
-    // Barry Harris mode tests
+    // DiatonicThirds on BH scale tests — prove that chord-tone/passing-tone
+    // parity preservation is an emergent property of the 8-note scale, not a
+    // special mode algorithm.
 
     #[test]
-    fn test_barry_harris_chord_tone_to_chord_tone() {
+    fn test_diatonic_thirds_on_bh_scale_chord_tone_parity() {
         // C BH Major 6th Dim: C D E F G Ab A B (degrees 0-7)
         // C4 is degree 0 (chord tone, even). +2 degrees = E4 (degree 2, chord tone, even).
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 2);
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
         engine.set_scale_mode(ScaleMode::BHMajor6thDim);
 
         let result = engine.harmonize(Note::C4);
@@ -1647,10 +1647,10 @@ mod tests {
     }
 
     #[test]
-    fn test_barry_harris_passing_tone_to_passing_tone() {
+    fn test_diatonic_thirds_on_bh_scale_passing_tone_parity() {
         // C BH Major 6th Dim: C D E F G Ab A B (degrees 0-7)
         // D4 is degree 1 (passing tone, odd). +2 degrees = F4 (degree 3, passing tone, odd).
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 2);
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
         engine.set_scale_mode(ScaleMode::BHMajor6thDim);
 
         let result = engine.harmonize(Note::D4);
@@ -1691,13 +1691,9 @@ mod tests {
     }
 
     #[test]
-    fn test_barry_harris_with_7note_scale() {
-        // BarryHarris mode with Ionian (7-note) scale still works
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 2);
-
-        let result = engine.harmonize(Note::C4);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0], Note::C4);
-        assert_eq!(result[1], Note::E4);
+    fn test_legacy_preset_barry_harris_deserializes_as_diatonic_thirds() {
+        let json = r#""barry_harris""#;
+        let mode: HarmonyMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, HarmonyMode::DiatonicThirds);
     }
 }

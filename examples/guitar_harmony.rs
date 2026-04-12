@@ -510,17 +510,20 @@ fn main() {
     // ── Harmony Setup ────────────────────────────────────
     println!("\nHarmony Modes:");
     let modes = [
-        ("0", "PassThrough", HarmonyMode::PassThrough),
-        ("1", "Diatonic Thirds", HarmonyMode::DiatonicThirds),
-        ("2", "Diatonic Fourths", HarmonyMode::DiatonicFourths),
+        ("0", "Pass Through", HarmonyMode::PassThrough),
+        ("1", "Parallel Thirds", HarmonyMode::DiatonicThirds),
+        ("2", "Parallel Fourths", HarmonyMode::DiatonicFourths),
         ("3", "Contrary Motion", HarmonyMode::ContraryMotion),
-        ("4", "Strict Counterpoint", HarmonyMode::StrictCounterpoint),
-        ("5", "Barry Harris", HarmonyMode::BarryHarris),
+        (
+            "4",
+            "Counterpoint (Species 1)",
+            HarmonyMode::StrictCounterpoint,
+        ),
     ];
     for (i, label, _) in &modes {
         println!("  [{}] {}", i, label);
     }
-    let mode_idx = prompt_selection("\nSelect mode [0-5]: ", 5);
+    let mode_idx = prompt_selection("\nSelect mode [0-4]: ", 4);
     let harmony_mode = modes[mode_idx].2.clone();
 
     let keys = [

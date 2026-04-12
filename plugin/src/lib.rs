@@ -73,10 +73,8 @@ enum PluginMode {
     RandomBelowNoSeconds,
     #[name = "Contrary Motion"]
     ContraryMotion,
-    #[name = "Strict Counterpoint"]
+    #[name = "Counterpoint (Species 1)"]
     StrictCounterpoint,
-    #[name = "Barry Harris"]
-    BarryHarris,
 }
 
 impl PluginMode {
@@ -89,7 +87,6 @@ impl PluginMode {
             Self::RandomBelowNoSeconds => HarmonyMode::RandomBelowNoSeconds,
             Self::ContraryMotion => HarmonyMode::ContraryMotion,
             Self::StrictCounterpoint => HarmonyMode::StrictCounterpoint,
-            Self::BarryHarris => HarmonyMode::BarryHarris,
         }
     }
 }

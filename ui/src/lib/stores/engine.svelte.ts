@@ -46,8 +46,7 @@ export type HarmonyModeName =
 	| 'RandomBelow'
 	| 'RandomBelowNoSeconds'
 	| 'ContraryMotion'
-	| 'StrictCounterpoint'
-	| 'BarryHarris';
+	| 'StrictCounterpoint';
 
 export type ScaleFamilyName =
 	| 'Diatonic'
@@ -134,15 +133,55 @@ export const KEY_DISPLAY: Record<KeyName, string> = {
 	'B': 'B',
 };
 
-export const ALL_MODES: { name: HarmonyModeName; label: string; shortLabel: string }[] = [
-	{ name: 'PassThrough', label: 'Pass Through', shortLabel: 'Pass' },
-	{ name: 'DiatonicThirds', label: 'Diatonic Thirds', shortLabel: '3rds' },
-	{ name: 'DiatonicFourths', label: 'Diatonic Fourths', shortLabel: '4ths' },
-	{ name: 'RandomBelow', label: 'Random Below', shortLabel: 'Rand' },
-	{ name: 'RandomBelowNoSeconds', label: 'Random No 2nds', shortLabel: 'Rand-' },
-	{ name: 'ContraryMotion', label: 'Contrary Motion', shortLabel: 'Contra' },
-	{ name: 'StrictCounterpoint', label: 'Strict Counterpoint', shortLabel: 'Strict' },
-	{ name: 'BarryHarris', label: 'Barry Harris', shortLabel: 'Barry' }
+export const ALL_MODES: {
+	name: HarmonyModeName;
+	label: string;
+	shortLabel: string;
+	tooltip: string;
+}[] = [
+	{
+		name: 'PassThrough',
+		label: 'Pass Through',
+		shortLabel: 'Pass',
+		tooltip: 'Notes pass unchanged to output'
+	},
+	{
+		name: 'DiatonicThirds',
+		label: 'Parallel Thirds',
+		shortLabel: '3rds',
+		tooltip: 'Adds +2 scale degrees per voice. Multiple voices stack into 7th chords.'
+	},
+	{
+		name: 'DiatonicFourths',
+		label: 'Parallel Fourths',
+		shortLabel: '4ths',
+		tooltip: 'Adds +3 scale degrees per voice. Multiple voices stack into extended chords.'
+	},
+	{
+		name: 'RandomBelow',
+		label: 'Random Below',
+		shortLabel: 'Rand',
+		tooltip: 'Random diatonic interval (2nd-7th) below the melody'
+	},
+	{
+		name: 'RandomBelowNoSeconds',
+		label: 'Random Below (consonant)',
+		shortLabel: 'Rand-',
+		tooltip: 'Random diatonic interval below, excluding dissonant 2nds'
+	},
+	{
+		name: 'ContraryMotion',
+		label: 'Contrary Motion',
+		shortLabel: 'Contra',
+		tooltip: 'Harmony moves opposite to melody direction. Tracks previous notes.'
+	},
+	{
+		name: 'StrictCounterpoint',
+		label: 'Counterpoint (Species 1)',
+		shortLabel: 'Cpt',
+		tooltip:
+			'Note-against-note voice leading with scoring. No parallel 5ths/octaves, prefers contrary/stepwise motion.'
+	}
 ];
 
 export const SCALE_FAMILIES: ScaleFamilyGroup[] = [

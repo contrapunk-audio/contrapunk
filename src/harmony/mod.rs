@@ -29,17 +29,16 @@
 //! | Mode | Name | Description |
 //! |------|------|-------------|
 //! | 1 | PassThrough | No harmony, notes pass through unchanged |
-//! | 2 | DiatonicThirds | Add diatonic thirds above the melody |
-//! | 3 | DiatonicFourths | Add diatonic fourths above the melody |
+//! | 2 | DiatonicThirds | Parallel thirds (+2 scale degrees per voice) |
+//! | 3 | DiatonicFourths | Parallel fourths (+3 scale degrees per voice) |
 //! | 4 | RandomBelow | Random diatonic interval below (2nd-7th) |
 //! | 5 | RandomBelowNoSeconds | Random below excluding dissonant 2nds |
 //! | 6 | ContraryMotion | Harmony moves opposite to melody direction |
-//! | 7 | StrictCounterpoint | Traditional voice-leading rules with scoring |
-//! | 8 | BarryHarris | 6th diminished movement preserving chord/passing parity |
+//! | 7 | StrictCounterpoint | Note-against-note voice leading with partial Species 1 rules |
 //!
 //! ## Stateless vs Stateful Modes
 //!
-//! - **Stateless (1-5, 8):** Each note is processed independently
+//! - **Stateless (1-5):** Each note is processed independently
 //! - **Stateful (6-7):** Track previous notes to determine harmony direction
 //!
 //! # Scale Families

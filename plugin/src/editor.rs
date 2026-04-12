@@ -254,7 +254,7 @@ fn parse_mode(s: &str) -> Option<PluginMode> {
         "RandomBelowNoSeconds" => Some(PluginMode::RandomBelowNoSeconds),
         "ContraryMotion" => Some(PluginMode::ContraryMotion),
         "StrictCounterpoint" => Some(PluginMode::StrictCounterpoint),
-        "BarryHarris" => Some(PluginMode::BarryHarris),
+        "BarryHarris" => Some(PluginMode::DiatonicThirds), // legacy coercion
         _ => None,
     }
 }

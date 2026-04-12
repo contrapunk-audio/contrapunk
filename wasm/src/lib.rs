@@ -50,7 +50,7 @@ fn parse_mode(s: &str) -> Result<HarmonyMode, JsValue> {
         "RandomBelowNoSeconds" => Ok(HarmonyMode::RandomBelowNoSeconds),
         "ContraryMotion" => Ok(HarmonyMode::ContraryMotion),
         "StrictCounterpoint" => Ok(HarmonyMode::StrictCounterpoint),
-        "BarryHarris" => Ok(HarmonyMode::BarryHarris),
+        "BarryHarris" => Ok(HarmonyMode::DiatonicThirds), // legacy coercion
         _ => Err(JsValue::from_str(&format!("Unknown mode: {}", s))),
     }
 }
@@ -145,7 +145,6 @@ fn mode_to_string(mode: HarmonyMode) -> &'static str {
         HarmonyMode::RandomBelowNoSeconds => "RandomBelowNoSeconds",
         HarmonyMode::ContraryMotion => "ContraryMotion",
         HarmonyMode::StrictCounterpoint => "StrictCounterpoint",
-        HarmonyMode::BarryHarris => "BarryHarris",
     }
 }
 

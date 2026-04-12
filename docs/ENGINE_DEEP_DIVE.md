@@ -238,14 +238,17 @@ STRATEGY:
 │ Mode │ Name                 │ Type         │ Stateful│
 ├──────┼──────────────────────┼──────────────┼─────────┤
 │  1   │ PassThrough          │ No harmony   │   No    │
-│  2   │ DiatonicThirds       │ +2 degrees   │   No    │
-│  3   │ DiatonicFourths      │ +3 degrees   │   No    │
+│  2   │ DiatonicThirds       │ +2 degrees   │   No    │ Parallel Thirds
+│  3   │ DiatonicFourths      │ +3 degrees   │   No    │ Parallel Fourths
 │  4   │ RandomBelow          │ -1 to -6     │   No    │
-│  5   │ RandomBelowNoSeconds │ -2 to -6     │   No    │
+│  5   │ RandomBelowNoSeconds │ -2 to -6     │   No    │ Random Below (consonant)
 │  6   │ ContraryMotion       │ Opposite dir │  Yes    │
-│  7   │ StrictCounterpoint   │ Voice rules  │  Yes    │
-│  8   │ BarryHarris          │ +2 degrees   │   No    │
+│  7   │ StrictCounterpoint   │ Species 1    │  Yes    │ Counterpoint (basic)
 └──────┴──────────────────────┴──────────────┴─────────┘
+
+> **Note:** BarryHarris mode was removed — it was a duplicate of DiatonicThirds.
+> Users who want Barry Harris chord/passing-tone parity should select a BH scale
+> (BHMajor6thDim or BHMinor6thDim) with DiatonicThirds mode.
 ```
 
 ### Mode 2: Diatonic Thirds Algorithm
@@ -695,17 +698,17 @@ Process:
 │ HarmonyMode                                          │
 ├──────────────────────────────────────────────────────┤
 │ PassThrough            (1) - No harmony             │
-│ DiatonicThirds         (2) - +2 scale degrees       │
-│ DiatonicFourths        (3) - +3 scale degrees       │
+│ DiatonicThirds         (2) - Parallel Thirds        │
+│ DiatonicFourths        (3) - Parallel Fourths       │
 │ RandomBelow            (4) - Random -1 to -6        │
-│ RandomBelowNoSeconds   (5) - Random -2 to -6        │
+│ RandomBelowNoSeconds   (5) - Random (consonant)     │
 │ ContraryMotion         (6) - Opposite direction     │
-│ StrictCounterpoint     (7) - Voice-leading rules    │
-│ BarryHarris            (8) - +2 (preserve parity)   │
+│ StrictCounterpoint     (7) - Counterpoint (Sp. 1)   │
 ├──────────────────────────────────────────────────────┤
-│ fn number() → u8 (returns 1-8)                      │
+│ fn number() → u8 (returns 1-7)                      │
 │ fn all() → &[HarmonyMode]                           │
 │ fn description() → &str                             │
+│ fn tooltip() → &str                                 │
 └──────────────────────────────────────────────────────┘
 ```
 

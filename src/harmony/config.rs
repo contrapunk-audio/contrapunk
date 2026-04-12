@@ -548,8 +548,7 @@ impl std::fmt::Display for ScaleMode {
 /// | 4 | RandomBelow | Random interval below (2nd-7th) |
 /// | 5 | RandomBelowNoSeconds | Random below, excluding 2nds |
 /// | 6 | ContraryMotion | Harmony moves opposite to melody |
-/// | 7 | StrictCounterpoint | Voice-leading rules with scoring |
-/// | 8 | BarryHarris | 6th dim movement (chord/passing parity) |
+/// | 7 | StrictCounterpoint | Note-against-note voice leading with partial Species 1 rules |
 ///
 /// # Example
 ///
@@ -571,6 +570,7 @@ pub enum HarmonyMode {
     #[default]
     PassThrough,
     /// Mode 2: Diatonic thirds above. Adds a third (2 scale degrees) above.
+    #[serde(alias = "barry_harris")]
     DiatonicThirds,
     /// Mode 3: Diatonic fourths above. Adds a fourth (3 scale degrees) above.
     DiatonicFourths,
@@ -581,17 +581,15 @@ pub enum HarmonyMode {
     /// Mode 6: Contrary motion. Harmony moves opposite to melody direction.
     /// Stateful: tracks previous melody and harmony notes.
     ContraryMotion,
-    /// Mode 7: Strict counterpoint. Traditional voice-leading with scoring.
+    /// Mode 7: Counterpoint (Species 1, basic). Note-against-note voice leading
+    /// with scoring. Partial Species 1 rules: no parallel 5ths/octaves, prefers
+    /// contrary/stepwise motion.
     /// Stateful: uses sliding window history for interval variety and contour.
     StrictCounterpoint,
-    /// Mode 8: Barry Harris 6th diminished movement.
-    /// Moves by 2 scale degrees, preserving chord-tone/passing-tone parity
-    /// in 8-note Barry Harris scales.
-    BarryHarris,
 }
 
 impl HarmonyMode {
-    /// Returns mode number (1-8) for display.
+    /// Returns mode number (1-7) for display.
     ///
     /// # Example
     ///
@@ -599,7 +597,7 @@ impl HarmonyMode {
     /// use contrapunk::harmony::HarmonyMode;
     ///
     /// assert_eq!(HarmonyMode::PassThrough.number(), 1);
-    /// assert_eq!(HarmonyMode::BarryHarris.number(), 8);
+    /// assert_eq!(HarmonyMode::StrictCounterpoint.number(), 7);
     /// ```
     pub fn number(&self) -> u8 {
         match self {
@@ -610,7 +608,6 @@ impl HarmonyMode {
             HarmonyMode::RandomBelowNoSeconds => 5,
             HarmonyMode::ContraryMotion => 6,
             HarmonyMode::StrictCounterpoint => 7,
-            HarmonyMode::BarryHarris => 8,
         }
     }
 
@@ -624,21 +621,43 @@ impl HarmonyMode {
             HarmonyMode::RandomBelowNoSeconds,
             HarmonyMode::ContraryMotion,
             HarmonyMode::StrictCounterpoint,
-            HarmonyMode::BarryHarris,
         ]
     }
 
-    /// Returns description for menu display.
+    /// Returns short description for menu display.
     pub fn description(&self) -> &'static str {
         match self {
             HarmonyMode::PassThrough => "Pass-through (no harmony)",
-            HarmonyMode::DiatonicThirds => "Diatonic thirds above",
-            HarmonyMode::DiatonicFourths => "Diatonic fourths above",
+            HarmonyMode::DiatonicThirds => "Parallel Thirds",
+            HarmonyMode::DiatonicFourths => "Parallel Fourths",
             HarmonyMode::RandomBelow => "Random diatonic below",
-            HarmonyMode::RandomBelowNoSeconds => "Random below (no 2nds)",
+            HarmonyMode::RandomBelowNoSeconds => "Random Below (consonant)",
             HarmonyMode::ContraryMotion => "Contrary motion",
-            HarmonyMode::StrictCounterpoint => "Strict counterpoint",
-            HarmonyMode::BarryHarris => "Barry Harris (6th dim movement)",
+            HarmonyMode::StrictCounterpoint => "Counterpoint (Species 1, basic)",
+        }
+    }
+
+    /// Returns a longer tooltip explaining what the mode's algorithm actually does.
+    pub fn tooltip(&self) -> &'static str {
+        match self {
+            HarmonyMode::PassThrough => "Notes pass unchanged to output",
+            HarmonyMode::DiatonicThirds => {
+                "Adds +2 scale degrees per voice. Multiple voices stack into 7th chords."
+            }
+            HarmonyMode::DiatonicFourths => {
+                "Adds +3 scale degrees per voice. Multiple voices stack into extended chords."
+            }
+            HarmonyMode::RandomBelow => "Random diatonic interval (2nd-7th) below the melody",
+            HarmonyMode::RandomBelowNoSeconds => {
+                "Random diatonic interval below, excluding dissonant 2nds"
+            }
+            HarmonyMode::ContraryMotion => {
+                "Harmony moves opposite to melody direction. Stateful \u{2014} tracks previous notes."
+            }
+            HarmonyMode::StrictCounterpoint => {
+                "Note-against-note voice leading with scoring. No parallel 5ths/octaves, \
+                 prefers contrary/stepwise motion. Partial Species 1 rules."
+            }
         }
     }
 }

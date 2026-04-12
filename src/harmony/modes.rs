@@ -223,42 +223,6 @@ pub fn random_no_seconds_directed(note: Note, scale: &mut Scale, above: bool) ->
     }
 }
 
-/// Mode 8: Barry Harris 6th diminished movement.
-///
-/// Moves by exactly 2 scale degrees in the current scale.
-///
-/// # Barry Harris Theory
-///
-/// In an 8-note Barry Harris 6th diminished scale, the degrees alternate
-/// between chord tones (even: 0, 2, 4, 6) and passing tones (odd: 1, 3, 5, 7).
-/// Moving by 2 degrees preserves this parity:
-///
-/// - Chord tone (degree 0) + 2 = Chord tone (degree 2)
-/// - Passing tone (degree 1) + 2 = Passing tone (degree 3)
-///
-/// This creates smooth voice leading while maintaining harmonic clarity.
-///
-/// # With Non-Barry-Harris Scales
-///
-/// The function works with any scale (it just transposes by 2 degrees),
-/// but the chord/passing parity concept only applies to 8-note BH scales.
-/// With 7-note scales, it produces standard thirds.
-pub fn barry_harris(note: Note, scale: &mut Scale) -> Vec<Note> {
-    match scale.harmonize_smart(note, 2, true) {
-        Some(harmony) => vec![note, harmony],
-        None => vec![note],
-    }
-}
-
-/// Directed Barry Harris movement: above or below the input note.
-pub fn barry_harris_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
-    let interval = if above { 2 } else { -2 };
-    match scale.harmonize_smart(note, interval, above) {
-        Some(harmony) => vec![note, harmony],
-        None => vec![note],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
