@@ -375,6 +375,7 @@
 				}
 
 				// Compute spectrum for harmonic analysis + visualization
+				// @ts-expect-error TS 5.6+ Float32Array<ArrayBufferLike> from Web Audio getChannelData()
 				spectrumMagnitudes = computeSpectrum(samples);
 				sampleRate = audioCtx!.sampleRate;
 

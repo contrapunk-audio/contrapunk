@@ -15,7 +15,7 @@ class UiStore {
 	animationsEnabled = $state(true);
 
 	// -- Platform --
-	platform = $state<'tauri' | 'browser'>(platformName);
+	platform = $state<'tauri' | 'browser' | 'plugin'>(platformName);
 
 	// -- App state --
 	initialized = $state(false);
