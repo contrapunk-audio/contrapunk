@@ -46,7 +46,10 @@ export type HarmonyModeName =
 	| 'RandomBelow'
 	| 'RandomBelowNoSeconds'
 	| 'ContraryMotion'
-	| 'StrictCounterpoint';
+	| 'StrictCounterpoint'
+	| 'BarryHarris'
+	| 'FunctionalHarmony'
+	| 'BachChorale';
 
 export type ScaleFamilyName =
 	| 'Diatonic'

@@ -77,6 +77,10 @@ enum PluginMode {
     StrictCounterpoint,
     #[name = "Barry Harris (Drop-2)"]
     BarryHarris,
+    #[name = "Functional Harmony"]
+    FunctionalHarmony,
+    #[name = "Bach Chorale (SATB)"]
+    BachChorale,
 }
 
 impl PluginMode {
@@ -90,6 +94,8 @@ impl PluginMode {
             Self::ContraryMotion => HarmonyMode::ContraryMotion,
             Self::StrictCounterpoint => HarmonyMode::StrictCounterpoint,
             Self::BarryHarris => HarmonyMode::BarryHarris,
+            Self::FunctionalHarmony => HarmonyMode::FunctionalHarmony,
+            Self::BachChorale => HarmonyMode::BachChorale,
         }
     }
 }

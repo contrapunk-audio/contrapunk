@@ -178,6 +178,8 @@ fn parse_harmony_mode(s: &str) -> Result<HarmonyMode, String> {
         "ContraryMotion" | "contrary_motion" | "6" => Ok(HarmonyMode::ContraryMotion),
         "StrictCounterpoint" | "strict_counterpoint" | "7" => Ok(HarmonyMode::StrictCounterpoint),
         "BarryHarris" | "barry_harris" | "8" => Ok(HarmonyMode::BarryHarris),
+        "FunctionalHarmony" | "functional_harmony" | "9" => Ok(HarmonyMode::FunctionalHarmony),
+        "BachChorale" | "bach_chorale" | "10" => Ok(HarmonyMode::BachChorale),
         other => Err(format!("Unknown harmony mode: {}", other)),
     }
 }
