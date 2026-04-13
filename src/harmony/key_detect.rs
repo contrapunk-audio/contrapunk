@@ -78,7 +78,7 @@ impl KeyDetector {
         let mut best_tonic: u8 = 0;
 
         for tonic in 0u8..12 {
-            let score = self.score_tonic(tonic, &intervals);
+            let score = self.score_tonic(tonic, intervals);
             if score > best_score {
                 second_score = best_score;
                 best_score = score;

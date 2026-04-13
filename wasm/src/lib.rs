@@ -207,6 +207,12 @@ fn voice_leading_style_to_string(style: VoiceLeadingStyle) -> &'static str {
 // === State type for serialization ===
 
 #[derive(serde::Serialize)]
+struct SuggestionScoreJs {
+    note: u8,
+    score: f32,
+}
+
+#[derive(serde::Serialize)]
 struct EngineStateJs {
     key: &'static str,
     mode: &'static str,
@@ -247,6 +253,8 @@ pub struct Engine {
     /// Track notes that were played through note_on for note state reporting
     last_input_notes: Vec<u8>,
     last_harmony_notes: Vec<u8>,
+    /// Configuration for the next-note suggestion scorer
+    suggestion_config: contrapunk::harmony::suggestion::SuggestionConfig,
 }
 
 #[wasm_bindgen]
@@ -259,6 +267,7 @@ impl Engine {
             presets: PresetManager::new(),
             last_input_notes: Vec::new(),
             last_harmony_notes: Vec::new(),
+            suggestion_config: contrapunk::harmony::suggestion::SuggestionConfig::default(),
         }
     }
 
@@ -508,6 +517,55 @@ impl Engine {
                 name
             )))
         }
+    }
+
+    // === Next-Note Suggestion Overlay ===
+
+    /// Compute ranked note suggestions based on current engine state.
+    ///
+    /// Returns a JSON-serialized array of `{note: u8, score: f32}` objects,
+    /// limited to the top 12 suggestions. This is a visual overlay -- the
+    /// suggestions are never played audibly.
+    pub fn get_suggestions(&self) -> Result<JsValue, JsValue> {
+        use contrapunk::harmony::suggestion::rank_candidates;
+
+        let snapshot = self.inner.suggestion_snapshot();
+        let ranked = rank_candidates(&snapshot, &self.suggestion_config);
+        let top: Vec<SuggestionScoreJs> = ranked
+            .iter()
+            .take(12)
+            .map(|&(note, score)| SuggestionScoreJs { note, score })
+            .collect();
+
+        serde_wasm_bindgen::to_value(&top)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Set a single suggestion weight by term name.
+    ///
+    /// Valid term names: chord_tone, scale_tone, dissonance, proximity,
+    /// contour, leap_recovery, repetition, next_chord_prep, leading_tone,
+    /// narmour, tessitura.
+    pub fn set_suggestion_weight(&mut self, term: &str, value: f32) -> Result<(), JsValue> {
+        if self.suggestion_config.set_weight(term, value) {
+            Ok(())
+        } else {
+            Err(JsValue::from_str(&format!(
+                "Unknown suggestion term: {}",
+                term
+            )))
+        }
+    }
+
+    /// Get all current suggestion weights as a JSON object.
+    pub fn get_suggestion_weights(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.suggestion_config)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Reset suggestion weights to Bach chorale calibrated defaults.
+    pub fn reset_suggestion_weights(&mut self) {
+        self.suggestion_config = contrapunk::harmony::suggestion::SuggestionConfig::default();
     }
 }
 
