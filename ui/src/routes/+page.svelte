@@ -6,6 +6,7 @@
 	import GuitarInputPanel from '$lib/components/GuitarInputPanel.svelte';
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
+	import SuggestionWeights from '$lib/components/SuggestionWeights.svelte';
 	import HumanizePanel from '$lib/components/HumanizePanel.svelte';
 	import GeneratorPanel from '$lib/components/GeneratorPanel.svelte';
 	import { adapter } from '$lib/adapter';
@@ -189,9 +190,10 @@
 				<ControlPanel />
 			</div>
 
-			<!-- Right column: Active Notes / Humanize / Generator -->
+			<!-- Right column: Active Notes / Suggestions / Humanize / Generator -->
 			<div class="column column-right">
 				<ActiveNotes />
+				<SuggestionWeights />
 				<HumanizePanel />
 				<GeneratorPanel />
 			</div>
