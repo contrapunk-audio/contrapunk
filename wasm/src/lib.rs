@@ -59,7 +59,7 @@ fn parse_mode(s: &str) -> Result<HarmonyMode, JsValue> {
 
 fn parse_scale_mode(s: &str) -> Result<ScaleMode, JsValue> {
     match s {
-        // Church
+        // Diatonic
         "Ionian" => Ok(ScaleMode::Ionian),
         "Dorian" => Ok(ScaleMode::Dorian),
         "Phrygian" => Ok(ScaleMode::Phrygian),
@@ -83,12 +83,46 @@ fn parse_scale_mode(s: &str) -> Result<ScaleMode, JsValue> {
         "MixolydianFlat6" => Ok(ScaleMode::MixolydianFlat6),
         "LocrianNat2" => Ok(ScaleMode::LocrianNat2),
         "SuperLocrian" => Ok(ScaleMode::SuperLocrian),
-        // Exotic
+        // Harmonic Major
+        "HarmonicMajor" => Ok(ScaleMode::HarmonicMajor),
+        "DorianFlat5" => Ok(ScaleMode::DorianFlat5),
+        "PhrygianFlat4" => Ok(ScaleMode::PhrygianFlat4),
+        "LydianFlat3" => Ok(ScaleMode::LydianFlat3),
+        "MixolydianFlat2" => Ok(ScaleMode::MixolydianFlat2),
+        "LydianAugSharp2" => Ok(ScaleMode::LydianAugSharp2),
+        "LocrianDoubleFlat7" => Ok(ScaleMode::LocrianDoubleFlat7),
+        // Double Harmonic
         "DoubleHarmonic" => Ok(ScaleMode::DoubleHarmonic),
+        "LydianSharp2Sharp6" => Ok(ScaleMode::LydianSharp2Sharp6),
+        "Ultraphrygian" => Ok(ScaleMode::Ultraphrygian),
         "HungarianMinor" => Ok(ScaleMode::HungarianMinor),
+        "Oriental" => Ok(ScaleMode::Oriental),
+        "IonianSharp2Sharp5" => Ok(ScaleMode::IonianSharp2Sharp5),
+        "LocrianDoubleFlat3DoubleFlat7" => Ok(ScaleMode::LocrianDoubleFlat3DoubleFlat7),
+        // Pentatonic
+        "MajorPentatonic" => Ok(ScaleMode::MajorPentatonic),
+        "MinorPentatonic" => Ok(ScaleMode::MinorPentatonic),
+        "Hirajoshi" => Ok(ScaleMode::Hirajoshi),
+        "InSen" => Ok(ScaleMode::InSen),
+        "Iwato" => Ok(ScaleMode::Iwato),
+        "Yo" => Ok(ScaleMode::Yo),
+        "Kumoi" => Ok(ScaleMode::Kumoi),
+        "Pelog" => Ok(ScaleMode::Pelog),
+        // Blues & Bebop
+        "MinorBlues" => Ok(ScaleMode::MinorBlues),
+        "MajorBlues" => Ok(ScaleMode::MajorBlues),
+        "BebopDominant" => Ok(ScaleMode::BebopDominant),
+        // Symmetric
+        "WholeTone" => Ok(ScaleMode::WholeTone),
+        "DiminishedWholeHalf" => Ok(ScaleMode::DiminishedWholeHalf),
+        "DiminishedHalfWhole" => Ok(ScaleMode::DiminishedHalfWhole),
+        "AugmentedHex" => Ok(ScaleMode::AugmentedHex),
+        // World
         "Enigmatic" => Ok(ScaleMode::Enigmatic),
         "NeapolitanMinor" => Ok(ScaleMode::NeapolitanMinor),
         "NeapolitanMajor" => Ok(ScaleMode::NeapolitanMajor),
+        "Persian" => Ok(ScaleMode::Persian),
+        "HungarianMajor" => Ok(ScaleMode::HungarianMajor),
         // Barry Harris
         "BHMajor6thDim" => Ok(ScaleMode::BHMajor6thDim),
         "BHMinor6thDim" => Ok(ScaleMode::BHMinor6thDim),
@@ -155,6 +189,7 @@ fn mode_to_string(mode: HarmonyMode) -> &'static str {
 
 fn scale_mode_to_string(mode: ScaleMode) -> &'static str {
     match mode {
+        // Diatonic
         ScaleMode::Ionian => "Ionian",
         ScaleMode::Dorian => "Dorian",
         ScaleMode::Phrygian => "Phrygian",
@@ -162,6 +197,7 @@ fn scale_mode_to_string(mode: ScaleMode) -> &'static str {
         ScaleMode::Mixolydian => "Mixolydian",
         ScaleMode::Aeolian => "Aeolian",
         ScaleMode::Locrian => "Locrian",
+        // Harmonic Minor
         ScaleMode::HarmonicMinor => "HarmonicMinor",
         ScaleMode::LocrianNat6 => "LocrianNat6",
         ScaleMode::IonianAug => "IonianAug",
@@ -169,6 +205,7 @@ fn scale_mode_to_string(mode: ScaleMode) -> &'static str {
         ScaleMode::PhrygianDominant => "PhrygianDominant",
         ScaleMode::LydianSharp2 => "LydianSharp2",
         ScaleMode::SuperLocrianDim => "SuperLocrianDim",
+        // Melodic Minor
         ScaleMode::MelodicMinor => "MelodicMinor",
         ScaleMode::DorianFlat2 => "DorianFlat2",
         ScaleMode::LydianAug => "LydianAug",
@@ -176,11 +213,47 @@ fn scale_mode_to_string(mode: ScaleMode) -> &'static str {
         ScaleMode::MixolydianFlat6 => "MixolydianFlat6",
         ScaleMode::LocrianNat2 => "LocrianNat2",
         ScaleMode::SuperLocrian => "SuperLocrian",
+        // Harmonic Major
+        ScaleMode::HarmonicMajor => "HarmonicMajor",
+        ScaleMode::DorianFlat5 => "DorianFlat5",
+        ScaleMode::PhrygianFlat4 => "PhrygianFlat4",
+        ScaleMode::LydianFlat3 => "LydianFlat3",
+        ScaleMode::MixolydianFlat2 => "MixolydianFlat2",
+        ScaleMode::LydianAugSharp2 => "LydianAugSharp2",
+        ScaleMode::LocrianDoubleFlat7 => "LocrianDoubleFlat7",
+        // Double Harmonic
         ScaleMode::DoubleHarmonic => "DoubleHarmonic",
+        ScaleMode::LydianSharp2Sharp6 => "LydianSharp2Sharp6",
+        ScaleMode::Ultraphrygian => "Ultraphrygian",
         ScaleMode::HungarianMinor => "HungarianMinor",
+        ScaleMode::Oriental => "Oriental",
+        ScaleMode::IonianSharp2Sharp5 => "IonianSharp2Sharp5",
+        ScaleMode::LocrianDoubleFlat3DoubleFlat7 => "LocrianDoubleFlat3DoubleFlat7",
+        // Pentatonic
+        ScaleMode::MajorPentatonic => "MajorPentatonic",
+        ScaleMode::MinorPentatonic => "MinorPentatonic",
+        ScaleMode::Hirajoshi => "Hirajoshi",
+        ScaleMode::InSen => "InSen",
+        ScaleMode::Iwato => "Iwato",
+        ScaleMode::Yo => "Yo",
+        ScaleMode::Kumoi => "Kumoi",
+        ScaleMode::Pelog => "Pelog",
+        // Blues & Bebop
+        ScaleMode::MinorBlues => "MinorBlues",
+        ScaleMode::MajorBlues => "MajorBlues",
+        ScaleMode::BebopDominant => "BebopDominant",
+        // Symmetric
+        ScaleMode::WholeTone => "WholeTone",
+        ScaleMode::DiminishedWholeHalf => "DiminishedWholeHalf",
+        ScaleMode::DiminishedHalfWhole => "DiminishedHalfWhole",
+        ScaleMode::AugmentedHex => "AugmentedHex",
+        // World
         ScaleMode::Enigmatic => "Enigmatic",
         ScaleMode::NeapolitanMinor => "NeapolitanMinor",
         ScaleMode::NeapolitanMajor => "NeapolitanMajor",
+        ScaleMode::Persian => "Persian",
+        ScaleMode::HungarianMajor => "HungarianMajor",
+        // Barry Harris
         ScaleMode::BHMajor6thDim => "BHMajor6thDim",
         ScaleMode::BHMinor6thDim => "BHMinor6thDim",
     }

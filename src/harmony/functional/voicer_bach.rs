@@ -413,12 +413,7 @@ mod tests {
             voicing[0],
             voicing[1]
         );
-        assert!(
-            voicing[1] >= voicing[2] || true, // Inner crossing allowed in relaxation
-            "Voice crossing: A({}) < T({})",
-            voicing[1],
-            voicing[2]
-        );
+        // Inner voice crossing is allowed in relaxation mode -- skip assertion
     }
 
     #[test]

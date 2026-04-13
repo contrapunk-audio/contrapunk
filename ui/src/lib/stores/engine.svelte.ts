@@ -55,11 +55,16 @@ export type ScaleFamilyName =
 	| 'Diatonic'
 	| 'HarmonicMinor'
 	| 'MelodicMinor'
-	| 'Exotic'
+	| 'HarmonicMajor'
+	| 'DoubleHarmonic'
+	| 'Pentatonic'
+	| 'Blues'
+	| 'Symmetric'
+	| 'World'
 	| 'BarryHarris';
 
 export type ScaleModeName =
-	// Church (7)
+	// Diatonic (7)
 	| 'Ionian'
 	| 'Dorian'
 	| 'Phrygian'
@@ -83,12 +88,46 @@ export type ScaleModeName =
 	| 'MixolydianFlat6'
 	| 'LocrianNat2'
 	| 'SuperLocrian'
-	// Exotic (5)
+	// Harmonic Major (7)
+	| 'HarmonicMajor'
+	| 'DorianFlat5'
+	| 'PhrygianFlat4'
+	| 'LydianFlat3'
+	| 'MixolydianFlat2'
+	| 'LydianAugSharp2'
+	| 'LocrianDoubleFlat7'
+	// Double Harmonic (7)
 	| 'DoubleHarmonic'
+	| 'LydianSharp2Sharp6'
+	| 'Ultraphrygian'
 	| 'HungarianMinor'
+	| 'Oriental'
+	| 'IonianSharp2Sharp5'
+	| 'LocrianDoubleFlat3DoubleFlat7'
+	// Pentatonic (8)
+	| 'MajorPentatonic'
+	| 'MinorPentatonic'
+	| 'Hirajoshi'
+	| 'InSen'
+	| 'Iwato'
+	| 'Yo'
+	| 'Kumoi'
+	| 'Pelog'
+	// Blues & Bebop (3)
+	| 'MinorBlues'
+	| 'MajorBlues'
+	| 'BebopDominant'
+	// Symmetric (4)
+	| 'WholeTone'
+	| 'DiminishedWholeHalf'
+	| 'DiminishedHalfWhole'
+	| 'AugmentedHex'
+	// World (5)
 	| 'Enigmatic'
 	| 'NeapolitanMinor'
 	| 'NeapolitanMajor'
+	| 'Persian'
+	| 'HungarianMajor'
 	// Barry Harris (2)
 	| 'BHMajor6thDim'
 	| 'BHMinor6thDim';
@@ -228,14 +267,73 @@ export const SCALE_FAMILIES: ScaleFamilyGroup[] = [
 		]
 	},
 	{
-		family: 'Exotic',
-		label: 'Exotic',
+		family: 'HarmonicMajor',
+		label: 'Harmonic Major',
+		modes: [
+			{ name: 'HarmonicMajor', label: 'Harmonic Major' },
+			{ name: 'DorianFlat5', label: 'Dorian b5' },
+			{ name: 'PhrygianFlat4', label: 'Phrygian b4' },
+			{ name: 'LydianFlat3', label: 'Lydian b3' },
+			{ name: 'MixolydianFlat2', label: 'Mixolydian b2' },
+			{ name: 'LydianAugSharp2', label: 'Lydian Aug #2' },
+			{ name: 'LocrianDoubleFlat7', label: 'Locrian bb7' }
+		]
+	},
+	{
+		family: 'DoubleHarmonic',
+		label: 'Double Harmonic',
 		modes: [
 			{ name: 'DoubleHarmonic', label: 'Double Harmonic' },
+			{ name: 'LydianSharp2Sharp6', label: 'Lydian #2 #6' },
+			{ name: 'Ultraphrygian', label: 'Ultraphrygian' },
 			{ name: 'HungarianMinor', label: 'Hungarian Minor' },
+			{ name: 'Oriental', label: 'Oriental' },
+			{ name: 'IonianSharp2Sharp5', label: 'Ionian #2 #5' },
+			{ name: 'LocrianDoubleFlat3DoubleFlat7', label: 'Locrian bb3 bb7' }
+		]
+	},
+	{
+		family: 'Pentatonic',
+		label: 'Pentatonic',
+		modes: [
+			{ name: 'MajorPentatonic', label: 'Major Pentatonic' },
+			{ name: 'MinorPentatonic', label: 'Minor Pentatonic' },
+			{ name: 'Hirajoshi', label: 'Hirajoshi' },
+			{ name: 'InSen', label: 'In Sen' },
+			{ name: 'Iwato', label: 'Iwato' },
+			{ name: 'Yo', label: 'Yo' },
+			{ name: 'Kumoi', label: 'Kumoi' },
+			{ name: 'Pelog', label: 'Pelog' }
+		]
+	},
+	{
+		family: 'Blues',
+		label: 'Blues & Bebop',
+		modes: [
+			{ name: 'MinorBlues', label: 'Minor Blues' },
+			{ name: 'MajorBlues', label: 'Major Blues' },
+			{ name: 'BebopDominant', label: 'Bebop Dominant' }
+		]
+	},
+	{
+		family: 'Symmetric',
+		label: 'Symmetric',
+		modes: [
+			{ name: 'WholeTone', label: 'Whole Tone' },
+			{ name: 'DiminishedWholeHalf', label: 'Diminished (WH)' },
+			{ name: 'DiminishedHalfWhole', label: 'Diminished (HW)' },
+			{ name: 'AugmentedHex', label: 'Augmented' }
+		]
+	},
+	{
+		family: 'World',
+		label: 'World Scales',
+		modes: [
 			{ name: 'Enigmatic', label: 'Enigmatic' },
 			{ name: 'NeapolitanMinor', label: 'Neapolitan Minor' },
-			{ name: 'NeapolitanMajor', label: 'Neapolitan Major' }
+			{ name: 'NeapolitanMajor', label: 'Neapolitan Major' },
+			{ name: 'Persian', label: 'Persian' },
+			{ name: 'HungarianMajor', label: 'Hungarian Major' }
 		]
 	},
 	{
@@ -265,7 +363,7 @@ export const VOICE_LEADING_STYLES: { name: VoiceLeadingStyleName; label: string 
 // === Scale Intervals (mirrors Rust ScaleMode::intervals) ===
 
 const SCALE_INTERVALS: Record<ScaleModeName, number[]> = {
-	// Church modes
+	// Diatonic modes (7 notes)
 	Ionian: [0, 2, 4, 5, 7, 9, 11],
 	Dorian: [0, 2, 3, 5, 7, 9, 10],
 	Phrygian: [0, 1, 3, 5, 7, 8, 10],
@@ -273,7 +371,7 @@ const SCALE_INTERVALS: Record<ScaleModeName, number[]> = {
 	Mixolydian: [0, 2, 4, 5, 7, 9, 10],
 	Aeolian: [0, 2, 3, 5, 7, 8, 10],
 	Locrian: [0, 1, 3, 5, 6, 8, 10],
-	// Harmonic minor modes
+	// Harmonic minor modes (7 notes)
 	HarmonicMinor: [0, 2, 3, 5, 7, 8, 11],
 	LocrianNat6: [0, 1, 3, 5, 6, 9, 10],
 	IonianAug: [0, 2, 4, 5, 8, 9, 11],
@@ -281,7 +379,7 @@ const SCALE_INTERVALS: Record<ScaleModeName, number[]> = {
 	PhrygianDominant: [0, 1, 4, 5, 7, 8, 10],
 	LydianSharp2: [0, 3, 4, 6, 7, 9, 11],
 	SuperLocrianDim: [0, 1, 3, 4, 6, 8, 9],
-	// Melodic minor modes
+	// Melodic minor modes (7 notes)
 	MelodicMinor: [0, 2, 3, 5, 7, 9, 11],
 	DorianFlat2: [0, 1, 3, 5, 7, 9, 10],
 	LydianAug: [0, 2, 4, 6, 8, 9, 11],
@@ -289,13 +387,47 @@ const SCALE_INTERVALS: Record<ScaleModeName, number[]> = {
 	MixolydianFlat6: [0, 2, 4, 5, 7, 8, 10],
 	LocrianNat2: [0, 2, 3, 5, 6, 8, 10],
 	SuperLocrian: [0, 1, 3, 4, 6, 8, 10],
-	// Exotic
+	// Harmonic major modes (7 notes)
+	HarmonicMajor: [0, 2, 4, 5, 7, 8, 11],
+	DorianFlat5: [0, 2, 3, 5, 6, 9, 10],
+	PhrygianFlat4: [0, 1, 3, 4, 7, 9, 10],
+	LydianFlat3: [0, 2, 3, 6, 7, 9, 11],
+	MixolydianFlat2: [0, 1, 4, 5, 7, 9, 10],
+	LydianAugSharp2: [0, 3, 4, 6, 8, 9, 11],
+	LocrianDoubleFlat7: [0, 1, 3, 5, 6, 8, 9],
+	// Double harmonic modes (7 notes)
 	DoubleHarmonic: [0, 1, 4, 5, 7, 8, 11],
+	LydianSharp2Sharp6: [0, 3, 4, 6, 7, 10, 11],
+	Ultraphrygian: [0, 1, 3, 4, 7, 8, 9],
 	HungarianMinor: [0, 2, 3, 6, 7, 8, 11],
+	Oriental: [0, 1, 4, 5, 6, 9, 10],
+	IonianSharp2Sharp5: [0, 3, 4, 5, 8, 9, 11],
+	LocrianDoubleFlat3DoubleFlat7: [0, 1, 2, 5, 6, 8, 9],
+	// Pentatonic (5 notes)
+	MajorPentatonic: [0, 2, 4, 7, 9],
+	MinorPentatonic: [0, 3, 5, 7, 10],
+	Hirajoshi: [0, 2, 3, 7, 8],
+	InSen: [0, 1, 5, 7, 8],
+	Iwato: [0, 1, 5, 6, 10],
+	Yo: [0, 2, 5, 7, 9],
+	Kumoi: [0, 2, 3, 7, 9],
+	Pelog: [0, 1, 3, 7, 8],
+	// Blues & Bebop
+	MinorBlues: [0, 3, 5, 6, 7, 10],
+	MajorBlues: [0, 2, 3, 4, 7, 9],
+	BebopDominant: [0, 2, 4, 5, 7, 9, 10, 11],
+	// Symmetric
+	WholeTone: [0, 2, 4, 6, 8, 10],
+	DiminishedWholeHalf: [0, 2, 3, 5, 6, 8, 9, 11],
+	DiminishedHalfWhole: [0, 1, 3, 4, 6, 7, 9, 10],
+	AugmentedHex: [0, 3, 4, 7, 8, 11],
+	// World scales (7 notes)
 	Enigmatic: [0, 1, 4, 6, 8, 10, 11],
 	NeapolitanMinor: [0, 1, 3, 5, 7, 8, 11],
 	NeapolitanMajor: [0, 1, 3, 5, 7, 9, 11],
-	// Barry Harris 6th Diminished (8-note)
+	Persian: [0, 1, 4, 5, 6, 8, 11],
+	HungarianMajor: [0, 3, 4, 6, 7, 9, 10],
+	// Barry Harris 6th Diminished (8 notes)
 	BHMajor6thDim: [0, 2, 4, 5, 7, 8, 9, 11],
 	BHMinor6thDim: [0, 2, 3, 5, 7, 8, 9, 11]
 };

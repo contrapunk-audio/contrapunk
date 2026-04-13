@@ -195,23 +195,33 @@ Range 5: + Locrian, Ionian, LydianDominant (all 11 modes)
 
 ### ScaleMode Intervals (Semitones from Tonic)
 
-```
-┌─────────────────┬──────────────────────────────────────┐
-│ Mode            │ Intervals (semitones)                │
-├─────────────────┼──────────────────────────────────────┤
-│ Ionian (Major)  │ [0, 2, 4, 5, 7, 9, 11]              │
-│ Dorian          │ [0, 2, 3, 5, 7, 9, 10]              │
-│ Phrygian        │ [0, 1, 3, 5, 7, 8, 10]              │
-│ Lydian          │ [0, 2, 4, 6, 7, 9, 11]              │
-│ Mixolydian      │ [0, 2, 4, 5, 7, 9, 10]              │
-│ Aeolian (Minor) │ [0, 2, 3, 5, 7, 8, 10]              │
-│ Locrian         │ [0, 1, 3, 5, 6, 8, 10]              │
-│ HarmonicMinor   │ [0, 2, 3, 5, 7, 8, 11]              │
-│ MelodicMinor    │ [0, 2, 3, 5, 7, 9, 11]              │
-│ Barry Harris *8 │ [0, 2, 4, 5, 7, 8, 9, 11]           │
-└─────────────────┴──────────────────────────────────────┘
-* Barry Harris scales have 8 degrees (one diminished passing tone)
-```
+57 total scales across 10 families. `intervals()` returns `&'static [u8]` (no heap allocation).
+
+**Diatonic (7 notes)**
+
+| Mode | Intervals |
+|------|-----------|
+| Ionian (Major) | [0, 2, 4, 5, 7, 9, 11] |
+| Dorian | [0, 2, 3, 5, 7, 9, 10] |
+| Phrygian | [0, 1, 3, 5, 7, 8, 10] |
+| Lydian | [0, 2, 4, 6, 7, 9, 11] |
+| Mixolydian | [0, 2, 4, 5, 7, 9, 10] |
+| Aeolian (Minor) | [0, 2, 3, 5, 7, 8, 10] |
+| Locrian | [0, 1, 3, 5, 6, 8, 10] |
+
+**Variable cardinality scales (5-8 notes)**
+
+| Mode | Notes | Intervals |
+|------|-------|-----------|
+| Major Pentatonic | 5 | [0, 2, 4, 7, 9] |
+| Minor Pentatonic | 5 | [0, 3, 5, 7, 10] |
+| Minor Blues | 6 | [0, 3, 5, 6, 7, 10] |
+| Whole Tone | 6 | [0, 2, 4, 6, 8, 10] |
+| Barry Harris Major 6th Dim | 8 | [0, 2, 4, 5, 7, 8, 9, 11] |
+| Bebop Dominant | 8 | [0, 2, 4, 5, 7, 9, 10, 11] |
+| Diminished WH | 8 | [0, 2, 3, 5, 6, 8, 9, 11] |
+
+See `ScaleMode::all()` for the complete list of 57 scales.
 
 ### Consonant Intervals for Chromatic Notes
 
@@ -712,10 +722,10 @@ Process:
 └──────────────────────────────────────────────────────┘
 ```
 
-### ScaleMode (28 Variants)
+### ScaleMode (57 Variants, 10 Families)
 
 ```
-CHURCH MODES (7):
+DIATONIC MODES (7):
   Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, Locrian
 
 HARMONIC MINOR MODES (7):
@@ -726,9 +736,27 @@ MELODIC MINOR MODES (7):
   MelodicMinor, DorianFlat2, LydianAug, LydianDominant,
   MixolydianFlat6, LocrianNat2, SuperLocrian
 
-EXOTIC SCALES (5):
-  DoubleHarmonic, HungarianMinor, Enigmatic,
-  NeapolitanMinor, NeapolitanMajor
+HARMONIC MAJOR MODES (7):
+  HarmonicMajor, DorianFlat5, PhrygianFlat4, LydianFlat3,
+  MixolydianFlat2, LydianAugSharp2, LocrianDoubleFlat7
+
+DOUBLE HARMONIC MODES (7):
+  DoubleHarmonic, LydianSharp2Sharp6, Ultraphrygian,
+  HungarianMinor, Oriental, IonianSharp2Sharp5,
+  LocrianDoubleFlat3DoubleFlat7
+
+PENTATONIC SCALES (8, 5 notes each):
+  MajorPentatonic, MinorPentatonic, Hirajoshi, InSen,
+  Iwato, Yo, Kumoi, Pelog
+
+BLUES & BEBOP (3, 6-8 notes):
+  MinorBlues, MajorBlues, BebopDominant
+
+SYMMETRIC SCALES (4, 6-8 notes):
+  WholeTone, DiminishedWholeHalf, DiminishedHalfWhole, AugmentedHex
+
+WORLD SCALES (5):
+  Enigmatic, NeapolitanMinor, NeapolitanMajor, Persian, HungarianMajor
 
 BARRY HARRIS 8-NOTE SCALES (2):
   BHMajor6thDim, BHMinor6thDim
