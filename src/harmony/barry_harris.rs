@@ -54,10 +54,9 @@ fn infer_bh_scale(current: ScaleMode) -> ScaleMode {
     use crate::harmony::config::ScaleFamily;
     match current.family() {
         ScaleFamily::Diatonic => match current {
-            ScaleMode::Aeolian
-            | ScaleMode::Dorian
-            | ScaleMode::Phrygian
-            | ScaleMode::Locrian => ScaleMode::BHMinor6thDim,
+            ScaleMode::Aeolian | ScaleMode::Dorian | ScaleMode::Phrygian | ScaleMode::Locrian => {
+                ScaleMode::BHMinor6thDim
+            }
             _ => ScaleMode::BHMajor6thDim,
         },
         ScaleFamily::HarmonicMinor | ScaleFamily::MelodicMinor => ScaleMode::BHMinor6thDim,
