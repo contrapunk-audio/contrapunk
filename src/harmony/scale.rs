@@ -96,6 +96,16 @@ impl Scale {
         Self::new(tonic, ScaleMode::Ionian)
     }
 
+    /// Returns the tonic pitch class (0-11, where 0 = C).
+    pub fn tonic(&self) -> u8 {
+        self.tonic
+    }
+
+    /// Returns the semitone offsets for each scale degree.
+    pub fn offsets(&self) -> &[u8] {
+        &self.offsets
+    }
+
     /// Returns the current scale mode.
     pub fn mode(&self) -> ScaleMode {
         self.mode
@@ -299,6 +309,39 @@ impl Scale {
         }
 
         None
+    }
+
+    /// Given a scale degree and a reference MIDI note, find the MIDI value
+    /// of that degree closest to the reference note.
+    ///
+    /// This is used by the Barry Harris voicing builder to place chord tones
+    /// near the input note for close-position voicings.
+    ///
+    /// # Arguments
+    /// * `degree` - Scale degree (0-based, will be wrapped by scale_len)
+    /// * `reference_midi` - MIDI note to find the closest realization near
+    ///
+    /// # Returns
+    /// The closest MIDI realization of the given scale degree, or None if
+    /// no valid value exists in MIDI range [0, 127].
+    pub fn degree_to_midi_near(&self, degree: usize, reference_midi: u8) -> Option<u8> {
+        let degree = degree % self.scale_len();
+        let offset = self.offsets[degree];
+        let target_pc = (self.tonic + offset) % 12;
+        let ref_octave = (reference_midi / 12) as i16;
+
+        // Try same octave, one above, one below
+        let candidates: [i16; 3] = [
+            ref_octave * 12 + target_pc as i16,
+            (ref_octave + 1) * 12 + target_pc as i16,
+            (ref_octave - 1) * 12 + target_pc as i16,
+        ];
+
+        candidates
+            .iter()
+            .filter(|&&m| (0..=127).contains(&m))
+            .min_by_key(|&&m| (m - reference_midi as i16).abs())
+            .map(|&m| m as u8)
     }
 }
 
@@ -621,5 +664,25 @@ mod tests {
         assert_eq!(scale.degree_of(Note::G4), Some(4));
         assert_eq!(scale.degree_of(Note::A4), Some(5));
         assert_eq!(scale.degree_of(Note::B4), Some(6));
+    }
+
+    #[test]
+    fn test_degree_to_midi_near_c_major() {
+        let scale = Scale::major(0); // C major
+        // Degree 0 (C) near C4 (60) should be 60
+        assert_eq!(scale.degree_to_midi_near(0, 60), Some(60));
+        // Degree 2 (E) near C4 (60) should be E4 (64)
+        assert_eq!(scale.degree_to_midi_near(2, 60), Some(64));
+        // Degree 4 (G) near C4 (60): G3=55 is 5 away, G4=67 is 7 away. So G3.
+        assert_eq!(scale.degree_to_midi_near(4, 60), Some(55));
+    }
+
+    #[test]
+    fn test_degree_to_midi_near_bh_scale() {
+        let scale = Scale::new(0, ScaleMode::BHMajor6thDim);
+        // Degree 6 (A) near C4 (60): A3=57 is 3 away, A4=69 is 9 away. So A3.
+        assert_eq!(scale.degree_to_midi_near(6, 60), Some(57));
+        // Degree 7 (B) near C4 (60): B3=59 is 1 away, B4=71 is 11 away. So B3.
+        assert_eq!(scale.degree_to_midi_near(7, 60), Some(59));
     }
 }

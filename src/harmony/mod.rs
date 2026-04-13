@@ -188,6 +188,7 @@
 //! - [`ContraryMotionState`], [`CounterpointState`] - Stateful mode state machines
 //! - [`VoiceLeadingStyle`] - Voice leading post-processor styles
 
+pub mod barry_harris;
 mod config;
 mod engine;
 mod key_detect;
@@ -196,7 +197,8 @@ mod scale;
 mod stateful;
 pub mod voice_leading;
 
-pub use config::{HarmonyMode, Key, OctaveMode, RoutingMode, ScaleFamily, ScaleMode};
+pub use barry_harris::{BhScaleGuard, Parity};
+pub use config::{BeatPhase, HarmonyMode, Key, OctaveMode, RoutingMode, ScaleFamily, ScaleMode};
 pub use engine::HarmonyEngine;
 pub use key_detect::KeyDetector;
 pub use scale::Scale;

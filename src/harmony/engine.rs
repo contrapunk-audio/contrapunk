@@ -30,7 +30,7 @@
 use std::collections::HashMap;
 use wmidi::Note;
 
-use crate::harmony::config::{HarmonyMode, Key, OctaveMode, ScaleMode};
+use crate::harmony::config::{BeatPhase, HarmonyMode, Key, OctaveMode, ScaleMode};
 use crate::harmony::modes;
 use crate::harmony::scale::Scale;
 use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
@@ -257,6 +257,8 @@ pub struct HarmonyEngine {
     auto_key: bool,
     /// Key detector (accumulates pitch classes to infer tonic)
     key_detector: super::key_detect::KeyDetector,
+    beat_phase: BeatPhase,
+    saved_scale_mode: Option<ScaleMode>,
 }
 
 impl HarmonyEngine {
@@ -296,6 +298,8 @@ impl HarmonyEngine {
             voice_leading: VoiceLeadingProcessor::new(voice_count),
             auto_key: false,
             key_detector: super::key_detect::KeyDetector::new(ScaleMode::Ionian),
+            beat_phase: BeatPhase::default(),
+            saved_scale_mode: None,
         }
     }
 
@@ -453,6 +457,18 @@ impl HarmonyEngine {
         self.active_notes.clear();
         self.active_port_maps.clear();
         self.voice_leading.reset();
+
+        if mode == HarmonyMode::BarryHarris {
+            match super::barry_harris::validate_scale(self.scale_mode) {
+                super::barry_harris::BhScaleGuard::Valid => {}
+                super::barry_harris::BhScaleGuard::Fallback(bh_scale) => {
+                    self.saved_scale_mode = Some(self.scale_mode);
+                    self.set_scale_mode(bh_scale);
+                }
+            }
+        } else if let Some(saved) = self.saved_scale_mode.take() {
+            self.set_scale_mode(saved);
+        }
     }
 
     /// Returns the current scale mode.
@@ -539,6 +555,8 @@ impl HarmonyEngine {
         self.active_port_maps.clear();
     }
 
+    pub fn set_beat_phase(&mut self, phase: BeatPhase) { self.beat_phase = phase; }
+
     /// Harmonizes a single note based on the current mode.
     ///
     /// Returns a Vec containing:
@@ -559,6 +577,10 @@ impl HarmonyEngine {
             self.last_arrangement_indices = vec![0];
             self.last_port_map = vec![0];
             return vec![note];
+        }
+
+        if self.mode == HarmonyMode::BarryHarris {
+            return self.harmonize_block_chord(note);
         }
 
         // Build result with voice_count slots. User's note goes at voice_position.
@@ -798,6 +820,24 @@ impl HarmonyEngine {
         }
     }
 
+    fn harmonize_block_chord(&mut self, note: Note) -> Vec<Note> {
+        match super::barry_harris::build_voicing(note, &self.scale, self.beat_phase) {
+            Some(voicing) => {
+                let mut result = Vec::with_capacity(5);
+                result.push(note);
+                result.extend_from_slice(&voicing);
+                self.last_arrangement_indices = vec![0, 1, 2, 3, 4];
+                self.apply_octave_mode(&mut result);
+                result
+            }
+            None => {
+                self.last_arrangement_indices = vec![0];
+                self.last_port_map = vec![0];
+                vec![note]
+            }
+        }
+    }
+
     /// Harmonizes a single note in a specific direction using the mode's algorithm.
     /// `above`: if true, generate harmony above; if false, generate below.
     /// Used for bidirectional voice position generation.
@@ -833,6 +873,9 @@ impl HarmonyEngine {
                     vec![note]
                 }
             }
+            HarmonyMode::BarryHarris => {
+                modes::diatonic_thirds_directed(note, &mut self.scale, above)
+            }
         }
     }
 
@@ -860,6 +903,9 @@ impl HarmonyEngine {
                 } else {
                     vec![note]
                 }
+            }
+            HarmonyMode::BarryHarris => {
+                modes::diatonic_thirds(note, &mut self.scale)
             }
         }
     }
@@ -1691,9 +1737,77 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_preset_barry_harris_deserializes_as_diatonic_thirds() {
+    fn test_barry_harris_deserializes() {
         let json = r#""barry_harris""#;
         let mode: HarmonyMode = serde_json::from_str(json).unwrap();
-        assert_eq!(mode, HarmonyMode::DiatonicThirds);
+        assert_eq!(mode, HarmonyMode::BarryHarris);
     }
+
+    #[test]
+    fn test_barry_harris_produces_5_notes() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 5);
+        engine.set_scale_mode(ScaleMode::BHMajor6thDim);
+        assert_eq!(engine.harmonize(Note::C4).len(), 5);
+    }
+    #[test]
+    fn test_barry_harris_scale_guard_auto_switch() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 5);
+        engine.set_scale_mode(ScaleMode::Ionian);
+        engine.set_mode(HarmonyMode::BarryHarris);
+        assert_eq!(engine.scale_mode(), ScaleMode::BHMajor6thDim);
+    }
+    #[test]
+    fn test_barry_harris_scale_guard_minor() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 5);
+        engine.set_scale_mode(ScaleMode::Aeolian);
+        engine.set_mode(HarmonyMode::BarryHarris);
+        assert_eq!(engine.scale_mode(), ScaleMode::BHMinor6thDim);
+    }
+    #[test]
+    fn test_barry_harris_scale_guard_restore() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 5);
+        engine.set_scale_mode(ScaleMode::Ionian);
+        engine.set_mode(HarmonyMode::BarryHarris);
+        engine.set_mode(HarmonyMode::DiatonicThirds);
+        assert_eq!(engine.scale_mode(), ScaleMode::Ionian);
+    }
+    #[test]
+    fn test_barry_harris_note_tracking() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 5);
+        engine.set_scale_mode(ScaleMode::BHMajor6thDim);
+        let on = engine.harmonize_note_on(Note::C4);
+        let off = engine.harmonize_note_off(Note::C4);
+        assert_eq!(on.len(), 5);
+        assert_eq!(&off[1..], &on[1..]);
+    }
+    #[test]
+    fn test_barry_harris_chromatic() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 5);
+        engine.set_scale_mode(ScaleMode::BHMajor6thDim);
+        assert_eq!(engine.harmonize(Note::Db4).len(), 1);
+    }
+    #[test]
+    fn test_barry_harris_chord_tone_parity() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 5);
+        engine.set_scale_mode(ScaleMode::BHMajor6thDim);
+        let scale = Scale::new(0, ScaleMode::BHMajor6thDim);
+        for n in &engine.harmonize(Note::C4)[1..] {
+            assert_eq!(scale.degree_of(*n).unwrap() % 2, 0);
+        }
+    }
+    #[test]
+    fn test_barry_harris_passing_tone_parity() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 5);
+        engine.set_scale_mode(ScaleMode::BHMajor6thDim);
+        let scale = Scale::new(0, ScaleMode::BHMajor6thDim);
+        for n in &engine.harmonize(Note::D4)[1..] {
+            assert_eq!(scale.degree_of(*n).unwrap() % 2, 1);
+        }
+    }
+    #[test]
+    fn test_existing_modes_unaffected() {
+        let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        assert_eq!(engine.harmonize(Note::C4), vec![Note::C4, Note::E4]);
+    }
+
 }

@@ -177,7 +177,7 @@ fn parse_harmony_mode(s: &str) -> Result<HarmonyMode, String> {
         }
         "ContraryMotion" | "contrary_motion" | "6" => Ok(HarmonyMode::ContraryMotion),
         "StrictCounterpoint" | "strict_counterpoint" | "7" => Ok(HarmonyMode::StrictCounterpoint),
-        "BarryHarris" | "barry_harris" | "8" => Ok(HarmonyMode::DiatonicThirds), // legacy coercion
+        "BarryHarris" | "barry_harris" | "8" => Ok(HarmonyMode::BarryHarris),
         other => Err(format!("Unknown harmony mode: {}", other)),
     }
 }

@@ -570,7 +570,6 @@ pub enum HarmonyMode {
     #[default]
     PassThrough,
     /// Mode 2: Diatonic thirds above. Adds a third (2 scale degrees) above.
-    #[serde(alias = "barry_harris")]
     DiatonicThirds,
     /// Mode 3: Diatonic fourths above. Adds a fourth (3 scale degrees) above.
     DiatonicFourths,
@@ -586,6 +585,8 @@ pub enum HarmonyMode {
     /// contrary/stepwise motion.
     /// Stateful: uses sliding window history for interval variety and contour.
     StrictCounterpoint,
+    #[serde(alias = "barry_harris")]
+    BarryHarris,
 }
 
 impl HarmonyMode {
@@ -608,6 +609,7 @@ impl HarmonyMode {
             HarmonyMode::RandomBelowNoSeconds => 5,
             HarmonyMode::ContraryMotion => 6,
             HarmonyMode::StrictCounterpoint => 7,
+            HarmonyMode::BarryHarris => 8,
         }
     }
 
@@ -621,6 +623,7 @@ impl HarmonyMode {
             HarmonyMode::RandomBelowNoSeconds,
             HarmonyMode::ContraryMotion,
             HarmonyMode::StrictCounterpoint,
+            HarmonyMode::BarryHarris,
         ]
     }
 
@@ -634,6 +637,7 @@ impl HarmonyMode {
             HarmonyMode::RandomBelowNoSeconds => "Random Below (consonant)",
             HarmonyMode::ContraryMotion => "Contrary motion",
             HarmonyMode::StrictCounterpoint => "Counterpoint (Species 1, basic)",
+            HarmonyMode::BarryHarris => "Barry Harris (drop-2 voicings)",
         }
     }
 
@@ -658,6 +662,17 @@ impl HarmonyMode {
                 "Note-against-note voice leading with scoring. No parallel 5ths/octaves, \
                  prefers contrary/stepwise motion. Partial Species 1 rules."
             }
+            HarmonyMode::BarryHarris => {
+                "4-voice drop-2 voicings using 8-note BH scale. Chord tones produce \
+                 6th chord voicings, passing tones produce dim7 voicings. Requires \
+                 BH Major or Minor 6th Dim scale."
+            }
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BeatPhase {
+    pub position: f32,
+    pub is_strong: bool,
 }
