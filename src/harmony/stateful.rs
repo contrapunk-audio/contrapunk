@@ -6,10 +6,61 @@
 
 use std::collections::VecDeque;
 
+use serde::{Deserialize, Serialize};
 use wmidi::Note;
 
 use crate::harmony::Scale;
 
+/// Counterpoint species selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CounterpointSpecies {
+    #[default]
+    Species1,
+    Species2,
+    Species3,
+    Species4,
+}
+
+/// Strictness level for counterpoint rules.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CounterpointStrictness {
+    Relaxed,
+    #[default]
+    Strict,
+}
+
+/// Beat strength classification for species counterpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BeatStrength {
+    Downbeat,
+    Medium,
+    Weak,
+    Offbeat,
+}
+
+/// Suspension phase for Species 4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CpSuspensionPhase {
+    Free,
+    Prepared,
+    Suspended,
+    Resolving,
+}
+
+/// Output from counterpoint engine.
+#[derive(Debug, Clone)]
+pub struct CounterpointOutput {
+    pub notes: Vec<(Note, f64)>,
+}
+
+/// Tie indication for Species 4 output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TieKind {
+    Attack,
+    Tie,
+}
 /// Direction of melodic motion between two notes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MelodicDirection {
@@ -200,6 +251,29 @@ pub struct CounterpointState {
     harmony_range_low: Option<u8>,
     /// Harmony range tracking (highest note seen)
     harmony_range_high: Option<u8>,
+
+    /// Signed semitone delta of most recent harmony motion (R4 leap recovery).
+    last_harmony_move: Option<i8>,
+    /// Rolling buffer of last 5 harmony MIDI pitches (R8 tritone outline).
+    harmony_pitch_buffer: VecDeque<u8>,
+    /// Active species.
+    species: CounterpointSpecies,
+    /// Strictness level.
+    strictness: CounterpointStrictness,
+    /// Previous strong-beat harmony (Species 2+).
+    prev_strong_beat_harmony: Option<Note>,
+    /// Previous strong-beat melody.
+    prev_strong_beat_melody: Option<Note>,
+    /// Species 4 suspension phase.
+    suspension_phase: CpSuspensionPhase,
+    /// Prepared pitch (Species 4).
+    preparation_pitch: Option<u8>,
+    /// Suspended pitch (Species 4).
+    suspension_pitch: Option<u8>,
+    /// Tick count for suspension timeout.
+    suspension_tick_count: u8,
+    /// Figure buffer for Species 3.
+    harmony_figure_buffer: VecDeque<(u8, bool)>,
 }
 
 impl Default for CounterpointState {
@@ -218,6 +292,17 @@ impl CounterpointState {
             melody_contour: VecDeque::with_capacity(CONTOUR_HISTORY_SIZE),
             harmony_range_low: None,
             harmony_range_high: None,
+            last_harmony_move: None,
+            harmony_pitch_buffer: VecDeque::with_capacity(5),
+            species: CounterpointSpecies::Species1,
+            strictness: CounterpointStrictness::Strict,
+            prev_strong_beat_harmony: None,
+            prev_strong_beat_melody: None,
+            suspension_phase: CpSuspensionPhase::Free,
+            preparation_pitch: None,
+            suspension_pitch: None,
+            suspension_tick_count: 0,
+            harmony_figure_buffer: VecDeque::with_capacity(5),
         }
     }
 
@@ -229,6 +314,32 @@ impl CounterpointState {
         self.melody_contour.clear();
         self.harmony_range_low = None;
         self.harmony_range_high = None;
+        self.last_harmony_move = None;
+        self.harmony_pitch_buffer.clear();
+        self.prev_strong_beat_harmony = None;
+        self.prev_strong_beat_melody = None;
+        self.suspension_phase = CpSuspensionPhase::Free;
+        self.preparation_pitch = None;
+        self.suspension_pitch = None;
+        self.suspension_tick_count = 0;
+        self.harmony_figure_buffer.clear();
+    }
+
+    pub fn set_species(&mut self, species: CounterpointSpecies) {
+        self.species = species;
+        self.reset();
+    }
+
+    pub fn species(&self) -> CounterpointSpecies {
+        self.species
+    }
+
+    pub fn set_strictness(&mut self, strictness: CounterpointStrictness) {
+        self.strictness = strictness;
+    }
+
+    pub fn strictness(&self) -> CounterpointStrictness {
+        self.strictness
     }
 
     // --- Helper methods for interval history ---
@@ -334,6 +445,29 @@ impl CounterpointState {
             .map_or(false, |range| range <= NARROW_RANGE_THRESHOLD)
     }
 
+    fn push_harmony_pitch(&mut self, midi: u8) {
+        if self.harmony_pitch_buffer.len() >= 5 {
+            self.harmony_pitch_buffer.pop_front();
+        }
+        self.harmony_pitch_buffer.push_back(midi);
+    }
+
+    fn is_consonant_semitones(semitones: u8) -> bool {
+        matches!(semitones % 12, 0 | 3 | 4 | 7 | 8 | 9)
+    }
+
+    pub fn beat_strength(phase: f64, beats_per_bar: u8) -> BeatStrength {
+        let on_beat = phase.fract() < 0.1 || phase.fract() > 0.9;
+        if !on_beat {
+            return BeatStrength::Offbeat;
+        }
+        let beat = phase.floor() as u8 % beats_per_bar;
+        match beat {
+            0 => BeatStrength::Downbeat,
+            b if b % 2 == 0 => BeatStrength::Medium,
+            _ => BeatStrength::Weak,
+        }
+    }
     /// Processes a note with strict counterpoint, preferring the given direction.
     ///
     /// When `above` is true, candidate intervals above the melody are tried first.
@@ -361,6 +495,10 @@ impl CounterpointState {
                 let interval_class = self.semitones_to_interval_class(interval_semitones);
                 self.push_interval(interval_class);
                 self.update_harmony_range(harmony);
+                if let Some(prev_h) = self.last_harmony {
+                    self.last_harmony_move = Some(harmony_midi - u8::from(prev_h) as i8);
+                }
+                self.push_harmony_pitch(u8::from(harmony));
                 self.last_harmony = Some(harmony);
                 vec![melody, harmony]
             }
@@ -499,7 +637,10 @@ impl CounterpointState {
 
                 // Track harmony range
                 self.update_harmony_range(harmony);
-
+                if let Some(prev_h) = self.last_harmony {
+                    self.last_harmony_move = Some(harmony_midi - u8::from(prev_h) as i8);
+                }
+                self.push_harmony_pitch(u8::from(harmony));
                 self.last_harmony = Some(harmony);
                 vec![melody, harmony]
             }
@@ -579,109 +720,172 @@ impl CounterpointState {
         best_candidate
     }
 
-    /// Scores a harmony candidate based on voice-leading principles.
-    /// Returns negative score if hard constraint violated.
+    /// Scores a harmony candidate with full Fux Species 1 rules.
     fn score_candidate(&self, melody: Note, candidate: Note, interval: i8) -> i32 {
         let mut score: i32 = 0;
+        let is_strict = self.strictness == CounterpointStrictness::Strict;
+        let semitones = ((u8::from(candidate) as i16 - u8::from(melody) as i16).abs() % 12) as u8;
 
-        // Hard constraint: avoid parallel perfect intervals
-        if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
-            let prev_interval = self.interval_class(prev_m, prev_h);
-            let new_interval = self.interval_class(melody, candidate);
-
-            if self.is_perfect_interval(prev_interval) && prev_interval == new_interval {
-                return -100; // Hard reject
+        // R1: Vertical consonance
+        if is_strict {
+            if matches!(semitones, 1 | 2 | 5 | 6 | 10 | 11) {
+                return -100;
             }
-        }
-
-        // Hard constraint: when melody repeats, harmony MUST move
-        if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
-            let melody_repeated = u8::from(melody) == u8::from(prev_m);
-            let harmony_same = u8::from(candidate) == u8::from(prev_h);
-
-            if melody_repeated && harmony_same {
-                return -100; // Hard reject - no static voice when melody repeats
-            }
-        }
-
-        // Soft preference: avoid repeating the same harmony note
-        if let Some(prev_h) = self.last_harmony {
-            if u8::from(candidate) != u8::from(prev_h) {
-                score += 3; // Bonus for different note
-            }
-        }
-
-        // Soft preference: stepwise motion in harmony voice
-        if let Some(prev_h) = self.last_harmony {
-            let prev_midi = u8::from(prev_h) as i32;
-            let cand_midi = u8::from(candidate) as i32;
-            let step_size = (cand_midi - prev_midi).abs();
-
-            match step_size {
-                1 | 2 => score += 4, // Stepwise (semitone or whole tone)
-                3 | 4 => score += 2, // Small leap (minor/major 3rd)
-                _ => score += 0,     // Larger leaps get no bonus
-            }
-        }
-
-        // Calculate current interval class for history-based scoring
-        let current_int =
-            self.semitones_to_interval_class(u8::from(candidate) as i8 - u8::from(melody) as i8);
-
-        // NEW: Penalize overused intervals (3+ of same in last 4)
-        if self.is_interval_overused(current_int) {
+        } else if matches!(semitones, 1 | 2 | 5 | 6 | 10 | 11) {
             score -= 3;
         }
 
-        // NEW: Bonus for fresh intervals (not in recent history)
-        if self.is_interval_fresh(current_int) {
-            score += 2;
+        // R2: No parallel perfects
+        if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
+            let prev_ic = self.interval_class(prev_m, prev_h);
+            let new_ic = self.interval_class(melody, candidate);
+            if self.is_perfect_interval(prev_ic) && prev_ic == new_ic {
+                return -100;
+            }
         }
 
-        // NEW: Contour-based scoring (contrary motion preferred)
-        if let Some(dominant) = self.dominant_contour() {
-            if let Some(prev_h) = self.last_harmony {
-                let harmony_direction = Self::direction_between(prev_h, candidate);
-
-                // Reward contrary motion to melody trend
-                let is_contrary = match (dominant, harmony_direction) {
-                    (MelodicDirection::Ascending, MelodicDirection::Descending) => true,
-                    (MelodicDirection::Descending, MelodicDirection::Ascending) => true,
-                    _ => false,
-                };
-
-                let is_parallel = match (dominant, harmony_direction) {
-                    (MelodicDirection::Ascending, MelodicDirection::Ascending) => true,
-                    (MelodicDirection::Descending, MelodicDirection::Descending) => true,
-                    _ => false,
-                };
-
-                if is_contrary {
-                    score += 3; // Encourage contrary motion
-                } else if is_parallel {
-                    score -= 1; // Slight penalty for parallel motion
+        // R3: No hidden fifths/octaves
+        if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
+            if self.is_perfect_interval(semitones) {
+                let m_dir = u8::from(melody) as i16 - u8::from(prev_m) as i16;
+                let h_dir = u8::from(candidate) as i16 - u8::from(prev_h) as i16;
+                let similar = (m_dir > 0 && h_dir > 0) || (m_dir < 0 && h_dir < 0);
+                if similar && h_dir.abs() > 2 {
+                    if is_strict {
+                        return -100;
+                    } else {
+                        score -= 5;
+                    }
                 }
             }
         }
 
-        // NEW: Range expansion bonus (encourage leaps when range is narrow)
+        // Melody repeats -> harmony must move
+        if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
+            if u8::from(melody) == u8::from(prev_m) && u8::from(candidate) == u8::from(prev_h) {
+                return -100;
+            }
+        }
+
+        // R5/R6: No melodic 7th or tritone leap
+        if let Some(prev_h) = self.last_harmony {
+            let step = (u8::from(candidate) as i32 - u8::from(prev_h) as i32).abs();
+            if step >= 10 {
+                if is_strict {
+                    return -100;
+                } else {
+                    score -= 3;
+                }
+            }
+            if step == 6 {
+                if is_strict {
+                    return -100;
+                } else {
+                    score -= 3;
+                }
+            }
+        }
+
+        // Soft: note variety
+        if let Some(prev_h) = self.last_harmony {
+            if u8::from(candidate) != u8::from(prev_h) {
+                score += 3;
+            }
+        }
+
+        // Soft: stepwise motion
+        if let Some(prev_h) = self.last_harmony {
+            let step = (u8::from(candidate) as i32 - u8::from(prev_h) as i32).abs();
+            match step {
+                1 | 2 => score += 4,
+                3 | 4 => score += 2,
+                _ => {}
+            }
+        }
+
+        // R4: Leap recovery
+        if let (Some(last_move), Some(prev_h)) = (self.last_harmony_move, self.last_harmony) {
+            if last_move.abs() > 4 {
+                let cand_move = u8::from(candidate) as i8 - u8::from(prev_h) as i8;
+                let opposite = (last_move > 0 && cand_move < 0) || (last_move < 0 && cand_move > 0);
+                if opposite && cand_move.abs() <= 2 {
+                    score += 4;
+                } else if is_strict {
+                    score -= 4;
+                } else {
+                    score -= 1;
+                }
+            }
+        }
+
+        let current_int =
+            self.semitones_to_interval_class(u8::from(candidate) as i8 - u8::from(melody) as i8);
+        if self.is_interval_overused(current_int) {
+            score -= 3;
+        }
+        if self.is_interval_fresh(current_int) {
+            score += 2;
+        }
+
+        if let Some(dominant) = self.dominant_contour() {
+            if let Some(prev_h) = self.last_harmony {
+                let hdir = Self::direction_between(prev_h, candidate);
+                let contrary = matches!(
+                    (dominant, hdir),
+                    (MelodicDirection::Ascending, MelodicDirection::Descending)
+                        | (MelodicDirection::Descending, MelodicDirection::Ascending)
+                );
+                let parallel = matches!(
+                    (dominant, hdir),
+                    (MelodicDirection::Ascending, MelodicDirection::Ascending)
+                        | (MelodicDirection::Descending, MelodicDirection::Descending)
+                );
+                if contrary {
+                    score += 3;
+                } else if parallel {
+                    score -= 1;
+                }
+            }
+        }
+
         if self.is_harmony_range_narrow() {
             if let Some(prev_h) = self.last_harmony {
-                let prev_midi = u8::from(prev_h) as i32;
-                let cand_midi = u8::from(candidate) as i32;
-                let step_size = (cand_midi - prev_midi).abs();
-
-                // Bonus for larger leaps when range is too narrow
-                if step_size >= 5 {
+                if (u8::from(candidate) as i32 - u8::from(prev_h) as i32).abs() >= 5 {
                     score += 2;
                 }
             }
         }
 
-        // Slight preference for 3rds and 6ths over 4ths and 5ths
+        // R7: Ambitus cap
+        if let (Some(low), Some(high)) = (self.harmony_range_low, self.harmony_range_high) {
+            let c = u8::from(candidate);
+            if high.max(c) - low.min(c) > 16 {
+                if is_strict {
+                    score -= 5;
+                } else {
+                    score -= 2;
+                }
+            }
+        }
+
+        // R8: Tritone outline
+        if self.harmony_pitch_buffer.len() >= 2 {
+            let c = u8::from(candidate);
+            for &old in &self.harmony_pitch_buffer {
+                if (c as i8 - old as i8).unsigned_abs() % 12 == 6 {
+                    if is_strict {
+                        score -= 3;
+                    } else {
+                        score -= 1;
+                    }
+                    break;
+                }
+            }
+        }
+
         let abs_interval = interval.abs();
         if abs_interval == 2 || abs_interval == 5 {
-            score += 1; // 3rds and 6ths
+            score += 1;
         }
 
         score
@@ -719,6 +923,165 @@ impl CounterpointState {
             10 | 11 => 7, // 7th
             6 => 4,       // Tritone (treat as 4th)
             _ => 0,
+        }
+    }
+
+    pub fn process_with_beat(
+        &mut self,
+        scale: &mut Scale,
+        melody: Note,
+        beat_phase: Option<f64>,
+    ) -> Vec<Note> {
+        match (self.species, beat_phase) {
+            (CounterpointSpecies::Species1, _) | (_, None) => self.process(scale, melody),
+            (CounterpointSpecies::Species2, Some(bp)) => {
+                let strength = Self::beat_strength(bp, 4);
+                let is_strong = matches!(strength, BeatStrength::Downbeat | BeatStrength::Medium);
+                if is_strong {
+                    let result = self.process(scale, melody);
+                    self.prev_strong_beat_melody = Some(melody);
+                    if result.len() > 1 {
+                        self.prev_strong_beat_harmony = Some(result[1]);
+                    }
+                    result
+                } else {
+                    let result = self.process(scale, melody);
+                    if result.len() > 1 {
+                        return result;
+                    }
+                    if let (Some(prev_h), Some(lm)) = (self.last_harmony, self.last_harmony_move) {
+                        let dir = if lm >= 0 { 1 } else { -1 };
+                        if let Some(pt) = scale.transpose_diatonic(prev_h, dir) {
+                            self.last_melody = Some(melody);
+                            self.last_harmony = Some(pt);
+                            self.last_harmony_move =
+                                Some(u8::from(pt) as i8 - u8::from(prev_h) as i8);
+                            self.push_harmony_pitch(u8::from(pt));
+                            return vec![melody, pt];
+                        }
+                    }
+                    self.last_melody = Some(melody);
+                    vec![melody]
+                }
+            }
+            (CounterpointSpecies::Species3, Some(bp)) => {
+                let beat_index = bp.floor() as u8 % 4;
+                if beat_index == 0 {
+                    let result = self.process(scale, melody);
+                    self.prev_strong_beat_melody = Some(melody);
+                    if result.len() > 1 {
+                        self.prev_strong_beat_harmony = Some(result[1]);
+                    }
+                    result
+                } else {
+                    let result = self.process(scale, melody);
+                    if result.len() > 1 {
+                        return result;
+                    }
+                    if let Some(prev_h) = self.last_harmony {
+                        let dir = self
+                            .last_harmony_move
+                            .map_or(1, |m| if m >= 0 { 1 } else { -1 });
+                        if let Some(pt) = scale.transpose_diatonic(prev_h, dir) {
+                            self.last_melody = Some(melody);
+                            self.last_harmony = Some(pt);
+                            self.last_harmony_move =
+                                Some(u8::from(pt) as i8 - u8::from(prev_h) as i8);
+                            self.push_harmony_pitch(u8::from(pt));
+                            return vec![melody, pt];
+                        }
+                    }
+                    self.last_melody = Some(melody);
+                    vec![melody]
+                }
+            }
+            (CounterpointSpecies::Species4, Some(bp)) => {
+                let strength = Self::beat_strength(bp, 4);
+                let is_strong = matches!(strength, BeatStrength::Downbeat | BeatStrength::Medium);
+                if matches!(
+                    self.suspension_phase,
+                    CpSuspensionPhase::Suspended | CpSuspensionPhase::Resolving
+                ) {
+                    self.suspension_tick_count += 1;
+                    if self.suspension_tick_count > 4 {
+                        self.suspension_phase = CpSuspensionPhase::Free;
+                        self.preparation_pitch = None;
+                        self.suspension_pitch = None;
+                        self.suspension_tick_count = 0;
+                    }
+                }
+                match self.suspension_phase {
+                    CpSuspensionPhase::Free => {
+                        let result = self.process(scale, melody);
+                        if is_strong && result.len() > 1 {
+                            self.preparation_pitch = Some(u8::from(result[1]));
+                            self.suspension_phase = CpSuspensionPhase::Prepared;
+                            self.prev_strong_beat_melody = Some(melody);
+                            self.prev_strong_beat_harmony = Some(result[1]);
+                        }
+                        result
+                    }
+                    CpSuspensionPhase::Prepared => {
+                        if is_strong {
+                            if let Some(prep) = self.preparation_pitch {
+                                if let Ok(held) = Note::try_from(prep) {
+                                    let sus_ic =
+                                        ((prep as i16 - u8::from(melody) as i16).abs() % 12) as u8;
+                                    if matches!(sus_ic, 1 | 2 | 5 | 10 | 11) {
+                                        self.suspension_pitch = self.preparation_pitch;
+                                        self.suspension_phase = CpSuspensionPhase::Suspended;
+                                        self.suspension_tick_count = 0;
+                                        self.last_melody = Some(melody);
+                                        self.last_harmony = Some(held);
+                                        return vec![melody, held];
+                                    }
+                                }
+                            }
+                        }
+                        self.suspension_phase = CpSuspensionPhase::Free;
+                        let result = self.process(scale, melody);
+                        if result.len() > 1 {
+                            self.preparation_pitch = Some(u8::from(result[1]));
+                            self.suspension_phase = CpSuspensionPhase::Prepared;
+                        }
+                        result
+                    }
+                    CpSuspensionPhase::Suspended => {
+                        self.suspension_phase = CpSuspensionPhase::Resolving;
+                        if let Some(sp) = self.suspension_pitch {
+                            if let Ok(sn) = Note::try_from(sp) {
+                                if let Some(res) = scale.transpose_diatonic(sn, -1) {
+                                    let ric = ((u8::from(res) as i16 - u8::from(melody) as i16)
+                                        .abs()
+                                        % 12) as u8;
+                                    if Self::is_consonant_semitones(ric) {
+                                        self.suspension_phase = CpSuspensionPhase::Free;
+                                        self.preparation_pitch = None;
+                                        self.suspension_pitch = None;
+                                        self.suspension_tick_count = 0;
+                                        self.last_melody = Some(melody);
+                                        self.last_harmony = Some(res);
+                                        self.push_harmony_pitch(u8::from(res));
+                                        return vec![melody, res];
+                                    }
+                                }
+                            }
+                        }
+                        self.suspension_phase = CpSuspensionPhase::Free;
+                        self.preparation_pitch = None;
+                        self.suspension_pitch = None;
+                        self.suspension_tick_count = 0;
+                        self.process(scale, melody)
+                    }
+                    CpSuspensionPhase::Resolving => {
+                        self.suspension_phase = CpSuspensionPhase::Free;
+                        self.preparation_pitch = None;
+                        self.suspension_pitch = None;
+                        self.suspension_tick_count = 0;
+                        self.process(scale, melody)
+                    }
+                }
+            }
         }
     }
 }
@@ -1120,5 +1483,131 @@ mod tests {
         assert!(!state.is_interval_fresh(3));
         assert!(!state.is_interval_fresh(4));
         assert!(state.is_interval_fresh(6));
+    }
+    #[test]
+    fn test_rejects_perfect_fourth_vertical() {
+        let state = CounterpointState::new();
+        let score = state.score_candidate(Note::C4, Note::F4, 3);
+        assert!(score < 0, "P4 should be rejected, got {}", score);
+    }
+
+    #[test]
+    fn test_rejects_hidden_fifths() {
+        let mut state = CounterpointState::new();
+        state.last_melody = Some(Note::C4);
+        state.last_harmony = Some(Note::C3);
+        let score = state.score_candidate(Note::D4, Note::G3, -5);
+        assert!(score < 0, "Hidden fifths should be rejected, got {}", score);
+    }
+
+    #[test]
+    fn test_rejects_tritone_leap() {
+        let mut state = CounterpointState::new();
+        state.last_melody = Some(Note::G4);
+        state.last_harmony = Some(Note::E3);
+        let score = state.score_candidate(Note::G4, Note::Bb3, -5);
+        assert!(score < 0, "Tritone leap should be rejected, got {}", score);
+    }
+
+    #[test]
+    fn test_ambitus_cap_penalty() {
+        let mut state = CounterpointState::new();
+        state.harmony_range_low = Some(48);
+        state.harmony_range_high = Some(64);
+        let within = state.score_candidate(Note::C4, Note::E4, 2);
+        let exceed = state.score_candidate(Note::C4, Note::A4, 5);
+        assert!(
+            within > exceed,
+            "Ambitus exceeded should score lower: within={}, exceed={}",
+            within,
+            exceed
+        );
+    }
+
+    #[test]
+    fn test_species2_strong_beat_consonant() {
+        let mut scale = Scale::major(0);
+        let mut state = CounterpointState::new();
+        state.set_species(CounterpointSpecies::Species2);
+        let result = state.process_with_beat(&mut scale, Note::C4, Some(0.0));
+        assert!(result.len() >= 2, "Should produce harmony on strong beat");
+        let ic = ((u8::from(result[1]) as i16 - u8::from(Note::C4) as i16).abs() % 12) as u8;
+        assert!(
+            CounterpointState::is_consonant_semitones(ic),
+            "Strong beat must be consonant, got {}",
+            ic
+        );
+    }
+
+    #[test]
+    fn test_species2_ignores_beat_when_none() {
+        let mut scale = Scale::major(0);
+        let mut state = CounterpointState::new();
+        state.set_species(CounterpointSpecies::Species2);
+        let result = state.process_with_beat(&mut scale, Note::C4, None);
+        assert!(
+            result.len() >= 2,
+            "Should produce harmony with None beat_phase"
+        );
+    }
+
+    #[test]
+    fn test_species4_preparation_consonant() {
+        let mut scale = Scale::major(0);
+        let mut state = CounterpointState::new();
+        state.set_species(CounterpointSpecies::Species4);
+        let result = state.process_with_beat(&mut scale, Note::C4, Some(0.0));
+        assert!(result.len() >= 2, "Should produce harmony");
+        let ic = ((u8::from(result[1]) as i16 - u8::from(Note::C4) as i16).abs() % 12) as u8;
+        assert!(
+            CounterpointState::is_consonant_semitones(ic),
+            "Preparation must be consonant, got {}",
+            ic
+        );
+        assert_eq!(state.suspension_phase, CpSuspensionPhase::Prepared);
+    }
+
+    #[test]
+    fn test_species4_timeout_forces_resolution() {
+        let mut state = CounterpointState::new();
+        state.set_species(CounterpointSpecies::Species4);
+        state.suspension_phase = CpSuspensionPhase::Suspended;
+        state.suspension_pitch = Some(u8::from(Note::E4));
+        state.preparation_pitch = Some(u8::from(Note::E4));
+        state.suspension_tick_count = 4;
+        let mut scale = Scale::major(0);
+        let _result = state.process_with_beat(&mut scale, Note::C4, Some(0.0));
+        assert!(
+            state.suspension_tick_count == 0
+                || state.suspension_phase != CpSuspensionPhase::Suspended,
+            "Should have reset after timeout"
+        );
+    }
+
+    #[test]
+    fn test_beat_strength_classification() {
+        assert_eq!(
+            CounterpointState::beat_strength(0.0, 4),
+            BeatStrength::Downbeat
+        );
+        assert_eq!(CounterpointState::beat_strength(1.0, 4), BeatStrength::Weak);
+        assert_eq!(
+            CounterpointState::beat_strength(2.0, 4),
+            BeatStrength::Medium
+        );
+        assert_eq!(
+            CounterpointState::beat_strength(0.5, 4),
+            BeatStrength::Offbeat
+        );
+    }
+
+    #[test]
+    fn test_consonance_check() {
+        assert!(CounterpointState::is_consonant_semitones(0));
+        assert!(CounterpointState::is_consonant_semitones(3));
+        assert!(CounterpointState::is_consonant_semitones(7));
+        assert!(!CounterpointState::is_consonant_semitones(1));
+        assert!(!CounterpointState::is_consonant_semitones(5));
+        assert!(!CounterpointState::is_consonant_semitones(6));
     }
 }

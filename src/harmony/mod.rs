@@ -191,6 +191,7 @@
 pub mod barry_harris;
 mod config;
 mod engine;
+pub mod functional;
 mod key_detect;
 mod modes;
 mod scale;
