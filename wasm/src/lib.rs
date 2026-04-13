@@ -145,6 +145,7 @@ fn mode_to_string(mode: HarmonyMode) -> &'static str {
         HarmonyMode::RandomBelowNoSeconds => "RandomBelowNoSeconds",
         HarmonyMode::ContraryMotion => "ContraryMotion",
         HarmonyMode::StrictCounterpoint => "StrictCounterpoint",
+        HarmonyMode::BarryHarris => "BarryHarris",
     }
 }
 
