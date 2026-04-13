@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase harmony-rework — Barry Harris Proper Implementation
+**Current focus:** Phase harmony-rework — Species Counterpoint 1-4
 
 ## Current Position
 
-Phase: harmony-rework (Plan 03 of multi-plan phase)
-Plan: 03 complete (Barry Harris Proper Implementation)
-Status: Plan 03 complete
-Last activity: 2026-04-12 - Completed harmony-rework-03-PLAN.md (Barry Harris drop-2 voicing mode)
+Phase: harmony-rework (Plan 02 complete)
+Plan: 02 complete (Species Counterpoint 1-4)
+Status: Plan 02 complete
+Last activity: 2026-04-13 - Completed harmony-rework-02-PLAN.md (Species 1-4 with Fux rules)
 
 Progress: [████████████████████] (06.10.1 plan 9/9 code complete, human verification pending)
 
