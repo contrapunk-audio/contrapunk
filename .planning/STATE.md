@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase harmony-rework — Species Counterpoint 1-4
+**Current focus:** Phase harmony-rework — Next-Note Suggestion Overlay
 
 ## Current Position
 
-Phase: harmony-rework (Plan 02 complete)
-Plan: 02 complete (Species Counterpoint 1-4)
-Status: Plan 02 complete
-Last activity: 2026-04-13 - Completed harmony-rework-02-PLAN.md (Species 1-4 with Fux rules)
+Phase: harmony-rework (Plan 05 complete)
+Plan: 05 complete (Next-Note Suggestion Overlay)
+Status: Plan 05 complete
+Last activity: 2026-04-12 - Completed harmony-rework-05-PLAN.md (11-term suggestion scorer, piano/fretboard overlay, weight tuning UI)
 
 Progress: [████████████████████] (06.10.1 plan 9/9 code complete, human verification pending)
 
