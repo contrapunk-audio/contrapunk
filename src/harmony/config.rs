@@ -587,6 +587,10 @@ pub enum HarmonyMode {
     StrictCounterpoint,
     #[serde(alias = "barry_harris")]
     BarryHarris,
+    /// Mode 9: Functional Harmony.
+    FunctionalHarmony,
+    /// Mode 10: Bach Chorale.
+    BachChorale,
 }
 
 impl HarmonyMode {
@@ -610,6 +614,8 @@ impl HarmonyMode {
             HarmonyMode::ContraryMotion => 6,
             HarmonyMode::StrictCounterpoint => 7,
             HarmonyMode::BarryHarris => 8,
+            HarmonyMode::FunctionalHarmony => 9,
+            HarmonyMode::BachChorale => 10,
         }
     }
 
@@ -624,6 +630,8 @@ impl HarmonyMode {
             HarmonyMode::ContraryMotion,
             HarmonyMode::StrictCounterpoint,
             HarmonyMode::BarryHarris,
+            HarmonyMode::FunctionalHarmony,
+            HarmonyMode::BachChorale,
         ]
     }
 
@@ -638,6 +646,8 @@ impl HarmonyMode {
             HarmonyMode::ContraryMotion => "Contrary motion",
             HarmonyMode::StrictCounterpoint => "Counterpoint (Species 1, basic)",
             HarmonyMode::BarryHarris => "Barry Harris (drop-2 voicings)",
+            HarmonyMode::FunctionalHarmony => "Functional Harmony",
+            HarmonyMode::BachChorale => "Bach Chorale",
         }
     }
 
@@ -667,6 +677,8 @@ impl HarmonyMode {
                  6th chord voicings, passing tones produce dim7 voicings. Requires \
                  BH Major or Minor 6th Dim scale."
             }
+            HarmonyMode::FunctionalHarmony => { "Reactive chord selection." }
+            HarmonyMode::BachChorale => { "4-voice SATB." }
         }
     }
 }

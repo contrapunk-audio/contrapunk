@@ -31,6 +31,8 @@ use std::collections::HashMap;
 use wmidi::Note;
 
 use crate::harmony::config::{BeatPhase, HarmonyMode, Key, OctaveMode, ScaleMode};
+use crate::harmony::functional;
+use crate::harmony::functional::context::HarmonicContext;
 use crate::harmony::modes;
 use crate::harmony::scale::Scale;
 use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
@@ -259,6 +261,7 @@ pub struct HarmonyEngine {
     key_detector: super::key_detect::KeyDetector,
     beat_phase: BeatPhase,
     saved_scale_mode: Option<ScaleMode>,
+    harmonic_context: Option<HarmonicContext>,
 }
 
 impl HarmonyEngine {
@@ -300,6 +303,7 @@ impl HarmonyEngine {
             key_detector: super::key_detect::KeyDetector::new(ScaleMode::Ionian),
             beat_phase: BeatPhase::default(),
             saved_scale_mode: None,
+            harmonic_context: None,
         }
     }
 
@@ -555,7 +559,9 @@ impl HarmonyEngine {
         self.active_port_maps.clear();
     }
 
-    pub fn set_beat_phase(&mut self, phase: BeatPhase) { self.beat_phase = phase; }
+    pub fn set_beat_phase(&mut self, phase: BeatPhase) {
+        self.beat_phase = phase;
+    }
 
     /// Harmonizes a single note based on the current mode.
     ///
@@ -583,6 +589,9 @@ impl HarmonyEngine {
             return self.harmonize_block_chord(note);
         }
 
+        if self.mode == HarmonyMode::FunctionalHarmony || self.mode == HarmonyMode::BachChorale {
+            return self.harmonize_functional(note);
+        }
         // Build result with voice_count slots. User's note goes at voice_position.
         let mut result = vec![None; self.voice_count];
         result[self.voice_position] = Some(note);
@@ -838,6 +847,29 @@ impl HarmonyEngine {
         }
     }
 
+    fn harmonize_functional(&mut self, note: Note) -> Vec<Note> {
+        let scale_mode = self.scale_mode;
+        let tonic = self.key.semitones_from_c();
+        if !HarmonicContext::is_compatible_scale(scale_mode) {
+            self.last_arrangement_indices = vec![0];
+            self.last_port_map = vec![0];
+            return vec![note];
+        }
+        let ctx = self
+            .harmonic_context
+            .get_or_insert_with(|| HarmonicContext::new(tonic, scale_mode));
+        let result = match self.mode {
+            HarmonyMode::BachChorale => functional::bach_chorale(note, ctx, scale_mode),
+            HarmonyMode::FunctionalHarmony => {
+                functional::functional_harmony(note, ctx, scale_mode, self.voice_count)
+            }
+            _ => vec![note],
+        };
+        self.last_arrangement_indices = (0..result.len()).collect();
+        self.last_port_map = self.last_arrangement_indices.clone();
+        result
+    }
+
     /// Harmonizes a single note in a specific direction using the mode's algorithm.
     /// `above`: if true, generate harmony above; if false, generate below.
     /// Used for bidirectional voice position generation.
@@ -876,6 +908,9 @@ impl HarmonyEngine {
             HarmonyMode::BarryHarris => {
                 modes::diatonic_thirds_directed(note, &mut self.scale, above)
             }
+            HarmonyMode::FunctionalHarmony | HarmonyMode::BachChorale => {
+                modes::diatonic_thirds_directed(note, &mut self.scale, above)
+            }
         }
     }
 
@@ -904,7 +939,8 @@ impl HarmonyEngine {
                     vec![note]
                 }
             }
-            HarmonyMode::BarryHarris => {
+            HarmonyMode::BarryHarris => modes::diatonic_thirds(note, &mut self.scale),
+            HarmonyMode::FunctionalHarmony | HarmonyMode::BachChorale => {
                 modes::diatonic_thirds(note, &mut self.scale)
             }
         }
@@ -1809,5 +1845,4 @@ mod tests {
         let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
         assert_eq!(engine.harmonize(Note::C4), vec![Note::C4, Note::E4]);
     }
-
 }
