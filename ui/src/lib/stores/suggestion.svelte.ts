@@ -58,6 +58,8 @@ export interface SuggestionPreset {
 	weights: Record<SuggestionWeightTerm, number>;
 }
 
+// Default preset weights must match Rust SuggestionConfig::default()
+// in src/harmony/suggestion.rs. Keep both in sync.
 export const SUGGESTION_PRESETS: SuggestionPreset[] = [
 	{
 		name: 'Default',
@@ -161,7 +163,13 @@ class SuggestionStore {
 	/** Whether the suggestion overlay is enabled. */
 	enabled = $state(false);
 
-	/** Current weight values. */
+	/**
+	 * Current weight values.
+	 *
+	 * These defaults are duplicated from the Rust SuggestionConfig
+	 * (src/harmony/suggestion.rs) for offline/initial rendering.
+	 * Keep in sync, or call get_suggestion_weights() from WASM at init.
+	 */
 	weights = $state<Record<SuggestionWeightTerm, number>>({
 		chord_tone: 10,
 		scale_tone: 4,

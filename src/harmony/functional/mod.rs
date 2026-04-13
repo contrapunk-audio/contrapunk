@@ -165,12 +165,6 @@ fn place_near(pc: u8, reference: u8, existing: &[Note]) -> u8 {
 
     // Generate candidates within 1 octave above and below
     let mut candidates = Vec::new();
-    let mut note = if reference >= 12 {
-        reference - 12 + ((12 + pc - ((reference - 12) % 12)) % 12)
-    } else {
-        pc
-    };
-    if note < pc {}
 
     // Generate a few octave placements near reference
     let start = if reference >= 24 { reference - 24 } else { 0 };

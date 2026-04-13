@@ -63,8 +63,9 @@ pub struct Scale {
     tonic: u8,
     /// The scale mode
     mode: ScaleMode,
-    /// Semitone offsets for each scale degree (variable length: 7 or 8)
-    offsets: Vec<u8>,
+    /// Semitone offsets for each scale degree (variable length: 7 or 8).
+    /// Stored as a static reference from `ScaleMode::intervals()` to avoid heap allocation.
+    offsets: &'static [u8],
     /// Whether modal interchange is enabled for out-of-key notes
     interchange_enabled: bool,
     /// How many parallel modes to search (1-5)
@@ -79,7 +80,7 @@ impl Scale {
         Self {
             tonic: tonic % 12,
             mode,
-            offsets: mode.intervals().to_vec(),
+            offsets: mode.intervals(),
             interchange_enabled: false,
             borrowing_range: 3,
             last_borrowed_from: None,

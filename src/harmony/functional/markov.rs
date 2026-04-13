@@ -1,6 +1,11 @@
 //! Compile-time Markov transition table from Bach chorale corpus.
 //!
-//! 2nd-order Markov chain: P(next_degree | prev_degree, curr_degree, beat, cadential).
+//! Primarily a 1st-order Markov chain: transitions are driven by `curr_degree`.
+//! The table is indexed by (prev_degree, curr_degree, beat, cadential) but the
+//! base probabilities depend only on `curr_degree`. The `prev_degree` dimension
+//! provides limited 2nd-order modulation for specific patterns (e.g., V-V->I,
+//! I-IV->V, ii-V->I) rather than full 2nd-order conditioning.
+//!
 //! Data is based on published Bach corpus analysis (Rohrmeier & Cross 2008).
 //!
 //! State space: 7 prev * 7 curr * 4 beats * 2 cadential = 392 states.
@@ -25,10 +30,24 @@ fn markov_index(prev: u8, curr: u8, beat: u8, cadential: bool) -> usize {
 }
 
 /// Lookup the transition probability P(next | prev, curr, beat, cadential).
+/// Uses the MAJOR_MARKOV table. For scale-aware lookup, use `lookup_table`.
 pub fn lookup(prev: u8, curr: u8, beat: u8, cadential: bool, next: u8) -> f32 {
+    lookup_table(&MAJOR_MARKOV, prev, curr, beat, cadential, next)
+}
+
+/// Lookup the transition probability using a specific Markov table.
+/// Use `table_for_scale()` to get the appropriate table for the current key context.
+pub fn lookup_table(
+    table: &[[f32; 7]; STATE_COUNT],
+    prev: u8,
+    curr: u8,
+    beat: u8,
+    cadential: bool,
+    next: u8,
+) -> f32 {
     let idx = markov_index(prev.min(6), curr.min(6), beat.min(3), cadential);
     if idx < STATE_COUNT {
-        MAJOR_MARKOV[idx][next.min(6) as usize]
+        table[idx][next.min(6) as usize]
     } else {
         STATIONARY[next.min(6) as usize]
     }
@@ -41,14 +60,15 @@ pub static STATIONARY: [f32; 7] = [0.30, 0.12, 0.04, 0.15, 0.22, 0.10, 0.07];
 /// Corpus frequency for each degree (used as prior).
 pub static FREQUENCY: [f32; 7] = [0.30, 0.12, 0.04, 0.15, 0.22, 0.10, 0.07];
 
-/// 2nd-order Markov table for major mode.
+/// Markov table for major mode (primarily 1st-order, with 2nd-order overrides).
 ///
 /// Generated from Bach chorale analysis with Laplace smoothing.
 /// Index: markov_index(prev_degree, curr_degree, beat, cadential)
 /// Value: [P(next=I), P(next=ii), ..., P(next=vii)]
 ///
-/// For states not well-represented in the corpus, Laplace smoothing ensures
-/// no zero probabilities. The table encodes the most common transitions:
+/// Base probabilities are 1st-order (keyed on curr_degree only). A few
+/// specific (prev, curr) pairs receive 2nd-order overrides (V-V, I-IV, ii-V).
+/// Beat position and cadential flag provide additional modulation.
 ///
 /// Strong transitions (empirical):
 ///   V -> I  (0.55)   -- authentic cadence

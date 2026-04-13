@@ -43,15 +43,20 @@
 //!
 //! # Scale Families
 //!
-//! The system supports 28 scale modes organized into 5 families:
+//! The system supports 57 scale modes organized into 10 families:
 //!
-//! | Family | Modes | Notes |
+//! | Family | Count | Notes |
 //! |--------|-------|-------|
-//! | Diatonic | Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, Locrian | 7-note scales |
-//! | Harmonic Minor | HarmonicMinor, LocrianNat6, IonianAug, DorianSharp4, PhrygianDominant, LydianSharp2, SuperLocrianDim | 7-note scales |
-//! | Melodic Minor | MelodicMinor, DorianFlat2, LydianAug, LydianDominant, MixolydianFlat6, LocrianNat2, SuperLocrian | 7-note scales |
-//! | Exotic | DoubleHarmonic, HungarianMinor, Enigmatic, NeapolitanMinor, NeapolitanMajor | 7-note scales |
-//! | Barry Harris | BHMajor6thDim, BHMinor6thDim | 8-note scales |
+//! | Diatonic | 7 | Ionian through Locrian |
+//! | Harmonic Minor | 7 | HarmonicMinor and rotations |
+//! | Melodic Minor | 7 | MelodicMinor and rotations |
+//! | Harmonic Major | 7 | HarmonicMajor and rotations |
+//! | Double Harmonic | 7 | DoubleHarmonic and rotations |
+//! | Pentatonic | 8 | Major/Minor pentatonic, Hirajoshi, InSen, Iwato, Yo, Kumoi, Pelog |
+//! | Blues & Bebop | 3 | MinorBlues, MajorBlues, BebopDominant |
+//! | Symmetric | 4 | WholeTone, Diminished (2 forms), Augmented |
+//! | World | 5 | Enigmatic, Neapolitan, Persian, Hungarian Major |
+//! | Barry Harris | 2 | BHMajor6thDim, BHMinor6thDim (8-note scales) |
 //!
 //! # Chord/Note Evaluation Algorithm
 //!
@@ -182,7 +187,7 @@
 //! - [`HarmonyMode`] - Harmony algorithms
 //! - [`OctaveMode`] - Octave transformation modes
 //! - [`ScaleFamily`] - Scale family groupings
-//! - [`ScaleMode`] - All 28 scale modes
+//! - [`ScaleMode`] - All 57 scale modes
 //! - [`HarmonyEngine`] - Main engine struct
 //! - [`Scale`] - Scale operations
 //! - [`ContraryMotionState`], [`CounterpointState`] - Stateful mode state machines

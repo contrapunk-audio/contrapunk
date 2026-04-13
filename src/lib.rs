@@ -2,7 +2,7 @@
 //!
 //! Contrapunk is a real-time MIDI harmony generator that transforms incoming
 //! MIDI notes into multi-voice harmonies. It supports multiple harmony algorithms,
-//! 28 scale modes, and advanced voice leading options.
+//! 57 scale modes across 10 families, and advanced voice leading options.
 //!
 //! # Architecture
 //!
@@ -20,15 +20,15 @@
 //! - `HarmonyEngine` - Main engine for note transformation
 //! - `Key` - Musical keys (C through B)
 //! - `HarmonyMode` - 8 harmony algorithms
-//! - `ScaleMode` - 28 scale modes across 5 families
+//! - `ScaleMode` - 57 scale modes across 10 families
 //! - `Scale` - Scale operations and diatonic transposition
 //!
 //! # Features
 //!
 //! - **8 Harmony Modes**: Pass-through, thirds, fourths, random, contrary motion,
 //!   counterpoint, Barry Harris
-//! - **28 Scale Modes**: Diatonic modes, harmonic/melodic minor, exotic scales,
-//!   Barry Harris 8-note scales
+//! - **57 Scale Modes**: Diatonic, harmonic/melodic minor, harmonic major,
+//!   double harmonic, pentatonic, blues, symmetric, world, and Barry Harris scales
 //! - **Modal Interchange**: Borrow notes from parallel modes for chromatic color
 //! - **Voice Leading**: Optional post-processing for smooth voice transitions
 //! - **Octave Modes**: Spread, split, mirror transformations

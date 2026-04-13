@@ -43,8 +43,6 @@ pub struct SuggestionSnapshot {
     pub scale_mask: u16,
     /// Pitch class of the tonic (0-11).
     pub key_root: u8,
-    /// Milliseconds since the last Note-On event.
-    pub last_note_on_time_ms: u32,
 }
 
 // Compile-time trait assertions for SuggestionSnapshot.
@@ -112,6 +110,11 @@ impl SuggestionSnapshot {
 /// Weights and parameters for the 11-term suggestion scorer.
 ///
 /// Default values are calibrated from Bach chorale soprano statistics.
+///
+/// **Source of truth** for default weights. The Svelte UI store
+/// (`ui/src/lib/stores/suggestion.svelte.ts`) duplicates these defaults
+/// for offline/initial rendering. Keep both in sync when changing defaults,
+/// or use `get_suggestion_weights()` WASM binding to fetch at runtime.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SuggestionConfig {
     // Harmonic terms
@@ -665,7 +668,6 @@ mod tests {
             next_chord_pc_mask: 0,
             scale_mask,
             key_root: 0,
-            last_note_on_time_ms: 0,
         }
     }
 
@@ -861,7 +863,6 @@ mod tests {
             next_chord_pc_mask: 0,
             scale_mask,
             key_root: 0,
-            last_note_on_time_ms: 0,
         };
 
         let config = SuggestionConfig::default();

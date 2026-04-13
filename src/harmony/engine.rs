@@ -420,6 +420,8 @@ impl HarmonyEngine {
         for state in &mut self.counterpoint_states {
             state.reset();
         }
+        // Reset harmonic context to avoid stale chord state from previous key
+        self.harmonic_context = None;
         // Clear note tracking since harmonies would change with new scale
         self.active_notes.clear();
         self.active_port_maps.clear();
@@ -457,6 +459,8 @@ impl HarmonyEngine {
         for state in &mut self.counterpoint_states {
             state.reset();
         }
+        // Reset harmonic context to avoid stale chord state from previous mode
+        self.harmonic_context = None;
         // Clear note tracking since harmonies would change with new mode
         self.active_notes.clear();
         self.active_port_maps.clear();
@@ -496,6 +500,8 @@ impl HarmonyEngine {
         for state in &mut self.counterpoint_states {
             state.reset();
         }
+        // Reset harmonic context to avoid stale chord state from previous scale mode
+        self.harmonic_context = None;
         self.active_notes.clear();
         self.active_port_maps.clear();
         self.voice_leading.reset();
@@ -889,8 +895,13 @@ impl HarmonyEngine {
             Some(voicing) => {
                 let mut result = Vec::with_capacity(5);
                 result.push(note);
-                result.extend_from_slice(&voicing);
-                self.last_arrangement_indices = vec![0, 1, 2, 3, 4];
+                // Filter out any voicing note that equals the melody to avoid doubling
+                for &v in &voicing {
+                    if v != note {
+                        result.push(v);
+                    }
+                }
+                self.last_arrangement_indices = (0..result.len()).collect();
                 self.apply_octave_mode(&mut result);
                 result
             }
@@ -988,6 +999,9 @@ impl HarmonyEngine {
                 }
             }
             HarmonyMode::StrictCounterpoint => {
+                // TODO: dispatch to state.process_with_beat() to enable Species 2-4
+                // and CounterpointStrictness from config. Currently only Species 1 is
+                // reachable because we call process() (which ignores species/strictness).
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
                     state.process(&mut self.scale, note)
                 } else {

@@ -68,16 +68,16 @@ pub fn score_chord(
 
 /// Markov transition probability P(degree | prev, current).
 fn markov_score(degree: u8, ctx: &HarmonicContext, scale_mode: ScaleMode) -> f32 {
-    let _table = markov::table_for_scale(scale_mode);
+    let table = markov::table_for_scale(scale_mode);
     match (ctx.prev_degree, ctx.current_degree) {
         (Some(prev), Some(curr)) => {
             let cadential = ctx.cadence_phase == CadencePhase::DominantArrived
                 || ctx.cadence_phase == CadencePhase::Approaching;
-            markov::lookup(prev, curr, ctx.beat_position, cadential, degree)
+            markov::lookup_table(table, prev, curr, ctx.beat_position, cadential, degree)
         }
         (None, Some(curr)) => {
             // Only one previous chord -- use stationary as prev
-            markov::lookup(0, curr, ctx.beat_position, false, degree)
+            markov::lookup_table(table, 0, curr, ctx.beat_position, false, degree)
         }
         _ => {
             // No previous chords -- use stationary distribution
