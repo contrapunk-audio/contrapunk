@@ -7,6 +7,7 @@
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import SuggestionWeights from '$lib/components/SuggestionWeights.svelte';
+	import Fretboard from '$lib/components/Fretboard.svelte';
 	import HumanizePanel from '$lib/components/HumanizePanel.svelte';
 	import GeneratorPanel from '$lib/components/GeneratorPanel.svelte';
 	import { adapter } from '$lib/adapter';
@@ -199,8 +200,9 @@
 			</div>
 		</div>
 
-		<!-- Bottom: Sacred piano keyboard -->
+		<!-- Bottom: Fretboard overlay (shown when suggestions enabled) + Sacred piano keyboard -->
 		<div class="piano-area">
+			<Fretboard />
 			<Piano />
 		</div>
 	{:else if !initError}
