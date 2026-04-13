@@ -79,7 +79,7 @@ impl Scale {
         Self {
             tonic: tonic % 12,
             mode,
-            offsets: mode.intervals(),
+            offsets: mode.intervals().to_vec(),
             interchange_enabled: false,
             borrowing_range: 3,
             last_borrowed_from: None,
@@ -605,8 +605,8 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_mode_all_returns_28() {
-        assert_eq!(ScaleMode::all().len(), 28);
+    fn test_scale_mode_all_returns_57() {
+        assert_eq!(ScaleMode::all().len(), 57);
     }
 
     #[test]
@@ -669,7 +669,7 @@ mod tests {
     #[test]
     fn test_degree_to_midi_near_c_major() {
         let scale = Scale::major(0); // C major
-        // Degree 0 (C) near C4 (60) should be 60
+                                     // Degree 0 (C) near C4 (60) should be 60
         assert_eq!(scale.degree_to_midi_near(0, 60), Some(60));
         // Degree 2 (E) near C4 (60) should be E4 (64)
         assert_eq!(scale.degree_to_midi_near(2, 60), Some(64));
