@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
+	import { suggestions } from '$lib/stores/suggestion.svelte';
 	import { getPianoKeyColor } from '$lib/theme/colors';
 
 	// MIDI range for standard 88-key piano: A0 (21) to C8 (108)
@@ -82,6 +83,18 @@
 		return engine.inScaleNotes.includes(midi);
 	}
 
+	/**
+	 * Get suggestion border style for a piano key.
+	 * Priority: active notes never show suggestion borders.
+	 * Top-3 = green border, Next-5 = yellow border.
+	 */
+	function suggestionBorder(midi: number): string {
+		if (!suggestions.enabled || isActive(midi)) return 'none';
+		if (suggestions.isTop3(midi)) return '3px solid #00e436';
+		if (suggestions.isNext5(midi)) return '2px solid #ffdd44';
+		return 'none';
+	}
+
 	const NUM_WHITE_KEYS = whiteKeys.length; // 52
 </script>
 
@@ -96,12 +109,14 @@
 			{@const glow = keyGlow(midi)}
 			{@const active = isActive(midi)}
 			{@const inScale = isInScale(midi)}
+			{@const sugBorder = suggestionBorder(midi)}
 			<div
 				class="white-key"
 				class:in-scale={inScale && !active}
 				data-midi={midi}
 				style:background={color || 'var(--color-text-primary)'}
 				style:box-shadow={glow}
+				style:border-top={sugBorder}
 			>
 				{#if inScale && !active}
 					<div class="scale-overlay"></div>
@@ -117,6 +132,7 @@
 			{@const glow = keyGlow(midi)}
 			{@const active = isActive(midi)}
 			{@const inScale = isInScale(midi)}
+			{@const sugBorder = suggestionBorder(midi)}
 			<div
 				class="black-key"
 				class:in-scale={inScale && !active}
@@ -125,6 +141,7 @@
 				style:width="calc(0.6 * (100% / {NUM_WHITE_KEYS}))"
 				style:background={color || '#111'}
 				style:box-shadow={glow}
+				style:border-top={sugBorder}
 			>
 				{#if inScale && !active}
 					<div class="scale-overlay"></div>
