@@ -656,4 +656,33 @@ export class WasmAdapter implements ContrapunkAdapter {
 			throw new Error(`Failed to delete preset: ${e}`);
 		}
 	}
+
+	// -- Suggestions --
+
+	getSuggestions(): { note: number; score: number }[] {
+		if (!this.initialized || !engine) return [];
+		try {
+			return engine.get_suggestions() ?? [];
+		} catch {
+			return [];
+		}
+	}
+
+	setSuggestionWeight(term: string, value: number): void {
+		if (!this.initialized || !engine) return;
+		try {
+			engine.set_suggestion_weight(term, value);
+		} catch {
+			// silently ignore
+		}
+	}
+
+	resetSuggestionWeights(): void {
+		if (!this.initialized || !engine) return;
+		try {
+			engine.reset_suggestion_weights();
+		} catch {
+			// silently ignore
+		}
+	}
 }

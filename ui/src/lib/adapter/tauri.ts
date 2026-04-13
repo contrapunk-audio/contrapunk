@@ -410,4 +410,18 @@ export class TauriAdapter implements ContrapunkAdapter {
 	getDetune(): number {
 		return this._detuneCents;
 	}
+
+	// -- Suggestions (stub — desktop path deferred to Task 8) --
+
+	getSuggestions(): { note: number; score: number }[] {
+		return [];
+	}
+
+	setSuggestionWeight(_term: string, _value: number): void {
+		// Desktop suggestion scoring deferred
+	}
+
+	resetSuggestionWeights(): void {
+		// Desktop suggestion scoring deferred
+	}
 }

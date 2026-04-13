@@ -196,4 +196,15 @@ export interface ContrapunkAdapter {
 
 	/** Get the current detune value in cents. */
 	getDetune(): number;
+
+	// -- Suggestions --
+
+	/** Get ranked next-note suggestions (top 12). */
+	getSuggestions?(): { note: number; score: number }[];
+
+	/** Set a suggestion weight by term name. */
+	setSuggestionWeight?(term: string, value: number): void;
+
+	/** Reset suggestion weights to defaults. */
+	resetSuggestionWeights?(): void;
 }

@@ -218,4 +218,14 @@ export class PluginAdapter implements ContrapunkAdapter {
 	getDetune(): number {
 		return this._detuneCents;
 	}
+
+	// -- Suggestions (stub for plugin) --
+
+	getSuggestions(): { note: number; score: number }[] {
+		return [];
+	}
+
+	setSuggestionWeight(_term: string, _value: number): void {}
+
+	resetSuggestionWeights(): void {}
 }
