@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 06.10.1 — UI Modernization (SvelteKit + HLD Design System)
+**Current focus:** Phase harmony-rework — Barry Harris Proper Implementation
 
 ## Current Position
 
-Phase: 06.10.1 of 13 (UI Modernization)
-Plan: 9 of 9 in current phase (01, 02, 03, 04, 05, 06, 07, 08, 09-task1 complete)
-Status: In progress (Task 2 human verification pending)
-Last activity: 2026-02-25 - Completed 06.10.1-09-PLAN.md Task 1 (remove egui/eframe, CLI mode, Trunk, old theme)
+Phase: harmony-rework (Plan 03 of multi-plan phase)
+Plan: 03 complete (Barry Harris Proper Implementation)
+Status: Plan 03 complete
+Last activity: 2026-04-12 - Completed harmony-rework-03-PLAN.md (Barry Harris drop-2 voicing mode)
 
 Progress: [████████████████████] (06.10.1 plan 9/9 code complete, human verification pending)
 
