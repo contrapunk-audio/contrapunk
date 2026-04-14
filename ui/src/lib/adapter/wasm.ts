@@ -438,30 +438,55 @@ export class WasmAdapter implements ContrapunkAdapter {
 				let resultNotes: number[] = [];
 
 				if (status === 0x90 && velocity > 0) {
-					// Note On
+					// Note On — humanized path: per-voice velocity jitter + delay queue.
+					// Deferred harmony notes come out later via tick()'s scheduled_notes drain.
 					try {
-						resultNotes = engine.note_on(note);
+						const humanized = engine.humanized_note_on(note, velocity) as {
+							immediate: { port: number; bytes: number[] }[];
+							deferred_count: number;
+							input_note: number;
+						};
+						for (const s of humanized.immediate) {
+							const out = outs[s.port % Math.max(1, outs.length)];
+							if (out) out.send(s.bytes);
+						}
 					} catch {
-						resultNotes = [note];
-					}
-					// Sort so lowest note → output 0 (bass), voices stay consistent
-					const sorted = self.sortVoices(resultNotes);
-					for (let i = 0; i < sorted.length; i++) {
-						if (outs.length > 0) {
-							outs[i % outs.length].send([0x90, sorted[i], velocity]);
+						// Fall back to plain note_on if humanization fails.
+						try {
+							resultNotes = engine.note_on(note);
+							const sorted = self.sortVoices(resultNotes);
+							for (let i = 0; i < sorted.length; i++) {
+								if (outs.length > 0) {
+									outs[i % outs.length].send([0x90, sorted[i], velocity]);
+								}
+							}
+						} catch {
+							/* give up on this note */
 						}
 					}
 				} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
-					// Note Off
+					// Note Off — humanized release path, matches humanized_note_on delays.
 					try {
-						resultNotes = engine.note_off(note);
+						const humanized = engine.humanized_note_off(note) as {
+							immediate: { port: number; bytes: number[] }[];
+							deferred_count: number;
+							input_note: number;
+						};
+						for (const s of humanized.immediate) {
+							const out = outs[s.port % Math.max(1, outs.length)];
+							if (out) out.send(s.bytes);
+						}
 					} catch {
-						resultNotes = [note];
-					}
-					const sorted = self.sortVoices(resultNotes);
-					for (let i = 0; i < sorted.length; i++) {
-						if (outs.length > 0) {
-							outs[i % outs.length].send([0x80, sorted[i], 0]);
+						try {
+							resultNotes = engine.note_off(note);
+							const sorted = self.sortVoices(resultNotes);
+							for (let i = 0; i < sorted.length; i++) {
+								if (outs.length > 0) {
+									outs[i % outs.length].send([0x80, sorted[i], 0]);
+								}
+							}
+						} catch {
+							/* give up */
 						}
 					}
 				} else {
