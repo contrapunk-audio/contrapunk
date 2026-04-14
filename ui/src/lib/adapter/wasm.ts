@@ -736,6 +736,20 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async listAudioOutputDevices(): Promise<{ name: string; is_default: boolean }[]> {
+		return [];
+	}
+
+	async startAudioOutput(_opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void> {
+		console.warn('[contrapunk] audio output not available in browser — use desktop app');
+	}
+
+	async stopAudioOutput(): Promise<void> {}
+
+	async isAudioOutputRunning(): Promise<boolean> {
+		return false;
+	}
+
 	async listAudioDevices(): Promise<string[]> {
 		if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
 			return [];

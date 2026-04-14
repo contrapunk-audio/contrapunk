@@ -10,6 +10,7 @@
 	import Fretboard from '$lib/components/Fretboard.svelte';
 	import HumanizePanel from '$lib/components/HumanizePanel.svelte';
 	import GeneratorPanel from '$lib/components/GeneratorPanel.svelte';
+	import AudioOutputPanel from '$lib/components/AudioOutputPanel.svelte';
 	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
@@ -196,6 +197,7 @@
 				<ActiveNotes />
 				<SuggestionWeights />
 				<HumanizePanel />
+				<AudioOutputPanel />
 				<GeneratorPanel />
 			</div>
 		</div>

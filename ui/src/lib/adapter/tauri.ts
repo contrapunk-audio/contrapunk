@@ -395,6 +395,42 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async listAudioOutputDevices(): Promise<{ name: string; is_default: boolean }[]> {
+		try {
+			return (await invoke('list_audio_output_devices')) as { name: string; is_default: boolean }[];
+		} catch (e) {
+			throw new Error(`Failed to list audio output devices: ${e}`);
+		}
+	}
+
+	async startAudioOutput(opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void> {
+		try {
+			await invoke('start_audio_output', {
+				deviceId: opts.deviceId ?? null,
+				sampleRate: opts.sampleRate ?? null,
+				bufferSize: opts.bufferSize ?? null,
+			});
+		} catch (e) {
+			throw new Error(`Failed to start audio output: ${e}`);
+		}
+	}
+
+	async stopAudioOutput(): Promise<void> {
+		try {
+			await invoke('stop_audio_output');
+		} catch (e) {
+			throw new Error(`Failed to stop audio output: ${e}`);
+		}
+	}
+
+	async isAudioOutputRunning(): Promise<boolean> {
+		try {
+			return (await invoke('is_audio_output_running')) as boolean;
+		} catch (e) {
+			throw new Error(`Failed to check audio output running: ${e}`);
+		}
+	}
+
 	async listAudioDevices(): Promise<string[]> {
 		try {
 			return (await invoke('list_audio_devices')) as string[];

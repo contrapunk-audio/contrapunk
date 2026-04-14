@@ -672,6 +672,10 @@ class EngineStore {
 	// -- Transport --
 	isRunning = $state(false);
 
+	// -- Audio output --
+	audioOutRunning = $state(false);
+	audioOutDevice = $state<string | null>(null);
+
 	// -- Real-time note state (updated by adapter events) --
 	inputNotes = $state<number[]>([]);
 	harmonyNotes = $state<number[]>([]);
@@ -898,6 +902,25 @@ class EngineStore {
 		this.detuneCents = cents;
 		adapter.setDetune(cents);
 		this.persist();
+	}
+
+	async refreshAudioOutState() {
+		try {
+			this.audioOutRunning = await adapter.isAudioOutputRunning();
+		} catch {
+			// Adapter not ready or not supported — leave state as-is
+		}
+	}
+
+	async setAudioOut(enabled: boolean, deviceId?: string) {
+		if (enabled) {
+			await adapter.startAudioOutput({ deviceId });
+			this.audioOutRunning = true;
+			this.audioOutDevice = deviceId ?? null;
+		} else {
+			await adapter.stopAudioOutput();
+			this.audioOutRunning = false;
+		}
 	}
 
 	/**

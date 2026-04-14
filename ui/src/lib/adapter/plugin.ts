@@ -216,6 +216,20 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async savePreset(_name: string): Promise<void> {}
 	async deletePreset(_name: string): Promise<void> {}
 
+	// -- Audio output (DAW handles audio routing in plugin mode) --
+
+	async listAudioOutputDevices(): Promise<{ name: string; is_default: boolean }[]> {
+		return [];
+	}
+
+	async startAudioOutput(_opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void> {}
+
+	async stopAudioOutput(): Promise<void> {}
+
+	async isAudioOutputRunning(): Promise<boolean> {
+		return false;
+	}
+
 	// -- Guitar input (plugin gets audio from DAW) --
 
 	async listAudioDevices(): Promise<string[]> {

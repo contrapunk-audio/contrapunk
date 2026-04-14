@@ -193,6 +193,20 @@ export interface ContrapunkAdapter {
 	/** Delete a custom preset by name. */
 	deletePreset(name: string): Promise<void>;
 
+	// -- Audio output --
+
+	/** List available audio output devices (desktop only). Returns empty on WASM/plugin. */
+	listAudioOutputDevices(): Promise<{ name: string; is_default: boolean }[]>;
+
+	/** Start audio output. `undefined` device = system default. */
+	startAudioOutput(opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void>;
+
+	/** Stop audio output. */
+	stopAudioOutput(): Promise<void>;
+
+	/** Whether audio output is currently running. */
+	isAudioOutputRunning(): Promise<boolean>;
+
 	// -- Guitar input --
 
 	/** List available audio input devices (via cpal on desktop). */
