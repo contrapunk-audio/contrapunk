@@ -108,6 +108,8 @@ pub fn start_routing(
             engine.interchange_enabled(),
             engine.borrowing_range(),
             engine.voice_position(),
+            engine.counterpoint_species(),
+            engine.counterpoint_strictness(),
         )
     };
 
@@ -251,6 +253,8 @@ type EngineConfig = (
     bool,  // interchange_enabled
     u8,    // borrowing_range
     usize, // voice_position
+    contrapunk::harmony::CounterpointSpecies,
+    contrapunk::harmony::CounterpointStrictness,
 );
 
 fn run_tauri_router(
@@ -270,8 +274,19 @@ fn run_tauri_router(
     stop_signal: Arc<std::sync::atomic::AtomicBool>,
     app_handle: AppHandle,
 ) -> anyhow::Result<()> {
-    let (key, mode, octave_mode, vl_enabled, vl_style, scale_mode, ic_enabled, br_range, vp) =
-        config;
+    let (
+        key,
+        mode,
+        octave_mode,
+        vl_enabled,
+        vl_style,
+        scale_mode,
+        ic_enabled,
+        br_range,
+        vp,
+        cp_species,
+        cp_strictness,
+    ) = config;
 
     // Create channel for MIDI input — both physical MIDI and guitar
     // bridge send Vec<u8> through the same channel.
@@ -319,6 +334,8 @@ fn run_tauri_router(
     engine.set_interchange_enabled(ic_enabled);
     engine.set_borrowing_range(br_range);
     engine.set_voice_position(vp);
+    engine.set_counterpoint_species(cp_species);
+    engine.set_counterpoint_strictness(cp_strictness);
 
     // Create humanizer
     let mut humanizer = Humanizer::new(humanize_config);
@@ -341,6 +358,10 @@ fn run_tauri_router(
         // Tick humanizer
         let current_ms = now_ms();
         humanizer.tick(current_ms);
+
+        // Push the current beat-phase position into the harmony engine so
+        // beat-aware modes (Species 2-4 counterpoint) can react to it.
+        engine.set_counterpoint_beat_phase(Some(humanizer.clock().beat_position()));
 
         // Drain delay queue
         for hn in delay_queue.drain_ready(current_ms) {

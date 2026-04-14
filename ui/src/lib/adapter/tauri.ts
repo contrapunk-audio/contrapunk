@@ -35,7 +35,9 @@ function mapEngineState(raw: Record<string, unknown>, isRunning: boolean): Engin
 		voicePosition: raw.voice_position as number,
 		voiceCount: raw.voice_count as number,
 		autoKey: raw.auto_key as boolean,
-		isRunning
+		isRunning,
+		counterpointSpecies: (raw.counterpoint_species as string) ?? 'Species1',
+		counterpointStrictness: (raw.counterpoint_strictness as string) ?? 'Strict'
 	};
 }
 
@@ -141,6 +143,22 @@ export class TauriAdapter implements ContrapunkAdapter {
 			await invoke('set_auto_key', { enabled });
 		} catch (e) {
 			throw new Error(`Failed to set auto key: ${e}`);
+		}
+	}
+
+	async setCounterpointSpecies(species: string): Promise<void> {
+		try {
+			await invoke('set_counterpoint_species', { species });
+		} catch (e) {
+			throw new Error(`Failed to set counterpoint species: ${e}`);
+		}
+	}
+
+	async setCounterpointStrictness(strictness: string): Promise<void> {
+		try {
+			await invoke('set_counterpoint_strictness', { strictness });
+		} catch (e) {
+			throw new Error(`Failed to set counterpoint strictness: ${e}`);
 		}
 	}
 

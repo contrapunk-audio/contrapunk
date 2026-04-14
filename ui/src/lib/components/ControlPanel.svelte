@@ -7,6 +7,8 @@
 		SCALE_FAMILIES,
 		OCTAVE_MODES,
 		VOICE_LEADING_STYLES,
+		COUNTERPOINT_SPECIES,
+		COUNTERPOINT_STRICTNESS,
 		type KeyName,
 		type HarmonyModeName,
 		type ScaleModeName,
@@ -71,6 +73,35 @@
 			</button>
 		{/each}
 	</div>
+
+	{#if engine.mode === 'StrictCounterpoint'}
+		<div class="card-subheader font-pixel">Species</div>
+		<div class="species-grid">
+			{#each COUNTERPOINT_SPECIES as sp}
+				<button
+					class="pixel-btn"
+					class:active={engine.counterpointSpecies === sp.name}
+					onclick={() => engine.setCounterpointSpecies(sp.name)}
+					title={sp.tooltip}
+				>
+					{sp.shortLabel}
+				</button>
+			{/each}
+		</div>
+		<div class="card-subheader font-pixel">Strictness</div>
+		<div class="strictness-grid">
+			{#each COUNTERPOINT_STRICTNESS as st}
+				<button
+					class="pixel-btn"
+					class:active={engine.counterpointStrictness === st.name}
+					onclick={() => engine.setCounterpointStrictness(st.name)}
+					title={st.tooltip}
+				>
+					{st.label}
+				</button>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <!-- Scale Mode Selector (grouped by family) -->
@@ -271,6 +302,19 @@
 	.mode-grid {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
+		gap: 2px;
+	}
+
+	.species-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 2px;
+		margin-bottom: 4px;
+	}
+
+	.strictness-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
 		gap: 2px;
 	}
 

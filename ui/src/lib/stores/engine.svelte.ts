@@ -136,6 +136,63 @@ export type OctaveModeName = 'None' | 'Spread' | 'BassTrebleSplit' | 'Mirror';
 
 export type VoiceLeadingStyleName = 'Free' | 'Palestrina' | 'BachChorale' | 'Jazz';
 
+export type CounterpointSpeciesName =
+	| 'Species1'
+	| 'Species2'
+	| 'Species3'
+	| 'Species4';
+
+export type CounterpointStrictnessName = 'Relaxed' | 'Strict';
+
+export const COUNTERPOINT_SPECIES: {
+	name: CounterpointSpeciesName;
+	label: string;
+	shortLabel: string;
+	tooltip: string;
+}[] = [
+	{
+		name: 'Species1',
+		label: 'Species 1 (1:1)',
+		shortLabel: 'I',
+		tooltip: 'Note-against-note. One harmony note per melody note.'
+	},
+	{
+		name: 'Species2',
+		label: 'Species 2 (2:1)',
+		shortLabel: 'II',
+		tooltip: 'Two harmony notes per melody note; passing tones on weak beats.'
+	},
+	{
+		name: 'Species3',
+		label: 'Species 3 (4:1)',
+		shortLabel: 'III',
+		tooltip: 'Four harmony notes per melody note; figuration on weak beats.'
+	},
+	{
+		name: 'Species4',
+		label: 'Species 4 (Susp.)',
+		shortLabel: 'IV',
+		tooltip: 'Syncopated harmony: prepare / suspend / resolve.'
+	}
+];
+
+export const COUNTERPOINT_STRICTNESS: {
+	name: CounterpointStrictnessName;
+	label: string;
+	tooltip: string;
+}[] = [
+	{
+		name: 'Relaxed',
+		label: 'Relaxed',
+		tooltip: 'Lighter penalties — more permissive harmonic choices.'
+	},
+	{
+		name: 'Strict',
+		label: 'Strict',
+		tooltip: 'Fux-aligned scoring — enforces species rules strictly.'
+	}
+];
+
 export interface ScaleFamilyGroup {
 	family: ScaleFamilyName;
 	label: string;
@@ -452,7 +509,9 @@ function computeScaleNotes(key: KeyName, scaleMode: ScaleModeName): number[] {
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
-const SETTINGS_VERSION = 1;
+// Version bumped from 1 → 2 when counterpointSpecies / counterpointStrictness
+// fields were added. Older payloads fall back to defaults on migration.
+const SETTINGS_VERSION = 2;
 
 interface PersistedSettings {
 	version: number;
@@ -467,6 +526,8 @@ interface PersistedSettings {
 	voicePosition: number;
 	voiceCount: number;
 	detuneCents: number;
+	counterpointSpecies: CounterpointSpeciesName;
+	counterpointStrictness: CounterpointStrictnessName;
 }
 
 const SETTINGS_DEFAULTS: PersistedSettings = {
@@ -482,6 +543,8 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	voicePosition: 0,
 	voiceCount: 2,
 	detuneCents: 0,
+	counterpointSpecies: 'Species1',
+	counterpointStrictness: 'Strict'
 };
 
 // Enum validation sets
@@ -490,6 +553,12 @@ const VALID_MODES = new Set(ALL_MODES.map((m) => m.name));
 const VALID_SCALE_MODES = new Set(SCALE_FAMILIES.flatMap((f) => f.modes.map((m) => m.name)));
 const VALID_OCTAVE_MODES = new Set(OCTAVE_MODES.map((m) => m.name));
 const VALID_VL_STYLES = new Set(VOICE_LEADING_STYLES.map((s) => s.name));
+const VALID_CP_SPECIES = new Set<CounterpointSpeciesName>(
+	COUNTERPOINT_SPECIES.map((s) => s.name)
+);
+const VALID_CP_STRICTNESS = new Set<CounterpointStrictnessName>(
+	COUNTERPOINT_STRICTNESS.map((s) => s.name)
+);
 
 function loadSettings(): PersistedSettings | null {
 	try {
@@ -547,6 +616,12 @@ function loadSettings(): PersistedSettings | null {
 				parsed.detuneCents <= 100
 					? parsed.detuneCents
 					: SETTINGS_DEFAULTS.detuneCents,
+			counterpointSpecies: VALID_CP_SPECIES.has(parsed.counterpointSpecies)
+				? parsed.counterpointSpecies
+				: SETTINGS_DEFAULTS.counterpointSpecies,
+			counterpointStrictness: VALID_CP_STRICTNESS.has(parsed.counterpointStrictness)
+				? parsed.counterpointStrictness
+				: SETTINGS_DEFAULTS.counterpointStrictness
 		};
 	} catch {
 		localStorage.removeItem(SETTINGS_KEY);
@@ -587,6 +662,10 @@ class EngineStore {
 	// -- Auto-key detection --
 	autoKey = $state(false);
 
+	// -- Counterpoint species / strictness (active when mode === 'StrictCounterpoint') --
+	counterpointSpecies = $state<CounterpointSpeciesName>('Species1');
+	counterpointStrictness = $state<CounterpointStrictnessName>('Strict');
+
 	// -- Detune --
 	detuneCents = $state(0);
 
@@ -620,7 +699,9 @@ class EngineStore {
 			interchangeRange: this.interchangeRange,
 			voicePosition: this.voicePosition,
 			voiceCount: this.voiceCount,
-			detuneCents: this.detuneCents
+			detuneCents: this.detuneCents,
+			counterpointSpecies: this.counterpointSpecies,
+			counterpointStrictness: this.counterpointStrictness
 		});
 	}
 
@@ -648,7 +729,15 @@ class EngineStore {
 			],
 			['voicePosition', () => adapter.setVoicePosition(saved.voicePosition)],
 			['voiceCount', () => adapter.setVoiceCount(saved.voiceCount)],
-			['detune', () => { adapter.setDetune(saved.detuneCents); return Promise.resolve(); }]
+			['detune', () => { adapter.setDetune(saved.detuneCents); return Promise.resolve(); }],
+			[
+				'counterpointSpecies',
+				() => adapter.setCounterpointSpecies(saved.counterpointSpecies)
+			],
+			[
+				'counterpointStrictness',
+				() => adapter.setCounterpointStrictness(saved.counterpointStrictness)
+			]
 		];
 
 		for (const [name, op] of ops) {
@@ -781,6 +870,30 @@ class EngineStore {
 		}
 	}
 
+	async setCounterpointSpecies(species: CounterpointSpeciesName) {
+		const prev = this.counterpointSpecies;
+		this.counterpointSpecies = species;
+		try {
+			await adapter.setCounterpointSpecies(species);
+			this.persist();
+		} catch (e) {
+			this.counterpointSpecies = prev;
+			throw e;
+		}
+	}
+
+	async setCounterpointStrictness(strictness: CounterpointStrictnessName) {
+		const prev = this.counterpointStrictness;
+		this.counterpointStrictness = strictness;
+		try {
+			await adapter.setCounterpointStrictness(strictness);
+			this.persist();
+		} catch (e) {
+			this.counterpointStrictness = prev;
+			throw e;
+		}
+	}
+
 	setDetune(cents: number) {
 		this.detuneCents = cents;
 		adapter.setDetune(cents);
@@ -837,6 +950,17 @@ class EngineStore {
 		this.voiceCount = state.voiceCount;
 		this.autoKey = state.autoKey;
 		this.isRunning = state.isRunning;
+		if (VALID_CP_SPECIES.has(state.counterpointSpecies as CounterpointSpeciesName)) {
+			this.counterpointSpecies = state.counterpointSpecies as CounterpointSpeciesName;
+		}
+		if (
+			VALID_CP_STRICTNESS.has(
+				state.counterpointStrictness as CounterpointStrictnessName
+			)
+		) {
+			this.counterpointStrictness =
+				state.counterpointStrictness as CounterpointStrictnessName;
+		}
 	}
 
 	/**

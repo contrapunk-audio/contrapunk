@@ -6,7 +6,10 @@
 use serde::Serialize;
 use tauri::State;
 
-use contrapunk::harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
+use contrapunk::harmony::{
+    CounterpointSpecies, CounterpointStrictness, HarmonyMode, Key, OctaveMode, ScaleMode,
+    VoiceLeadingStyle,
+};
 
 use crate::state::AppState;
 
@@ -26,6 +29,8 @@ pub struct EngineStateResponse {
     pub voice_count: usize,
     pub auto_key: bool,
     pub routing_mode: String,
+    pub counterpoint_species: String,
+    pub counterpoint_strictness: String,
 }
 
 /// Returns a snapshot of the current engine configuration.
@@ -49,6 +54,8 @@ pub fn get_engine_state(state: State<AppState>) -> Result<EngineStateResponse, S
             "{:?}",
             *state.routing_mode.lock().map_err(|e| e.to_string())?
         ),
+        counterpoint_species: format!("{:?}", engine.counterpoint_species()),
+        counterpoint_strictness: format!("{:?}", engine.counterpoint_strictness()),
     })
 }
 
@@ -124,6 +131,27 @@ pub fn set_voice_position(position: usize, state: State<AppState>) -> Result<(),
 pub fn set_auto_key(enabled: bool, state: State<AppState>) -> Result<(), String> {
     let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
     engine.set_auto_key(enabled);
+    Ok(())
+}
+
+/// Sets the counterpoint species (1-4) used by `HarmonyMode::StrictCounterpoint`.
+#[tauri::command]
+pub fn set_counterpoint_species(species: String, state: State<AppState>) -> Result<(), String> {
+    let parsed = parse_counterpoint_species(&species)?;
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.set_counterpoint_species(parsed);
+    Ok(())
+}
+
+/// Sets the counterpoint strictness (Relaxed or Strict) for scoring weights.
+#[tauri::command]
+pub fn set_counterpoint_strictness(
+    strictness: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let parsed = parse_counterpoint_strictness(&strictness)?;
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.set_counterpoint_strictness(parsed);
     Ok(())
 }
 
@@ -217,5 +245,23 @@ fn parse_voice_leading_style(s: &str) -> Result<VoiceLeadingStyle, String> {
         "Jazz" | "jazz" => Ok(VoiceLeadingStyle::Jazz),
         "Free" | "free" => Ok(VoiceLeadingStyle::Free),
         other => Err(format!("Unknown voice leading style: {}", other)),
+    }
+}
+
+fn parse_counterpoint_species(s: &str) -> Result<CounterpointSpecies, String> {
+    match s {
+        "Species1" | "species1" | "species_1" | "1" => Ok(CounterpointSpecies::Species1),
+        "Species2" | "species2" | "species_2" | "2" => Ok(CounterpointSpecies::Species2),
+        "Species3" | "species3" | "species_3" | "3" => Ok(CounterpointSpecies::Species3),
+        "Species4" | "species4" | "species_4" | "4" => Ok(CounterpointSpecies::Species4),
+        other => Err(format!("Unknown counterpoint species: {}", other)),
+    }
+}
+
+fn parse_counterpoint_strictness(s: &str) -> Result<CounterpointStrictness, String> {
+    match s {
+        "Relaxed" | "relaxed" => Ok(CounterpointStrictness::Relaxed),
+        "Strict" | "strict" => Ok(CounterpointStrictness::Strict),
+        other => Err(format!("Unknown counterpoint strictness: {}", other)),
     }
 }

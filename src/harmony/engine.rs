@@ -35,7 +35,9 @@ use crate::harmony::functional;
 use crate::harmony::functional::context::HarmonicContext;
 use crate::harmony::modes;
 use crate::harmony::scale::Scale;
-use crate::harmony::stateful::{ContraryMotionState, CounterpointState};
+use crate::harmony::stateful::{
+    ContraryMotionState, CounterpointSpecies, CounterpointState, CounterpointStrictness,
+};
 use crate::harmony::voice_leading::{
     revoice_chord, StyleRules, SuspensionState, VoiceAnchor, VoiceLeadingStyle, VoiceRegister,
 };
@@ -260,6 +262,13 @@ pub struct HarmonyEngine {
     /// Key detector (accumulates pitch classes to infer tonic)
     key_detector: super::key_detect::KeyDetector,
     beat_phase: BeatPhase,
+    /// Beat-phase position in [0, beats_per_bar) used by Species 2-4 counterpoint.
+    /// `None` means "no beat clock running" — Species 2-4 fall back to Species 1 behavior.
+    counterpoint_beat_phase: Option<f64>,
+    /// Active species applied to all counterpoint states.
+    counterpoint_species: CounterpointSpecies,
+    /// Active strictness applied to all counterpoint states.
+    counterpoint_strictness: CounterpointStrictness,
     saved_scale_mode: Option<ScaleMode>,
     harmonic_context: Option<HarmonicContext>,
 }
@@ -302,6 +311,9 @@ impl HarmonyEngine {
             auto_key: false,
             key_detector: super::key_detect::KeyDetector::new(ScaleMode::Ionian),
             beat_phase: BeatPhase::default(),
+            counterpoint_beat_phase: None,
+            counterpoint_species: CounterpointSpecies::default(),
+            counterpoint_strictness: CounterpointStrictness::default(),
             saved_scale_mode: None,
             harmonic_context: None,
         }
@@ -395,8 +407,15 @@ impl HarmonyEngine {
         self.contrary_motion_states = (0..harmony_voices)
             .map(|_| ContraryMotionState::new())
             .collect();
+        let species = self.counterpoint_species;
+        let strictness = self.counterpoint_strictness;
         self.counterpoint_states = (0..harmony_voices)
-            .map(|_| CounterpointState::new())
+            .map(|_| {
+                let mut s = CounterpointState::new();
+                s.set_species(species);
+                s.set_strictness(strictness);
+                s
+            })
             .collect();
         self.active_notes.clear();
         self.active_port_maps.clear();
@@ -426,6 +445,8 @@ impl HarmonyEngine {
         self.active_notes.clear();
         self.active_port_maps.clear();
         self.voice_leading.reset();
+        // Clear cached beat-phase; router will push a fresh value next cycle.
+        self.counterpoint_beat_phase = None;
     }
 
     /// Returns whether auto-key detection is enabled.
@@ -465,6 +486,8 @@ impl HarmonyEngine {
         self.active_notes.clear();
         self.active_port_maps.clear();
         self.voice_leading.reset();
+        // Clear cached beat-phase; router pushes a fresh value on next cycle.
+        self.counterpoint_beat_phase = None;
 
         if mode == HarmonyMode::BarryHarris {
             match super::barry_harris::validate_scale(self.scale_mode) {
@@ -505,6 +528,8 @@ impl HarmonyEngine {
         self.active_notes.clear();
         self.active_port_maps.clear();
         self.voice_leading.reset();
+        // Clear cached beat-phase; router pushes a fresh value on next cycle.
+        self.counterpoint_beat_phase = None;
     }
 
     /// Returns whether modal interchange is enabled.
@@ -567,6 +592,51 @@ impl HarmonyEngine {
 
     pub fn set_beat_phase(&mut self, phase: BeatPhase) {
         self.beat_phase = phase;
+    }
+
+    /// Returns the current counterpoint beat-phase position within the bar
+    /// (`0.0 .. beats_per_bar`). `None` means no beat clock is running and
+    /// Species 2-4 counterpoint falls back to Species 1 behavior.
+    pub fn counterpoint_beat_phase(&self) -> Option<f64> {
+        self.counterpoint_beat_phase
+    }
+
+    /// Updates the counterpoint beat-phase position. Call this each router
+    /// cycle with `humanizer.clock().beat_position()` to enable beat-aware
+    /// Species 2-4 behavior. Pass `None` to disable beat awareness.
+    pub fn set_counterpoint_beat_phase(&mut self, phase: Option<f64>) {
+        self.counterpoint_beat_phase = phase;
+    }
+
+    /// Returns the active counterpoint species (Species 1-4).
+    pub fn counterpoint_species(&self) -> CounterpointSpecies {
+        self.counterpoint_species
+    }
+
+    /// Sets the counterpoint species for all voices. Resets counterpoint
+    /// state so suspension phase / interval history starts clean.
+    pub fn set_counterpoint_species(&mut self, species: CounterpointSpecies) {
+        self.counterpoint_species = species;
+        for state in &mut self.counterpoint_states {
+            state.set_species(species);
+        }
+        self.active_notes.clear();
+        self.active_port_maps.clear();
+    }
+
+    /// Returns the active counterpoint strictness (Relaxed vs Strict).
+    pub fn counterpoint_strictness(&self) -> CounterpointStrictness {
+        self.counterpoint_strictness
+    }
+
+    /// Sets the counterpoint strictness for all voices.
+    pub fn set_counterpoint_strictness(&mut self, strictness: CounterpointStrictness) {
+        self.counterpoint_strictness = strictness;
+        for state in &mut self.counterpoint_states {
+            state.set_strictness(strictness);
+        }
+        self.active_notes.clear();
+        self.active_port_maps.clear();
     }
 
     /// Build a snapshot of the engine's current state for the suggestion overlay.
@@ -965,8 +1035,18 @@ impl HarmonyEngine {
                 }
             }
             HarmonyMode::StrictCounterpoint => {
+                // Species 1 is direction-aware via process_directed. Species 2-4
+                // rely on beat-phase and use the non-directed process path, so
+                // when a non-Species1 species is active we route through
+                // process_with_beat and ignore `above`.
+                let species = self.counterpoint_species;
+                let beat_phase = self.counterpoint_beat_phase;
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
-                    state.process_directed(&mut self.scale, note, above)
+                    if matches!(species, CounterpointSpecies::Species1) {
+                        state.process_directed(&mut self.scale, note, above)
+                    } else {
+                        state.process_with_beat(&mut self.scale, note, beat_phase)
+                    }
                 } else {
                     vec![note]
                 }
@@ -999,11 +1079,11 @@ impl HarmonyEngine {
                 }
             }
             HarmonyMode::StrictCounterpoint => {
-                // TODO: dispatch to state.process_with_beat() to enable Species 2-4
-                // and CounterpointStrictness from config. Currently only Species 1 is
-                // reachable because we call process() (which ignores species/strictness).
+                // Dispatch to process_with_beat so Species 2-4 get beat awareness.
+                // Species 1 + beat_phase=None is exactly equivalent to process().
+                let beat_phase = self.counterpoint_beat_phase;
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
-                    state.process(&mut self.scale, note)
+                    state.process_with_beat(&mut self.scale, note, beat_phase)
                 } else {
                     vec![note]
                 }
@@ -1913,5 +1993,117 @@ mod tests {
     fn test_existing_modes_unaffected() {
         let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
         assert_eq!(engine.harmonize(Note::C4), vec![Note::C4, Note::E4]);
+    }
+
+    // --- Counterpoint Species 1-4 wiring tests ---
+
+    /// Setting the species on the engine must be reflected on each internal
+    /// CounterpointState so dispatch uses the requested species.
+    #[test]
+    fn test_set_counterpoint_species_propagates_to_states() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 3);
+        engine.set_counterpoint_species(CounterpointSpecies::Species3);
+        assert_eq!(engine.counterpoint_species(), CounterpointSpecies::Species3);
+        for s in &engine.counterpoint_states {
+            assert_eq!(s.species(), CounterpointSpecies::Species3);
+        }
+    }
+
+    #[test]
+    fn test_set_counterpoint_strictness_propagates_to_states() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 3);
+        engine.set_counterpoint_strictness(CounterpointStrictness::Relaxed);
+        assert_eq!(
+            engine.counterpoint_strictness(),
+            CounterpointStrictness::Relaxed
+        );
+        for s in &engine.counterpoint_states {
+            assert_eq!(s.strictness(), CounterpointStrictness::Relaxed);
+        }
+    }
+
+    /// Newly allocated states from set_voice_count must inherit the engine's
+    /// current species / strictness, not the CounterpointState defaults.
+    #[test]
+    fn test_voice_count_change_preserves_species_and_strictness() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
+        engine.set_counterpoint_species(CounterpointSpecies::Species4);
+        engine.set_counterpoint_strictness(CounterpointStrictness::Relaxed);
+        engine.set_voice_count(4);
+        for s in &engine.counterpoint_states {
+            assert_eq!(s.species(), CounterpointSpecies::Species4);
+            assert_eq!(s.strictness(), CounterpointStrictness::Relaxed);
+        }
+    }
+
+    #[test]
+    fn test_counterpoint_beat_phase_roundtrip() {
+        let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
+        assert_eq!(engine.counterpoint_beat_phase(), None);
+        engine.set_counterpoint_beat_phase(Some(2.5));
+        assert_eq!(engine.counterpoint_beat_phase(), Some(2.5));
+        // Mode change clears the cached phase so the router must push fresh.
+        engine.set_mode(HarmonyMode::PassThrough);
+        assert_eq!(engine.counterpoint_beat_phase(), None);
+    }
+
+    /// Species 1 ignores beat_phase; the harmonize output must be identical
+    /// whether or not a beat position is supplied.
+    #[test]
+    fn test_species1_ignores_beat_phase() {
+        let mut engine_a = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
+        let mut engine_b = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
+        engine_b.set_counterpoint_beat_phase(Some(1.25));
+
+        let melody = [Note::C4, Note::D4, Note::E4, Note::F4, Note::G4];
+        for &n in &melody {
+            assert_eq!(engine_a.harmonize(n), engine_b.harmonize(n));
+        }
+    }
+
+    /// Different species across the same melody must, at some point, produce
+    /// different harmony output — otherwise the dispatch is not actually
+    /// switching species behavior. This guards the real end-to-end wiring.
+    #[test]
+    fn test_species_change_alters_harmony_output() {
+        // Long enough melody to give Species 2 suspended / passing tones room
+        // to diverge from Species 1's note-against-note motion.
+        let melody = [
+            Note::C4,
+            Note::D4,
+            Note::E4,
+            Note::F4,
+            Note::G4,
+            Note::A4,
+            Note::G4,
+            Note::F4,
+            Note::E4,
+            Note::D4,
+            Note::C4,
+        ];
+
+        let mut sp1 = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
+        sp1.set_counterpoint_species(CounterpointSpecies::Species1);
+
+        let mut sp2 = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
+        sp2.set_counterpoint_species(CounterpointSpecies::Species2);
+
+        let mut any_different = false;
+        for (i, &n) in melody.iter().enumerate() {
+            // Advance the beat clock so Species 2 alternates strong/weak beats.
+            sp2.set_counterpoint_beat_phase(Some(i as f64 * 0.5));
+
+            let a = sp1.harmonize(n);
+            let b = sp2.harmonize(n);
+            if a != b {
+                any_different = true;
+            }
+        }
+
+        assert!(
+            any_different,
+            "Species 1 and Species 2 produced identical output across the \
+             full melody — species dispatch is not wired end-to-end."
+        );
     }
 }

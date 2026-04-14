@@ -80,7 +80,11 @@ export class PluginAdapter implements ContrapunkAdapter {
 			voicePosition: (currentParams.voicePosition as number) ?? 0,
 			voiceCount: (currentParams.voiceCount as number) ?? 2,
 			autoKey: (currentParams.autoKey as boolean) ?? false,
-			isRunning: true // Plugin is always "running" — DAW handles routing
+			isRunning: true, // Plugin is always "running" — DAW handles routing
+			counterpointSpecies:
+				(currentParams.counterpointSpecies as string) ?? 'Species1',
+			counterpointStrictness:
+				(currentParams.counterpointStrictness as string) ?? 'Strict'
 		};
 	}
 
@@ -118,6 +122,18 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async setAutoKey(enabled: boolean): Promise<void> {
 		this.send('setAutoKey', enabled);
+	}
+
+	async setCounterpointSpecies(species: string): Promise<void> {
+		// nih-plug parameters are fixed at compile time; pass through so the
+		// host can route to a parameter if it eventually exposes one.
+		this.send('setCounterpointSpecies', species);
+	}
+
+	async setCounterpointStrictness(strictness: string): Promise<void> {
+		// nih-plug parameters are fixed at compile time; pass through so the
+		// host can route to a parameter if it eventually exposes one.
+		this.send('setCounterpointStrictness', strictness);
 	}
 
 	// -- Humanization (not available in plugin mode) --

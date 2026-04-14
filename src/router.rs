@@ -94,6 +94,10 @@ pub fn run_router(
         let current_ms = now_ms();
         humanizer.tick(current_ms);
 
+        // Push the current beat-phase position into the harmony engine so
+        // beat-aware modes (Species 2-4 counterpoint) can react to it.
+        engine.set_counterpoint_beat_phase(Some(humanizer.clock().beat_position()));
+
         // Drain delay queue
         let current_ms = now_ms();
         for hn in delay_queue.drain_ready(current_ms) {

@@ -91,7 +91,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 				voicePosition: raw.voice_position ?? 0,
 				voiceCount: raw.voice_count ?? 2,
 				autoKey: raw.auto_key ?? false,
-				isRunning: this._isRunning
+				isRunning: this._isRunning,
+				counterpointSpecies: raw.counterpoint_species ?? 'Species1',
+				counterpointStrictness: raw.counterpoint_strictness ?? 'Strict'
 			};
 		} catch (e) {
 			throw new Error(`Failed to get engine state: ${e}`);
@@ -176,6 +178,24 @@ export class WasmAdapter implements ContrapunkAdapter {
 			engine.set_auto_key(enabled);
 		} catch (e) {
 			throw new Error(`Failed to set auto key: ${e}`);
+		}
+	}
+
+	async setCounterpointSpecies(species: string): Promise<void> {
+		this.ensureInit();
+		try {
+			engine.set_counterpoint_species(species);
+		} catch (e) {
+			throw new Error(`Failed to set counterpoint species: ${e}`);
+		}
+	}
+
+	async setCounterpointStrictness(strictness: string): Promise<void> {
+		this.ensureInit();
+		try {
+			engine.set_counterpoint_strictness(strictness);
+		} catch (e) {
+			throw new Error(`Failed to set counterpoint strictness: ${e}`);
 		}
 	}
 

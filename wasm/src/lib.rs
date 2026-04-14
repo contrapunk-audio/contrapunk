@@ -7,7 +7,10 @@
 use wasm_bindgen::prelude::*;
 
 use contrapunk::harmony::VoiceLeadingStyle;
-use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode};
+use contrapunk::harmony::{
+    CounterpointSpecies, CounterpointStrictness, HarmonyEngine, HarmonyMode, Key, OctaveMode,
+    ScaleMode,
+};
 use contrapunk::preset::PresetManager;
 
 /// Log to browser console from Rust WASM.
@@ -150,6 +153,46 @@ fn parse_voice_leading_style(s: &str) -> Result<VoiceLeadingStyle, JsValue> {
             "Unknown voice leading style: {}",
             s
         ))),
+    }
+}
+
+fn parse_counterpoint_species(s: &str) -> Result<CounterpointSpecies, JsValue> {
+    match s {
+        "Species1" | "species1" | "1" => Ok(CounterpointSpecies::Species1),
+        "Species2" | "species2" | "2" => Ok(CounterpointSpecies::Species2),
+        "Species3" | "species3" | "3" => Ok(CounterpointSpecies::Species3),
+        "Species4" | "species4" | "4" => Ok(CounterpointSpecies::Species4),
+        _ => Err(JsValue::from_str(&format!(
+            "Unknown counterpoint species: {}",
+            s
+        ))),
+    }
+}
+
+fn parse_counterpoint_strictness(s: &str) -> Result<CounterpointStrictness, JsValue> {
+    match s {
+        "Relaxed" | "relaxed" => Ok(CounterpointStrictness::Relaxed),
+        "Strict" | "strict" => Ok(CounterpointStrictness::Strict),
+        _ => Err(JsValue::from_str(&format!(
+            "Unknown counterpoint strictness: {}",
+            s
+        ))),
+    }
+}
+
+fn counterpoint_species_to_string(s: CounterpointSpecies) -> &'static str {
+    match s {
+        CounterpointSpecies::Species1 => "Species1",
+        CounterpointSpecies::Species2 => "Species2",
+        CounterpointSpecies::Species3 => "Species3",
+        CounterpointSpecies::Species4 => "Species4",
+    }
+}
+
+fn counterpoint_strictness_to_string(s: CounterpointStrictness) -> &'static str {
+    match s {
+        CounterpointStrictness::Relaxed => "Relaxed",
+        CounterpointStrictness::Strict => "Strict",
     }
 }
 
@@ -298,6 +341,8 @@ struct EngineStateJs {
     borrowing_range: u8,
     voice_position: usize,
     voice_count: usize,
+    counterpoint_species: &'static str,
+    counterpoint_strictness: &'static str,
 }
 
 #[derive(serde::Serialize)]
@@ -417,6 +462,35 @@ impl Engine {
         Ok(())
     }
 
+    /// Set the counterpoint species (`"Species1"` through `"Species4"`).
+    ///
+    /// Only active when the harmony mode is `StrictCounterpoint`. Species 2-4
+    /// require a beat-phase clock; since the WASM build has no internal
+    /// metronome, these species currently behave like Species 1 unless the
+    /// host explicitly calls `set_counterpoint_beat_phase` each frame.
+    pub fn set_counterpoint_species(&mut self, species: &str) -> Result<(), JsValue> {
+        let s = parse_counterpoint_species(species)?;
+        self.inner.set_counterpoint_species(s);
+        self.clear_notes();
+        Ok(())
+    }
+
+    /// Set the counterpoint strictness (`"Relaxed"` or `"Strict"`).
+    pub fn set_counterpoint_strictness(&mut self, strictness: &str) -> Result<(), JsValue> {
+        let s = parse_counterpoint_strictness(strictness)?;
+        self.inner.set_counterpoint_strictness(s);
+        self.clear_notes();
+        Ok(())
+    }
+
+    /// Set the counterpoint beat-phase position within the bar
+    /// (`0.0 .. beats_per_bar`). Pass `None` (via JS `undefined`/`null` from
+    /// the optional setter) to disable beat awareness and fall back to
+    /// Species 1 behavior.
+    pub fn set_counterpoint_beat_phase(&mut self, phase: Option<f64>) {
+        self.inner.set_counterpoint_beat_phase(phase);
+    }
+
     /// Returns the current key as a string (for UI to update after auto-detection).
     pub fn current_key(&self) -> String {
         format!("{}", self.inner.key())
@@ -481,6 +555,10 @@ impl Engine {
             borrowing_range: self.inner.borrowing_range(),
             voice_position: self.inner.voice_position(),
             voice_count: self.inner.voice_count(),
+            counterpoint_species: counterpoint_species_to_string(self.inner.counterpoint_species()),
+            counterpoint_strictness: counterpoint_strictness_to_string(
+                self.inner.counterpoint_strictness(),
+            ),
         };
 
         serde_wasm_bindgen::to_value(&state)
@@ -826,4 +904,60 @@ pub fn midi_to_name(midi: u8) -> String {
     let octave = (midi as i8 / 12) - 1;
     let name_idx = (midi % 12) as usize;
     format!("{}{}", note_names[name_idx], octave)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every species name that the UI sends must parse back to the matching
+    /// `CounterpointSpecies` variant. This is the bridge-layer smoke test:
+    /// if the UI string contract drifts, this catches it at build time.
+    #[test]
+    fn test_counterpoint_species_roundtrip() {
+        let cases = [
+            ("Species1", CounterpointSpecies::Species1),
+            ("Species2", CounterpointSpecies::Species2),
+            ("Species3", CounterpointSpecies::Species3),
+            ("Species4", CounterpointSpecies::Species4),
+        ];
+        for (name, expected) in cases {
+            let parsed = parse_counterpoint_species(name)
+                .unwrap_or_else(|_| panic!("should parse {}", name));
+            assert_eq!(parsed, expected);
+            // And the reverse direction: enum -> string the UI expects back.
+            assert_eq!(counterpoint_species_to_string(expected), name);
+        }
+    }
+
+    #[test]
+    fn test_counterpoint_strictness_roundtrip() {
+        let cases = [
+            ("Relaxed", CounterpointStrictness::Relaxed),
+            ("Strict", CounterpointStrictness::Strict),
+        ];
+        for (name, expected) in cases {
+            let parsed = parse_counterpoint_strictness(name)
+                .unwrap_or_else(|_| panic!("should parse {}", name));
+            assert_eq!(parsed, expected);
+            assert_eq!(counterpoint_strictness_to_string(expected), name);
+        }
+    }
+
+    // The error path constructs `JsValue::from_str`, which panics on
+    // non-wasm32 targets. Only compile these when testing WASM directly
+    // (e.g. via wasm-bindgen-test).
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn test_counterpoint_species_rejects_unknown() {
+        assert!(parse_counterpoint_species("Species5").is_err());
+        assert!(parse_counterpoint_species("").is_err());
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn test_counterpoint_strictness_rejects_unknown() {
+        assert!(parse_counterpoint_strictness("Loose").is_err());
+        assert!(parse_counterpoint_strictness("").is_err());
+    }
 }

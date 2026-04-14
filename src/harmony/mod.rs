@@ -209,5 +209,7 @@ pub use config::{BeatPhase, HarmonyMode, Key, OctaveMode, RoutingMode, ScaleFami
 pub use engine::HarmonyEngine;
 pub use key_detect::KeyDetector;
 pub use scale::Scale;
-pub use stateful::{ContraryMotionState, CounterpointState};
+pub use stateful::{
+    ContraryMotionState, CounterpointSpecies, CounterpointState, CounterpointStrictness,
+};
 pub use voice_leading::VoiceLeadingStyle;

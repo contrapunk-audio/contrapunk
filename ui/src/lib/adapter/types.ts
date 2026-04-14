@@ -26,6 +26,8 @@ export interface EngineState {
 	voiceCount: number;
 	autoKey: boolean;
 	isRunning: boolean;
+	counterpointSpecies: string;
+	counterpointStrictness: string;
 }
 
 /** Real-time note state emitted during MIDI routing. */
@@ -117,6 +119,19 @@ export interface ContrapunkAdapter {
 
 	/** Enable or disable auto-key detection. */
 	setAutoKey(enabled: boolean): Promise<void>;
+
+	/**
+	 * Set the counterpoint species (1-4) used when the harmony mode is
+	 * `StrictCounterpoint`. Values: `"Species1"`, `"Species2"`, `"Species3"`,
+	 * `"Species4"`.
+	 */
+	setCounterpointSpecies(species: string): Promise<void>;
+
+	/**
+	 * Set the counterpoint strictness (`"Relaxed"` or `"Strict"`) applied
+	 * to the counterpoint scoring weights.
+	 */
+	setCounterpointStrictness(strictness: string): Promise<void>;
 
 	// -- Humanization --
 
