@@ -16,6 +16,7 @@ import type {
 } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { guitar } from '$lib/stores/guitar.svelte';
+import { beat } from '$lib/stores/beat.svelte';
 
 /**
  * Dynamically imported WASM module.
@@ -50,6 +51,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private _guitarDeviceId = '';
 	/** Currently selected guitar channel (0-based). */
 	private _guitarChannel = 0;
+	/** requestAnimationFrame handle for the beat/humanize tick loop. */
+	private tickRafHandle: number | null = null;
 
 	async init(): Promise<void> {
 		if (this.initialized) return;
@@ -63,8 +66,95 @@ export class WasmAdapter implements ContrapunkAdapter {
 			}
 			engine = new wasmModule.Engine();
 			this.initialized = true;
+			// Kick off the frame-driven tick loop. Runs for the lifetime
+			// of the adapter — beat clock + metronome stay live even when
+			// no MIDI routing is active so the UI beat indicator works.
+			this.startTickLoop();
 		} catch (e) {
 			throw new Error(`Failed to initialize WASM: ${e}`);
+		}
+	}
+
+	/**
+	 * Drive `engine.tick(performance.now())` on every animation frame and
+	 * fan the result out to the beat store + any active MIDI outputs (for
+	 * metronome clicks + delayed humanized notes).
+	 */
+	private startTickLoop(): void {
+		if (this.tickRafHandle !== null) return;
+		const loop = () => {
+			if (!engine) {
+				this.tickRafHandle = null;
+				return;
+			}
+			try {
+				const result = engine.tick(performance.now()) as {
+					beat_position?: number;
+					beat_number?: number;
+					beat_crossed?: number | null;
+					metronome_on?: number[] | null;
+					metronome_off?: number[] | null;
+					scheduled_notes?: { port: number; bytes: number[] }[];
+					humanize_enabled?: boolean;
+					running?: boolean;
+					bpm?: number;
+				};
+
+				if (result) {
+					beat.beatPosition = result.beat_position ?? 0;
+					beat.beatNumber = result.beat_number ?? 0;
+					beat.running = result.running ?? false;
+					beat.bpm = result.bpm ?? 120;
+					if (result.beat_crossed !== null && result.beat_crossed !== undefined) {
+						beat.lastCrossedAt = performance.now();
+						beat.pulse = beat.pulse + 1;
+					}
+					// Metronome click bytes → route to the first active MIDI output.
+					// We use the first active output so the click rides along with
+					// whatever synth the user has selected, matching Tauri behavior.
+					const metroTarget = this.activeOutputs[0];
+					if (metroTarget && Array.isArray(result.metronome_on)) {
+						try {
+							metroTarget.send(result.metronome_on);
+						} catch {
+							/* output may have disconnected */
+						}
+					}
+					if (metroTarget && Array.isArray(result.metronome_off)) {
+						try {
+							metroTarget.send(result.metronome_off);
+						} catch {
+							/* ignore */
+						}
+					}
+					// Drain any humanized harmony notes whose delay elapsed.
+					if (Array.isArray(result.scheduled_notes)) {
+						for (const s of result.scheduled_notes) {
+							const out = this.activeOutputs[s.port % Math.max(1, this.activeOutputs.length)];
+							if (out && Array.isArray(s.bytes)) {
+								try {
+									out.send(s.bytes);
+								} catch {
+									/* ignore */
+								}
+							}
+						}
+					}
+				}
+			} catch {
+				// Never let a tick error kill the loop — the user can keep
+				// using the UI even if one frame fails to serialize.
+			}
+			this.tickRafHandle = requestAnimationFrame(loop);
+		};
+		this.tickRafHandle = requestAnimationFrame(loop);
+	}
+
+	/** Stop the tick loop (used on adapter teardown; not currently called). */
+	private stopTickLoop(): void {
+		if (this.tickRafHandle !== null) {
+			cancelAnimationFrame(this.tickRafHandle);
+			this.tickRafHandle = null;
 		}
 	}
 
@@ -200,27 +290,68 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async getHumanizeState(): Promise<HumanizeState> {
-		// WASM mode does not yet support humanization
-		// Return defaults matching HumanizeConfig::default()
-		return {
-			enabled: false,
-			jitterEnabled: false,
-			jitterMinMs: 1,
-			jitterMaxMs: 10,
-			velocityEnabled: false,
-			velocityVariation: 10,
-			durationEnabled: false,
-			durationVariationMs: 0,
-			swingEnabled: false,
-			swingAmount: 0.0,
-			bpm: 120.0,
-			metronomeEnabled: false
-		};
+		this.ensureInit();
+		try {
+			const raw = engine.get_humanize_config() as Record<string, unknown>;
+			return {
+				enabled: (raw.enabled as boolean) ?? false,
+				jitterEnabled: (raw.jitter_enabled as boolean) ?? false,
+				jitterMinMs: (raw.jitter_min_ms as number) ?? 1,
+				jitterMaxMs: (raw.jitter_max_ms as number) ?? 10,
+				velocityEnabled: (raw.velocity_enabled as boolean) ?? false,
+				velocityVariation: (raw.velocity_variation as number) ?? 15,
+				durationEnabled: (raw.duration_enabled as boolean) ?? false,
+				durationVariationMs: (raw.duration_variation_ms as number) ?? 20,
+				swingEnabled: (raw.swing_enabled as boolean) ?? false,
+				swingAmount: (raw.swing_amount as number) ?? 0.0,
+				bpm: (raw.bpm as number) ?? 120.0,
+				metronomeEnabled: (raw.metronome_enabled as boolean) ?? false
+			};
+		} catch {
+			return {
+				enabled: false,
+				jitterEnabled: false,
+				jitterMinMs: 1,
+				jitterMaxMs: 10,
+				velocityEnabled: false,
+				velocityVariation: 15,
+				durationEnabled: false,
+				durationVariationMs: 20,
+				swingEnabled: false,
+				swingAmount: 0.0,
+				bpm: 120.0,
+				metronomeEnabled: false
+			};
+		}
 	}
 
-	async setHumanizeConfig(_config: Partial<HumanizeState>): Promise<void> {
-		// WASM mode does not yet support humanization
-		// Silently accept to avoid errors in shared UI code
+	async setHumanizeConfig(config: Partial<HumanizeState>): Promise<void> {
+		this.ensureInit();
+		// Merge onto the current WASM config then push the full object back.
+		// The WASM `set_humanize_config` takes a full `HumanizeConfig`, so we
+		// read → patch → write to avoid blowing away fields the caller omitted.
+		try {
+			const current = engine.get_humanize_config() as Record<string, unknown>;
+			const merged = { ...current };
+			if (config.enabled !== undefined) merged.enabled = config.enabled;
+			if (config.jitterEnabled !== undefined) merged.jitter_enabled = config.jitterEnabled;
+			if (config.jitterMinMs !== undefined) merged.jitter_min_ms = config.jitterMinMs;
+			if (config.jitterMaxMs !== undefined) merged.jitter_max_ms = config.jitterMaxMs;
+			if (config.velocityEnabled !== undefined) merged.velocity_enabled = config.velocityEnabled;
+			if (config.velocityVariation !== undefined)
+				merged.velocity_variation = config.velocityVariation;
+			if (config.durationEnabled !== undefined) merged.duration_enabled = config.durationEnabled;
+			if (config.durationVariationMs !== undefined)
+				merged.duration_variation_ms = config.durationVariationMs;
+			if (config.swingEnabled !== undefined) merged.swing_enabled = config.swingEnabled;
+			if (config.swingAmount !== undefined) merged.swing_amount = config.swingAmount;
+			if (config.bpm !== undefined) merged.bpm = config.bpm;
+			if (config.metronomeEnabled !== undefined)
+				merged.metronome_enabled = config.metronomeEnabled;
+			engine.set_humanize_config(merged);
+		} catch (e) {
+			throw new Error(`Failed to set humanize config: ${e}`);
+		}
 	}
 
 	/**

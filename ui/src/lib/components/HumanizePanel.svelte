@@ -1,9 +1,12 @@
 <script lang="ts">
-	import { adapter } from '$lib/adapter';
+	import { adapter, platformName } from '$lib/adapter';
 	import type { HumanizeState } from '$lib/adapter';
 
-	// Detect if running in WASM (browser) mode where humanization isn't available
-	let isBrowserMode = $state(true);
+	// Humanization is now available in all runtimes that implement the
+	// adapter (native/Tauri, WASM browser, and — as a no-op — plugin).
+	// The plugin DAW provides its own humanization so we still hide the
+	// UI there to avoid double-processing.
+	let isPluginMode = $state(platformName === 'plugin');
 
 	// Local reactive state for humanize config
 	let enabled = $state(false);
@@ -22,8 +25,6 @@
 	async function loadHumanizeState() {
 		try {
 			const state = await adapter.getHumanizeState();
-			// If we get real non-default values, we're in Tauri mode
-			isBrowserMode = !state.jitterEnabled && !state.velocityEnabled && !state.durationEnabled && !state.swingEnabled && state.bpm === 120;
 			enabled = state.enabled;
 			jitterMs = state.jitterMaxMs;
 			velocityVariation = state.velocityVariation;
@@ -96,8 +97,8 @@
 <!-- Humanize Section -->
 <div class="card">
 	<div class="card-header font-pixel">Humanize</div>
-	{#if isBrowserMode}
-		<div class="unavailable font-pixel">Desktop only</div>
+	{#if isPluginMode}
+		<div class="unavailable font-pixel">DAW handles this</div>
 	{:else}
 	<div class="toggle-row">
 		<button
@@ -187,7 +188,7 @@
 	{/if}
 </div>
 
-{#if !isBrowserMode}
+{#if !isPluginMode}
 <!-- Tempo Section -->
 <div class="card">
 	<div class="card-header font-pixel">Tempo</div>

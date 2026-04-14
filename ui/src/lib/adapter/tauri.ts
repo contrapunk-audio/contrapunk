@@ -8,6 +8,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { guitar } from '$lib/stores/guitar.svelte';
+import { beat } from '$lib/stores/beat.svelte';
 import type {
 	ContrapunkAdapter,
 	EngineState,
@@ -58,6 +59,12 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 export class TauriAdapter implements ContrapunkAdapter {
 	private _isRunning = false;
 	private _guitarSignalUnsub: UnlistenFn | null = null;
+	/** Local interval that mirrors the Rust BeatClock into the `beat` store
+	 *  while routing is active. Native Tauri doesn't emit per-beat events
+	 *  today, so we approximate at the configured BPM to keep the UI
+	 *  indicator animating in sync. Replaced when/if the backend starts
+	 *  emitting real `beat-update` events. */
+	private _beatInterval: ReturnType<typeof setInterval> | null = null;
 
 	async init(): Promise<void> {
 		// Tauri is ready when this code runs in the webview.
@@ -241,6 +248,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		try {
 			await invoke('start_routing', { inputIdx, outputIndices });
 			this._isRunning = true;
+			this.startBeatTicker();
 
 			// If guitar audio mode, listen for signal events and feed guitar store
 			const GUITAR_AUDIO_SENTINEL = 999_997;
@@ -284,6 +292,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		try {
 			await invoke('stop_routing');
 			this._isRunning = false;
+			this.stopBeatTicker();
 
 			// Clean up guitar signal listener
 			if (this._guitarSignalUnsub) {
@@ -441,5 +450,50 @@ export class TauriAdapter implements ContrapunkAdapter {
 
 	resetSuggestionWeights(): void {
 		// Desktop suggestion scoring deferred
+	}
+
+	/**
+	 * Start a local JS interval that mirrors the Rust BeatClock into the
+	 * `beat` store. The interval fires at `60_000 / bpm` ms and bumps the
+	 * beat position/number so the UI indicator animates in time.
+	 *
+	 * This approximates the real clock rather than driving it — the actual
+	 * metronome/swing runs inside Rust via router.rs. When the backend
+	 * starts emitting real `beat-update` events we can replace this.
+	 */
+	private startBeatTicker(): void {
+		this.stopBeatTicker();
+		// Pull BPM from the current humanize state; fall back to 120.
+		this.getHumanizeState()
+			.then((hs) => {
+				const bpm = hs.bpm || 120;
+				beat.bpm = bpm;
+				beat.running = true;
+				beat.beatsPerBar = 4;
+				const intervalMs = 60_000 / bpm;
+				this._beatInterval = setInterval(() => {
+					beat.beatNumber = (beat.beatNumber + 1) % beat.beatsPerBar;
+					beat.beatPosition = beat.beatNumber;
+					beat.pulse = beat.pulse + 1;
+					beat.lastCrossedAt = performance.now();
+				}, intervalMs);
+			})
+			.catch(() => {
+				// If humanize-state isn't available, tick at 120bpm anyway
+				// so the indicator still animates.
+				beat.running = true;
+				this._beatInterval = setInterval(() => {
+					beat.beatNumber = (beat.beatNumber + 1) % 4;
+					beat.pulse = beat.pulse + 1;
+				}, 500);
+			});
+	}
+
+	private stopBeatTicker(): void {
+		if (this._beatInterval) {
+			clearInterval(this._beatInterval);
+			this._beatInterval = null;
+		}
+		beat.running = false;
 	}
 }

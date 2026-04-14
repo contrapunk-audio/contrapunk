@@ -3,59 +3,32 @@
 	 * BeatIndicator — Visual beat position indicator synced to BPM
 	 *
 	 * A small pulsing bar near the status bar that flashes on each beat.
-	 * Downbeats flash magenta, other beats flash cyan. Uses CSS animation
-	 * with duration derived from BPM. When engine is not running, shows
-	 * a static indicator. When ui.animationsEnabled is false, uses a
-	 * simpler static color change without animation.
+	 * Downbeats flash magenta, other beats flash cyan. When the WASM
+	 * adapter is driving its RAF tick loop it feeds the `beat` store
+	 * directly from the Rust BeatClock, so the indicator stays in sync
+	 * with the actual metronome / humanize swing timing rather than a
+	 * separate JS interval timer that drifts.
+	 *
+	 * Falls back gracefully: when `beat.running` is false (no adapter
+	 * tick loop active) we show a static indicator instead of guessing.
 	 */
 
-	import { engine } from '$lib/stores/engine.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { beat } from '$lib/stores/beat.svelte';
 
-	// Derive beat duration from BPM (default 120)
-	// We read bpm from the engine store or fall back to a reasonable default
-	let bpm = $derived(120); // BPM is in HumanizePanel local state; use default here
+	let bpm = $derived(beat.bpm || 120);
 	let beatDuration = $derived(60 / bpm);
-
-	// Beat counter for downbeat detection (resets every 4)
-	let beatCount = $state(0);
-	let intervalId: ReturnType<typeof setInterval> | null = null;
-
-	// Advance beat counter when running
-	$effect(() => {
-		if (engine.isRunning) {
-			const ms = (60 / bpm) * 1000;
-			beatCount = 0;
-			intervalId = setInterval(() => {
-				beatCount = (beatCount + 1) % 4;
-			}, ms);
-		} else {
-			if (intervalId) {
-				clearInterval(intervalId);
-				intervalId = null;
-			}
-			beatCount = 0;
-		}
-
-		return () => {
-			if (intervalId) {
-				clearInterval(intervalId);
-				intervalId = null;
-			}
-		};
-	});
-
-	let isDownbeat = $derived(beatCount === 0);
+	let beatCount = $derived(beat.beatNumber % 4);
 </script>
 
 <div class="beat-indicator-container">
 	<div class="beat-bar-row">
-		{#each [0, 1, 2, 3] as beat}
+		{#each [0, 1, 2, 3] as b}
 			<div
 				class="beat-pip"
-				class:active={engine.isRunning && beatCount === beat}
-				class:downbeat={beat === 0 && engine.isRunning && beatCount === 0}
-				class:animate={ui.animationsEnabled && engine.isRunning}
+				class:active={beat.running && beatCount === b}
+				class:downbeat={b === 0 && beat.running && beatCount === 0}
+				class:animate={ui.animationsEnabled && beat.running}
 				style:animation-duration="{beatDuration}s"
 			></div>
 		{/each}
