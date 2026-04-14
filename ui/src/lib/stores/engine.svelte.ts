@@ -914,12 +914,23 @@ class EngineStore {
 
 	async setAudioOut(enabled: boolean, deviceId?: string) {
 		if (enabled) {
-			await adapter.startAudioOutput({ deviceId });
-			this.audioOutRunning = true;
-			this.audioOutDevice = deviceId ?? null;
+			try {
+				await adapter.startAudioOutput({ deviceId });
+				this.audioOutRunning = true;
+				this.audioOutDevice = deviceId ?? null;
+			} catch (err) {
+				this.audioOutRunning = false;
+				this.audioOutDevice = null;
+				throw err; // let caller decide how to display
+			}
 		} else {
-			await adapter.stopAudioOutput();
-			this.audioOutRunning = false;
+			try {
+				await adapter.stopAudioOutput();
+			} finally {
+				// Always reset state even if stop fails — the producer slot is cleared
+				// either way via Tauri command error handling.
+				this.audioOutRunning = false;
+			}
 		}
 	}
 

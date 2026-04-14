@@ -4,13 +4,21 @@
 
 	// Audio output is desktop-only (cpal). Hide toggle in browser/plugin.
 	let isDesktop = $state(platformName === 'tauri');
+	let error = $state<string | null>(null);
 
-	async function toggle(e: Event) {
-		const checked = (e.currentTarget as HTMLInputElement).checked;
+	$effect(() => {
+		engine.refreshAudioOutState();
+	});
+
+	async function handleToggle(e: Event) {
+		const enabled = (e.currentTarget as HTMLInputElement).checked;
+		error = null;
 		try {
-			await engine.setAudioOut(checked);
-		} catch {
-			// Leave UI as-is on error — backend will reject if not available
+			await engine.setAudioOut(enabled);
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+			// The store already reverted audioOutRunning to false on failure,
+			// but the checkbox DOM may still show checked — let Svelte re-render.
 		}
 	}
 </script>
@@ -30,10 +38,13 @@
 				type="checkbox"
 				class="pixel-checkbox"
 				checked={engine.audioOutRunning}
-				onchange={toggle}
+				onchange={handleToggle}
 			/>
 			<span class="toggle-label font-pixel">{engine.audioOutRunning ? 'ON' : 'OFF'}</span>
 		</div>
+		{#if error}
+			<p class="error-msg">{error}</p>
+		{/if}
 	{/if}
 </div>
 
@@ -105,6 +116,17 @@
 	.toggle-label {
 		color: var(--color-text-secondary);
 		font-size: 6px;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	.error-msg {
+		color: var(--color-accent-amber);
+		font-size: 6px;
+		margin-top: 4px;
+		padding: 2px 4px;
+		background: rgba(255, 170, 0, 0.1);
+		border: 1px solid var(--color-accent-amber);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
