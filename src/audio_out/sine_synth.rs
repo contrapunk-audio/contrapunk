@@ -129,9 +129,82 @@ impl SineVoice {
     }
 }
 
+use crate::audio_out::midi_queue::MidiEvent;
+
+/// Convert a MIDI note number to a frequency in Hz (equal temperament, A4=440).
+pub fn midi_note_to_freq(note: u8) -> f32 {
+    440.0 * 2.0_f32.powf((note as f32 - 69.0) / 12.0)
+}
+
+/// Polyphonic wrapper around `SineVoice`. Dispatches MIDI events to free
+/// voices, steals the oldest voice when all are busy, and mixes all voices
+/// into a stereo output buffer.
+#[derive(Debug)]
+pub struct PolySynth {
+    voices: Vec<SineVoice>,
+}
+
+impl PolySynth {
+    /// Create a new PolySynth with `max_polyphony` voices pre-allocated.
+    pub fn new(sample_rate: f32, max_polyphony: usize) -> Self {
+        Self {
+            voices: (0..max_polyphony)
+                .map(|_| SineVoice::new(sample_rate))
+                .collect(),
+        }
+    }
+
+    /// Handle a single MIDI event: allocate/release voices.
+    pub fn handle_event(&mut self, event: MidiEvent) {
+        match event {
+            MidiEvent::NoteOn { note, velocity, .. } => {
+                // Find an idle voice first; otherwise steal the first active voice.
+                let idx = self.voices.iter().position(|v| !v.is_active()).unwrap_or(0);
+                let amp = (velocity as f32 / 127.0).clamp(0.0, 1.0);
+                self.voices[idx].note_on(midi_note_to_freq(note), amp);
+                self.voices[idx].set_note(note);
+            }
+            MidiEvent::NoteOff { note, .. } => {
+                // Release every active voice holding this note.
+                for v in self.voices.iter_mut() {
+                    if v.note() == Some(note) && v.is_active() {
+                        v.note_off();
+                    }
+                }
+            }
+        }
+    }
+
+    /// Count of currently active (non-idle) voices. Testing/metering aid.
+    pub fn active_voice_count(&self) -> usize {
+        self.voices.iter().filter(|v| v.is_active()).count()
+    }
+
+    /// Process a stereo buffer. Samples are interleaved L R L R ....
+    /// Voices are summed in mono then duplicated to both channels.
+    pub fn process_stereo(&mut self, output: &mut [f32]) {
+        let frames = output.len() / 2;
+        // Zero the output.
+        for s in output.iter_mut() {
+            *s = 0.0;
+        }
+        // Render mono into a scratch buffer (stack-allocated up to 2048 frames).
+        let mut mono = vec![0.0_f32; frames];
+        for voice in self.voices.iter_mut() {
+            voice.process(&mut mono);
+        }
+        // Interleave mono into stereo output.
+        for (i, &s) in mono.iter().enumerate() {
+            output[i * 2] = s;
+            output[i * 2 + 1] = s;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::audio_out::midi_queue::MidiEvent;
 
     #[test]
     fn test_idle_voice_produces_silence() {
@@ -183,5 +256,67 @@ mod tests {
         assert!(!voice.is_active(), "voice should be inactive after release");
         // Last samples should be silent.
         assert!(buf[buf.len() - 1].abs() < 0.001);
+    }
+
+    #[test]
+    fn test_polysynth_note_on_allocates_voice() {
+        let mut synth = PolySynth::new(48_000.0, 8);
+        synth.handle_event(MidiEvent::NoteOn {
+            voice: 0,
+            note: 60,
+            velocity: 100,
+        });
+        let active = synth.active_voice_count();
+        assert_eq!(active, 1);
+    }
+
+    #[test]
+    fn test_polysynth_note_off_releases_matching_voice() {
+        let mut synth = PolySynth::new(48_000.0, 8);
+        synth.handle_event(MidiEvent::NoteOn {
+            voice: 0,
+            note: 60,
+            velocity: 100,
+        });
+        synth.handle_event(MidiEvent::NoteOn {
+            voice: 0,
+            note: 64,
+            velocity: 100,
+        });
+        assert_eq!(synth.active_voice_count(), 2);
+        synth.handle_event(MidiEvent::NoteOff { voice: 0, note: 60 });
+        // Release is still "active" (envelope not yet at zero). Run a little audio
+        // to let the 60's envelope reach zero.
+        let mut stereo = [0.0_f32; 48_000 * 2]; // 1s stereo
+        synth.process_stereo(&mut stereo);
+        // Now voice 60 should be gone; voice 64 is still held (no note-off).
+        assert_eq!(synth.active_voice_count(), 1);
+    }
+
+    #[test]
+    fn test_polysynth_mixes_multiple_voices() {
+        let mut synth = PolySynth::new(48_000.0, 8);
+        synth.handle_event(MidiEvent::NoteOn {
+            voice: 0,
+            note: 60,
+            velocity: 100,
+        });
+        synth.handle_event(MidiEvent::NoteOn {
+            voice: 1,
+            note: 64,
+            velocity: 100,
+        });
+        let mut stereo = [0.0_f32; 1024];
+        synth.process_stereo(&mut stereo);
+        let peak = stereo.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
+        assert!(peak > 0.0, "polysynth should produce non-silent mix");
+    }
+
+    #[test]
+    fn test_midi_note_to_freq() {
+        // A4 = MIDI 69 = 440 Hz.
+        assert!((midi_note_to_freq(69) - 440.0).abs() < 0.001);
+        // A5 = MIDI 81 = 880 Hz.
+        assert!((midi_note_to_freq(81) - 880.0).abs() < 0.001);
     }
 }

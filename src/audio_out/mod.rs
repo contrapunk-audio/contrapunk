@@ -18,4 +18,4 @@ pub mod sine_synth;
 pub use config::AudioConfig;
 // pub use engine::AudioOutEngine;
 pub use midi_queue::{midi_queue, MidiConsumer, MidiEvent, MidiProducer};
-// pub use sine_synth::{PolySynth, SineVoice};
+pub use sine_synth::{PolySynth, SineVoice};
