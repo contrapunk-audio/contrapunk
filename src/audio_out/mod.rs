@@ -15,7 +15,7 @@ pub mod midi_queue;
 pub mod sine_synth;
 
 // TODO: uncomment as types land in Tasks 2-6
-// pub use config::AudioConfig;
+pub use config::AudioConfig;
 // pub use engine::AudioOutEngine;
 // pub use midi_queue::{MidiConsumer, MidiEvent, MidiProducer, midi_queue};
 // pub use sine_synth::{PolySynth, SineVoice};
