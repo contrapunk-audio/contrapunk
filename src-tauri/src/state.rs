@@ -8,6 +8,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
+use contrapunk::audio_out::{AudioOutEngine, MidiProducer};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::humanize::HumanizeConfig;
 use contrapunk::preset::PresetManager;
@@ -56,6 +57,12 @@ pub struct AppState {
 
     /// Stop signal for the router thread — set to true to stop the current routing
     pub stop_signal: Mutex<Option<Arc<AtomicBool>>>,
+
+    /// Audio output engine (cpal stream lifecycle)
+    pub audio_out: Mutex<AudioOutEngine>,
+
+    /// MIDI producer for the audio output engine (None when engine is stopped)
+    pub audio_out_producer: Mutex<Option<MidiProducer>>,
 }
 
 impl Default for AppState {
@@ -74,6 +81,8 @@ impl Default for AppState {
             guitar_channel: Mutex::new(0),
             routing_mode: Mutex::new(RoutingMode::default()),
             stop_signal: Mutex::new(None),
+            audio_out: Mutex::new(AudioOutEngine::new()),
+            audio_out_producer: Mutex::new(None),
         }
     }
 }

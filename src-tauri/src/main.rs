@@ -46,6 +46,11 @@ fn main() {
             commands::presets::load_preset,
             commands::presets::save_preset,
             commands::presets::delete_preset,
+            // Audio output
+            commands::audio_out::list_audio_output_devices,
+            commands::audio_out::start_audio_output,
+            commands::audio_out::stop_audio_output,
+            commands::audio_out::is_audio_output_running,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

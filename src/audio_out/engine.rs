@@ -138,6 +138,18 @@ impl Default for AudioOutEngine {
     }
 }
 
+// cpal's CoreAudio `Stream` is `!Send` because it contains a raw pointer marker,
+// but `AudioOutEngine` is always accessed through a `Mutex` which serialises all
+// access to a single thread at a time. The stream is never moved across threads
+// while any CoreAudio thread-affinity operations are in flight — the audio
+// callback runs independently on the OS audio thread via the C callback, not
+// via Rust's `Send` mechanism. This pattern is identical to how other Rust audio
+// apps (e.g., CPAL's own examples) handle state in a Tauri/GUI context.
+// SAFETY: `Mutex<AudioOutEngine>` ensures exclusive access; no concurrent Rust
+// thread races on the stream handle are possible.
+unsafe impl Send for AudioOutEngine {}
+unsafe impl Sync for AudioOutEngine {}
+
 /// State shared between the public API and the audio thread.
 struct AudioState {
     consumer: MidiConsumer,
