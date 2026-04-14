@@ -15,6 +15,7 @@ use tauri::{AppHandle, Emitter, State};
 use wmidi::{Channel, MidiMessage, Note, Velocity};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
+use contrapunk::audio_out::{MidiEvent, MidiProducer};
 use contrapunk::chord::chord_display_with_analysis;
 use contrapunk::harmony::HarmonyEngine;
 use contrapunk::humanize::{DelayQueue, HumanizeConfig, HumanizedNote, Humanizer};
@@ -198,6 +199,7 @@ pub fn start_routing(
             ch_name,
             stop,
             app_handle,
+            None, // audio_out: wired up when AudioOutEngine is active (Task 8)
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -273,6 +275,7 @@ fn run_tauri_router(
     chord_name: Arc<Mutex<String>>,
     stop_signal: Arc<std::sync::atomic::AtomicBool>,
     app_handle: AppHandle,
+    mut audio_out: Option<MidiProducer>,
 ) -> anyhow::Result<()> {
     let (
         key,
@@ -363,9 +366,9 @@ fn run_tauri_router(
         // beat-aware modes (Species 2-4 counterpoint) can react to it.
         engine.set_counterpoint_beat_phase(Some(humanizer.clock().beat_position()));
 
-        // Drain delay queue
+        // Drain delay queue — fanout to audio synth for delayed harmony notes.
         for hn in delay_queue.drain_ready(current_ms) {
-            let _ = send_humanized_note(&hn, &mut output_router);
+            let _ = send_humanized_note(&hn, &mut output_router, audio_out.as_mut(), hn.port as u8);
         }
 
         // Process MIDI messages
@@ -384,6 +387,7 @@ fn run_tauri_router(
                     &borrowed_notes,
                     &chord_name,
                     routing_mode,
+                    audio_out.as_mut(),
                 );
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -487,6 +491,7 @@ fn process_midi_message(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
+    mut audio_out: Option<&mut MidiProducer>,
 ) {
     let msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
@@ -513,6 +518,7 @@ fn process_midi_message(
                     borrowed_notes,
                     chord_name,
                     routing_mode,
+                    audio_out.as_deref_mut(),
                 );
             } else {
                 handle_note_on(
@@ -529,6 +535,7 @@ fn process_midi_message(
                     borrowed_notes,
                     chord_name,
                     routing_mode,
+                    audio_out.as_deref_mut(),
                 );
             }
         }
@@ -547,6 +554,7 @@ fn process_midi_message(
                 borrowed_notes,
                 chord_name,
                 routing_mode,
+                audio_out.as_deref_mut(),
             );
         }
         _ => {
@@ -569,6 +577,7 @@ fn handle_note_on(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
+    mut audio_out: Option<&mut MidiProducer>,
 ) {
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
@@ -631,10 +640,18 @@ fn handle_note_on(
                     let mut buf = vec![0u8; msg.bytes_size()];
                     let _ = msg.copy_to_slice(&mut buf);
                     let _ = output.send_to_first(&buf);
+                    // Fanout to audio synth queue (fire-and-forget).
+                    if let Some(ref mut producer) = audio_out {
+                        let _ = producer.push(MidiEvent::NoteOn {
+                            voice: i as u8,
+                            note: u8::from(n),
+                            velocity: u8::from(velocity),
+                        });
+                    }
                 } else {
                     let hn = humanizer.humanize_note_on(n, voice_channel, velocity, 0);
                     if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(&hn, output);
+                        let _ = send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8);
                     } else {
                         delay_queue.push(hn, now_ms);
                     }
@@ -654,10 +671,18 @@ fn handle_note_on(
                     let mut buf = vec![0u8; msg.bytes_size()];
                     let _ = msg.copy_to_slice(&mut buf);
                     let _ = output.send_to_port(port, &buf);
+                    // Fanout to audio synth queue (fire-and-forget).
+                    if let Some(ref mut producer) = audio_out {
+                        let _ = producer.push(MidiEvent::NoteOn {
+                            voice: i as u8,
+                            note: u8::from(n),
+                            velocity: u8::from(velocity),
+                        });
+                    }
                 } else {
                     let hn = humanizer.humanize_note_on(n, channel, velocity, port);
                     if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(&hn, output);
+                        let _ = send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8);
                     } else {
                         delay_queue.push(hn, now_ms);
                     }
@@ -681,6 +706,7 @@ fn handle_note_off(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     _chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
+    mut audio_out: Option<&mut MidiProducer>,
 ) {
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
@@ -719,10 +745,17 @@ fn handle_note_off(
                     let mut buf = vec![0u8; msg.bytes_size()];
                     let _ = msg.copy_to_slice(&mut buf);
                     let _ = output.send_to_first(&buf);
+                    // Fanout to audio synth queue (fire-and-forget).
+                    if let Some(ref mut producer) = audio_out {
+                        let _ = producer.push(MidiEvent::NoteOff {
+                            voice: i as u8,
+                            note: u8::from(n),
+                        });
+                    }
                 } else {
                     let hn = humanizer.humanize_note_off(n, voice_channel, velocity, 0);
                     if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(&hn, output);
+                        let _ = send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8);
                     } else {
                         delay_queue.push(hn, now_ms);
                     }
@@ -741,10 +774,17 @@ fn handle_note_off(
                     let mut buf = vec![0u8; msg.bytes_size()];
                     let _ = msg.copy_to_slice(&mut buf);
                     let _ = output.send_to_port(port, &buf);
+                    // Fanout to audio synth queue (fire-and-forget).
+                    if let Some(ref mut producer) = audio_out {
+                        let _ = producer.push(MidiEvent::NoteOff {
+                            voice: i as u8,
+                            note: u8::from(n),
+                        });
+                    }
                 } else {
                     let hn = humanizer.humanize_note_off(n, channel, velocity, port);
                     if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(&hn, output);
+                        let _ = send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8);
                     } else {
                         delay_queue.push(hn, now_ms);
                     }
@@ -754,7 +794,12 @@ fn handle_note_off(
     }
 }
 
-fn send_humanized_note(note: &HumanizedNote, output: &mut OutputRouter) -> anyhow::Result<()> {
+fn send_humanized_note(
+    note: &HumanizedNote,
+    output: &mut OutputRouter,
+    audio_out: Option<&mut MidiProducer>,
+    voice_index: u8,
+) -> anyhow::Result<()> {
     let msg = if note.is_note_off {
         MidiMessage::NoteOff(note.channel, note.note, note.velocity)
     } else {
@@ -763,5 +808,23 @@ fn send_humanized_note(note: &HumanizedNote, output: &mut OutputRouter) -> anyho
     let mut buf = vec![0u8; msg.bytes_size()];
     msg.copy_to_slice(&mut buf)?;
     output.send_to_port(note.port, &buf)?;
+
+    // Parallel fanout to audio synth queue (fire-and-forget; drop on full).
+    if let Some(producer) = audio_out {
+        let event = if note.is_note_off {
+            MidiEvent::NoteOff {
+                voice: voice_index,
+                note: u8::from(note.note),
+            }
+        } else {
+            MidiEvent::NoteOn {
+                voice: voice_index,
+                note: u8::from(note.note),
+                velocity: u8::from(note.velocity),
+            }
+        };
+        let _ = producer.push(event);
+    }
+
     Ok(())
 }
