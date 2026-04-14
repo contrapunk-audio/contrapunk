@@ -57,6 +57,10 @@ jobs:
         working-directory: ui
         run: npm ci
 
+      - name: Build UI (explicit, pre-tauri)
+        working-directory: ui
+        run: npm run build
+
       - name: Build Tauri app
         working-directory: src-tauri
         env:

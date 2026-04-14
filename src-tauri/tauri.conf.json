@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.contrapunk.app",
   "build": {
-    "beforeDevCommand": "npm --prefix ../ui run dev",
-    "beforeBuildCommand": "npm --prefix ../ui run build",
+    "beforeDevCommand": "npm --prefix ../ui run dev || npm --prefix ./ui run dev",
+    "beforeBuildCommand": "npm --prefix ../ui run build || npm --prefix ./ui run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../ui/build"
   },
