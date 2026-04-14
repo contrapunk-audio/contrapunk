@@ -1,0 +1,94 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'src-tauri/**'
+      - 'ui/**'
+      - 'wasm/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/windows-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Windows installer (x86_64-pc-windows-msvc)
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable + wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-tauri
+          workspaces: |
+            .
+            src-tauri
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version '^2.0.0' --locked
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build UI (explicit, pre-tauri)
+        working-directory: ui
+        run: npm run build
+
+      - name: Build Tauri app
+        working-directory: src-tauri
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo tauri build
+
+      - name: Upload NSIS installer (.exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: contrapunk-windows-nsis
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload MSI installer (.msi)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contrapunk-windows-msi
+          path: target/release/bundle/msi/*.msi
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload standalone .exe (unpacked, for dev debugging)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contrapunk-windows-exe
+          path: target/release/contrapunk-tauri.exe
+          if-no-files-found: ignore
+          retention-days: 14

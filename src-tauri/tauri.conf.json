@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.contrapunk.app",
   "build": {
-    "beforeDevCommand": "cd ../ui && npm run dev",
-    "beforeBuildCommand": "cd ../ui && npm run build",
+    "beforeDevCommand": "npm --prefix ../ui run dev || npm --prefix ./ui run dev",
+    "beforeBuildCommand": "npm --prefix ../ui run build || npm --prefix ./ui run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../ui/build"
   },
@@ -25,16 +25,25 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app"],
+    "targets": ["dmg", "app", "nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png",
-      "icons/icon.icns"
+      "icons/icon.icns",
+      "icons/icon.ico"
     ],
     "macOS": {
       "entitlements": null
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   }
 }
