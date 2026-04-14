@@ -368,6 +368,11 @@ fn run_tauri_router(
 
         // Drain delay queue — fanout to audio synth for delayed harmony notes.
         for hn in delay_queue.drain_ready(current_ms) {
+            // FIXME(sub-project-2): voice_index is substituted with hn.port because
+            // HumanizedNote does not currently carry the original harmony voice index.
+            // PolySynth ignores the voice field in MidiEvent so this is benign today,
+            // but will break per-voice plugin routing in sub-project 2. Fix by adding
+            // voice_index to HumanizedNote. See GitHub issue #33.
             let _ = send_humanized_note(&hn, &mut output_router, audio_out.as_mut(), hn.port as u8);
         }
 
