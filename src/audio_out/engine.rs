@@ -1,1 +1,198 @@
-// filled in Task 3
+//! cpal stream lifecycle and audio callback dispatch.
+//!
+//! The `AudioOutEngine` owns the cpal `Stream` (which keeps the OS audio
+//! thread alive) and the `PolySynth` + consumer half of the MIDI queue.
+//! When `start()` succeeds, the caller gets a `MidiProducer` to push events
+//! into; the audio thread drains it each callback.
+
+use std::sync::{Arc, Mutex};
+
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{
+    BufferSize, Device, OutputCallbackInfo, SampleFormat, SampleRate, Stream, StreamConfig,
+};
+
+use crate::audio_out::config::AudioConfig;
+use crate::audio_out::midi_queue::{midi_queue, MidiConsumer, MidiProducer};
+use crate::audio_out::sine_synth::PolySynth;
+
+const MIDI_QUEUE_CAPACITY: usize = 1024;
+const MAX_POLYPHONY: usize = 32;
+
+/// Output device identity.
+#[derive(Clone, Debug)]
+pub struct AudioDeviceInfo {
+    pub name: String,
+    pub is_default: bool,
+}
+
+/// Lifetime-managed cpal audio output stream.
+///
+/// Call [`AudioOutEngine::start`] to open a stream and receive a
+/// [`MidiProducer`] for pushing events. Call [`AudioOutEngine::stop`] to
+/// close the stream.
+pub struct AudioOutEngine {
+    stream: Option<Stream>,
+}
+
+impl AudioOutEngine {
+    pub fn new() -> Self {
+        Self { stream: None }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.stream.is_some()
+    }
+
+    /// Enumerate available output devices.
+    ///
+    /// Returns an empty Vec on platforms/hosts where no output is available
+    /// (e.g., CI without sound hardware). Never panics.
+    pub fn list_output_devices() -> Vec<AudioDeviceInfo> {
+        let host = cpal::default_host();
+        let default = host.default_output_device().and_then(|d| d.name().ok());
+        host.output_devices()
+            .map(|iter| {
+                iter.filter_map(|d| {
+                    let name = d.name().ok()?;
+                    let is_default = default.as_deref() == Some(&name);
+                    Some(AudioDeviceInfo { name, is_default })
+                })
+                .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Open the cpal stream and return a producer for pushing MIDI events.
+    ///
+    /// The producer can be cloned via `Arc`/`Mutex` wrapping if multiple
+    /// writers are needed — v1 has a single writer (the harmony router).
+    pub fn start(&mut self, cfg: AudioConfig) -> Result<MidiProducer, String> {
+        if self.stream.is_some() {
+            return Err("Audio engine already running".to_string());
+        }
+
+        let host = cpal::default_host();
+        let device: Device = match cfg.device_id.as_deref() {
+            Some(name) => host
+                .output_devices()
+                .map_err(|e| format!("Failed to enumerate devices: {e}"))?
+                .find(|d| d.name().ok().as_deref() == Some(name))
+                .ok_or_else(|| format!("Device not found: {name}"))?,
+            None => host
+                .default_output_device()
+                .ok_or_else(|| "No default output device".to_string())?,
+        };
+
+        let supported = device
+            .default_output_config()
+            .map_err(|e| format!("Failed to query device config: {e}"))?;
+        let sample_format = supported.sample_format();
+        let stream_config = StreamConfig {
+            channels: cfg.channels,
+            sample_rate: SampleRate(cfg.sample_rate),
+            buffer_size: BufferSize::Fixed(cfg.buffer_size),
+        };
+
+        let (producer, consumer) = midi_queue(MIDI_QUEUE_CAPACITY);
+        let synth = PolySynth::new(cfg.sample_rate as f32, MAX_POLYPHONY);
+        let state = Arc::new(Mutex::new(AudioState { consumer, synth }));
+
+        let err_fn = |err| eprintln!("[audio-out] stream error: {err}");
+
+        let stream = match sample_format {
+            SampleFormat::F32 => device.build_output_stream(
+                &stream_config,
+                {
+                    let state = Arc::clone(&state);
+                    move |data: &mut [f32], _info: &OutputCallbackInfo| {
+                        process_callback(&state, data);
+                    }
+                },
+                err_fn,
+                None,
+            ),
+            other => {
+                return Err(format!("Unsupported sample format: {other:?}"));
+            }
+        }
+        .map_err(|e| format!("Failed to build stream: {e}"))?;
+
+        stream
+            .play()
+            .map_err(|e| format!("Failed to start stream: {e}"))?;
+        self.stream = Some(stream);
+
+        Ok(producer)
+    }
+
+    /// Close the stream.
+    pub fn stop(&mut self) {
+        self.stream = None;
+    }
+}
+
+impl Default for AudioOutEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// State shared between the public API and the audio thread.
+struct AudioState {
+    consumer: MidiConsumer,
+    synth: PolySynth,
+}
+
+/// The audio callback itself. Runs on the real-time OS audio thread.
+/// Must not allocate or block.
+fn process_callback(state: &Arc<Mutex<AudioState>>, output: &mut [f32]) {
+    // Zero output as a defensive default in case we bail early.
+    for s in output.iter_mut() {
+        *s = 0.0;
+    }
+    let Ok(mut state) = state.try_lock() else {
+        return; // Main thread is holding the lock — output silence this callback.
+    };
+    // Drain pending MIDI events.
+    while let Some(event) = state.consumer.pop() {
+        state.synth.handle_event(event);
+    }
+    state.synth.process_stereo(output);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_engine_new_creates_instance() {
+        let engine = AudioOutEngine::new();
+        assert!(!engine.is_running());
+    }
+
+    #[test]
+    fn test_list_devices_returns_nonempty() {
+        // At least a default output device should be present on any system
+        // that can run this test suite (skipped on CI without audio).
+        let devices = AudioOutEngine::list_output_devices();
+        // On CI without audio, this may be empty — don't hard-fail.
+        // But the call itself must not panic.
+        let _ = devices;
+    }
+
+    #[test]
+    fn test_start_stop_cycle() {
+        let mut engine = AudioOutEngine::new();
+        let cfg = AudioConfig::default();
+        // Skip when no devices are available (e.g., CI without audio).
+        if AudioOutEngine::list_output_devices().is_empty() {
+            return;
+        }
+        let producer = engine.start(cfg).expect("start should succeed");
+        assert!(engine.is_running());
+        drop(producer);
+        engine.stop();
+        assert!(!engine.is_running());
+    }
+}

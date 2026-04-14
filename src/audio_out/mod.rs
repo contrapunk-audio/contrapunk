@@ -10,12 +10,14 @@
 //! Sub-project 1 of plugin hosting. VST3 plugin loading is sub-project 2.
 
 pub mod config;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod engine;
 pub mod midi_queue;
 pub mod sine_synth;
 
 // TODO: uncomment as types land in Tasks 2-6
 pub use config::AudioConfig;
-// pub use engine::AudioOutEngine;
+#[cfg(not(target_arch = "wasm32"))]
+pub use engine::{AudioDeviceInfo, AudioOutEngine};
 pub use midi_queue::{midi_queue, MidiConsumer, MidiEvent, MidiProducer};
 pub use sine_synth::{PolySynth, SineVoice};
