@@ -1,35 +1,57 @@
 //! Lock-free SPSC MIDI event queue between the harmony router and the
 //! audio callback.
+//!
+//! The audio thread must never allocate or block. The harmony engine
+//! (producer) and audio callback (consumer) communicate through a
+//! bounded ringbuffer with static capacity.
 
 use ringbuf::{
     traits::{Consumer as _, Producer as _, Split as _},
     HeapRb,
 };
 
+/// A MIDI event destined for the audio synth.
+///
+/// Voices are 0-indexed, matching Contrapunk's per-voice chain slots.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MidiEvent {
     NoteOn { voice: u8, note: u8, velocity: u8 },
     NoteOff { voice: u8, note: u8 },
 }
 
+/// Producer half of the MIDI queue. Held by the harmony router.
 pub struct MidiProducer(ringbuf::HeapProd<MidiEvent>);
+
+/// Consumer half of the MIDI queue. Held by the audio callback.
 pub struct MidiConsumer(ringbuf::HeapCons<MidiEvent>);
 
+/// Errors returned when pushing into a full MidiProducer.
 #[derive(Debug, PartialEq, Eq)]
 pub struct QueueFull;
 
 impl MidiProducer {
+    /// Push an event. Returns `Err(QueueFull)` if the queue is at capacity.
+    /// The audio thread drains the queue each buffer, so `QueueFull` means
+    /// something is very wrong (stalled audio thread or overflow attack).
     pub fn push(&mut self, event: MidiEvent) -> Result<(), QueueFull> {
         self.0.try_push(event).map_err(|_| QueueFull)
     }
 }
 
 impl MidiConsumer {
+    /// Pop the next event. Returns `None` if the queue is empty.
     pub fn pop(&mut self) -> Option<MidiEvent> {
         self.0.try_pop()
     }
 }
 
+/// Create a new MIDI queue with the given capacity. Returns (producer, consumer).
+///
+/// The producer is held by the harmony router; the consumer is moved into
+/// the audio callback. The capacity should be generous — at 48 kHz with
+/// 256-sample buffers the audio thread runs ~188 times per second, so even
+/// a bursty harmony engine rarely queues more than a handful of events
+/// per buffer. Default callers use 1024.
 pub fn midi_queue(capacity: usize) -> (MidiProducer, MidiConsumer) {
     let rb = HeapRb::<MidiEvent>::new(capacity);
     let (prod, cons) = rb.split();
