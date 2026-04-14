@@ -181,6 +181,19 @@ pub fn start_routing(
     let stop = Arc::clone(&stop_signal);
     let output_indices_clone = output_indices.clone();
 
+    // Task 9: move the MidiProducer from AppState into the router thread.
+    // If audio-out is running, the router fans harmony notes to the audio synth.
+    // If not, producer is None and router falls back to external-MIDI-only.
+    // v1 limitation: starting audio-out after routing has already begun does not
+    // retroactively hook the producer — user must stop & restart routing.
+    // Similarly, stop_audio_output → start_audio_output while routing is active
+    // places a new producer in the slot, but the already-running router thread
+    // will never see it; pushes from the old (now-dead) producer silently fail.
+    let audio_out_producer: Option<contrapunk::audio_out::MidiProducer> = {
+        let mut slot = state.audio_out_producer.lock().map_err(|e| e.to_string())?;
+        slot.take()
+    };
+
     // Spawn router thread
     thread::spawn(move || {
         if let Err(e) = run_tauri_router(
@@ -199,7 +212,7 @@ pub fn start_routing(
             ch_name,
             stop,
             app_handle,
-            None, // audio_out: wired up when AudioOutEngine is active (Task 8)
+            audio_out_producer,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
