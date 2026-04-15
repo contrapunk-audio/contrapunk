@@ -5,6 +5,9 @@
 //! (producer) and audio callback (consumer) communicate through a
 //! bounded ringbuffer with static capacity.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
 use ringbuf::{
     traits::{Consumer as _, Producer as _, Split as _},
     HeapRb,
@@ -20,7 +23,14 @@ pub enum MidiEvent {
 }
 
 /// Producer half of the MIDI queue. Held by the harmony router.
-pub struct MidiProducer(ringbuf::HeapProd<MidiEvent>);
+///
+/// Drops on overflow are counted in `drops` so the UI or diagnostics can
+/// surface when the audio callback stalls. The count is shared with any
+/// party holding a clone of the Arc via [`MidiProducer::drop_counter`].
+pub struct MidiProducer {
+    inner: ringbuf::HeapProd<MidiEvent>,
+    drops: Arc<AtomicU64>,
+}
 
 /// Consumer half of the MIDI queue. Held by the audio callback.
 pub struct MidiConsumer(ringbuf::HeapCons<MidiEvent>);
@@ -33,8 +43,23 @@ impl MidiProducer {
     /// Push an event. Returns `Err(QueueFull)` if the queue is at capacity.
     /// The audio thread drains the queue each buffer, so `QueueFull` means
     /// something is very wrong (stalled audio thread or overflow attack).
+    ///
+    /// Callers that use `let _ = producer.push(...)` will still drop on
+    /// full, but the drop is now counted — query via [`drop_counter`].
     pub fn push(&mut self, event: MidiEvent) -> Result<(), QueueFull> {
-        self.0.try_push(event).map_err(|_| QueueFull)
+        match self.inner.try_push(event) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                self.drops.fetch_add(1, Ordering::Relaxed);
+                Err(QueueFull)
+            }
+        }
+    }
+
+    /// Shared drop counter. Clone the Arc to observe drop counts from
+    /// another thread (diagnostics, UI).
+    pub fn drop_counter(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.drops)
     }
 }
 
@@ -55,7 +80,13 @@ impl MidiConsumer {
 pub fn midi_queue(capacity: usize) -> (MidiProducer, MidiConsumer) {
     let rb = HeapRb::<MidiEvent>::new(capacity);
     let (prod, cons) = rb.split();
-    (MidiProducer(prod), MidiConsumer(cons))
+    (
+        MidiProducer {
+            inner: prod,
+            drops: Arc::new(AtomicU64::new(0)),
+        },
+        MidiConsumer(cons),
+    )
 }
 
 #[cfg(test)]

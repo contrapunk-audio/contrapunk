@@ -418,12 +418,15 @@ fn run_tauri_router(
         // Emit note-update event at ~30fps
         if last_emit.elapsed() >= emit_interval {
             last_emit = Instant::now();
+            // Recover from poisoned mutexes instead of panicking the router
+            // thread. A poisoned lock means a thread panicked while holding
+            // it — the data is likely still usable, and silently crashing
+            // the emit loop leaves the UI stuck with no user-visible error.
             let payload = {
-                let in_notes = input_notes.lock().unwrap();
-                let harm_notes = harmony_notes.lock().unwrap();
-                let borr_notes = borrowed_notes.lock().unwrap();
-                let ch_name = chord_name.lock().unwrap();
-                // Sort note arrays for stable ordering (HashSet iteration is non-deterministic)
+                let in_notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());
+                let harm_notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
+                let borr_notes = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
+                let ch_name = chord_name.lock().unwrap_or_else(|e| e.into_inner());
                 let mut in_vec: Vec<u8> = in_notes.iter().copied().collect();
                 let mut harm_vec: Vec<u8> = harm_notes.iter().copied().collect();
                 let mut borr_vec: Vec<u8> = borr_notes.iter().copied().collect();
@@ -600,36 +603,34 @@ fn handle_note_on(
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
 
-    // Update shared state
+    // Update shared state — recover from poisoned mutexes rather than panic.
     {
-        let mut in_notes = input_notes.lock().unwrap();
+        let mut in_notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());
         in_notes.insert(note as u8);
     }
     {
-        let mut harm_notes = harmony_notes.lock().unwrap();
+        let mut harm_notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
         for &n in notes.iter().skip(1) {
             harm_notes.insert(n as u8);
         }
     }
-    // Track borrowed notes
     if engine.last_borrowed_from().is_some() {
-        let mut borr = borrowed_notes.lock().unwrap();
+        let mut borr = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
         for &n in notes.iter().skip(1) {
             borr.insert(n as u8);
         }
     }
 
-    // Update chord name
     {
         let all_sounding: HashSet<u8> = {
-            let in_notes = input_notes.lock().unwrap();
-            let harm_notes = harmony_notes.lock().unwrap();
+            let in_notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());
+            let harm_notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
             in_notes.union(&harm_notes).copied().collect()
         };
         if !all_sounding.is_empty() {
             let key_tonic = Some(engine.key().semitones_from_c());
             let display = chord_display_with_analysis(&all_sounding, key_tonic);
-            let mut ch = chord_name.lock().unwrap();
+            let mut ch = chord_name.lock().unwrap_or_else(|e| e.into_inner());
             *ch = display;
         }
     }
@@ -729,14 +730,13 @@ fn handle_note_off(
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
 
-    // Update shared state
     {
-        let mut in_notes = input_notes.lock().unwrap();
+        let mut in_notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());
         in_notes.remove(&(note as u8));
     }
     {
-        let mut harm_notes = harmony_notes.lock().unwrap();
-        let mut borr = borrowed_notes.lock().unwrap();
+        let mut harm_notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
+        let mut borr = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
         for &n in notes.iter().skip(1) {
             harm_notes.remove(&(n as u8));
             borr.remove(&(n as u8));

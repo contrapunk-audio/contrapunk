@@ -1,18 +1,24 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import '../app.css';
 	import Particles from '$lib/components/Particles.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { adapter } from '$lib/adapter';
 
 	let { children } = $props();
 
-	// Apply .reduced-motion class to body based on ui store
 	$effect(() => {
 		ui.applyMotionPreference();
 	});
 
-	// Detect system reduced-motion preference on mount
 	$effect(() => {
 		ui.detectSystemMotionPreference();
+	});
+
+	// Tear down adapter background loops on unmount (prevents RAF leaks
+	// across HMR and page navigation in dev).
+	onDestroy(() => {
+		adapter.destroy?.();
 	});
 </script>
 

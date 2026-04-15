@@ -150,11 +150,28 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.tickRafHandle = requestAnimationFrame(loop);
 	}
 
-	/** Stop the tick loop (used on adapter teardown; not currently called). */
+	/** Stop the tick loop. Called from `destroy()` on teardown. */
 	private stopTickLoop(): void {
 		if (this.tickRafHandle !== null) {
 			cancelAnimationFrame(this.tickRafHandle);
 			this.tickRafHandle = null;
+		}
+	}
+
+	/**
+	 * Tear down background loops and resources. Called from the root
+	 * layout `onDestroy` hook so hot-reload and page navigation don't
+	 * leak the requestAnimationFrame loop or lingering guitar captures.
+	 */
+	destroy(): void {
+		this.stopTickLoop();
+		if (this.guitarCapture) {
+			try {
+				this.guitarCapture.stop();
+			} catch {
+				// best-effort
+			}
+			this.guitarCapture = null;
 		}
 	}
 

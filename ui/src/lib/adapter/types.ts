@@ -236,4 +236,13 @@ export interface ContrapunkAdapter {
 
 	/** Reset suggestion weights to defaults. */
 	resetSuggestionWeights?(): void;
+
+	// -- Lifecycle --
+
+	/**
+	 * Tear down any background loops, event listeners, or audio contexts
+	 * owned by this adapter. Called from the root layout `onDestroy` hook
+	 * so hot-reload and navigation don't leak requestAnimationFrame loops.
+	 */
+	destroy?(): void;
 }

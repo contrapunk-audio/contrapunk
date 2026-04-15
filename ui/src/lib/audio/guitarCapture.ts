@@ -11,6 +11,11 @@
  * to WASM — identical to the guitar_input_demo.
  */
 
+// Toggle verbose per-frame / per-event logging. Off in production because
+// ~43 frames/sec × multiple logs per event triggers console jank when
+// DevTools is open. Flip to true when diagnosing capture/DSP issues.
+const DEBUG = false;
+
 // Dynamic import to avoid loading uninitialized WASM module
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let WasmGuitarInputClass: any = null;
@@ -150,7 +155,7 @@ export class GuitarAudioCapture {
 			// audio to process_block without pre-filtering)
 
 			self._frameCount++;
-			if (self._frameCount % 25 === 0) {
+			if (DEBUG && self._frameCount % 25 === 0) {
 				console.log(`[guitar] frame=${self._frameCount} rms=${rms.toFixed(4)} ch=${useChannel}`);
 			}
 
@@ -165,7 +170,7 @@ export class GuitarAudioCapture {
 				return;
 			}
 
-			if (allEvents.length > 0) {
+			if (DEBUG && allEvents.length > 0) {
 				console.log(`[guitar] WASM events (${allEvents.length}):`, JSON.stringify(allEvents));
 			}
 
@@ -192,11 +197,11 @@ export class GuitarAudioCapture {
 			for (const e of allEvents) {
 				switch (e.type) {
 					case 'note_on':
-						console.log(`[midi] NOTE ON: ${midiToNoteName(e.note)} (${e.note}) vel=${e.velocity} ch=${e.channel}`);
+						if (DEBUG) console.log(`[midi] NOTE ON: ${midiToNoteName(e.note)} (${e.note}) vel=${e.velocity} ch=${e.channel}`);
 						self.callbacks.onNoteOn(e.note, e.velocity);
 						break;
 					case 'note_off':
-						console.log(`[midi] NOTE OFF: ${midiToNoteName(e.note)} (${e.note}) ch=${e.channel}`);
+						if (DEBUG) console.log(`[midi] NOTE OFF: ${midiToNoteName(e.note)} (${e.note}) ch=${e.channel}`);
 						self.callbacks.onNoteOff(e.note);
 						break;
 					case 'pitch_bend':

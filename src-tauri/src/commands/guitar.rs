@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::{SampleFormat, StreamConfig};
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 
@@ -127,14 +127,14 @@ pub struct GuitarCalibrationProfile {
 /// 1. Measures noise floor (3 seconds of silence)
 /// 2. For each of 6 strings, waits for a pluck then captures 0.5s
 /// 3. Measures frequency via zero-crossing estimation
-/// 4. Saves the calibration profile to disk
+/// 4. Saves the calibration profile to the OS app-data directory
 ///
 /// This is an async Tauri command because it runs for ~10+ seconds.
 #[tauri::command]
 pub async fn start_guitar_calibration(
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<GuitarCalibrationProfile, String> {
-    // Read device/channel from state
     let device_name = state
         .guitar_device
         .lock()
@@ -142,15 +142,37 @@ pub async fn start_guitar_calibration(
         .clone();
     let channel = *state.guitar_channel.lock().map_err(|e| e.to_string())?;
 
-    // Run the blocking calibration on a separate thread
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let result = run_calibration(&device_name, channel);
         let _ = tx.send(result);
     });
 
-    rx.recv()
-        .map_err(|e| format!("Calibration thread failed: {}", e))?
+    let profile = rx
+        .recv()
+        .map_err(|e| format!("Calibration thread failed: {}", e))??;
+
+    // Persist to the OS-appropriate app data dir. Failures are surfaced
+    // to the caller instead of swallowed.
+    save_calibration_profile(&app, &profile)?;
+
+    Ok(profile)
+}
+
+/// Write the calibration profile as JSON into the app data dir.
+fn save_calibration_profile(
+    app: &AppHandle,
+    profile: &GuitarCalibrationProfile,
+) -> Result<(), String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Cannot resolve app data dir: {}", e))?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| format!("Cannot create app data dir: {}", e))?;
+    let path = data_dir.join("guitar_calibration_profile.json");
+    let json = serde_json::to_string_pretty(profile)
+        .map_err(|e| format!("Cannot serialize calibration profile: {}", e))?;
+    std::fs::write(&path, json).map_err(|e| format!("Cannot write {}: {}", path.display(), e))
 }
 
 /// Blocking calibration implementation (runs on a worker thread).
