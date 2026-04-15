@@ -5,16 +5,37 @@
 See: .planning/PROJECT.md (updated 2026-01-28)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase harmony-rework — Next-Note Suggestion Overlay
+**Current focus:** Routing + humanization/metronome polish (pitch detection & guitar input deferred)
 
 ## Current Position
 
-Phase: harmony-rework (Plan 05 complete)
-Plan: 05 complete (Next-Note Suggestion Overlay)
-Status: Plan 05 complete
-Last activity: 2026-04-12 - Completed harmony-rework-05-PLAN.md (11-term suggestion scorer, piano/fretboard overlay, weight tuning UI)
+Phase: between-phases (harmony-rework shipped, Audio Foundation ~10/11)
+Status: Shipped work not yet reflected in roadmap phases — reality reconciled 2026-04-15
+Last activity: 2026-04-15 - Codebase map refreshed (7 docs, commit `af7161e`); STATE.md reconciled with 2 weeks of shipped work
 
-Progress: [████████████████████] (06.10.1 plan 9/9 code complete, human verification pending)
+### Recently Shipped (since last STATE update on 2026-04-13)
+
+- **Harmony rework SHIPPED** — FunctionalHarmony + BachChorale (`dc25aaf`), Species 1-4 end-to-end (`5095525`), audit fixes C1-C4/S2-S7/Q1-Q5 (`2794e98`), 11-term suggestion scorer + piano/fretboard overlay (Plan 05)
+- **Humanizer + beat clock + metronome ported to WASM** (`4f695f6`) — browser parity for humanize achieved; closes half of "Desktop-only bugs" memory
+- **MIDI input now routed through humanized_note_on/off** (`7ff989f`) — humanization affects the played note, not just the harmony voices
+- **Windows desktop build infrastructure** (`1e15518`, PR #32) — Windows pivot from Apr 14 complete at the infra layer
+- **Audio Foundation Tasks 5-10 SHIPPED** (paused at 4/11 in memory, reality is 10/11):
+  - PolySynth polyphonic wrapper (`46797d5`)
+  - AudioOutEngine cpal stream lifecycle (`3efdcc9`)
+  - Harmony-note fanout to audio synth queue (`d1b12da`)
+  - Tauri `audio_out` commands (`62e1cfd`)
+  - Producer wired into router thread at startup (`1ff392c`)
+  - Svelte dev-grade toggle in Settings (`59589c2`), state sync + revert on error (`1b99add`)
+- **Tauri `beforeCommand` fallback order fixed** (`b699f0e`)
+- **Recovered stash@{4} "rigor-gate"** (`33a3621`) — flagged wip commit from Apr 15; 19 other rigor-gate stashes still exist (audit pending)
+
+### Not Yet Shipped / Deferred
+
+- **Pitch detection** (JS McLeod beats Rust pipeline) — DEFERRED, revisit later
+- **Guitar input / Phase 10** — DEFERRED, revisit later
+- **Audio Foundation Task 11** — manual end-to-end smoke test + `milestone/audio-foundation` tag
+- **Generator WASM parity** — Rust `GeneratorEngine` exists, no WASM/Tauri binding, UI gated behind `{#if false}` (CONCERNS.md)
+- **Plugin hosting sub-project 2** — safe VST3 host layer, not started
 
 ## Performance Metrics
 
@@ -170,17 +191,61 @@ Recent decisions affecting current work:
 - [06.10.1-09]: Remove all egui GUI router code from router.rs, keep CLI router for potential future use
 - [06.10.1-09]: Remove WASM-specific deps from root Cargo.toml (contrapunk-wasm crate has its own)
 
-### Pending Todos
+### Prioritized Backlog (as of 2026-04-15)
 
-- Stuck MIDI notes when changing settings mid-play (voice leading, key, mode, etc.) — active_notes tracking cleared without sending Note-Offs. Needs a proper fix that doesn't introduce new stuck notes.
+User direction: fix everything that needs fixing EXCEPT pitch detection and guitar, then improve input/output routing, then metronome/beatmaker and humanization.
+
+**P0 — Close the gaps in already-shipped work**
+
+1. **Finish Audio Foundation Task 11** — manual end-to-end smoke test (play → MIDI out AND audio out through cpal) + tag `milestone/audio-foundation`. Blocks plugin hosting sub-project 2.
+2. **Stuck MIDI notes on settings change** — root cause: engine's `active_notes.clear()` in every setter (12+ call sites in `src/harmony/engine.rs`) drops Note-Off tracking. Candidate fix: send MIDI CC 123 (All Notes Off) on every port when any engine setting changes, then clear. Also flush delay queue, also clear `active_humanization` in Humanizer.
+3. **Wire Generator into WASM + Tauri** — `src/generator/` is 949 lines of Rust unwired to anything. Add bindings in `wasm/src/lib.rs` and `src-tauri/src/commands/`, remove the `{#if false}` gate in `GeneratorPanel.svelte`. Closes the other half of the WASM-parity memory bug.
+4. **Tauri `setDetune` has no backend command** — UI stores `_detuneCents` locally, never calls `invoke()`. Add `set_detune` Tauri command.
+5. **Guitar calibration file written to CWD** — use `tauri::path::app_data_dir()` in `src-tauri/src/commands/guitar.rs:244`; surface write errors. (Security/hygiene; does NOT require reopening guitar input work.)
+6. **`stopTickLoop` never called → RAF leak** — add `destroy()` on `WasmAdapter`, call from SvelteKit root layout `onDestroy`.
+7. **Mutex unwrap cascade** in `src-tauri/src/commands/engine.rs:422-425,605-632` — replace `.unwrap()` with logged `unwrap_or_default()` to stop router thread from crashing silently on lock poison.
+8. **Rigor-gate stash audit** — 19 `rigor-gate-*` stashes exist after the one recovery commit. Audit whether any still contain real work. Drop the rest.
+
+**P1 — Input/Output Routing improvements (user direction: "make routing better")**
+
+Current routing lives in two places: `src/router.rs` (CLI) and `src-tauri/src/commands/engine.rs` (Tauri runtime — the one users actually hit). They drifted during Audio Foundation.
+
+1. **Unify voice_index vs port_index** — remove the `FIXME(sub-project-2)` substitution in `src/router.rs:134` and `src-tauri/src/commands/engine.rs:384`. Add `voice_index: u8` to `HumanizedNote` and populate from harmony voice index at `humanize_note_on`. GitHub issue #33.
+2. **Route MIDI queue overflow gracefully** — `src/audio_out/midi_queue.rs` `push()` on full currently leads to `.unwrap()` panics at `router.rs:452,459`. Change to drop-oldest or log+skip.
+3. **Real-time safety in audio callback** — `PolySynth::process_stereo` heap-allocates a scratch buffer per callback (`sine_synth.rs:192`). Pre-allocate a max-frames scratch at construction. Also kill `Mutex<AudioState>` on the hot path (give PolySynth ownership to the audio thread; MIDI events already flow lock-free via SPSC ringbuffer).
+4. **Browser audio output (WASM)** — `WasmAdapter.startAudioOutput` is a no-op warning. Wire a minimal Web Audio AudioWorklet synth so browser users can hear harmony without hardware MIDI. Mirrors native PolySynth.
+5. **Beat-update event from Rust to UI** — `TauriAdapter` currently approximates beats with `setInterval` (drifts from Rust `BeatClock`). Emit real `beat-update` Tauri event from router thread at each `beat_crossed()` boundary; remove `_beatInterval` approximation.
+6. **AudioWorkletNode migration** — `ui/src/lib/audio/guitarCapture.ts` uses deprecated `ScriptProcessorNode`. Refactor to AudioWorklet feeding `Float32Array` blocks to WASM DSP. (This is routing INTO the engine, not guitar-detection logic — allowed under the "no guitar" exclusion since the change is plumbing.)
+7. **Kill console.log spam** in `guitarCapture.ts:153-155,169,195,199` on the hot path.
+
+**P2 — Metronome, beatmaker, humanization (user direction: "a lot better")**
+
+Current state is minimal. `src/humanize/metronome.rs` is 35 lines: `enabled` bool + downbeat/offbeat click. `BeatClock::is_offbeat` is hardcoded to fractional 0.4-0.6. No subdivision control, no accent patterns, no groove templates.
+
+1. **Metronome: accent model + subdivision clicks** — upgrade from a two-note (downbeat/offbeat) stub to configurable: accent pattern per beat, optional 8th/16th subdivision clicks with distinct notes, volume, sound selection (woodblock/cowbell/rim), count-in (1-2 bars).
+2. **Humanize: richer swing model** — `is_offbeat` hardcoded 0.4-0.6 only catches 8th offbeats crudely. Move to per-subdivision swing (8ths AND 16ths), curve shape (linear / triplet / Logic-style), per-voice swing amount.
+3. **Humanize: groove templates** — named presets ("straight", "swing light/heavy", "push", "pull", "drag", "rush") that set jitter + swing + velocity curves together.
+4. **Humanize: per-voice variation** — current config applies the same humanization to all harmony voices. Add per-voice config so bass can be straighter than upper voices (real ensemble feel).
+5. **Velocity dynamics curves** — current is uniform random ± variation. Add weighted curves (Gaussian, Pareto) and accent-aware variation (stronger on beats 1, 3).
+6. **Tempo tap** — tap-tempo input to set BPM from the UI (common DAW feature, minimal effort in Svelte + Tauri event bridge).
+7. **Metronome UI parity** — expose all the above in `HumanizePanel.svelte`; metronome currently has no dedicated UI panel.
+
+### Pending Todos (resolved in backlog above)
+
+_Previous entry — stuck MIDI notes — now tracked as P0 item 2._
 
 ### Recent Fixes
 
+- [2026-04-13] Harmony rework audit findings C1-C4, S2-S7, Q1-Q5 fixed (`2794e98`)
+- [2026-04-13] WASM humanize + beat clock + metronome ported (`4f695f6`)
+- [2026-04-13] MIDI input now routed through humanized_note_on/off (`7ff989f`)
+- [2026-04-14] Windows desktop build infrastructure landed (PR #32)
+- [2026-04-15] Audio Foundation Tasks 5-10 shipped end-to-end
 - [2026-02-04] Theme is PICO-8 retro pixel art (green accents), not steampunk gold/copper — user preference
 
 ### Blockers/Concerns
 
-None.
+- **Rigor-gate stashes (19 remaining)** — all prefixed `rigor-gate-*`, originating from feat/windows-build and main. Need an audit pass before next dev session to confirm nothing material is stashed. The one already recovered (stash@{4}) came in as `33a3621 wip: recovered stash@{4}`.
 
 ### Quick Tasks Completed
 
@@ -334,7 +399,7 @@ Verified: 13/13 must-haves passed.
 
 ## Session Continuity
 
-Last session: 2026-02-25
-Stopped at: Completed 06.10.1-09-PLAN.md Task 1 (remove egui/eframe, CLI mode, Trunk, old theme)
-Resume file: None
-Next: 06.10.1-09-PLAN.md Task 2 (human verification of complete UI migration)
+Last session: 2026-04-15
+Stopped at: STATE.md + memory reconciled after 2 weeks of shipped work (harmony-rework, Audio Foundation Tasks 5-10, Windows infra, WASM humanize). Pitch detection + guitar input deferred per user direction.
+Resume file: None — use Prioritized Backlog above
+Next: P0 item 1 (Audio Foundation Task 11: end-to-end smoke test + milestone tag) OR P0 item 2 (stuck MIDI notes fix), whichever you want to ship first.
