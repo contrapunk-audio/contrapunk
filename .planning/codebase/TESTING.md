@@ -1,279 +1,278 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-03-31
+**Analysis Date:** 2026-04-15
 
 ## Test Framework
 
-**Rust (primary test suite):**
-- Runner: built-in `cargo test`
-- No external test framework dependencies
-- Assertion library: built-in `assert!`, `assert_eq!`, `assert_ne!`
-- Config: `Cargo.toml` workspace at `/Users/vibhavbobade/go/src/github.com/waveywaves/contrapunk/Cargo.toml`
+**Rust Runner:**
+- Built-in `cargo test` — no third-party test runner
+- Config: none (no `nextest.toml`; standard test harness)
 
-**TypeScript/Svelte:**
-- No test framework installed (no `jest.config.*`, `vitest.config.*`, or test files in `ui/src/`)
-- `svelte-check` runs type checking only, not behavioral tests
-- Run commands:
+**Assertion Library:**
+- Rust standard `assert!`, `assert_eq!`, `assert_ne!` macros throughout
+- Float comparisons use manual bounds: `assert!((value - expected).abs() < epsilon)`
+
+**WASM Dev Dependency:**
+- `wasm-bindgen-test = "0.3"` declared in `wasm/Cargo.toml` dev-dependencies
+- No `wasm_bindgen_test` annotated tests found in `wasm/src/lib.rs` at present — dependency declared but not yet exercised
+
+**Run Commands:**
 ```bash
-cargo test                          # Run all Rust tests
-cargo test harmony                  # Run harmony module tests only
-cargo test --lib                    # Run lib tests only (excludes bin)
-npm run check                       # TypeScript type checking only (not tests)
+cargo test                              # Run all unit + integration tests
+cargo test --test audio_pipeline        # Run audio pipeline integration test file
+cargo test --test pitch_accuracy_benchmark  # Run pitch accuracy benchmarks
+cargo test --test audio_pipeline -- --nocapture  # With stdout (for pipeline diagnostics)
+cargo check -p contrapunk-wasm --target wasm32-unknown-unknown  # WASM compile check (not test)
 ```
+
+**Frontend:**
+- No frontend test framework installed — `package.json` contains no vitest, jest, or playwright dependency
+- Type checking only: `npm run check` runs `svelte-kit sync && svelte-check --tsconfig ./tsconfig.json`
 
 ## Test File Organization
 
-**Location:** Co-located with source in Rust — all tests live in `#[cfg(test)] mod tests` blocks at the bottom of each `.rs` file.
+**Rust unit tests:**
+- Co-located in the source file they test, at the bottom of the file in a `#[cfg(test)] mod tests { ... }` block
+- Pattern used in every module that has testable logic
 
-**Coverage across modules:**
-- `src/harmony/engine.rs` — 55+ tests covering all harmony modes, key changes, voice leading, interchange, octave modes
-- `src/harmony/scale.rs` — 25+ tests covering scale degrees, diatonic transposition, all scale families
-- `src/harmony/stateful.rs` — 25+ tests covering ContraryMotion and StrictCounterpoint state machines
-- `src/harmony/modes.rs` — Tests for individual mode algorithms
-- `src/harmony/voice_leading/rules.rs` — 11 tests covering parallel fifths/octaves, voice crossing, spacing
-- `src/harmony/voice_leading/voicer.rs` — 11 tests covering chord revoicing and register assignment
-- `src/harmony/voice_leading/styles.rs` — 6 tests for style configuration
-- `src/harmony/voice_leading/suspension.rs` — 6 tests for Palestrina suspension logic
-- `src/audio/detectors.rs` — 20+ tests covering BACF, AMDF, Goertzel pitch detectors
-- `src/audio/guitar.rs` — 15+ tests covering pitch/note conversion, string identification, calibration
+**Rust integration tests:**
+- Separate files under `tests/` at the workspace root:
+  - `tests/audio_pipeline.rs` — full audio → MIDI pipeline accuracy, latency, noise rejection
+  - `tests/pitch_accuracy_benchmark.rs` — `GuitarInput` pipeline benchmarks (accuracy, latency, octave error rate, harmonic spikes)
+- Integration tests import directly from the `contrapunk` library crate
 
-**Naming:** `test_<behavior_description>` in snake_case.
-Examples: `test_engine_creation`, `bacf_detect_440hz`, `test_parallel_fifths_detected`, `test_common_tone_retention`
+**Test signal generators:**
+- `src/audio/test_signals.rs` — dedicated module of signal synthesis functions (sine, guitar pluck, noise, brush, note sequences) used exclusively by integration tests
+
+**Frontend debug pages (manual / visual tests):**
+- `ui/src/routes/debug/integration-test/+page.svelte` — browser page that loads real audio fixtures + basic-pitch MIDI files for visual comparison
+- `ui/src/routes/debug/guitar-midi/+page.svelte` — live pitch detection debug page
+- These are not automated tests; they are developer tools that require manual inspection
 
 ## Test Structure
 
-**Standard Rust unit test block:**
+**Rust unit test suite organization:**
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_engine_diatonic_thirds() {
-        let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
-        let result = engine.harmonize(Note::C4);
-        assert_eq!(result, vec![Note::C4, Note::E4]);
+    fn test_descriptive_behavior_name() {
+        // Arrange
+        let scale = Scale::major(0); // C major
+
+        // Act
+        let result = scale.transpose_diatonic(Note::C4, 2);
+
+        // Assert
+        assert_eq!(result, Some(Note::E4));
     }
 }
 ```
 
-**Helper functions in test modules:**
-Test modules define private helper functions to generate test input data. These are not `#[test]` annotated — they are plain `fn` called by tests.
+**Integration test organization:**
+- Tests grouped into numbered sections with `// ═══ N. Section Name ═══` dividers
+- Each section covers a distinct quality dimension: accuracy, latency, noise rejection, onset detection, detector comparison
+- Example from `tests/audio_pipeline.rs`:
+  ```rust
+  // ═══════════════════════════════════════════════════════════════════
+  // 1. Accuracy Tests — detect correct notes from reference signals
+  // ═══════════════════════════════════════════════════════════════════
 
-**Audio test helpers (from `src/audio/detectors.rs`):**
-```rust
-fn sine_wave(freq: f64, sample_rate: usize, duration_secs: f64, amplitude: f32) -> Vec<f32> {
-    let num_samples = (sample_rate as f64 * duration_secs) as usize;
-    (0..num_samples)
-        .map(|i| {
-            let t = i as f64 / sample_rate as f64;
-            (amplitude as f64 * (2.0 * PI * freq * t).sin()) as f32
-        })
-        .collect()
-}
+  #[test]
+  fn accuracy_open_strings_mcleod() {
+      let (signal, expected) = test_signals::open_strings_sequence(SAMPLE_RATE);
+      let results = run_mcleod_detection(&signal, SAMPLE_RATE);
+      let accuracy = check_accuracy(&results, &expected, 1);
+      assert!(accuracy >= 0.83, "Open string accuracy should be >= 83%, got {:.1}%", accuracy * 100.0);
+  }
+  ```
 
-fn silence(num_samples: usize) -> Vec<f32> {
-    vec![0.0; num_samples]
-}
-
-fn noise(num_samples: usize, amplitude: f32) -> Vec<f32> {
-    // LCG pseudo-random for deterministic tests — no rand dependency needed
-    let mut state: u64 = 0xDEAD_BEEF_CAFE_BABE;
-    ...
-}
-```
-
-**Voice leading test helpers (from `src/harmony/voice_leading/voicer.rs`):**
-```rust
-fn default_registers_3() -> Vec<VoiceRegister> {
-    vec![
-        VoiceRegister::Soprano, // melody placeholder
-        VoiceRegister::Soprano,
-        VoiceRegister::Alto,
-        VoiceRegister::Tenor,
-    ]
-}
-```
-
-**Custom assertion helpers (from `src/audio/detectors.rs`):**
-```rust
-const FREQ_TOLERANCE_PERCENT: f64 = 3.0;
-
-fn assert_freq_close(detected: f32, expected: f64, label: &str) {
-    let error_pct = ((detected as f64 - expected) / expected).abs() * 100.0;
-    assert!(
-        error_pct < FREQ_TOLERANCE_PERCENT,
-        "{}: detected {:.1} Hz, expected {:.1} Hz (error {:.2}%)",
-        label, detected, expected, error_pct
-    );
-}
-```
+**Patterns:**
+- Setup: signal generated by `test_signals::*` helpers or inline construction
+- Teardown: none needed (pure functions, no I/O)
+- Assertion style: named assertions with failure messages explaining the threshold:
+  ```rust
+  assert!(accuracy >= 0.83, "Open string accuracy should be >= 83%, got {:.1}%", accuracy * 100.0);
+  ```
+- `println!` used heavily in integration tests with `-- --nocapture` for diagnostic output
 
 ## Mocking
 
-**Framework:** None — no mocking library used.
+**Framework:** None — no mock library (`mockall`, `double`, `mockito`) used
 
 **Approach:**
-- Tests use real struct instances constructed with default or test-specific configurations
-- Deterministic pseudo-random data generated with LCG (linear congruential generator) inline — avoids `rand` crate dependency in test code
-- WASM-specific code paths are isolated via `#[cfg(not(target_arch = "wasm32"))]` feature flags; tests run on native target only
+- Deterministic signal synthesis replaces hardware audio (`src/audio/test_signals.rs`)
+- `test_signals::sine()`, `test_signals::guitar_pluck()`, `test_signals::noise()`, `test_signals::brush()` generate controlled waveforms
+- `GuitarInput::process_block()` tested on synthetic audio — no audio device required
+- State machines (`NoteTracker`, `PluckDetector`) tested directly with hand-crafted input sequences
 
-**What to mock:**
-- Audio input data: replaced with `sine_wave()`, `silence()`, `noise()` helpers that produce `Vec<f32>`
-- MIDI events: constructed directly as `Note::C4`, `Note::E4` (using `wmidi::Note` enum values)
-- Time: passed as `f64` seconds parameter to functions that need timestamps
+**What IS mocked (via test signals):**
+- Guitar audio input (sine + harmonic series signals)
+- Pluck onsets (silence + attack envelope)
+- White noise / brush noise
+- Multi-note sequences with configurable timing
 
-**What NOT to mock:**
-- The harmony engine itself — tests verify full end-to-end harmonization behavior
-- Scale/chord logic — tested directly, not abstracted behind interfaces
+**What is NOT mocked:**
+- MIDI device hardware — no tests for live MIDI I/O; tested integration stops at the router layer
+- Tauri IPC — no command invocation tests
+- WASM bindings — no JS-side tests
 
 ## Fixtures and Factories
 
-**Test Data:**
-No separate fixture files. All test data is constructed inline or via local helper functions within each `mod tests` block.
-
-**Pattern for audio signal tests:**
+**Rust test helpers:**
 ```rust
-// Provide frequency, sample rate, duration in seconds, amplitude
-let samples = sine_wave(440.0, 44100, 0.1, 0.8);
-let mut det = BacfDetector::new();
-let result = det.detect(&samples, 44100);
+fn default_config() -> GuitarInputConfig {
+    GuitarInputConfig {
+        sample_rate: SAMPLE_RATE,
+        buffer_size: 2048,
+        hop_size: 256,
+        input_gain: 1.0,
+        pitch_bend_range: 48,
+        ..GuitarInputConfig::default()
+    }
+}
 ```
 
-**Pattern for harmony engine tests:**
-```rust
-// Construct with specific musical parameters
-let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
-let result = engine.harmonize(Note::C4);
-assert_eq!(result, vec![Note::C4, Note::E4]);
-```
+- Test-local factory functions defined at the top of integration test files
+- Unit test modules use inline `Scale::major(0)`, `NoteTracker::new(NoteTrackerConfig { ... })` construction
 
-**Pattern for voice leading tests:**
-```rust
-// Represent MIDI note numbers as u8 vectors
-let prev = vec![72u8, 60, 53]; // melody=C5, soprano=C4, alto=F3
-let curr = vec![74u8, 62, 55]; // melody=D5, soprano=D4, alto=G3
-let result = check_parallel_fifths(&prev, &curr);
-assert_eq!(result, vec![(1, 2)]);
-```
+**Frontend fixtures (for manual debug page):**
+- Located at `ui/static/debug/fixtures/` (not present in `ui/src/`)
+- Files referenced from `ui/src/routes/debug/integration-test/+page.svelte`:
+  - `guitar_recording_01.wav` — raw guitar recording
+  - `guitar_recording_01_bp_synth.wav` — basic-pitch synthesized version
+  - `guitar_recording_01_expected.mid` — basic-pitch MIDI output (ground truth)
+  - `guitar_open_strings.wav`, `guitar_scale.wav` (similar triplets)
+- These `.wav`/`.mid` fixture files represent the Spotify basic-pitch integration ground truth approach (from memory note: basic-pitch MIDI output is used as integration test reference)
 
-**Location:** Inline within `mod tests` blocks in each `.rs` file. No separate fixtures directory.
+**Regression test naming:**
+- Named regression tests are present for known bug fixes:
+  - `test_lycomedes1814_regression` in `src/harmony/functional/mod.rs` — tests the harmony rework fix (commit dc25aaf)
+  - `test_lycomedes1814_bach_regression` — Bach chorale variant of same regression
 
 ## Coverage
 
-**Requirements:** Not enforced — no coverage tooling configured.
+**Requirements:** None enforced — no coverage target in CI or `Cargo.toml`
 
-**View Coverage:**
-```bash
-cargo test 2>&1 | grep "test result"   # Summary of pass/fail counts
-# For detailed coverage, install cargo-tarpaulin:
-cargo install cargo-tarpaulin
-cargo tarpaulin --out Html
-```
+**No coverage tooling:** `cargo-llvm-cov` or `cargo-tarpaulin` not installed or configured
 
 ## Test Types
 
-**Unit Tests (primary):**
-- Scope: individual functions and methods in isolation
-- All Rust tests are unit tests within the module they test
-- Tests directly construct the struct being tested and assert on outputs
+**Unit Tests (co-located `#[cfg(test)]` blocks):**
+- Scope: single function or struct method in isolation
+- Files with unit tests:
+  - `src/harmony/scale.rs` — diatonic transposition, scale degree lookup
+  - `src/harmony/modes.rs` — pass-through, diatonic thirds/fourths, random harmony modes
+  - `src/harmony/stateful.rs` — contrary motion state machine, counterpoint state
+  - `src/harmony/voice_leading/voicer.rs` — voice placement, determinism
+  - `src/harmony/voice_leading/rules.rs` — parallel fifths/octaves detection
+  - `src/harmony/voice_leading/suspension.rs` — suspension state
+  - `src/harmony/voice_leading/styles.rs` — style rule application
+  - `src/harmony/functional/mod.rs` — functional harmony, Bach chorale, Lycomedes regression
+  - `src/harmony/functional/markov.rs` — Markov chain chord progression
+  - `src/harmony/suggestion.rs` — suggestion scoring terms, snapshot logic
+  - `src/harmony/config.rs` — enum variants, Display implementations
+  - `src/harmony/key_detect.rs` — key detection algorithm
+  - `src/harmony/barry_harris.rs` — Barry Harris diminished system
+  - `src/chord.rs` — chord detection and display (25+ chord type tests)
+  - `src/audio_out/midi_queue.rs` — ring buffer push/pop/capacity
+  - `src/audio_out/config.rs` — config validation
+  - `src/audio_out/sine_synth.rs` — SineVoice envelope, PolySynth allocation
+  - `src/audio_out/engine.rs` — AudioOutEngine state
 
-**Integration Tests:**
-- No `tests/` directory at crate root — no integration test suite
-- The Tauri/WASM adapter boundary is not tested (no mock Tauri or mock WASM environment)
+**Integration Tests (separate `tests/` files):**
+- Scope: full subsystem end-to-end with synthetic inputs
+- `tests/audio_pipeline.rs` — tests the audio → MIDI detection chain using lower-level detector primitives directly:
+  - Open string accuracy per detector (McLeod ≥ 83%, Goertzel ≥ 66%)
+  - Chromatic range accuracy (McLeod ≥ 80% over E2–E4)
+  - Latency bounds (high string < 50ms, low string < 80ms)
+  - Noise rejection (white noise: ≤ 5 false triggers; brush: ≥ 70% rejection)
+  - Onset detection with timing bounds (< 60ms latency from actual onset)
+  - Detector comparison table (all 5 detectors on 440 Hz and all open strings)
+  - `NoteTracker` octave glitch rejection and voting
+  - Full pipeline integration (onset → detect → track → output, 3/4 notes matched)
+- `tests/pitch_accuracy_benchmark.rs` — tests the production `GuitarInput::process_block()` pipeline:
+  - Open string accuracy through the real shipped pipeline (≥ 83%)
+  - Latency benchmark (soft assertion — logs warnings, does not fail CI on latency miss)
+  - Octave error rate (< 15%)
+  - Harmonic spike rate (< 20% of NoteOns are spurious harmonics)
+  - Note sequence accuracy (≥ 66% for all 6 open strings in succession)
+  - Noise rejection (≤ 2 false NoteOns from 2 seconds of low-level noise)
 
-**E2E Tests:**
-- Not used. No Playwright, Cypress, or similar tooling configured.
+**E2E / Browser Tests:**
+- Not automated. The `/debug/integration-test` route provides a manual visual comparison of recorded guitar audio vs. basic-pitch MIDI transcription. Intended as human-in-the-loop verification.
 
-**TypeScript/Svelte Tests:**
-- None. The `ui/` frontend has no test suite. `svelte-check` provides type safety only.
+## ML Model Eval Tests
+
+No automated ML model evaluation tests exist in the codebase. The basic-pitch integration (Spotify model for polyphonic transcription) is exercised through:
+1. Pre-generated fixture `.mid` files in `ui/static/debug/fixtures/` (output of running basic-pitch offline)
+2. The manual debug page at `ui/src/routes/debug/integration-test/+page.svelte` which displays piano roll + waveform for visual inspection
+
+The 139-class string+fret classifier (from memory notes) does not have a test harness in this repo — training is in `ml/` (Python), and inference integration is in `src/audio/inference.rs`.
+
+## CI Configuration
+
+File: `.github/workflows/ci.yml`
+
+Triggers: `push` to `main`, `pull_request` to `main`
+
+Jobs (all run on `ubuntu-latest`):
+
+| Job | Command | Notes |
+|-----|---------|-------|
+| `fmt` | `cargo fmt --all -- --check` | Fails fast on formatting |
+| `clippy` | `cargo clippy -- -W clippy::all` | Warnings-as-errors not enforced in CI (only in pre-commit hook) |
+| `check` | `cargo check` | Native target only |
+| `test` | `cargo test` | Runs all unit + integration tests |
+| `wasm-check` | `cargo check -p contrapunk-wasm --target wasm32-unknown-unknown` | Compile check only, no WASM runtime tests |
+| `tauri-check` | `cargo check -p contrapunk-tauri` | Compile check only |
+| `frontend` | `npm run check && npm run build` (inside `ui/`) | Type check + build; no JS tests |
+| `deploy` | `flyctl deploy -c deploy/fly.toml` | Only on push to main; requires all above to pass |
+
+**Pre-commit hook** (opt-in, `scripts/pre-commit`):
+```sh
+cargo fmt --all --check
+cargo clippy --all-targets -D warnings   # stricter than CI
+cargo test --quiet
+cargo check -p contrapunk-wasm --target wasm32-unknown-unknown
+```
+
+Install via: `cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
+
+Note: The pre-commit hook runs `clippy -D warnings` (fatal) while CI runs `clippy -W clippy::all` (non-fatal). This means some clippy warnings can slip through CI while the hook catches them locally.
 
 ## Common Patterns
 
-**Stateful algorithm testing (harmony engine):**
-Tests verify stateful behavior by calling harmonize() multiple times and checking accumulated state:
+**DSP accuracy assertions (percentage thresholds):**
 ```rust
-#[test]
-fn test_key_change() {
-    let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
-    let result = engine.harmonize(Note::C4);
-    assert_eq!(result[1], Note::E4);   // In C major
-
-    engine.set_key(Key::G);
-    let result = engine.harmonize(Note::G4);
-    assert_eq!(result[1], Note::B4);   // In G major
-}
+let accuracy = correct as f32 / total as f32;
+assert!(
+    accuracy >= 0.83,
+    "Open string accuracy should be >= 83%, got {:.1}%",
+    accuracy * 100.0
+);
 ```
 
-**Boundary / edge case testing:**
+**Building a NoteTracker for tests:**
 ```rust
-#[test]
-fn bacf_silence_returns_none() {
-    let samples = silence(4410);
-    let mut det = BacfDetector::new();
-    let result = det.detect(&samples, 44100);
-    assert!(result.is_none(), "Should return None for silence");
-}
-
-#[test]
-fn bacf_very_low_amplitude() {
-    let samples = sine_wave(440.0, 44100, 0.1, 0.0001);
-    // Very quiet signal should not be detected
-}
+let mut tracker = NoteTracker::new(NoteTrackerConfig {
+    onset_required: false,
+    octave_jump_confidence_threshold: 0.6,
+});
+tracker.update(40, 0.9); // MIDI note 40 = E2, confidence 0.9
+assert_eq!(tracker.current_note(), Some(40));
 ```
 
-**Determinism testing (for stochastic algorithms):**
+**Regression test naming convention:**
 ```rust
+/// Lycomedes1814 regression test:
+/// C-D-E in C major should produce functional harmony, NOT stacked 7ths.
 #[test]
-fn test_determinism_100_times() {
-    let pcs = vec![4, 7];   // E, G pitch classes
-    let prev = vec![72u8, 64, 67];
-    let first = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
-    for _ in 0..100 {
-        let result = revoice_chord(&pcs, Some(&prev), &registers, &rules, None);
-        assert_eq!(result, first, "Determinism violated!");
-    }
-}
+fn test_lycomedes1814_regression() { ... }
 ```
-
-**Round-trip testing:**
-```rust
-#[test]
-fn test_profile_json_roundtrip() {
-    let profile = GuitarCalibrationProfile::default();
-    let json = profile.to_json().unwrap();
-    let restored = GuitarCalibrationProfile::from_json(&json).unwrap();
-    assert_eq!(profile, restored);
-}
-
-#[test]
-fn test_roundtrip_note_name() {
-    for midi in 21..=108 {
-        let name = midi_to_note_name(midi);
-        let back = note_name_to_midi(&name).unwrap();
-        assert_eq!(back, midi);
-    }
-}
-```
-
-**Multi-detector consensus testing:**
-```rust
-#[test]
-fn all_detectors_agree_on_440hz() {
-    let samples = sine_wave(440.0, 44100, 0.1, 0.8);
-    // Test all three detectors (BACF, AMDF, Goertzel) on same signal
-    // Assert all return results within tolerance
-}
-```
-
-## Testing Gaps
-
-**No TypeScript/Svelte tests:** The entire `ui/` frontend is untested beyond type checking. Adapter implementations (`TauriAdapter`, `WasmAdapter`), store logic (optimistic updates, persistence, rollback), and component behavior have no automated tests.
-
-**No Tauri IPC tests:** The `src-tauri/` command handlers are not tested in isolation.
-
-**No integration tests:** The Rust lib ↔ WASM bridge is not tested end-to-end.
 
 ---
 
-*Testing analysis: 2026-03-31*
+*Testing analysis: 2026-04-15*
