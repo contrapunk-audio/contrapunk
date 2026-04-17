@@ -455,6 +455,8 @@ fn run_tauri_router(
 
         // Generate metronome clicks on subdivision crossings and send
         // to the configured output port (or port 0 if unset).
+        // Also push to the audio synth so it clicks through speakers
+        // without requiring an external GM drum kit on channel 10.
         if let Some(crossing) = humanizer.clock().subdivision_crossed() {
             metronome.enabled = humanizer.config().metronome_enabled;
             if let Some(click_bytes) =
@@ -462,6 +464,28 @@ fn run_tauri_router(
             {
                 let metro_port = humanizer.config().metronome_output_port.unwrap_or(0);
                 let _ = output_router.send_to_port(metro_port, &click_bytes);
+
+                // Audio-out: short sine click through PolySynth.
+                // Accent (beat 0) = C7 (96) loud, others = G6 (91) softer.
+                if let Some(ref mut producer) = audio_out {
+                    let (click_note, click_vel) = if crossing.sixteenth == 0 && crossing.beat == 0 {
+                        (96u8, 120u8) // accent: C7
+                    } else if crossing.sixteenth == 0 {
+                        (91u8, 90u8) // normal beat: G6
+                    } else {
+                        (98u8, 60u8) // subdivision: D7, quiet
+                    };
+                    let _ = producer.push(MidiEvent::NoteOn {
+                        voice: 255, // reserved for metronome
+                        note: click_note,
+                        velocity: click_vel,
+                    });
+                    // Immediate NoteOff → Attack+Release envelope = short click
+                    let _ = producer.push(MidiEvent::NoteOff {
+                        voice: 255,
+                        note: click_note,
+                    });
+                }
             }
         }
 
