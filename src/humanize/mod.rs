@@ -58,11 +58,13 @@
 pub mod beat_clock;
 pub mod config;
 pub mod engine;
+pub mod groove;
 pub mod metronome;
 pub mod scheduler;
 
 pub use beat_clock::BeatClock;
 pub use config::{HumanizeConfig, HumanizedNote};
 pub use engine::Humanizer;
+pub use groove::{all_templates, GrooveTemplate};
 pub use metronome::Metronome;
 pub use scheduler::DelayQueue;

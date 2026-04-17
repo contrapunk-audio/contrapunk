@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use wmidi::{Channel, Note, Velocity};
 
+use super::groove::GrooveTemplate;
+
 /// Master configuration for all humanization parameters.
 ///
 /// Controls timing jitter, velocity variation, swing/groove, and tempo settings.
@@ -120,6 +122,15 @@ pub struct HumanizeConfig {
     ///
     /// `None` means use the first available output port.
     pub metronome_output_port: Option<usize>,
+
+    /// Active groove template, if any.
+    ///
+    /// Set to `Some(template)` when a template is applied via
+    /// [`GrooveTemplate::apply`]. Should be cleared to `None` when the
+    /// user manually edits a groove parameter (jitter, velocity, swing,
+    /// or duration values) to indicate a custom configuration.
+    #[serde(default)]
+    pub groove_template: Option<GrooveTemplate>,
 }
 
 impl Default for HumanizeConfig {
@@ -140,6 +151,7 @@ impl Default for HumanizeConfig {
             beat_unit: 4,
             metronome_enabled: false,
             metronome_output_port: None,
+            groove_template: None,
         }
     }
 }
