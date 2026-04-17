@@ -204,18 +204,9 @@ pub fn start_routing(
     let stop = Arc::clone(&stop_signal);
     let output_indices_clone = output_indices.clone();
 
-    // Task 9: move the MidiProducer from AppState into the router thread.
-    // If audio-out is running, the router fans harmony notes to the audio synth.
-    // If not, producer is None and router falls back to external-MIDI-only.
-    // v1 limitation: starting audio-out after routing has already begun does not
-    // retroactively hook the producer — user must stop & restart routing.
-    // Similarly, stop_audio_output → start_audio_output while routing is active
-    // places a new producer in the slot, but the already-running router thread
-    // will never see it; pushes from the old (now-dead) producer silently fail.
-    let audio_out_producer: Option<contrapunk::audio_out::MidiProducer> = {
-        let mut slot = state.audio_out_producer.lock().map_err(|e| e.to_string())?;
-        slot.take()
-    };
+    // Share the audio-out producer slot with the router thread so
+    // toggling audio output doesn't require stop+restart routing.
+    let audio_out_slot = Arc::clone(&state.audio_out_producer);
 
     let detune = Arc::clone(&state.detune_cents);
 
@@ -238,7 +229,7 @@ pub fn start_routing(
             ch_name,
             stop,
             app_handle,
-            audio_out_producer,
+            audio_out_slot,
             detune,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
@@ -324,7 +315,7 @@ fn run_tauri_router(
     chord_name: Arc<Mutex<String>>,
     stop_signal: Arc<std::sync::atomic::AtomicBool>,
     app_handle: AppHandle,
-    mut audio_out: Option<MidiProducer>,
+    audio_out_slot: Arc<Mutex<Option<MidiProducer>>>,
     detune_cents: Arc<AtomicI32>,
 ) -> anyhow::Result<()> {
     let (
@@ -420,10 +411,30 @@ fn run_tauri_router(
     // Detune: track the previous value so we only send pitch bend on change.
     let mut prev_detune_cents: i32 = detune_cents.load(Ordering::Relaxed);
 
+    // Take initial audio-out producer if available. The router owns it
+    // for the duration; hot-swap happens below if audio-out is toggled.
+    let mut audio_out: Option<MidiProducer> = {
+        audio_out_slot
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+    };
+
     // Main routing loop
     loop {
         if stop_signal.load(Ordering::SeqCst) {
             break;
+        }
+
+        // Hot-swap audio-out producer: if the slot has a new producer
+        // (audio-out was started/restarted), take it. If our producer
+        // is dead (audio-out was stopped and consumer dropped), the
+        // pushes silently fail until a new producer appears.
+        if let Ok(mut slot) = audio_out_slot.try_lock() {
+            if slot.is_some() {
+                // New producer available — swap in
+                audio_out = slot.take();
+            }
         }
 
         // Poll for humanize config changes from the UI (metronome toggle,

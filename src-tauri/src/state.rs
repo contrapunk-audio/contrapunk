@@ -66,8 +66,9 @@ pub struct AppState {
     /// Audio output engine (cpal stream lifecycle)
     pub audio_out: Mutex<AudioOutEngine>,
 
-    /// MIDI producer for the audio output engine (None when engine is stopped)
-    pub audio_out_producer: Mutex<Option<MidiProducer>>,
+    /// MIDI producer for the audio output engine (None when engine is stopped).
+    /// Arc-wrapped so the router thread can poll for hot-swap without restart.
+    pub audio_out_producer: Arc<Mutex<Option<MidiProducer>>>,
 
     /// Global detune in cents. Read by the router thread each frame (lock-free).
     /// Updated by the `set_detune` command.
@@ -92,7 +93,7 @@ impl Default for AppState {
             routing_mode: Mutex::new(RoutingMode::default()),
             stop_signal: Mutex::new(None),
             audio_out: Mutex::new(AudioOutEngine::new()),
-            audio_out_producer: Mutex::new(None),
+            audio_out_producer: Arc::new(Mutex::new(None)),
             detune_cents: Arc::new(AtomicI32::new(0)),
         }
     }
