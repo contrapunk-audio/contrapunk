@@ -930,6 +930,7 @@ impl Engine {
                                 wmidi::Channel::Ch1,
                                 wmidi_vel,
                                 port,
+                                i as u8,
                             );
                             if hn.delay_ms == 0 {
                                 generator_notes.push(ScheduledMidiJs {
@@ -967,6 +968,7 @@ impl Engine {
                                 wmidi::Channel::Ch1,
                                 wmidi_vel,
                                 port,
+                                i as u8,
                             );
                             if hn.delay_ms == 0 {
                                 generator_notes.push(ScheduledMidiJs {

@@ -467,7 +467,7 @@ mod tests {
         let note = wmidi::Note::C4;
         let channel = wmidi::Channel::Ch1;
         let vel = wmidi::Velocity::try_from(100u8).unwrap();
-        let hn = h.humanize_note_on(note, channel, vel, 0);
+        let hn = h.humanize_note_on(note, channel, vel, 0, 0);
         assert_eq!(hn.delay_ms, 0);
         assert_eq!(hn.duration_delta_ms, 0);
         assert_eq!(u8::from(hn.velocity), 100);
