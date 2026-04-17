@@ -5,15 +5,13 @@
 //! When `start()` succeeds, the caller gets a `MidiProducer` to push events
 //! into; the audio thread drains it each callback.
 
-use std::sync::{Arc, Mutex};
-
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{
     BufferSize, Device, OutputCallbackInfo, SampleFormat, SampleRate, Stream, StreamConfig,
 };
 
 use crate::audio_out::config::AudioConfig;
-use crate::audio_out::midi_queue::{midi_queue, MidiConsumer, MidiProducer};
+use crate::audio_out::midi_queue::{midi_queue, MidiProducer};
 use crate::audio_out::sine_synth::PolySynth;
 
 const MIDI_QUEUE_CAPACITY: usize = 1024;
@@ -94,20 +92,20 @@ impl AudioOutEngine {
             buffer_size: BufferSize::Fixed(cfg.buffer_size),
         };
 
-        let (producer, consumer) = midi_queue(MIDI_QUEUE_CAPACITY);
-        let synth = PolySynth::new(cfg.sample_rate as f32, MAX_POLYPHONY);
-        let state = Arc::new(Mutex::new(AudioState { consumer, synth }));
+        let (producer, mut consumer) = midi_queue(MIDI_QUEUE_CAPACITY);
+        let mut synth = PolySynth::new(cfg.sample_rate as f32, MAX_POLYPHONY);
 
         let err_fn = |err| eprintln!("[audio-out] stream error: {err}");
 
         let stream = match sample_format {
             SampleFormat::F32 => device.build_output_stream(
                 &stream_config,
-                {
-                    let state = Arc::clone(&state);
-                    move |data: &mut [f32], _info: &OutputCallbackInfo| {
-                        process_callback(&state, data);
+                move |data: &mut [f32], _info: &OutputCallbackInfo| {
+                    // Drain pending MIDI events (lock-free SPSC pop).
+                    while let Some(event) = consumer.pop() {
+                        synth.handle_event(event);
                     }
+                    synth.process_stereo(data);
                 },
                 err_fn,
                 None,
@@ -150,28 +148,9 @@ impl Default for AudioOutEngine {
 unsafe impl Send for AudioOutEngine {}
 unsafe impl Sync for AudioOutEngine {}
 
-/// State shared between the public API and the audio thread.
-struct AudioState {
-    consumer: MidiConsumer,
-    synth: PolySynth,
-}
-
-/// The audio callback itself. Runs on the real-time OS audio thread.
-/// Must not allocate or block.
-fn process_callback(state: &Arc<Mutex<AudioState>>, output: &mut [f32]) {
-    // Zero output as a defensive default in case we bail early.
-    for s in output.iter_mut() {
-        *s = 0.0;
-    }
-    let Ok(mut state) = state.try_lock() else {
-        return; // Main thread is holding the lock — output silence this callback.
-    };
-    // Drain pending MIDI events.
-    while let Some(event) = state.consumer.pop() {
-        state.synth.handle_event(event);
-    }
-    state.synth.process_stereo(output);
-}
+// PolySynth and MidiConsumer are owned exclusively by the audio callback
+// closure — no shared state, no locks on the hot path. MIDI events arrive
+// through the lock-free SPSC ringbuffer (MidiConsumer::pop).
 
 #[cfg(test)]
 mod tests {

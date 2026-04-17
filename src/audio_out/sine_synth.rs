@@ -142,6 +142,9 @@ pub fn midi_note_to_freq(note: u8) -> f32 {
 #[derive(Debug)]
 pub struct PolySynth {
     voices: Vec<SineVoice>,
+    /// Pre-allocated mono scratch buffer, reused every callback to avoid
+    /// heap allocation on the audio thread.
+    scratch: Vec<f32>,
 }
 
 impl PolySynth {
@@ -151,6 +154,7 @@ impl PolySynth {
             voices: (0..max_polyphony)
                 .map(|_| SineVoice::new(sample_rate))
                 .collect(),
+            scratch: vec![0.0_f32; 2048],
         }
     }
 
@@ -188,10 +192,17 @@ impl PolySynth {
         for s in output.iter_mut() {
             *s = 0.0;
         }
-        // Render mono into a scratch buffer (stack-allocated up to 2048 frames).
-        let mut mono = vec![0.0_f32; frames];
+        // Grow the scratch buffer if the host sends a larger buffer than
+        // expected (rare — only on buffer-size change). This is the only
+        // allocation path and it amortises to zero after the first callback.
+        if self.scratch.len() < frames {
+            self.scratch.resize(frames, 0.0);
+        }
+        // Zero the scratch region we'll actually use.
+        let mono = &mut self.scratch[..frames];
+        mono.iter_mut().for_each(|s| *s = 0.0);
         for voice in self.voices.iter_mut() {
-            voice.process(&mut mono);
+            voice.process(mono);
         }
         // Interleave mono into stereo output.
         for (i, &s) in mono.iter().enumerate() {
