@@ -463,6 +463,38 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async setGeneratorMode(mode: string): Promise<void> {
+		try {
+			await invoke('set_generator_mode', { mode });
+		} catch (e) {
+			throw new Error(`Failed to set generator mode: ${e}`);
+		}
+	}
+
+	async setGeneratorEnabled(enabled: boolean): Promise<void> {
+		try {
+			await invoke('set_generator_enabled', { enabled });
+		} catch (e) {
+			throw new Error(`Failed to set generator enabled: ${e}`);
+		}
+	}
+
+	async setGeneratorNotes(notes: number[]): Promise<void> {
+		try {
+			await invoke('set_generator_notes', { notes });
+		} catch (e) {
+			throw new Error(`Failed to set generator notes: ${e}`);
+		}
+	}
+
+	async setGeneratorChordType(chordType: string): Promise<void> {
+		try {
+			await invoke('set_generator_chord_type', { chordType });
+		} catch (e) {
+			throw new Error(`Failed to set generator chord type: ${e}`);
+		}
+	}
+
 	private _detuneCents = 0;
 
 	setDetune(cents: number): void {

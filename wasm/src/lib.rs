@@ -6,6 +6,9 @@
 
 use wasm_bindgen::prelude::*;
 
+use contrapunk::generator::{
+    ArpDirection, ChordType, GeneratorEvent, GeneratorMode, NoteGenerator,
+};
 use contrapunk::harmony::VoiceLeadingStyle;
 use contrapunk::harmony::{
     CounterpointSpecies, CounterpointStrictness, HarmonyEngine, HarmonyMode, Key, OctaveMode,
@@ -178,6 +181,34 @@ fn parse_counterpoint_strictness(s: &str) -> Result<CounterpointStrictness, JsVa
             "Unknown counterpoint strictness: {}",
             s
         ))),
+    }
+}
+
+fn parse_generator_mode(s: &str) -> Result<GeneratorMode, JsValue> {
+    match s {
+        "HeldNotes" => Ok(GeneratorMode::HeldNotes),
+        "Chord" => Ok(GeneratorMode::Chord(ChordType::Major)),
+        "ArpeggioUp" => Ok(GeneratorMode::Arpeggio(ArpDirection::Up)),
+        "ArpeggioDown" => Ok(GeneratorMode::Arpeggio(ArpDirection::Down)),
+        "ArpeggioUpDown" => Ok(GeneratorMode::Arpeggio(ArpDirection::UpDown)),
+        "ScaleRunner" => Ok(GeneratorMode::ScaleRunner),
+        "RandomDiatonic" => Ok(GeneratorMode::RandomDiatonic),
+        _ => Err(JsValue::from_str(&format!("Unknown generator mode: {}", s))),
+    }
+}
+
+fn parse_chord_type(s: &str) -> Result<ChordType, JsValue> {
+    match s {
+        "Major" => Ok(ChordType::Major),
+        "Minor" => Ok(ChordType::Minor),
+        "Dim" => Ok(ChordType::Dim),
+        "Aug" => Ok(ChordType::Aug),
+        "Maj7" => Ok(ChordType::Maj7),
+        "Min7" => Ok(ChordType::Min7),
+        "Dom7" => Ok(ChordType::Dom7),
+        "Dim7" => Ok(ChordType::Dim7),
+        "HalfDim7" => Ok(ChordType::HalfDim7),
+        _ => Err(JsValue::from_str(&format!("Unknown chord type: {}", s))),
     }
 }
 
@@ -434,6 +465,8 @@ pub struct Engine {
     /// onto the delay queue; RAF ticks happen ~60Hz so this is always
     /// within ~16ms of real time.
     last_tick_ms: f64,
+    /// Note generator engine (arpeggio, scale runner, chord, etc.)
+    generator: NoteGenerator,
 }
 
 #[wasm_bindgen]
@@ -453,6 +486,7 @@ impl Engine {
             epoch_ms: None,
             pending_metronome_offs: Vec::new(),
             last_tick_ms: 0.0,
+            generator: NoteGenerator::new(),
         }
     }
 
@@ -854,6 +888,96 @@ impl Engine {
             metronome_off = fired_offs.pop();
         }
 
+        // Tick the note generator and route any resulting events through
+        // the harmony engine, producing scheduled MIDI notes.
+        let bpm = self.humanizer.config().bpm;
+        let gen_events = self.generator.tick(beat_pos, bpm);
+        let mut generator_notes: Vec<ScheduledMidiJs> = Vec::new();
+        for event in gen_events {
+            match event {
+                GeneratorEvent::NoteOn(note, velocity) => {
+                    let results = self.inner.harmonize_note_on(note);
+                    let port_map: Vec<usize> = self.inner.last_port_map().to_vec();
+                    let note_u8 = u8::from(note);
+                    if !self.last_input_notes.contains(&note_u8) {
+                        self.last_input_notes.push(note_u8);
+                    }
+                    for (i, &n) in results.iter().enumerate() {
+                        let port = port_map.get(i).copied().unwrap_or(i);
+                        let midi_note = u8::from(n);
+                        if i == 0 {
+                            // Melody — emit immediately.
+                            generator_notes.push(ScheduledMidiJs {
+                                port,
+                                bytes: vec![0x90, midi_note, velocity],
+                            });
+                        } else {
+                            if !self.last_harmony_notes.contains(&midi_note) {
+                                self.last_harmony_notes.push(midi_note);
+                            }
+                            let wmidi_vel =
+                                wmidi::Velocity::try_from(velocity.clamp(1, 127)).unwrap();
+                            let hn = self.humanizer.humanize_note_on(
+                                n,
+                                wmidi::Channel::Ch1,
+                                wmidi_vel,
+                                port,
+                            );
+                            if hn.delay_ms == 0 {
+                                generator_notes.push(ScheduledMidiJs {
+                                    port: hn.port,
+                                    bytes: vec![
+                                        0x90 | (hn.channel.index() & 0x0f),
+                                        u8::from(hn.note),
+                                        u8::from(hn.velocity),
+                                    ],
+                                });
+                            } else {
+                                self.delay_queue.push(hn, t);
+                            }
+                        }
+                    }
+                }
+                GeneratorEvent::NoteOff(note) => {
+                    let results = self.inner.harmonize_note_off(note);
+                    let port_map: Vec<usize> = self.inner.last_port_map().to_vec();
+                    let note_u8 = u8::from(note);
+                    self.last_input_notes.retain(|&n| n != note_u8);
+                    for (i, &n) in results.iter().enumerate() {
+                        let port = port_map.get(i).copied().unwrap_or(i);
+                        let midi_note = u8::from(n);
+                        self.last_harmony_notes.retain(|&h| h != midi_note);
+                        if i == 0 {
+                            generator_notes.push(ScheduledMidiJs {
+                                port,
+                                bytes: vec![0x80, midi_note, 0],
+                            });
+                        } else {
+                            let wmidi_vel = wmidi::Velocity::try_from(64u8).unwrap();
+                            let hn = self.humanizer.humanize_note_off(
+                                n,
+                                wmidi::Channel::Ch1,
+                                wmidi_vel,
+                                port,
+                            );
+                            if hn.delay_ms == 0 {
+                                generator_notes.push(ScheduledMidiJs {
+                                    port: hn.port,
+                                    bytes: vec![
+                                        0x80 | (hn.channel.index() & 0x0f),
+                                        u8::from(hn.note),
+                                        u8::from(hn.velocity),
+                                    ],
+                                });
+                            } else {
+                                self.delay_queue.push(hn, t);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Drain the humanized Note-On/Note-Off delay queue.
         let ready = self.delay_queue.drain_ready(t);
         let mut scheduled_notes: Vec<ScheduledMidiJs> = Vec::with_capacity(ready.len());
@@ -869,6 +993,9 @@ impl Engine {
                 bytes: msg,
             });
         }
+
+        // Merge generator-produced notes into the scheduled output.
+        scheduled_notes.extend(generator_notes);
 
         let cfg = self.humanizer.config();
         let result = TickResultJs {
@@ -1188,6 +1315,77 @@ impl Engine {
     /// Reset suggestion weights to Bach chorale calibrated defaults.
     pub fn reset_suggestion_weights(&mut self) {
         self.suggestion_config = contrapunk::harmony::suggestion::SuggestionConfig::default();
+    }
+
+    // === Note Generator ===
+
+    /// Set the generator mode from a string.
+    ///
+    /// Valid values: `"HeldNotes"`, `"Chord"`, `"ArpeggioUp"`, `"ArpeggioDown"`,
+    /// `"ArpeggioUpDown"`, `"ScaleRunner"`, `"RandomDiatonic"`.
+    ///
+    /// For `"Chord"` mode, use `set_generator_chord_type` to pick the chord quality.
+    pub fn set_generator_mode(&mut self, mode: &str) -> Result<(), JsValue> {
+        let parsed = parse_generator_mode(mode)?;
+        self.generator.set_mode(parsed);
+        Ok(())
+    }
+
+    /// Enable or disable the note generator.
+    ///
+    /// When disabled, any active notes are released (NoteOff events are
+    /// produced on the next `tick()`).
+    pub fn set_generator_enabled(&mut self, enabled: bool) {
+        let events = self.generator.set_enabled(enabled);
+        // Process any NoteOff events from disabling
+        for event in events {
+            if let GeneratorEvent::NoteOff(note) = event {
+                let _ = self.inner.harmonize_note_off(note);
+                let note_u8 = u8::from(note);
+                self.last_input_notes.retain(|&n| n != note_u8);
+            }
+        }
+    }
+
+    /// Set the notes the generator should use as its source material.
+    ///
+    /// Expects a JS `Uint8Array` or array of MIDI note numbers (0-127).
+    pub fn set_generator_notes(&mut self, notes: &[u8]) {
+        let wmidi_notes: Vec<wmidi::Note> = notes
+            .iter()
+            .map(|&n| wmidi::Note::from_u8_lossy(n))
+            .collect();
+        let events = self.generator.set_selected_notes(wmidi_notes);
+        // Process any NoteOff events from changing notes
+        for event in events {
+            if let GeneratorEvent::NoteOff(note) = event {
+                let _ = self.inner.harmonize_note_off(note);
+                let note_u8 = u8::from(note);
+                self.last_input_notes.retain(|&n| n != note_u8);
+            }
+        }
+    }
+
+    /// Set the chord type for Chord mode (e.g. `"Major"`, `"Minor"`, `"Dom7"`).
+    pub fn set_generator_chord_type(&mut self, chord_type: &str) -> Result<(), JsValue> {
+        let ct = parse_chord_type(chord_type)?;
+        self.generator.set_mode(GeneratorMode::Chord(ct));
+        Ok(())
+    }
+
+    /// Set the generator velocity (0-127).
+    pub fn set_generator_velocity(&mut self, velocity: u8) {
+        self.generator.set_velocity(velocity);
+    }
+
+    /// Set the generator note duration in beats (e.g. 0.25 for 16th notes).
+    pub fn set_generator_note_duration(&mut self, beats: f64) {
+        self.generator.set_note_duration_beats(beats);
+    }
+
+    /// Whether the generator is currently enabled.
+    pub fn is_generator_enabled(&self) -> bool {
+        self.generator.enabled()
     }
 }
 

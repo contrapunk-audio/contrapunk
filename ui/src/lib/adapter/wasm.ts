@@ -780,6 +780,42 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// but accept silently so shared UI code doesn't error.
 	}
 
+	async setGeneratorMode(mode: string): Promise<void> {
+		this.ensureInit();
+		try {
+			engine.set_generator_mode(mode);
+		} catch (e) {
+			throw new Error(`Failed to set generator mode: ${e}`);
+		}
+	}
+
+	async setGeneratorEnabled(enabled: boolean): Promise<void> {
+		this.ensureInit();
+		try {
+			engine.set_generator_enabled(enabled);
+		} catch (e) {
+			throw new Error(`Failed to set generator enabled: ${e}`);
+		}
+	}
+
+	async setGeneratorNotes(notes: number[]): Promise<void> {
+		this.ensureInit();
+		try {
+			engine.set_generator_notes(new Uint8Array(notes));
+		} catch (e) {
+			throw new Error(`Failed to set generator notes: ${e}`);
+		}
+	}
+
+	async setGeneratorChordType(chordType: string): Promise<void> {
+		this.ensureInit();
+		try {
+			engine.set_generator_chord_type(chordType);
+		} catch (e) {
+			throw new Error(`Failed to set generator chord type: ${e}`);
+		}
+	}
+
 	/**
 	 * Set global detune in cents and send pitch bend to all outputs.
 	 * Assumes standard ±2 semitone pitch bend range in your DAW.

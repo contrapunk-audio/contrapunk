@@ -218,6 +218,20 @@ export interface ContrapunkAdapter {
 	/** Set the guitar DSP pipeline configuration. */
 	setGuitarConfig(config: GuitarConfig): Promise<void>;
 
+	// -- Generator --
+
+	/** Set the generator mode (e.g. "HeldNotes", "ArpeggioUp", "Chord"). */
+	setGeneratorMode(mode: string): Promise<void>;
+
+	/** Enable or disable the note generator. */
+	setGeneratorEnabled(enabled: boolean): Promise<void>;
+
+	/** Set the notes the generator should use as source material (MIDI note numbers). */
+	setGeneratorNotes(notes: number[]): Promise<void>;
+
+	/** Set the chord type for Chord mode (e.g. "Major", "Minor", "Dom7"). */
+	setGeneratorChordType(chordType: string): Promise<void>;
+
 	// -- Detune --
 
 	/** Set global detune in cents (sends pitch bend to all outputs). */

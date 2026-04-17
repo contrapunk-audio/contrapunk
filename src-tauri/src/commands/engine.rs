@@ -17,6 +17,7 @@ use wmidi::{Channel, MidiMessage, Note, Velocity};
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::audio_out::{MidiEvent, MidiProducer};
 use contrapunk::chord::chord_display_with_analysis;
+use contrapunk::generator::{GeneratorEvent, NoteGenerator};
 use contrapunk::harmony::HarmonyEngine;
 use contrapunk::humanize::{DelayQueue, HumanizeConfig, HumanizedNote, Humanizer};
 use contrapunk::midi::input::connect_input;
@@ -119,6 +120,20 @@ pub fn start_routing(
         config.clone()
     };
 
+    // Capture generator config for the router thread.
+    // The generator lives inside the router loop (like the harmony engine)
+    // so live UI changes require stop+restart of routing.
+    let generator_config = {
+        let gen = state.generator.lock().map_err(|e| e.to_string())?;
+        (
+            gen.enabled(),
+            gen.mode().clone(),
+            gen.selected_notes().to_vec(),
+            gen.velocity(),
+            gen.note_duration_beats(),
+        )
+    };
+
     let routing_mode = { *state.routing_mode.lock().map_err(|e| e.to_string())? };
 
     // Capture guitar config for the router thread
@@ -206,6 +221,7 @@ pub fn start_routing(
             guitar_device,
             guitar_channel,
             guitar_config,
+            generator_config,
             in_notes,
             harm_notes,
             borr_notes,
@@ -272,6 +288,14 @@ type EngineConfig = (
     contrapunk::harmony::CounterpointStrictness,
 );
 
+type GeneratorConfig = (
+    bool,                                 // enabled
+    contrapunk::generator::GeneratorMode, // mode
+    Vec<wmidi::Note>,                     // selected_notes
+    u8,                                   // velocity
+    f64,                                  // note_duration_beats
+);
+
 fn run_tauri_router(
     input_port: usize,
     output_ports: &[usize],
@@ -282,6 +306,7 @@ fn run_tauri_router(
     guitar_device: String,
     guitar_channel: usize,
     guitar_config: GuitarInputConfig,
+    generator_config: GeneratorConfig,
     input_notes: Arc<Mutex<HashSet<u8>>>,
     harmony_notes: Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: Arc<Mutex<HashSet<u8>>>,
@@ -361,6 +386,15 @@ fn run_tauri_router(
 
     humanizer.clock_mut().start(now_ms());
 
+    // Create note generator from captured config
+    let (gen_enabled, gen_mode, gen_notes, gen_velocity, gen_duration) = generator_config;
+    let mut generator = NoteGenerator::new();
+    generator.set_mode(gen_mode);
+    generator.set_enabled(gen_enabled);
+    generator.set_selected_notes(gen_notes);
+    generator.set_velocity(gen_velocity);
+    generator.set_note_duration_beats(gen_duration);
+
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();
     let emit_interval = Duration::from_millis(33);
@@ -387,6 +421,151 @@ fn run_tauri_router(
             // but will break per-voice plugin routing in sub-project 2. Fix by adding
             // voice_index to HumanizedNote. See GitHub issue #33.
             let _ = send_humanized_note(&hn, &mut output_router, audio_out.as_mut(), hn.port as u8);
+        }
+
+        // Tick the note generator and route any resulting events through
+        // the harmony engine and output router.
+        let beat_pos = humanizer.clock().beat_position();
+        let bpm = humanizer.config().bpm;
+        let gen_events = generator.tick(beat_pos, bpm);
+        for event in gen_events {
+            match event {
+                GeneratorEvent::NoteOn(note, velocity) => {
+                    let vel = Velocity::try_from(velocity.clamp(1, 127)).unwrap();
+                    let notes = engine.harmonize_note_on(note);
+                    let num_outputs = output_router.connection_count();
+
+                    // Update shared input note state
+                    {
+                        let mut in_notes = input_notes.lock().unwrap();
+                        in_notes.insert(note as u8);
+                    }
+                    {
+                        let mut harm_notes = harmony_notes.lock().unwrap();
+                        for &n in notes.iter().skip(1) {
+                            harm_notes.insert(n as u8);
+                        }
+                    }
+                    if engine.last_borrowed_from().is_some() {
+                        let mut borr = borrowed_notes.lock().unwrap();
+                        for &n in notes.iter().skip(1) {
+                            borr.insert(n as u8);
+                        }
+                    }
+
+                    // Route through outputs (channel-based, matching routing_mode)
+                    let port_map = engine.last_port_map();
+                    match routing_mode {
+                        contrapunk::harmony::RoutingMode::ChannelBased => {
+                            for (i, &n) in notes.iter().enumerate() {
+                                let voice_channel = match i + 1 {
+                                    1 => Channel::Ch2,
+                                    2 => Channel::Ch3,
+                                    3 => Channel::Ch4,
+                                    4 => Channel::Ch5,
+                                    5 => Channel::Ch6,
+                                    6 => Channel::Ch7,
+                                    _ => Channel::Ch8,
+                                };
+                                let msg = MidiMessage::NoteOn(voice_channel, n, vel);
+                                let mut buf = vec![0u8; msg.bytes_size()];
+                                let _ = msg.copy_to_slice(&mut buf);
+                                let _ = output_router.send_to_first(&buf);
+                                if let Some(ref mut producer) = audio_out {
+                                    let _ = producer.push(MidiEvent::NoteOn {
+                                        voice: i as u8,
+                                        note: u8::from(n),
+                                        velocity,
+                                    });
+                                }
+                            }
+                        }
+                        contrapunk::harmony::RoutingMode::PortBased => {
+                            for (i, &n) in notes.iter().enumerate() {
+                                let port = if i < port_map.len() { port_map[i] } else { i };
+                                if port >= num_outputs {
+                                    continue;
+                                }
+                                let msg = MidiMessage::NoteOn(Channel::Ch1, n, vel);
+                                let mut buf = vec![0u8; msg.bytes_size()];
+                                let _ = msg.copy_to_slice(&mut buf);
+                                let _ = output_router.send_to_port(port, &buf);
+                                if let Some(ref mut producer) = audio_out {
+                                    let _ = producer.push(MidiEvent::NoteOn {
+                                        voice: i as u8,
+                                        note: u8::from(n),
+                                        velocity,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                GeneratorEvent::NoteOff(note) => {
+                    let notes = engine.harmonize_note_off(note);
+                    let num_outputs = output_router.connection_count();
+
+                    // Update shared note state
+                    {
+                        let mut in_notes = input_notes.lock().unwrap();
+                        in_notes.remove(&(note as u8));
+                    }
+                    {
+                        let mut harm_notes = harmony_notes.lock().unwrap();
+                        let mut borr = borrowed_notes.lock().unwrap();
+                        for &n in notes.iter().skip(1) {
+                            harm_notes.remove(&(n as u8));
+                            borr.remove(&(n as u8));
+                        }
+                    }
+
+                    let port_map = engine.last_port_map();
+                    let vel = Velocity::MIN;
+                    match routing_mode {
+                        contrapunk::harmony::RoutingMode::ChannelBased => {
+                            for (i, &n) in notes.iter().enumerate() {
+                                let voice_channel = match i + 1 {
+                                    1 => Channel::Ch2,
+                                    2 => Channel::Ch3,
+                                    3 => Channel::Ch4,
+                                    4 => Channel::Ch5,
+                                    5 => Channel::Ch6,
+                                    6 => Channel::Ch7,
+                                    _ => Channel::Ch8,
+                                };
+                                let msg = MidiMessage::NoteOff(voice_channel, n, vel);
+                                let mut buf = vec![0u8; msg.bytes_size()];
+                                let _ = msg.copy_to_slice(&mut buf);
+                                let _ = output_router.send_to_first(&buf);
+                                if let Some(ref mut producer) = audio_out {
+                                    let _ = producer.push(MidiEvent::NoteOff {
+                                        voice: i as u8,
+                                        note: u8::from(n),
+                                    });
+                                }
+                            }
+                        }
+                        contrapunk::harmony::RoutingMode::PortBased => {
+                            for (i, &n) in notes.iter().enumerate() {
+                                let port = if i < port_map.len() { port_map[i] } else { i };
+                                if port >= num_outputs {
+                                    continue;
+                                }
+                                let msg = MidiMessage::NoteOff(Channel::Ch1, n, vel);
+                                let mut buf = vec![0u8; msg.bytes_size()];
+                                let _ = msg.copy_to_slice(&mut buf);
+                                let _ = output_router.send_to_port(port, &buf);
+                                if let Some(ref mut producer) = audio_out {
+                                    let _ = producer.push(MidiEvent::NoteOff {
+                                        voice: i as u8,
+                                        note: u8::from(n),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Process MIDI messages
