@@ -124,10 +124,9 @@ pub fn start_routing(
         )
     };
 
-    let humanize_config = {
-        let config = state.humanize_config.lock().map_err(|e| e.to_string())?;
-        config.clone()
-    };
+    // Share the humanize config with the router thread so live UI
+    // changes (metronome toggle, swing, BPM) take effect immediately.
+    let humanize_config = Arc::clone(&state.humanize_config);
 
     // Capture generator config for the router thread.
     // The generator lives inside the router loop (like the harmony engine)
@@ -312,7 +311,7 @@ fn run_tauri_router(
     input_port: usize,
     output_ports: &[usize],
     config: EngineConfig,
-    humanize_config: HumanizeConfig,
+    humanize_config: Arc<Mutex<HumanizeConfig>>,
     routing_mode: contrapunk::harmony::RoutingMode,
     is_guitar: bool,
     guitar_device: String,
@@ -391,8 +390,12 @@ fn run_tauri_router(
     engine.set_counterpoint_species(cp_species);
     engine.set_counterpoint_strictness(cp_strictness);
 
-    // Create humanizer + metronome
-    let mut humanizer = Humanizer::new(humanize_config);
+    // Create humanizer + metronome from the shared config.
+    let initial_hconfig = humanize_config
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let mut humanizer = Humanizer::new(initial_hconfig);
     let mut delay_queue = DelayQueue::new();
     let mut metronome = contrapunk::humanize::Metronome::new();
     metronome.enabled = humanizer.config().metronome_enabled;
@@ -421,6 +424,12 @@ fn run_tauri_router(
     loop {
         if stop_signal.load(Ordering::SeqCst) {
             break;
+        }
+
+        // Poll for humanize config changes from the UI (metronome toggle,
+        // BPM, swing, etc.). Non-blocking: skip if the lock is held.
+        if let Ok(shared) = humanize_config.try_lock() {
+            humanizer.update_config(shared.clone());
         }
 
         // Tick humanizer

@@ -30,6 +30,8 @@ fn main() {
             commands::harmony::set_counterpoint_species,
             commands::harmony::set_voice_count,
             commands::harmony::set_counterpoint_strictness,
+            commands::harmony::get_humanize_state,
+            commands::harmony::set_humanize_config,
             commands::harmony::set_detune,
             commands::harmony::get_detune,
             // MIDI device management

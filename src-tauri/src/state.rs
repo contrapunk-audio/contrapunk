@@ -23,8 +23,9 @@ pub struct AppState {
     /// Core harmony engine (key, mode, scale, voice leading, etc.)
     pub engine: Mutex<HarmonyEngine>,
 
-    /// Humanization configuration
-    pub humanize_config: Mutex<HumanizeConfig>,
+    /// Humanization configuration — wrapped in Arc so the router thread
+    /// can poll for live changes (metronome toggle, BPM, swing, etc.)
+    pub humanize_config: Arc<Mutex<HumanizeConfig>>,
 
     /// Preset manager for built-in and custom presets
     pub preset_manager: Mutex<PresetManager>,
@@ -77,7 +78,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             engine: Mutex::new(HarmonyEngine::new(Key::C, HarmonyMode::PassThrough)),
-            humanize_config: Mutex::new(HumanizeConfig::default()),
+            humanize_config: Arc::new(Mutex::new(HumanizeConfig::default())),
             preset_manager: Mutex::new(PresetManager::new()),
             is_running: AtomicBool::new(false),
             input_notes: Mutex::new(HashSet::new()),
