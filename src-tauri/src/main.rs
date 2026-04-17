@@ -48,6 +48,11 @@ fn main() {
             commands::presets::load_preset,
             commands::presets::save_preset,
             commands::presets::delete_preset,
+            // Note generator
+            commands::generator::set_generator_mode,
+            commands::generator::set_generator_enabled,
+            commands::generator::set_generator_notes,
+            commands::generator::set_generator_chord_type,
             // Audio output
             commands::audio_out::list_audio_output_devices,
             commands::audio_out::start_audio_output,

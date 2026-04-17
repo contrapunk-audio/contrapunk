@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::audio_out::{AudioOutEngine, MidiProducer};
+use contrapunk::generator::NoteGenerator;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::humanize::HumanizeConfig;
 use contrapunk::preset::PresetManager;
@@ -52,6 +53,9 @@ pub struct AppState {
     /// Guitar audio channel index (0-based, e.g. 0 = left, 1 = right)
     pub guitar_channel: Mutex<usize>,
 
+    /// Note generator engine (arpeggio, scale runner, chord, etc.)
+    pub generator: Mutex<NoteGenerator>,
+
     /// MIDI routing mode (channel-based MPE or port-based)
     pub routing_mode: Mutex<RoutingMode>,
 
@@ -83,6 +87,7 @@ impl Default for AppState {
             guitar_config: Mutex::new(None),
             guitar_device: Mutex::new(String::new()),
             guitar_channel: Mutex::new(0),
+            generator: Mutex::new(NoteGenerator::new()),
             routing_mode: Mutex::new(RoutingMode::default()),
             stop_signal: Mutex::new(None),
             audio_out: Mutex::new(AudioOutEngine::new()),

@@ -239,6 +239,13 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async setGuitarDevice(_deviceName: string, _channel: number): Promise<void> {}
 	async setGuitarConfig(_config: GuitarConfig): Promise<void> {}
 
+	// -- Generator (not available in plugin mode yet) --
+
+	async setGeneratorMode(_mode: string): Promise<void> {}
+	async setGeneratorEnabled(_enabled: boolean): Promise<void> {}
+	async setGeneratorNotes(_notes: number[]): Promise<void> {}
+	async setGeneratorChordType(_chordType: string): Promise<void> {}
+
 	// -- Detune --
 
 	setDetune(cents: number): void {
