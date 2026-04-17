@@ -663,9 +663,13 @@ impl Engine {
             } else {
                 // Harmony — humanize. If humanization is disabled the
                 // Humanizer returns delay_ms=0 and velocity unchanged.
-                let hn = self
-                    .humanizer
-                    .humanize_note_on(n, wmidi::Channel::Ch1, wmidi_vel, port);
+                let hn = self.humanizer.humanize_note_on(
+                    n,
+                    wmidi::Channel::Ch1,
+                    wmidi_vel,
+                    port,
+                    i as u8,
+                );
                 if hn.delay_ms == 0 {
                     immediate.push(ScheduledMidiJs {
                         port: hn.port,
@@ -727,9 +731,13 @@ impl Engine {
                     bytes: vec![0x80, midi_note, 0],
                 });
             } else {
-                let hn = self
-                    .humanizer
-                    .humanize_note_off(n, wmidi::Channel::Ch1, wmidi_vel, port);
+                let hn = self.humanizer.humanize_note_off(
+                    n,
+                    wmidi::Channel::Ch1,
+                    wmidi_vel,
+                    port,
+                    i as u8,
+                );
                 if hn.delay_ms == 0 {
                     immediate.push(ScheduledMidiJs {
                         port: hn.port,

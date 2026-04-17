@@ -172,6 +172,24 @@ pub fn set_routing_mode(mode: String, state: State<AppState>) -> Result<(), Stri
     Ok(())
 }
 
+/// Set global detune in cents. The router thread reads this atomically each
+/// frame and sends MIDI pitch bend to all output ports when the value changes.
+#[tauri::command]
+pub fn set_detune(cents: i32, state: State<AppState>) -> Result<(), String> {
+    state
+        .detune_cents
+        .store(cents, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+
+/// Get the current detune value in cents.
+#[tauri::command]
+pub fn get_detune(state: State<AppState>) -> i32 {
+    state
+        .detune_cents
+        .load(std::sync::atomic::Ordering::Relaxed)
+}
+
 // ============================================================================
 // Parsing helpers
 // ============================================================================

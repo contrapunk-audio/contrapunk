@@ -199,6 +199,12 @@ pub struct HumanizedNote {
     /// Output port index for MIDI routing.
     pub port: usize,
 
+    /// Harmony voice index (0 = melody, 1+ = harmony voices).
+    ///
+    /// Used for per-voice audio synth routing and future per-voice plugin
+    /// chains. Distinct from `port` which is the physical MIDI output index.
+    pub voice_index: u8,
+
     /// Whether this is a note-off event.
     ///
     /// Note-off events use the humanization record from the corresponding

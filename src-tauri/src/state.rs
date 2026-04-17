@@ -4,7 +4,7 @@
 //! via `State<AppState>` in command handlers.
 
 use std::collections::HashSet;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicI32};
 use std::sync::{Arc, Mutex};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
@@ -63,6 +63,10 @@ pub struct AppState {
 
     /// MIDI producer for the audio output engine (None when engine is stopped)
     pub audio_out_producer: Mutex<Option<MidiProducer>>,
+
+    /// Global detune in cents. Read by the router thread each frame (lock-free).
+    /// Updated by the `set_detune` command.
+    pub detune_cents: Arc<AtomicI32>,
 }
 
 impl Default for AppState {
@@ -83,6 +87,7 @@ impl Default for AppState {
             stop_signal: Mutex::new(None),
             audio_out: Mutex::new(AudioOutEngine::new()),
             audio_out_producer: Mutex::new(None),
+            detune_cents: Arc::new(AtomicI32::new(0)),
         }
     }
 }

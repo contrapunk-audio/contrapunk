@@ -59,12 +59,8 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 export class TauriAdapter implements ContrapunkAdapter {
 	private _isRunning = false;
 	private _guitarSignalUnsub: UnlistenFn | null = null;
-	/** Local interval that mirrors the Rust BeatClock into the `beat` store
-	 *  while routing is active. Native Tauri doesn't emit per-beat events
-	 *  today, so we approximate at the configured BPM to keep the UI
-	 *  indicator animating in sync. Replaced when/if the backend starts
-	 *  emitting real `beat-update` events. */
-	private _beatInterval: ReturnType<typeof setInterval> | null = null;
+	/** Unsubscribe handle for the Rust-driven beat-update event. */
+	private _beatUpdateUnsub: UnlistenFn | null = null;
 
 	async init(): Promise<void> {
 		// Tauri is ready when this code runs in the webview.
@@ -248,7 +244,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		try {
 			await invoke('start_routing', { inputIdx, outputIndices });
 			this._isRunning = true;
-			this.startBeatTicker();
+			this.startBeatListener();
 
 			// If guitar audio mode, listen for signal events and feed guitar store
 			const GUITAR_AUDIO_SENTINEL = 999_997;
@@ -292,7 +288,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		try {
 			await invoke('stop_routing');
 			this._isRunning = false;
-			this.stopBeatTicker();
+			this.stopBeatListener();
 
 			// Clean up guitar signal listener
 			if (this._guitarSignalUnsub) {
@@ -467,7 +463,9 @@ export class TauriAdapter implements ContrapunkAdapter {
 
 	setDetune(cents: number): void {
 		this._detuneCents = cents;
-		// Tauri: pitch bend would be handled by the Rust backend
+		invoke('set_detune', { cents: Math.round(cents) }).catch(() => {
+			// best-effort — if routing isn't active, detune is applied on next start
+		});
 	}
 
 	getDetune(): number {
@@ -489,46 +487,33 @@ export class TauriAdapter implements ContrapunkAdapter {
 	}
 
 	/**
-	 * Start a local JS interval that mirrors the Rust BeatClock into the
-	 * `beat` store. The interval fires at `60_000 / bpm` ms and bumps the
-	 * beat position/number so the UI indicator animates in time.
-	 *
-	 * This approximates the real clock rather than driving it — the actual
-	 * metronome/swing runs inside Rust via router.rs. When the backend
-	 * starts emitting real `beat-update` events we can replace this.
+	 * Subscribe to real `beat-update` events emitted by the Rust router
+	 * thread on each BeatClock crossing. Replaces the old JS setInterval
+	 * approximation that drifted from the actual humanizer timing.
 	 */
-	private startBeatTicker(): void {
-		this.stopBeatTicker();
-		// Pull BPM from the current humanize state; fall back to 120.
-		this.getHumanizeState()
-			.then((hs) => {
-				const bpm = hs.bpm || 120;
-				beat.bpm = bpm;
-				beat.running = true;
-				beat.beatsPerBar = 4;
-				const intervalMs = 60_000 / bpm;
-				this._beatInterval = setInterval(() => {
-					beat.beatNumber = (beat.beatNumber + 1) % beat.beatsPerBar;
-					beat.beatPosition = beat.beatNumber;
-					beat.pulse = beat.pulse + 1;
-					beat.lastCrossedAt = performance.now();
-				}, intervalMs);
-			})
-			.catch(() => {
-				// If humanize-state isn't available, tick at 120bpm anyway
-				// so the indicator still animates.
-				beat.running = true;
-				this._beatInterval = setInterval(() => {
-					beat.beatNumber = (beat.beatNumber + 1) % 4;
-					beat.pulse = beat.pulse + 1;
-				}, 500);
-			});
+	private startBeatListener(): void {
+		this.stopBeatListener();
+		beat.running = true;
+		listen<{ beat_position: number; beat_number: number; bpm: number; running: boolean }>(
+			'beat-update',
+			(event) => {
+				const p = event.payload;
+				beat.beatPosition = p.beat_position;
+				beat.beatNumber = p.beat_number;
+				beat.bpm = p.bpm;
+				beat.running = p.running;
+				beat.pulse = beat.pulse + 1;
+				beat.lastCrossedAt = performance.now();
+			}
+		).then((unsub) => {
+			this._beatUpdateUnsub = unsub;
+		});
 	}
 
-	private stopBeatTicker(): void {
-		if (this._beatInterval) {
-			clearInterval(this._beatInterval);
-			this._beatInterval = null;
+	private stopBeatListener(): void {
+		if (this._beatUpdateUnsub) {
+			this._beatUpdateUnsub();
+			this._beatUpdateUnsub = null;
 		}
 		beat.running = false;
 	}

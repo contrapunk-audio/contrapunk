@@ -131,12 +131,8 @@ pub fn run_router(
         // Drain delay queue — includes fanout to audio synth for delayed notes.
         let current_ms = now_ms();
         for hn in delay_queue.drain_ready(current_ms) {
-            // FIXME(sub-project-2): voice_index is substituted with hn.port because
-            // HumanizedNote does not currently carry the original harmony voice index.
-            // PolySynth ignores the voice field in MidiEvent so this is benign today,
-            // but will break per-voice plugin routing in sub-project 2. Fix by adding
-            // voice_index to HumanizedNote. See GitHub issue #33.
-            let _ = send_humanized_note(&hn, &mut output_router, audio_out.as_mut(), hn.port as u8);
+            let _ =
+                send_humanized_note(&hn, &mut output_router, audio_out.as_mut(), hn.voice_index);
         }
 
         // Try to receive MIDI message with timeout
@@ -266,7 +262,6 @@ fn handle_note_on(
             msg.copy_to_slice(&mut buf)?;
             output.send_to_port(port, &buf)?;
 
-            // Fanout to audio synth queue (fire-and-forget).
             if let Some(ref mut producer) = audio_out {
                 let _ = producer.push(MidiEvent::NoteOn {
                     voice: i as u8,
@@ -275,19 +270,16 @@ fn handle_note_on(
                 });
             }
         } else {
-            // Harmony: humanize
-            let hn = humanizer.humanize_note_on(n, channel, velocity, port);
+            // Harmony: humanize with correct voice index
+            let hn = humanizer.humanize_note_on(n, channel, velocity, port, i as u8);
             if hn.delay_ms == 0 {
-                // `audio_out` is a mutable reference; we need to reborrow it
-                // for each iteration without consuming it.
-                send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8)?;
+                send_humanized_note(&hn, output, audio_out.as_deref_mut(), hn.voice_index)?;
             } else {
                 delay_queue.push(hn, now_ms);
             }
         }
     }
 
-    // Debug output
     if notes.len() > 1 {
         let note_strs: Vec<String> = notes
             .iter()
@@ -340,10 +332,10 @@ fn handle_note_off(
                 });
             }
         } else {
-            // Harmony: humanize note-off
-            let hn = humanizer.humanize_note_off(n, channel, velocity, port);
+            // Harmony: humanize note-off with correct voice index
+            let hn = humanizer.humanize_note_off(n, channel, velocity, port, i as u8);
             if hn.delay_ms == 0 {
-                send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8)?;
+                send_humanized_note(&hn, output, audio_out.as_deref_mut(), hn.voice_index)?;
             } else {
                 delay_queue.push(hn, now_ms);
             }

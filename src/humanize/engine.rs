@@ -133,6 +133,7 @@ impl Humanizer {
         channel: Channel,
         velocity: Velocity,
         port: usize,
+        voice_index: u8,
     ) -> HumanizedNote {
         if !self.config.enabled {
             return HumanizedNote {
@@ -142,6 +143,7 @@ impl Humanizer {
                 delay_ms: 0,
                 duration_delta_ms: 0,
                 port,
+                voice_index,
                 is_note_off: false,
             };
         }
@@ -200,6 +202,7 @@ impl Humanizer {
             delay_ms: total_delay,
             duration_delta_ms,
             port,
+            voice_index,
             is_note_off: false,
         }
     }
@@ -211,10 +214,10 @@ impl Humanizer {
         channel: Channel,
         velocity: Velocity,
         port: usize,
+        voice_index: u8,
     ) -> HumanizedNote {
         let note_num = u8::from(note);
         if let Some(record) = self.active_humanization.remove(&note_num) {
-            // Note-Off delay = original jitter + duration extension
             let total_delay = record
                 .delay_ms
                 .saturating_add(record.duration_delta_ms as u16);
@@ -225,10 +228,10 @@ impl Humanizer {
                 delay_ms: total_delay,
                 duration_delta_ms: record.duration_delta_ms,
                 port,
+                voice_index,
                 is_note_off: true,
             }
         } else {
-            // No matching Note-On record; pass through unchanged
             HumanizedNote {
                 note,
                 channel,
@@ -236,6 +239,7 @@ impl Humanizer {
                 delay_ms: 0,
                 duration_delta_ms: 0,
                 port,
+                voice_index,
                 is_note_off: true,
             }
         }

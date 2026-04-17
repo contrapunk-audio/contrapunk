@@ -4,7 +4,7 @@
 //! real-time note-update events to the frontend.
 
 use std::collections::HashSet;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -44,6 +44,15 @@ pub struct NoteUpdatePayload {
     pub chord_name: String,
     pub last_borrowed_from: String,
     pub current_key: String,
+}
+
+/// Payload for the "beat-update" Tauri event (replaces JS setInterval approximation).
+#[derive(Clone, Serialize)]
+pub struct BeatUpdatePayload {
+    pub beat_position: f64,
+    pub beat_number: u8,
+    pub bpm: f64,
+    pub running: bool,
 }
 
 /// Payload for the "guitar-signal" Tauri event (UI signal feedback).
@@ -194,6 +203,8 @@ pub fn start_routing(
         slot.take()
     };
 
+    let detune = Arc::clone(&state.detune_cents);
+
     // Spawn router thread
     thread::spawn(move || {
         if let Err(e) = run_tauri_router(
@@ -213,6 +224,7 @@ pub fn start_routing(
             stop,
             app_handle,
             audio_out_producer,
+            detune,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -289,6 +301,7 @@ fn run_tauri_router(
     stop_signal: Arc<std::sync::atomic::AtomicBool>,
     app_handle: AppHandle,
     mut audio_out: Option<MidiProducer>,
+    detune_cents: Arc<AtomicI32>,
 ) -> anyhow::Result<()> {
     let (
         key,
@@ -365,6 +378,9 @@ fn run_tauri_router(
     let mut last_emit = Instant::now();
     let emit_interval = Duration::from_millis(33);
 
+    // Detune: track the previous value so we only send pitch bend on change.
+    let mut prev_detune_cents: i32 = detune_cents.load(Ordering::Relaxed);
+
     // Main routing loop
     loop {
         if stop_signal.load(Ordering::SeqCst) {
@@ -375,18 +391,44 @@ fn run_tauri_router(
         let current_ms = now_ms();
         humanizer.tick(current_ms);
 
-        // Push the current beat-phase position into the harmony engine so
-        // beat-aware modes (Species 2-4 counterpoint) can react to it.
+        // Push the current beat-phase position into the harmony engine.
         engine.set_counterpoint_beat_phase(Some(humanizer.clock().beat_position()));
+
+        // Emit beat-update event on every beat crossing so the UI gets
+        // Rust-driven timing instead of a drifting JS setInterval.
+        if let Some(beat_num) = humanizer.clock().beat_crossed() {
+            let _ = app_handle.emit(
+                "beat-update",
+                BeatUpdatePayload {
+                    beat_position: humanizer.clock().beat_position(),
+                    beat_number: beat_num,
+                    bpm: humanizer.config().bpm,
+                    running: humanizer.clock().running,
+                },
+            );
+        }
+
+        // Apply detune as MIDI pitch bend when the value changes.
+        let current_detune = detune_cents.load(Ordering::Relaxed);
+        if current_detune != prev_detune_cents {
+            prev_detune_cents = current_detune;
+            // Convert cents to 14-bit pitch bend (center = 8192, ±2 semitones = ±200 cents)
+            let max_cents = 200i32; // standard ±2 semitone range
+            let bend_14bit = ((current_detune as f64 / max_cents as f64) * 8192.0 + 8192.0) as u16;
+            let bend_clamped = bend_14bit.clamp(0, 16383);
+            let lsb = (bend_clamped & 0x7F) as u8;
+            let msb = ((bend_clamped >> 7) & 0x7F) as u8;
+            let pitch_bend_msg = [0xE0, lsb, msb]; // channel 0
+            let num_ports = output_router.connection_count();
+            for p in 0..num_ports {
+                let _ = output_router.send_to_port(p, &pitch_bend_msg);
+            }
+        }
 
         // Drain delay queue — fanout to audio synth for delayed harmony notes.
         for hn in delay_queue.drain_ready(current_ms) {
-            // FIXME(sub-project-2): voice_index is substituted with hn.port because
-            // HumanizedNote does not currently carry the original harmony voice index.
-            // PolySynth ignores the voice field in MidiEvent so this is benign today,
-            // but will break per-voice plugin routing in sub-project 2. Fix by adding
-            // voice_index to HumanizedNote. See GitHub issue #33.
-            let _ = send_humanized_note(&hn, &mut output_router, audio_out.as_mut(), hn.port as u8);
+            let _ =
+                send_humanized_note(&hn, &mut output_router, audio_out.as_mut(), hn.voice_index);
         }
 
         // Process MIDI messages
@@ -668,9 +710,14 @@ fn handle_note_on(
                         });
                     }
                 } else {
-                    let hn = humanizer.humanize_note_on(n, voice_channel, velocity, 0);
+                    let hn = humanizer.humanize_note_on(n, voice_channel, velocity, 0, i as u8);
                     if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8);
+                        let _ = send_humanized_note(
+                            &hn,
+                            output,
+                            audio_out.as_deref_mut(),
+                            hn.voice_index,
+                        );
                     } else {
                         delay_queue.push(hn, now_ms);
                     }
@@ -678,7 +725,6 @@ fn handle_note_on(
             }
         }
         contrapunk::harmony::RoutingMode::PortBased => {
-            // Legacy: each voice to a separate MIDI output port
             for (i, &n) in notes.iter().enumerate() {
                 let port = if i < port_map.len() { port_map[i] } else { i };
                 if port >= num_outputs {
@@ -690,7 +736,6 @@ fn handle_note_on(
                     let mut buf = vec![0u8; msg.bytes_size()];
                     let _ = msg.copy_to_slice(&mut buf);
                     let _ = output.send_to_port(port, &buf);
-                    // Fanout to audio synth queue (fire-and-forget).
                     if let Some(ref mut producer) = audio_out {
                         let _ = producer.push(MidiEvent::NoteOn {
                             voice: i as u8,
@@ -699,9 +744,14 @@ fn handle_note_on(
                         });
                     }
                 } else {
-                    let hn = humanizer.humanize_note_on(n, channel, velocity, port);
+                    let hn = humanizer.humanize_note_on(n, channel, velocity, port, i as u8);
                     if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8);
+                        let _ = send_humanized_note(
+                            &hn,
+                            output,
+                            audio_out.as_deref_mut(),
+                            hn.voice_index,
+                        );
                     } else {
                         delay_queue.push(hn, now_ms);
                     }
@@ -771,9 +821,14 @@ fn handle_note_off(
                         });
                     }
                 } else {
-                    let hn = humanizer.humanize_note_off(n, voice_channel, velocity, 0);
+                    let hn = humanizer.humanize_note_off(n, voice_channel, velocity, 0, i as u8);
                     if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8);
+                        let _ = send_humanized_note(
+                            &hn,
+                            output,
+                            audio_out.as_deref_mut(),
+                            hn.voice_index,
+                        );
                     } else {
                         delay_queue.push(hn, now_ms);
                     }
@@ -792,7 +847,6 @@ fn handle_note_off(
                     let mut buf = vec![0u8; msg.bytes_size()];
                     let _ = msg.copy_to_slice(&mut buf);
                     let _ = output.send_to_port(port, &buf);
-                    // Fanout to audio synth queue (fire-and-forget).
                     if let Some(ref mut producer) = audio_out {
                         let _ = producer.push(MidiEvent::NoteOff {
                             voice: i as u8,
@@ -800,9 +854,14 @@ fn handle_note_off(
                         });
                     }
                 } else {
-                    let hn = humanizer.humanize_note_off(n, channel, velocity, port);
+                    let hn = humanizer.humanize_note_off(n, channel, velocity, port, i as u8);
                     if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(&hn, output, audio_out.as_deref_mut(), i as u8);
+                        let _ = send_humanized_note(
+                            &hn,
+                            output,
+                            audio_out.as_deref_mut(),
+                            hn.voice_index,
+                        );
                     } else {
                         delay_queue.push(hn, now_ms);
                     }
