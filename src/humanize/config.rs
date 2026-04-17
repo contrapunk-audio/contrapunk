@@ -6,6 +6,92 @@
 use serde::{Deserialize, Serialize};
 use wmidi::{Channel, Note, Velocity};
 
+// ---------------------------------------------------------------------------
+// Metronome types
+// ---------------------------------------------------------------------------
+
+/// Accent level for a single beat in the metronome pattern.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AccentLevel {
+    /// Full accent (typically beat 1).
+    Accent,
+    /// Normal click.
+    Normal,
+    /// Soft ghost click.
+    Ghost,
+    /// Silent — skip this beat.
+    Mute,
+}
+
+/// Subdivision depth for metronome clicks.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MetronomeSubdivision {
+    /// Quarter-note clicks only (whole beats).
+    None,
+    /// Add 8th-note subdivision clicks between beats.
+    Eighth,
+    /// Add 16th-note subdivision clicks between beats.
+    Sixteenth,
+}
+
+impl Default for MetronomeSubdivision {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// Sound set for metronome clicks (MIDI percussion note mappings).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MetronomeSound {
+    /// High/low woodblock (notes 76/77).
+    Woodblock,
+    /// Side stick / rimshot (notes 37/37 with velocity differentiation).
+    Rimshot,
+    /// Cowbell (notes 56/56 with velocity differentiation).
+    Cowbell,
+    /// Closed hi-hat (notes 42/42 with velocity differentiation).
+    HiHat,
+}
+
+impl Default for MetronomeSound {
+    fn default() -> Self {
+        Self::Woodblock
+    }
+}
+
+impl MetronomeSound {
+    /// Returns (accent_note, normal_note, subdivision_note) MIDI note numbers.
+    pub fn midi_notes(&self) -> (u8, u8, u8) {
+        match self {
+            Self::Woodblock => (76, 77, 42),
+            Self::Rimshot => (37, 37, 42),
+            Self::Cowbell => (56, 56, 42),
+            Self::HiHat => (42, 42, 42),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Swing types
+// ---------------------------------------------------------------------------
+
+/// How swing delay is interpolated from the swing amount.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SwingCurve {
+    /// Proportional delay: delay = amount * half-beat duration.
+    Linear,
+    /// Snap toward triplet feel (2:1 at amount=0.33, 3:1 at amount=0.5).
+    Triplet,
+    /// Gentle onset, steep at high values (Logic Pro style).
+    Logarithmic,
+}
+
+impl Default for SwingCurve {
+    fn default() -> Self {
+        Self::Linear
+    }
+}
+
 /// Master configuration for all humanization parameters.
 ///
 /// Controls timing jitter, velocity variation, swing/groove, and tempo settings.
@@ -93,7 +179,25 @@ pub struct HumanizeConfig {
     /// - 0.2-0.3: Light shuffle
     /// - 0.4-0.5: Jazz swing
     /// - 0.6+: Extreme swing (rarely used)
+    ///
+    /// Legacy field: when `swing_8th_amount` and `swing_16th_amount` are both
+    /// zero (the default), this value is used as the 8th-note swing amount
+    /// for backward compatibility.
     pub swing_amount: f32,
+
+    /// Swing amount for 8th-note offbeats (0.0-1.0).
+    ///
+    /// When non-zero, overrides `swing_amount` for 8th-note swing.
+    #[serde(default)]
+    pub swing_8th_amount: f32,
+
+    /// Swing amount for 16th-note offbeats (0.0-1.0).
+    #[serde(default)]
+    pub swing_16th_amount: f32,
+
+    /// Swing interpolation curve.
+    #[serde(default)]
+    pub swing_curve: SwingCurve,
 
     /// Tempo in beats per minute.
     ///
@@ -120,6 +224,43 @@ pub struct HumanizeConfig {
     ///
     /// `None` means use the first available output port.
     pub metronome_output_port: Option<usize>,
+
+    /// Metronome subdivision depth (None / Eighth / Sixteenth).
+    #[serde(default)]
+    pub metronome_subdivision: MetronomeSubdivision,
+
+    /// Per-beat accent pattern. Length should match `beats_per_bar`.
+    ///
+    /// Default: `[Accent, Normal, Normal, Normal]` for 4/4 time.
+    #[serde(default = "default_accent_pattern")]
+    pub metronome_accent_pattern: Vec<AccentLevel>,
+
+    /// Volume multiplier for metronome clicks (0.0-1.0).
+    ///
+    /// Applied to all click velocities before clamping to 1-127.
+    #[serde(default = "default_metronome_volume")]
+    pub metronome_volume: f32,
+
+    /// Sound set for metronome clicks.
+    #[serde(default)]
+    pub metronome_sound: MetronomeSound,
+
+    /// Number of count-in bars before routing starts (0 = disabled).
+    #[serde(default)]
+    pub metronome_count_in_bars: u8,
+}
+
+fn default_accent_pattern() -> Vec<AccentLevel> {
+    vec![
+        AccentLevel::Accent,
+        AccentLevel::Normal,
+        AccentLevel::Normal,
+        AccentLevel::Normal,
+    ]
+}
+
+fn default_metronome_volume() -> f32 {
+    1.0
 }
 
 impl Default for HumanizeConfig {
@@ -135,11 +276,19 @@ impl Default for HumanizeConfig {
             duration_variation_ms: 20,
             swing_enabled: false,
             swing_amount: 0.0,
+            swing_8th_amount: 0.0,
+            swing_16th_amount: 0.0,
+            swing_curve: SwingCurve::default(),
             bpm: 120.0,
             beats_per_bar: 4,
             beat_unit: 4,
             metronome_enabled: false,
             metronome_output_port: None,
+            metronome_subdivision: MetronomeSubdivision::default(),
+            metronome_accent_pattern: default_accent_pattern(),
+            metronome_volume: 1.0,
+            metronome_sound: MetronomeSound::default(),
+            metronome_count_in_bars: 0,
         }
     }
 }
