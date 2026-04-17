@@ -420,10 +420,25 @@ fn run_tauri_router(
             .take()
     };
 
+    // Pending metronome NoteOff: (midi_note, fire_at_ms). Delayed so the
+    // PolySynth envelope has time to rise before release — pushing NoteOn
+    // and NoteOff in the same frame produces silence.
+    let mut pending_metro_off: Option<(u8, f64)> = None;
+
     // Main routing loop
     loop {
         if stop_signal.load(Ordering::SeqCst) {
             break;
+        }
+
+        // Fire pending metronome NoteOff if its time has come.
+        if let Some((note, fire_at)) = pending_metro_off {
+            if now_ms() >= fire_at {
+                if let Some(ref mut producer) = audio_out {
+                    let _ = producer.push(MidiEvent::NoteOff { voice: 255, note });
+                }
+                pending_metro_off = None;
+            }
         }
 
         // Hot-swap audio-out producer: if the slot has a new producer
@@ -479,6 +494,13 @@ fn run_tauri_router(
                 // Audio-out: short sine click through PolySynth.
                 // Accent (beat 0) = C7 (96) loud, others = G6 (91) softer.
                 if let Some(ref mut producer) = audio_out {
+                    // Release any previous click first
+                    if let Some((prev_note, _)) = pending_metro_off.take() {
+                        let _ = producer.push(MidiEvent::NoteOff {
+                            voice: 255,
+                            note: prev_note,
+                        });
+                    }
                     let (click_note, click_vel) = if crossing.sixteenth == 0 && crossing.beat == 0 {
                         (96u8, 120u8) // accent: C7
                     } else if crossing.sixteenth == 0 {
@@ -487,15 +509,12 @@ fn run_tauri_router(
                         (98u8, 60u8) // subdivision: D7, quiet
                     };
                     let _ = producer.push(MidiEvent::NoteOn {
-                        voice: 255, // reserved for metronome
+                        voice: 255,
                         note: click_note,
                         velocity: click_vel,
                     });
-                    // Immediate NoteOff → Attack+Release envelope = short click
-                    let _ = producer.push(MidiEvent::NoteOff {
-                        voice: 255,
-                        note: click_note,
-                    });
+                    // Schedule NoteOff 50ms later so the envelope has time to rise
+                    pending_metro_off = Some((click_note, now_ms() + 50.0));
                 }
             }
         }
