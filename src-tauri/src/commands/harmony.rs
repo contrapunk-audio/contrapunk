@@ -118,6 +118,14 @@ pub fn set_interchange(enabled: bool, range: u8, state: State<AppState>) -> Resu
     Ok(())
 }
 
+/// Sets the number of output voices (1 = melody only, 2+ = melody + harmonies).
+#[tauri::command]
+pub fn set_voice_count(count: usize, state: State<AppState>) -> Result<(), String> {
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.set_voice_count(count);
+    Ok(())
+}
+
 /// Sets the voice position (which voice slot the user input occupies).
 #[tauri::command]
 pub fn set_voice_position(position: usize, state: State<AppState>) -> Result<(), String> {

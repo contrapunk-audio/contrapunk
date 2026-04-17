@@ -391,9 +391,11 @@ fn run_tauri_router(
     engine.set_counterpoint_species(cp_species);
     engine.set_counterpoint_strictness(cp_strictness);
 
-    // Create humanizer
+    // Create humanizer + metronome
     let mut humanizer = Humanizer::new(humanize_config);
     let mut delay_queue = DelayQueue::new();
+    let mut metronome = contrapunk::humanize::Metronome::new();
+    metronome.enabled = humanizer.config().metronome_enabled;
     let epoch = Instant::now();
     let now_ms = || epoch.elapsed().as_secs_f64() * 1000.0;
 
@@ -440,6 +442,18 @@ fn run_tauri_router(
                     running: humanizer.clock().running,
                 },
             );
+        }
+
+        // Generate metronome clicks on subdivision crossings and send
+        // to the configured output port (or port 0 if unset).
+        if let Some(crossing) = humanizer.clock().subdivision_crossed() {
+            metronome.enabled = humanizer.config().metronome_enabled;
+            if let Some(click_bytes) =
+                metronome.generate_click_for_crossing(&crossing, humanizer.config())
+            {
+                let metro_port = humanizer.config().metronome_output_port.unwrap_or(0);
+                let _ = output_router.send_to_port(metro_port, &click_bytes);
+            }
         }
 
         // Apply detune as MIDI pitch bend when the value changes.
