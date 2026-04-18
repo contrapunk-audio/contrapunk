@@ -61,12 +61,15 @@ pub mod engine;
 pub mod groove;
 pub mod metronome;
 pub mod scheduler;
+pub mod tap_tempo;
 
 pub use beat_clock::{BeatClock, SubdivisionCrossing, SubdivisionPhase};
 pub use config::{
-    AccentLevel, HumanizeConfig, HumanizedNote, MetronomeSound, MetronomeSubdivision, SwingCurve,
+    AccentLevel, HumanizeConfig, HumanizedNote, MetronomeSound, MetronomeSubdivision,
+    PerVoiceOverride, SwingCurve, VelocityDistribution,
 };
 pub use engine::Humanizer;
 pub use groove::{all_templates, GrooveTemplate};
 pub use metronome::Metronome;
 pub use scheduler::DelayQueue;
+pub use tap_tempo::TapTempo;

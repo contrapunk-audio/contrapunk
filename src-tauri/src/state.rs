@@ -11,7 +11,7 @@ use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::audio_out::{AudioOutEngine, MidiProducer};
 use contrapunk::generator::NoteGenerator;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
-use contrapunk::humanize::HumanizeConfig;
+use contrapunk::humanize::{HumanizeConfig, TapTempo};
 use contrapunk::preset::PresetManager;
 
 /// Application state managed by Tauri.
@@ -70,6 +70,9 @@ pub struct AppState {
     /// Arc-wrapped so the router thread can poll for hot-swap without restart.
     pub audio_out_producer: Arc<Mutex<Option<MidiProducer>>>,
 
+    /// Tap-tempo state for BPM detection from rhythmic taps.
+    pub tap_tempo: Mutex<TapTempo>,
+
     /// Global detune in cents. Read by the router thread each frame (lock-free).
     /// Updated by the `set_detune` command.
     pub detune_cents: Arc<AtomicI32>,
@@ -94,6 +97,7 @@ impl Default for AppState {
             stop_signal: Mutex::new(None),
             audio_out: Mutex::new(AudioOutEngine::new()),
             audio_out_producer: Arc::new(Mutex::new(None)),
+            tap_tempo: Mutex::new(TapTempo::new()),
             detune_cents: Arc::new(AtomicI32::new(0)),
         }
     }

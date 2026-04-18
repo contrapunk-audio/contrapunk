@@ -245,23 +245,18 @@ class GuitarInputStore {
 			},
 		};
 
+		const TUNER_BUFFER_SIZE = 2048;
+
 		const stream = await navigator.mediaDevices.getUserMedia(constraints);
 		this.tunerStream = stream;
 		const ctx = new AudioContext({ sampleRate: 48000 });
 		this.tunerContext = ctx;
 		const source = ctx.createMediaStreamSource(stream);
 		const inputChannels = Math.max(channelIndex + 1, source.channelCount);
-		const proc = ctx.createScriptProcessor(2048, inputChannels, 1);
-		proc.channelCountMode = 'explicit';
-		proc.channelInterpretation = 'discrete';
-		this.tunerProcessor = proc;
 
-		proc.onaudioprocess = (event) => {
+		/** Process a buffer of tuner samples (shared by both paths). */
+		const processTunerSamples = (samples: Float32Array) => {
 			if (!this.tunerActive || this.tunerPhase !== 'tuning') return;
-
-			const input = event.inputBuffer;
-			const ch = Math.min(channelIndex, input.numberOfChannels - 1);
-			const samples = input.getChannelData(ch);
 
 			// Compute RMS
 			let sum = 0;
@@ -324,14 +319,63 @@ class GuitarInputStore {
 			}
 		};
 
-		source.connect(proc);
-		proc.connect(ctx.destination);
+		if (ctx.audioWorklet) {
+			// AudioWorklet path — accumulate 128-sample chunks into TUNER_BUFFER_SIZE
+			await ctx.audioWorklet.addModule('/audio-capture-processor.js');
+			const worklet = new AudioWorkletNode(ctx, 'audio-capture-processor', {
+				numberOfInputs: 1,
+				numberOfOutputs: 0,
+				channelCount: inputChannels,
+				channelCountMode: 'explicit',
+				channelInterpretation: 'discrete',
+				processorOptions: { channelIndex },
+			});
+			this.tunerWorklet = worklet;
+
+			const accumBuf = new Float32Array(TUNER_BUFFER_SIZE);
+			let accumPos = 0;
+
+			worklet.port.onmessage = (event: MessageEvent) => {
+				const chunk: Float32Array = event.data.samples;
+				let srcOffset = 0;
+				while (srcOffset < chunk.length) {
+					const remaining = TUNER_BUFFER_SIZE - accumPos;
+					const toCopy = Math.min(remaining, chunk.length - srcOffset);
+					accumBuf.set(chunk.subarray(srcOffset, srcOffset + toCopy), accumPos);
+					accumPos += toCopy;
+					srcOffset += toCopy;
+
+					if (accumPos >= TUNER_BUFFER_SIZE) {
+						processTunerSamples(accumBuf);
+						accumPos = 0;
+					}
+				}
+			};
+
+			source.connect(worklet);
+		} else {
+			// ScriptProcessorNode fallback
+			const proc = ctx.createScriptProcessor(TUNER_BUFFER_SIZE, inputChannels, 1);
+			proc.channelCountMode = 'explicit';
+			proc.channelInterpretation = 'discrete';
+			this.tunerProcessor = proc;
+
+			proc.onaudioprocess = (event) => {
+				const input = event.inputBuffer;
+				const ch = Math.min(channelIndex, input.numberOfChannels - 1);
+				processTunerSamples(input.getChannelData(ch));
+			};
+
+			source.connect(proc);
+			proc.connect(ctx.destination);
+		}
 	}
 
 	// Tuner audio resources
 	private tunerStream: MediaStream | null = null;
 	private tunerContext: AudioContext | null = null;
-	private tunerProcessor: ScriptProcessorNode | null = null;
+	private tunerWorklet: AudioWorkletNode | null = null;
+	private tunerProcessor: ScriptProcessorNode | null = null; // fallback
 
 	/** Advance to the next string, or finish tuning. */
 	private advanceTunerString() {
@@ -382,7 +426,13 @@ class GuitarInputStore {
 
 	/** Stop the tuner audio capture. */
 	private async stopTunerCapture() {
+		if (this.tunerWorklet) {
+			this.tunerWorklet.port.onmessage = null;
+			this.tunerWorklet.disconnect();
+			this.tunerWorklet = null;
+		}
 		if (this.tunerProcessor) {
+			this.tunerProcessor.onaudioprocess = null;
 			this.tunerProcessor.disconnect();
 			this.tunerProcessor = null;
 		}

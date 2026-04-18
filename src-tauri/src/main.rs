@@ -34,6 +34,7 @@ fn main() {
             commands::harmony::set_humanize_config,
             commands::harmony::set_detune,
             commands::harmony::get_detune,
+            commands::harmony::tap_tempo,
             // MIDI device management
             commands::midi::list_midi_inputs,
             commands::midi::list_midi_outputs,

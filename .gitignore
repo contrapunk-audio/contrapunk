@@ -25,3 +25,4 @@ ui/src/lib/wasm-pkg/
 
 # AU wrapper build artifacts
 au-wrapper/build/
+.claude/worktrees/

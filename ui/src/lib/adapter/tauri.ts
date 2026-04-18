@@ -499,6 +499,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async tapTempo(): Promise<number | null> {
+		try {
+			return await invoke('tap_tempo') as number | null;
+		} catch {
+			return null;
+		}
+	}
+
 	private _detuneCents = 0;
 
 	setDetune(cents: number): void {

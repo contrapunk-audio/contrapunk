@@ -216,6 +216,24 @@ pub fn set_detune(cents: i32, state: State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Record a tap for tempo detection. Returns computed BPM after enough taps,
+/// and updates humanize_config.bpm so the change propagates live to the router.
+#[tauri::command]
+pub fn tap_tempo(state: State<AppState>) -> Result<Option<f64>, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+        * 1000.0;
+    let mut tap = state.tap_tempo.lock().map_err(|e| e.to_string())?;
+    let bpm = tap.tap(now);
+    if let Some(bpm) = bpm {
+        let mut config = state.humanize_config.lock().map_err(|e| e.to_string())?;
+        config.bpm = bpm;
+    }
+    Ok(bpm)
+}
+
 /// Get the current detune value in cents.
 #[tauri::command]
 pub fn get_detune(state: State<AppState>) -> i32 {

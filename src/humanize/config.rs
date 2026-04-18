@@ -72,6 +72,64 @@ impl MetronomeSound {
 }
 
 // ---------------------------------------------------------------------------
+// Velocity types
+// ---------------------------------------------------------------------------
+
+/// Velocity variation distribution shape.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum VelocityDistribution {
+    /// Flat random ±variation (original behavior).
+    Uniform,
+    /// Bell curve centered on original velocity.
+    Gaussian,
+    /// Asymmetric: more likely softer, occasionally louder.
+    Pareto,
+}
+
+impl Default for VelocityDistribution {
+    fn default() -> Self {
+        Self::Uniform
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-voice overrides
+// ---------------------------------------------------------------------------
+
+/// Per-voice scaling multipliers for humanization parameters.
+/// All default to 1.0 (no override).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PerVoiceOverride {
+    /// Multiplier for jitter (0.0 = no jitter, 1.0 = full, 2.0 = double).
+    #[serde(default = "one")]
+    pub jitter_scale: f32,
+    /// Multiplier for swing amount.
+    #[serde(default = "one")]
+    pub swing_scale: f32,
+    /// Multiplier for velocity variation.
+    #[serde(default = "one")]
+    pub velocity_scale: f32,
+    /// Multiplier for duration variation.
+    #[serde(default = "one")]
+    pub duration_scale: f32,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+impl Default for PerVoiceOverride {
+    fn default() -> Self {
+        Self {
+            jitter_scale: 1.0,
+            swing_scale: 1.0,
+            velocity_scale: 1.0,
+            duration_scale: 1.0,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Swing types
 // ---------------------------------------------------------------------------
 
@@ -249,10 +307,42 @@ pub struct HumanizeConfig {
     #[serde(default)]
     pub metronome_count_in_bars: u8,
 
+    /// Velocity variation distribution shape.
+    #[serde(default)]
+    pub velocity_distribution: VelocityDistribution,
+
+    /// Accent strength on strong beats (0.0 = disabled, 1.0 = full).
+    /// Boosts velocity on beats 0 and 2 (in 4/4) by up to 30%.
+    #[serde(default)]
+    pub accent_strength: f32,
+
+    /// Per-voice humanization scale multipliers.
+    /// Index matches voice_index (0 = melody, 1+ = harmony voices).
+    /// Empty vec = all voices use global settings (scale 1.0).
+    #[serde(default)]
+    pub per_voice_overrides: Vec<PerVoiceOverride>,
+
     /// Currently active groove template, if any. Set by `GrooveTemplate::apply()`,
     /// cleared to `None` when the user manually adjusts parameters.
     #[serde(default)]
     pub groove_template: Option<super::groove::GrooveTemplate>,
+}
+
+static DEFAULT_VOICE_OVERRIDE: PerVoiceOverride = PerVoiceOverride {
+    jitter_scale: 1.0,
+    swing_scale: 1.0,
+    velocity_scale: 1.0,
+    duration_scale: 1.0,
+};
+
+impl HumanizeConfig {
+    /// Returns the per-voice override for the given voice index.
+    /// Falls back to a static default (all 1.0) if the index is out of bounds.
+    pub fn voice_override(&self, voice_index: u8) -> &PerVoiceOverride {
+        self.per_voice_overrides
+            .get(voice_index as usize)
+            .unwrap_or(&DEFAULT_VOICE_OVERRIDE)
+    }
 }
 
 fn default_accent_pattern() -> Vec<AccentLevel> {
@@ -294,6 +384,9 @@ impl Default for HumanizeConfig {
             metronome_volume: 1.0,
             metronome_sound: MetronomeSound::default(),
             metronome_count_in_bars: 0,
+            velocity_distribution: VelocityDistribution::default(),
+            accent_strength: 0.0,
+            per_voice_overrides: Vec::new(),
             groove_template: None,
         }
     }
