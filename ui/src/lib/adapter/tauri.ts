@@ -212,6 +212,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 			if (config.bpm !== undefined) snakeConfig.bpm = config.bpm;
 			if (config.metronomeEnabled !== undefined)
 				snakeConfig.metronome_enabled = config.metronomeEnabled;
+			if (config.metronomeSubdivision !== undefined)
+				snakeConfig.metronome_subdivision = config.metronomeSubdivision;
+			if (config.metronomeSound !== undefined)
+				snakeConfig.metronome_sound = config.metronomeSound;
+			if (config.metronomeVolume !== undefined)
+				snakeConfig.metronome_volume = config.metronomeVolume;
+			if (config.metronomeCountInBars !== undefined)
+				snakeConfig.metronome_count_in_bars = config.metronomeCountInBars;
 			await invoke('set_humanize_config', { config: snakeConfig });
 		} catch (e) {
 			throw new Error(`Failed to set humanize config: ${e}`);

@@ -348,6 +348,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 			if (config.bpm !== undefined) merged.bpm = config.bpm;
 			if (config.metronomeEnabled !== undefined)
 				merged.metronome_enabled = config.metronomeEnabled;
+			if (config.metronomeSubdivision !== undefined)
+				merged.metronome_subdivision = config.metronomeSubdivision;
+			if (config.metronomeSound !== undefined)
+				merged.metronome_sound = config.metronomeSound;
+			if (config.metronomeVolume !== undefined)
+				merged.metronome_volume = config.metronomeVolume;
+			if (config.metronomeCountInBars !== undefined)
+				merged.metronome_count_in_bars = config.metronomeCountInBars;
 			engine.set_humanize_config(merged);
 		} catch (e) {
 			throw new Error(`Failed to set humanize config: ${e}`);
