@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { adapter, platformName } from '$lib/adapter';
 	import type { HumanizeState } from '$lib/adapter';
+	import { beat } from '$lib/stores/beat.svelte';
+	import { ui } from '$lib/stores/ui.svelte';
 
 	// Humanization is now available in all runtimes that implement the
 	// adapter (native/Tauri, WASM browser, and — as a no-op — plugin).
@@ -17,6 +19,26 @@
 	let bpm = $state(120);
 	let metronomeEnabled = $state(false);
 
+	// Metronome config state
+	let metronomeSubdivision = $state<string>('None');
+	let metronomeSound = $state<string>('Woodblock');
+	let metronomeVolume = $state<number>(0.8);
+	let metronomeCountInBars = $state<number>(0);
+
+	// Beat indicator derived state
+	let beatCount = $derived(beat.beatNumber % 4);
+	let beatDuration = $derived(60 / (beat.bpm || 120));
+
+	const subdivisions: { label: string; value: string }[] = [
+		{ label: '\u2669', value: 'None' },
+		{ label: '\u266A', value: 'Eighth' },
+		{ label: '\u266C', value: 'Sixteenth' },
+	];
+
+	const sounds: string[] = ['Woodblock', 'Rimshot', 'Cowbell', 'HiHat'];
+
+	const countInOptions: number[] = [0, 1, 2];
+
 	// Sync from backend on mount
 	$effect(() => {
 		loadHumanizeState();
@@ -32,6 +54,10 @@
 			swingAmount = Math.round(state.swingAmount * 100);
 			bpm = state.bpm;
 			metronomeEnabled = state.metronomeEnabled;
+			metronomeSubdivision = state.metronomeSubdivision ?? 'None';
+			metronomeSound = state.metronomeSound ?? 'Woodblock';
+			metronomeVolume = state.metronomeVolume ?? 0.8;
+			metronomeCountInBars = state.metronomeCountInBars ?? 0;
 		} catch {
 			// Adapter not ready yet — use defaults
 		}
@@ -52,6 +78,10 @@
 				swingAmount: swingAmount / 100,
 				bpm,
 				metronomeEnabled,
+				metronomeSubdivision,
+				metronomeSound,
+				metronomeVolume,
+				metronomeCountInBars,
 			});
 		} catch {
 			// Adapter call failed — UI state stays as-is
@@ -65,6 +95,26 @@
 
 	function toggleMetronome() {
 		metronomeEnabled = !metronomeEnabled;
+		pushConfig();
+	}
+
+	function setSubdivision(value: string) {
+		metronomeSubdivision = value;
+		pushConfig();
+	}
+
+	function setSound(value: string) {
+		metronomeSound = value;
+		pushConfig();
+	}
+
+	function onVolumeChange(e: Event) {
+		metronomeVolume = Number((e.target as HTMLInputElement).value) / 100;
+		pushConfig();
+	}
+
+	function setCountIn(value: number) {
+		metronomeCountInBars = value;
 		pushConfig();
 	}
 
@@ -189,9 +239,9 @@
 </div>
 
 {#if !isPluginMode}
-<!-- Tempo Section -->
+<!-- Tempo / Metronome Section -->
 <div class="card">
-	<div class="card-header font-pixel">Tempo</div>
+	<div class="card-header font-pixel">Tempo / Metronome</div>
 
 	<div class="tempo-row">
 		<div class="bpm-display font-pixel">{bpm}</div>
@@ -213,7 +263,8 @@
 		</div>
 	</div>
 
-	<div class="toggle-row metro-row">
+	<!-- Metronome toggle + beat indicator -->
+	<div class="metro-header">
 		<button
 			class="pixel-btn toggle-btn"
 			class:toggle-on={metronomeEnabled}
@@ -222,10 +273,83 @@
 			{metronomeEnabled ? 'ON' : 'OFF'}
 		</button>
 		<span class="metro-label font-pixel">METRO</span>
-		{#if metronomeEnabled}
-			<div class="beat-dot"></div>
-		{/if}
+		<div class="beat-pips">
+			{#each [0, 1, 2, 3] as b}
+				<div
+					class="beat-pip"
+					class:active={beat.running && beatCount === b}
+					class:downbeat={b === 0 && beat.running && beatCount === 0}
+					class:animate={ui.animationsEnabled && beat.running}
+					style:animation-duration="{beatDuration}s"
+				></div>
+			{/each}
+		</div>
 	</div>
+
+	{#if metronomeEnabled}
+		<div class="metro-controls">
+			<!-- Subdivision selector -->
+			<div class="metro-row-group">
+				<span class="metro-field-label font-pixel">SUBDIV</span>
+				<div class="metro-btn-group">
+					{#each subdivisions as sub}
+						<button
+							class="pixel-btn metro-opt-btn"
+							class:metro-opt-active={metronomeSubdivision === sub.value}
+							onclick={() => setSubdivision(sub.value)}
+							title={sub.value}
+						>{sub.label}</button>
+					{/each}
+				</div>
+			</div>
+
+			<!-- Sound selector -->
+			<div class="metro-row-group">
+				<span class="metro-field-label font-pixel">SOUND</span>
+				<div class="metro-btn-group">
+					{#each sounds as s}
+						<button
+							class="pixel-btn metro-opt-btn metro-sound-btn"
+							class:metro-opt-active={metronomeSound === s}
+							onclick={() => setSound(s)}
+						>{s.slice(0, 4).toUpperCase()}</button>
+					{/each}
+				</div>
+			</div>
+
+			<!-- Volume slider -->
+			<div class="slider-row">
+				<span class="slider-label font-pixel">VOL</span>
+				<div class="slider-track-wrapper">
+					<input
+						type="range"
+						min="0"
+						max="100"
+						step="1"
+						value={Math.round(metronomeVolume * 100)}
+						oninput={onVolumeChange}
+						class="hld-range"
+					/>
+					<div class="slider-fill" style:width="{metronomeVolume * 100}%"></div>
+				</div>
+				<span class="slider-value font-pixel">{Math.round(metronomeVolume * 100)}%</span>
+			</div>
+
+			<!-- Count-in selector -->
+			<div class="metro-row-group">
+				<span class="metro-field-label font-pixel">COUNT-IN</span>
+				<div class="metro-btn-group">
+					{#each countInOptions as c}
+						<button
+							class="pixel-btn metro-opt-btn"
+							class:metro-opt-active={metronomeCountInBars === c}
+							onclick={() => setCountIn(c)}
+						>{c === 0 ? 'OFF' : c + 'BAR'}</button>
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 {/if}
 
@@ -377,7 +501,11 @@
 		text-rendering: optimizeSpeed;
 	}
 
-	.metro-row {
+	/* === Metronome Section === */
+	.metro-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		margin-top: 6px;
 	}
 
@@ -388,16 +516,94 @@
 		text-rendering: optimizeSpeed;
 	}
 
-	.beat-dot {
-		width: 6px;
-		height: 6px;
-		background: var(--color-accent-teal);
-		box-shadow: 0 0 6px var(--color-accent-teal);
-		animation: beat-pulse 0.5s ease-in-out infinite;
+	.beat-pips {
+		display: flex;
+		gap: 3px;
+		align-items: center;
+		margin-left: auto;
 	}
 
-	@keyframes beat-pulse {
-		0%, 100% { opacity: 0.4; }
-		50% { opacity: 1; }
+	.beat-pip {
+		width: 6px;
+		height: 6px;
+		background: var(--color-widget-inactive);
+		border: 1px solid var(--color-border);
+		transition: none;
+	}
+
+	.beat-pip.active {
+		background: var(--color-accent-cyan);
+		border-color: var(--color-accent-cyan-dim);
+		box-shadow: 0 0 4px var(--color-accent-cyan);
+	}
+
+	.beat-pip.active.downbeat {
+		background: var(--color-accent-magenta);
+		border-color: var(--color-accent-magenta-dim);
+		box-shadow: 0 0 6px var(--color-accent-magenta);
+	}
+
+	.beat-pip.active.animate {
+		animation: pip-flash ease-out;
+	}
+
+	@keyframes pip-flash {
+		0% {
+			opacity: 1;
+			transform: scale(1.3);
+		}
+		60% {
+			opacity: 0.9;
+			transform: scale(1);
+		}
+		100% {
+			opacity: 0.6;
+			transform: scale(1);
+		}
+	}
+
+	.metro-controls {
+		margin-top: 6px;
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+
+	.metro-row-group {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.metro-field-label {
+		color: var(--color-text-secondary);
+		font-size: 6px;
+		min-width: 42px;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	.metro-btn-group {
+		display: flex;
+		gap: 2px;
+		flex-wrap: wrap;
+	}
+
+	.metro-opt-btn {
+		min-width: 24px;
+		padding: 2px 4px;
+		font-size: 6px;
+	}
+
+	.metro-sound-btn {
+		font-size: 5px;
+		min-width: 28px;
+	}
+
+	.metro-opt-active {
+		background: var(--color-accent-teal);
+		border-color: var(--color-accent-cyan);
+		box-shadow: var(--glow-teal);
+		color: #ffffff;
 	}
 </style>

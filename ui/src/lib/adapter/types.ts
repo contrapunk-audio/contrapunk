@@ -54,6 +54,10 @@ export interface HumanizeState {
 	swingAmount: number;
 	bpm: number;
 	metronomeEnabled: boolean;
+	metronomeSubdivision?: string;  // "None" | "Eighth" | "Sixteenth"
+	metronomeSound?: string;        // "Woodblock" | "Rimshot" | "Cowbell" | "HiHat"
+	metronomeVolume?: number;       // 0.0-1.0
+	metronomeCountInBars?: number;  // 0, 1, or 2
 }
 
 /** Guitar DSP pipeline configuration sent to the backend. */
