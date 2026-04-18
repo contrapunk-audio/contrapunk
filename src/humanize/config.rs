@@ -248,6 +248,11 @@ pub struct HumanizeConfig {
     /// Number of count-in bars before routing starts (0 = disabled).
     #[serde(default)]
     pub metronome_count_in_bars: u8,
+
+    /// Currently active groove template, if any. Set by `GrooveTemplate::apply()`,
+    /// cleared to `None` when the user manually adjusts parameters.
+    #[serde(default)]
+    pub groove_template: Option<super::groove::GrooveTemplate>,
 }
 
 fn default_accent_pattern() -> Vec<AccentLevel> {
@@ -289,6 +294,7 @@ impl Default for HumanizeConfig {
             metronome_volume: 1.0,
             metronome_sound: MetronomeSound::default(),
             metronome_count_in_bars: 0,
+            groove_template: None,
         }
     }
 }
