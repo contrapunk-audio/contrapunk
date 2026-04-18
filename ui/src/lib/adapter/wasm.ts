@@ -15,6 +15,7 @@ import type {
 	Preset
 } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
+import { WebSynth } from '$lib/audio/webSynth';
 import { guitar } from '$lib/stores/guitar.svelte';
 import { beat } from '$lib/stores/beat.svelte';
 
@@ -53,6 +54,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private _guitarChannel = 0;
 	/** requestAnimationFrame handle for the beat/humanize tick loop. */
 	private tickRafHandle: number | null = null;
+	/** Browser-side Web Audio synth for audio output without external MIDI hardware. */
+	private webSynth: WebSynth | null = null;
 
 	async init(): Promise<void> {
 		if (this.initialized) return;
@@ -136,6 +139,17 @@ export class WasmAdapter implements ContrapunkAdapter {
 									out.send(s.bytes);
 								} catch {
 									/* ignore */
+								}
+							}
+							// Also feed scheduled notes to the Web Audio synth
+							if (this.webSynth && Array.isArray(s.bytes) && s.bytes.length >= 3) {
+								const status = s.bytes[0] & 0xf0;
+								const note = s.bytes[1];
+								const velocity = s.bytes[2];
+								if (status === 0x90 && velocity > 0) {
+									this.webSynth.noteOn(note, velocity);
+								} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
+									this.webSynth.noteOff(note);
 								}
 							}
 						}
@@ -474,6 +488,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 						for (const s of humanized.immediate) {
 							const out = outs[s.port % Math.max(1, outs.length)];
 							if (out) out.send(s.bytes);
+							// Feed immediate harmony notes to the Web Audio synth
+							if (self.webSynth && Array.isArray(s.bytes) && s.bytes.length >= 3) {
+								const st = s.bytes[0] & 0xf0;
+								if (st === 0x90 && s.bytes[2] > 0) {
+									self.webSynth.noteOn(s.bytes[1], s.bytes[2]);
+								}
+							}
 						}
 					} catch {
 						// Fall back to plain note_on if humanization fails.
@@ -483,6 +504,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 							for (let i = 0; i < sorted.length; i++) {
 								if (outs.length > 0) {
 									outs[i % outs.length].send([0x90, sorted[i], velocity]);
+								}
+								// Feed fallback notes to Web Audio synth
+								if (self.webSynth) {
+									self.webSynth.noteOn(sorted[i], velocity);
 								}
 							}
 						} catch {
@@ -500,6 +525,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 						for (const s of humanized.immediate) {
 							const out = outs[s.port % Math.max(1, outs.length)];
 							if (out) out.send(s.bytes);
+							// Feed immediate note-off to Web Audio synth
+							if (self.webSynth && Array.isArray(s.bytes) && s.bytes.length >= 3) {
+								const st = s.bytes[0] & 0xf0;
+								if (st === 0x80 || (st === 0x90 && s.bytes[2] === 0)) {
+									self.webSynth.noteOff(s.bytes[1]);
+								}
+							}
 						}
 					} catch {
 						try {
@@ -508,6 +540,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 							for (let i = 0; i < sorted.length; i++) {
 								if (outs.length > 0) {
 									outs[i % outs.length].send([0x80, sorted[i], 0]);
+								}
+								// Feed fallback note-off to Web Audio synth
+								if (self.webSynth) {
+									self.webSynth.noteOff(sorted[i]);
 								}
 							}
 						} catch {
@@ -618,6 +654,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 			}
 		}
 
+		// Silence any active Web Audio synth voices (but keep the synth alive —
+		// its lifecycle is managed by startAudioOutput/stopAudioOutput)
+		if (this.webSynth) {
+			this.webSynth.silence();
+		}
+
 		// Clear engine's tracked note state
 		if (engine) {
 			try {
@@ -647,6 +689,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[i % this.activeOutputs.length].send([0x90, sorted[i], vel]);
 				}
+				// Feed injected notes to Web Audio synth
+				if (this.webSynth) {
+					this.webSynth.noteOn(sorted[i], vel);
+				}
 			}
 			return sorted;
 		} catch {
@@ -662,6 +708,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 			for (let i = 0; i < sorted.length; i++) {
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[i % this.activeOutputs.length].send([0x80, sorted[i], 0]);
+				}
+				// Feed injected note-off to Web Audio synth
+				if (this.webSynth) {
+					this.webSynth.noteOff(sorted[i]);
 				}
 			}
 			return sorted;
@@ -766,13 +816,20 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async startAudioOutput(_opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void> {
-		console.warn('[contrapunk] audio output not available in browser — use desktop app');
+		if (this.webSynth) return; // already running
+		this.webSynth = new WebSynth();
+		await this.webSynth.resume();
 	}
 
-	async stopAudioOutput(): Promise<void> {}
+	async stopAudioOutput(): Promise<void> {
+		if (this.webSynth) {
+			this.webSynth.destroy();
+			this.webSynth = null;
+		}
+	}
 
 	async isAudioOutputRunning(): Promise<boolean> {
-		return false;
+		return this.webSynth !== null;
 	}
 
 	async listAudioDevices(): Promise<string[]> {
