@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::preset::PresetManager;
+use contrapunk::transport::Transport;
 
 /// Application state managed by Tauri.
 ///
@@ -69,6 +70,11 @@ pub struct AppState {
     /// Global detune in cents. Read by the router thread each frame (lock-free).
     /// Updated by the `set_detune` command.
     pub detune_cents: Arc<AtomicI32>,
+
+    /// Sample-accurate transport clock. Driven by the audio-output
+    /// callback (see `audio_clock`). Shared across command threads and
+    /// the audio thread via atomics.
+    pub transport: Arc<Transport>,
 }
 
 impl Default for AppState {
@@ -89,6 +95,9 @@ impl Default for AppState {
             router_tx: Mutex::new(None),
             panic_pending: Arc::new(AtomicBool::new(false)),
             detune_cents: Arc::new(AtomicI32::new(0)),
+            // Placeholder sample rate; audio_clock::start() corrects it
+            // to the actual cpal device rate at app launch.
+            transport: Transport::new(48_000),
         }
     }
 }

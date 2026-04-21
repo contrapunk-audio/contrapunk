@@ -61,5 +61,6 @@ export type {
 	GuitarConfig,
 	MidiDevice,
 	NoteState,
-	Preset
+	Preset,
+	TransportState
 } from './types';

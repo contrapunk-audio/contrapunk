@@ -6,15 +6,31 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audio_clock;
 mod commands;
 mod guitar_bridge;
 mod state;
 
+use std::sync::Arc;
+
 use state::AppState;
+use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .setup(|app| {
+            // Start the audio clock: a silent cpal output stream that ticks
+            // the Transport and emits `beat-update` events.
+            let transport = Arc::clone(&app.state::<AppState>().transport);
+            if let Err(e) = audio_clock::start(app.handle().clone(), transport) {
+                eprintln!(
+                    "[main] audio_clock::start failed: {} (transport will not tick)",
+                    e
+                );
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Harmony engine control
             commands::harmony::get_engine_state,
@@ -51,6 +67,13 @@ fn main() {
             commands::presets::load_preset,
             commands::presets::save_preset,
             commands::presets::delete_preset,
+            // Transport / clock
+            commands::transport::get_transport_state,
+            commands::transport::transport_play,
+            commands::transport::transport_stop,
+            commands::transport::transport_reset,
+            commands::transport::set_bpm,
+            commands::transport::set_time_signature,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

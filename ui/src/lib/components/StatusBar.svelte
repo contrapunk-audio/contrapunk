@@ -2,6 +2,7 @@
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import TransportBar from './TransportBar.svelte';
 
 	/**
 	 * Toggle MIDI routing on/off.
@@ -61,6 +62,9 @@
 	>
 		{engine.isRunning ? 'ACTIVE' : 'STOPPED'}
 	</span>
+
+	<!-- Transport: play/stop + BPM + beat pips -->
+	<TransportBar />
 
 	<!-- Chord display -->
 	<div class="chord-info">

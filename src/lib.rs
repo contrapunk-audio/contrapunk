@@ -51,6 +51,7 @@ pub mod chord;
 pub mod harmony;
 pub mod midi;
 pub mod preset;
+pub mod transport;
 
 // =============================================================================
 // Native-only modules (require midir, networking, etc.)

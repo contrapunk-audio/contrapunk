@@ -11,7 +11,8 @@ import type {
 	GuitarConfig,
 	MidiDevice,
 	NoteState,
-	Preset
+	Preset,
+	TransportState
 } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { guitar } from '$lib/stores/guitar.svelte';
@@ -612,6 +613,28 @@ export class WasmAdapter implements ContrapunkAdapter {
 	getDetune(): number {
 		return this._detuneCents;
 	}
+
+	// -- Transport (WASM stubs — browser build has no sample-accurate
+	// clock yet; AudioContext.currentTime path is a future M2.1). --
+
+	async getTransportState(): Promise<TransportState> {
+		return {
+			running: false,
+			bpm: 120,
+			beatsPerBar: 4,
+			beatUnit: 4,
+			sampleRate: 48_000,
+			samplePos: 0,
+			beatPosition: 0,
+			bar: 0
+		};
+	}
+
+	async transportPlay(): Promise<void> {}
+	async transportStop(): Promise<void> {}
+	async transportReset(): Promise<void> {}
+	async setBpm(_bpm: number): Promise<void> {}
+	async setTimeSignature(_beatsPerBar: number, _beatUnit: number): Promise<void> {}
 
 	private stopNotePolling(): void {
 		if (this.pollingHandle !== null) {

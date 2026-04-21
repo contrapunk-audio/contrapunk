@@ -13,7 +13,8 @@ import type {
 	GuitarConfig,
 	MidiDevice,
 	NoteState,
-	Preset
+	Preset,
+	TransportState
 } from './types';
 
 declare global {
@@ -211,4 +212,24 @@ export class PluginAdapter implements ContrapunkAdapter {
 		return this._detuneCents;
 	}
 
+	// -- Transport (plugin mode — DAW owns transport) --
+
+	async getTransportState(): Promise<TransportState> {
+		return {
+			running: false,
+			bpm: 120,
+			beatsPerBar: 4,
+			beatUnit: 4,
+			sampleRate: 48_000,
+			samplePos: 0,
+			beatPosition: 0,
+			bar: 0
+		};
+	}
+
+	async transportPlay(): Promise<void> {}
+	async transportStop(): Promise<void> {}
+	async transportReset(): Promise<void> {}
+	async setBpm(_bpm: number): Promise<void> {}
+	async setTimeSignature(_beatsPerBar: number, _beatUnit: number): Promise<void> {}
 }

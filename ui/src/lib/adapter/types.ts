@@ -60,6 +60,18 @@ export interface Preset {
 	isBuiltin: boolean;
 }
 
+/** Snapshot of transport / clock state. */
+export interface TransportState {
+	running: boolean;
+	bpm: number;
+	beatsPerBar: number;
+	beatUnit: number;
+	sampleRate: number;
+	samplePos: number;
+	beatPosition: number;
+	bar: number;
+}
+
 /**
  * Unified adapter interface for communicating with the Rust backend.
  *
@@ -187,6 +199,26 @@ export interface ContrapunkAdapter {
 
 	/** Get the current detune value in cents. */
 	getDetune(): number;
+
+	// -- Transport (sample-accurate clock) --
+
+	/** Get a snapshot of the current transport state. */
+	getTransportState(): Promise<TransportState>;
+
+	/** Start the transport (resume from current position). */
+	transportPlay(): Promise<void>;
+
+	/** Stop the transport (freeze at current position). */
+	transportStop(): Promise<void>;
+
+	/** Reset sample position to 0. */
+	transportReset(): Promise<void>;
+
+	/** Set the tempo in BPM (clamped to [20, 400] on the backend). */
+	setBpm(bpm: number): Promise<void>;
+
+	/** Set the time signature (beats per bar × beat unit). */
+	setTimeSignature(beatsPerBar: number, beatUnit: number): Promise<void>;
 
 	// -- Lifecycle --
 

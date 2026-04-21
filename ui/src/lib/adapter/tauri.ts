@@ -8,13 +8,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { guitar } from '$lib/stores/guitar.svelte';
+import { transport } from '$lib/stores/transport.svelte';
 import type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
 	MidiDevice,
 	NoteState,
-	Preset
+	Preset,
+	TransportState
 } from './types';
 
 /**
@@ -57,11 +59,32 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 export class TauriAdapter implements ContrapunkAdapter {
 	private _isRunning = false;
 	private _guitarSignalUnsub: UnlistenFn | null = null;
+	private _beatUpdateUnsub: UnlistenFn | null = null;
 
 	async init(): Promise<void> {
 		// Tauri is ready when this code runs in the webview.
 		// Fetch initial state to confirm backend is available.
 		await this.getEngineState();
+
+		// Subscribe once to transport beat-update events. The audio
+		// clock emits one per beat crossing; the store updates and
+		// components re-render via $effect on `pulse`.
+		this._beatUpdateUnsub = await listen<{
+			total_beat: number;
+			beat_in_bar: number;
+			bar: number;
+			bpm: number;
+			running: boolean;
+		}>('beat-update', (event) => {
+			const p = event.payload;
+			transport.applyBeatUpdate({
+				totalBeat: p.total_beat,
+				beatInBar: p.beat_in_bar,
+				bar: p.bar,
+				bpm: p.bpm,
+				running: p.running
+			});
+		});
 	}
 
 	async getEngineState(): Promise<EngineState> {
@@ -381,4 +404,39 @@ export class TauriAdapter implements ContrapunkAdapter {
 		return this._detuneCents;
 	}
 
+	// -- Transport --
+
+	async getTransportState(): Promise<TransportState> {
+		const raw = (await invoke('get_transport_state')) as Record<string, unknown>;
+		return {
+			running: raw.running as boolean,
+			bpm: raw.bpm as number,
+			beatsPerBar: raw.beats_per_bar as number,
+			beatUnit: raw.beat_unit as number,
+			sampleRate: raw.sample_rate as number,
+			samplePos: raw.sample_pos as number,
+			beatPosition: raw.beat_position as number,
+			bar: raw.bar as number
+		};
+	}
+
+	async transportPlay(): Promise<void> {
+		await invoke('transport_play');
+	}
+
+	async transportStop(): Promise<void> {
+		await invoke('transport_stop');
+	}
+
+	async transportReset(): Promise<void> {
+		await invoke('transport_reset');
+	}
+
+	async setBpm(bpm: number): Promise<void> {
+		await invoke('set_bpm', { bpm });
+	}
+
+	async setTimeSignature(beatsPerBar: number, beatUnit: number): Promise<void> {
+		await invoke('set_time_signature', { beatsPerBar, beatUnit });
+	}
 }

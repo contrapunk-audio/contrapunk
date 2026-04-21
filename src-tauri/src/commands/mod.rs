@@ -8,3 +8,4 @@ pub mod guitar;
 pub mod harmony;
 pub mod midi;
 pub mod presets;
+pub mod transport;
