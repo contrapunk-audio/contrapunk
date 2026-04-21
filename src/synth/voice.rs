@@ -6,6 +6,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
 use super::params::{SynthEvent, SynthParams, Waveform};
+use crate::chain::{AudioBlock, MidiBlockEvent};
 
 const MAX_VOICES: usize = 8;
 
@@ -140,6 +141,9 @@ impl Synth {
 
     /// Render `output.len() / channels` frames. Buffer is interleaved:
     /// the same mono signal is written to every channel per frame.
+    ///
+    /// This writes INTO `output`, overwriting whatever was there. The
+    /// synth is always the first block in the chain, so that's fine.
     pub fn render(&mut self, output: &mut [f32], channels: usize) {
         self.process_events();
 
@@ -155,6 +159,9 @@ impl Synth {
                     v.active = false;
                     v.stage = EnvStage::Idle;
                 }
+            }
+            for s in output.iter_mut() {
+                *s = 0.0;
             }
             return;
         }
@@ -242,6 +249,43 @@ impl Synth {
                 output[base + ch] = mixed;
             }
         }
+    }
+}
+
+impl AudioBlock for Synth {
+    fn name(&self) -> &str {
+        "Synth"
+    }
+
+    fn type_id(&self) -> &str {
+        "builtin.synth"
+    }
+
+    fn process(&mut self, buffer: &mut [f32], channels: usize) {
+        self.render(buffer, channels);
+    }
+
+    fn midi_event(&mut self, event: MidiBlockEvent) {
+        // Translate the chain-level event into an internal SynthEvent
+        // applied immediately. This bypasses the mpsc queue used by
+        // the router thread path; both are valid entry points.
+        match event {
+            MidiBlockEvent::NoteOn { note, velocity } => self.note_on(note, velocity),
+            MidiBlockEvent::NoteOff { note } => self.note_off(note),
+            MidiBlockEvent::AllNotesOff => self.all_notes_off(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.all_notes_off();
+    }
+
+    fn set_sample_rate(&mut self, sample_rate: u32) {
+        self.sample_rate = sample_rate as f32;
+    }
+
+    fn enabled(&self) -> bool {
+        self.params.enabled()
     }
 }
 

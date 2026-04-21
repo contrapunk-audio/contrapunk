@@ -28,6 +28,7 @@ use cpal::SampleFormat;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use contrapunk::chain::Chain;
 use contrapunk::synth::{Synth, SynthEvent, SynthParams};
 use contrapunk::transport::{BeatCrossing, Transport};
 
@@ -211,7 +212,15 @@ fn build_and_run_stream(
             let crossing_tx = crossing_tx.clone();
             let mut click = Click::new(click_total_samples);
             let sr_f = sample_rate as f32;
-            let mut synth = Synth::new(synth_params, synth_rx, sample_rate);
+
+            // Build the audio chain. Today: just the built-in synth.
+            // FX blocks (reverb / delay / EQ / compressor) push after
+            // the synth in later work. CLAP / VST3 plugin blocks are
+            // also pushed here once their hosts exist.
+            let synth = Synth::new(synth_params, synth_rx, sample_rate);
+            let mut chain = Chain::new(sample_rate);
+            chain.push(Box::new(synth));
+
             device.build_output_stream(
                 &stream_config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
@@ -229,11 +238,12 @@ fn build_and_run_stream(
                         }
                     }
 
-                    // Synth writes its signal into the output buffer first,
-                    // overwriting whatever was there (silence on first call).
-                    synth.render(data, channels as usize);
+                    // Chain runs every block in order on the shared buffer.
+                    // Synth (first block) writes audio; future FX blocks
+                    // shape it in place.
+                    chain.process(data, channels as usize);
 
-                    // Metronome click is mixed on top of the synth signal.
+                    // Metronome click mixes on top of the whole chain.
                     for frame in data.chunks_mut(channels as usize) {
                         let v = click.next_sample(sr_f);
                         if v != 0.0 {

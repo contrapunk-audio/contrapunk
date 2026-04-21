@@ -47,6 +47,7 @@
 // =============================================================================
 
 pub mod audio;
+pub mod chain;
 pub mod chord;
 pub mod harmony;
 pub mod midi;
