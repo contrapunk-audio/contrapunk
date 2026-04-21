@@ -60,6 +60,12 @@ pub struct AppState {
     /// MIDI + guitar audio already feed.
     pub router_tx: Mutex<Option<mpsc::Sender<Vec<u8>>>>,
 
+    /// Flag raised by command handlers after any engine mutation that could
+    /// leave notes stuck (key/mode/scale/voices change). The router thread
+    /// clears it each loop by emitting MIDI All-Notes-Off on every channel
+    /// across every port and clearing tracked note state.
+    pub panic_pending: Arc<AtomicBool>,
+
     /// Global detune in cents. Read by the router thread each frame (lock-free).
     /// Updated by the `set_detune` command.
     pub detune_cents: Arc<AtomicI32>,
@@ -81,6 +87,7 @@ impl Default for AppState {
             routing_mode: Mutex::new(RoutingMode::default()),
             stop_signal: Mutex::new(None),
             router_tx: Mutex::new(None),
+            panic_pending: Arc::new(AtomicBool::new(false)),
             detune_cents: Arc::new(AtomicI32::new(0)),
         }
     }

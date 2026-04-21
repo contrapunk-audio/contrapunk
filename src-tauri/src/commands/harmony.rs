@@ -3,6 +3,8 @@
 //! Get/set key, mode, scale mode, octave mode, voice leading, interchange,
 //! and voice position.
 
+use std::sync::atomic::Ordering;
+
 use serde::Serialize;
 use tauri::State;
 
@@ -12,6 +14,14 @@ use contrapunk::harmony::{
 };
 
 use crate::state::AppState;
+
+/// Raise the router-thread panic flag so stuck notes from the previous
+/// engine configuration get released via MIDI All-Notes-Off on the next
+/// router-loop iteration. Called after any mutation that clears
+/// active_notes inside the HarmonyEngine.
+fn raise_panic(state: &State<AppState>) {
+    state.panic_pending.store(true, Ordering::SeqCst);
+}
 
 /// Serializable snapshot of the harmony engine state.
 #[derive(Serialize)]
@@ -63,8 +73,11 @@ pub fn get_engine_state(state: State<AppState>) -> Result<EngineStateResponse, S
 #[tauri::command]
 pub fn set_key(key: String, state: State<AppState>) -> Result<(), String> {
     let parsed = parse_key(&key)?;
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_key(parsed);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_key(parsed);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
@@ -72,8 +85,11 @@ pub fn set_key(key: String, state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn set_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     let parsed = parse_harmony_mode(&mode)?;
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_mode(parsed);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_mode(parsed);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
@@ -81,8 +97,11 @@ pub fn set_mode(mode: String, state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn set_scale_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     let parsed = parse_scale_mode(&mode)?;
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_scale_mode(parsed);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_scale_mode(parsed);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
@@ -90,8 +109,11 @@ pub fn set_scale_mode(mode: String, state: State<AppState>) -> Result<(), String
 #[tauri::command]
 pub fn set_octave_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     let parsed = parse_octave_mode(&mode)?;
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_octave_mode(parsed);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_octave_mode(parsed);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
@@ -103,34 +125,46 @@ pub fn set_voice_leading(
     state: State<AppState>,
 ) -> Result<(), String> {
     let parsed_style = parse_voice_leading_style(&style)?;
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_voice_leading_enabled(enabled);
-    engine.set_voice_leading_style(parsed_style);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_voice_leading_enabled(enabled);
+        engine.set_voice_leading_style(parsed_style);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
 /// Configures modal interchange.
 #[tauri::command]
 pub fn set_interchange(enabled: bool, range: u8, state: State<AppState>) -> Result<(), String> {
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_interchange_enabled(enabled);
-    engine.set_borrowing_range(range);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_interchange_enabled(enabled);
+        engine.set_borrowing_range(range);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
 /// Sets the number of output voices (1 = melody only, 2+ = melody + harmonies).
 #[tauri::command]
 pub fn set_voice_count(count: usize, state: State<AppState>) -> Result<(), String> {
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_voice_count(count);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_voice_count(count);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
 /// Sets the voice position (which voice slot the user input occupies).
 #[tauri::command]
 pub fn set_voice_position(position: usize, state: State<AppState>) -> Result<(), String> {
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_voice_position(position);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_voice_position(position);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
@@ -146,8 +180,11 @@ pub fn set_auto_key(enabled: bool, state: State<AppState>) -> Result<(), String>
 #[tauri::command]
 pub fn set_counterpoint_species(species: String, state: State<AppState>) -> Result<(), String> {
     let parsed = parse_counterpoint_species(&species)?;
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_counterpoint_species(parsed);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_counterpoint_species(parsed);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
@@ -158,8 +195,11 @@ pub fn set_counterpoint_strictness(
     state: State<AppState>,
 ) -> Result<(), String> {
     let parsed = parse_counterpoint_strictness(&strictness)?;
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_counterpoint_strictness(parsed);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_counterpoint_strictness(parsed);
+    }
+    raise_panic(&state);
     Ok(())
 }
 

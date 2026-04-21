@@ -203,6 +203,9 @@ pub fn start_routing(
     let output_indices_clone = output_indices.clone();
 
     let detune = Arc::clone(&state.detune_cents);
+    let panic_flag = Arc::clone(&state.panic_pending);
+    // Reset before spawning so a flag set from a prior session doesn't fire.
+    panic_flag.store(false, Ordering::SeqCst);
 
     // Spawn router thread
     thread::spawn(move || {
@@ -224,6 +227,7 @@ pub fn start_routing(
             stop,
             app_handle,
             detune,
+            panic_flag,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -307,6 +311,7 @@ fn run_tauri_router(
     stop_signal: Arc<std::sync::atomic::AtomicBool>,
     app_handle: AppHandle,
     detune_cents: Arc<AtomicI32>,
+    panic_pending: Arc<std::sync::atomic::AtomicBool>,
 ) -> anyhow::Result<()> {
     let (
         key,
@@ -388,6 +393,28 @@ fn run_tauri_router(
     loop {
         if stop_signal.load(Ordering::SeqCst) {
             break;
+        }
+
+        // Panic handling: any engine-config command that could strand
+        // active notes sets panic_pending. Emit MIDI All-Notes-Off (CC
+        // 123) on every channel × every port to release stuck notes,
+        // then clear tracked note state so the UI stops showing them.
+        if panic_pending.swap(false, Ordering::SeqCst) {
+            let num_ports = output_router.connection_count();
+            for p in 0..num_ports {
+                for ch in 0u8..16 {
+                    let _ = output_router.send_to_port(p, &[0xB0 | ch, 123, 0]);
+                }
+            }
+            if let Ok(mut n) = input_notes.lock() {
+                n.clear();
+            }
+            if let Ok(mut n) = harmony_notes.lock() {
+                n.clear();
+            }
+            if let Ok(mut n) = borrowed_notes.lock() {
+                n.clear();
+            }
         }
 
         // Apply detune as MIDI pitch bend when the value changes.
