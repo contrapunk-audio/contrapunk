@@ -88,11 +88,12 @@ mod cocoa {
         }
     }
 
-    impl Drop for PluginWindow {
-        fn drop(&mut self) {
-            self.close();
-        }
-    }
+    // Intentionally NO `Drop` impl. `NSWindow.close()` from a Drop
+    // fired during registry removal triggers an Obj-C overrelease
+    // when it races with Retained<NSWindow> dropping — same failure
+    // pattern as EmbeddedPluginView. Letting Retained's release
+    // naturally dealloc the window is safe because
+    // `setReleasedWhenClosed(false)` is set.
 
     // NSWindow is not thread-safe. The controller owning a
     // PluginWindow is stored in a main-thread `thread_local!`, so

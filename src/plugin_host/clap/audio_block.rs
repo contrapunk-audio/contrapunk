@@ -70,7 +70,12 @@ impl MidiRing {
 
 pub struct ClapAudioBlock {
     name: String,
-    processor: StartedPluginAudioProcessor<ContrapunkHost>,
+    /// Wrapped in `Option` so `Drop` can `take()` and `mem::forget`
+    /// the processor. Dropping the processor normally races with
+    /// the main-thread `PluginInstance` drop and produces Obj-C
+    /// overreleases on AppKit objects the plugin captured during
+    /// GUI creation.
+    processor: Option<StartedPluginAudioProcessor<ContrapunkHost>>,
     sample_rate: u32,
     max_frames: usize,
     layout: PortLayout,
@@ -116,7 +121,7 @@ impl ClapAudioBlock {
         );
         Self {
             name,
-            processor,
+            processor: Some(processor),
             sample_rate,
             max_frames,
             input_ports: AudioPorts::with_capacity(
@@ -261,14 +266,16 @@ impl AudioBlock for ClapAudioBlock {
         let events = InputEvents::from_buffer(&self.event_buf);
         let mut out_events = EventBuffer::new();
         let mut out_events_view = OutputEvents::from_buffer(&mut out_events);
-        let _ = self.processor.process(
-            &input_audio,
-            &mut output_audio,
-            &events,
-            &mut out_events_view,
-            Some(self.steady_counter),
-            None,
-        );
+        if let Some(processor) = self.processor.as_mut() {
+            let _ = processor.process(
+                &input_audio,
+                &mut output_audio,
+                &events,
+                &mut out_events_view,
+                Some(self.steady_counter),
+                None,
+            );
+        }
 
         self.steady_counter = self.steady_counter.wrapping_add(frames as u64);
 
@@ -303,6 +310,15 @@ impl AudioBlock for ClapAudioBlock {
 
     fn enabled(&self) -> bool {
         self.enabled
+    }
+}
+
+impl Drop for ClapAudioBlock {
+    fn drop(&mut self) {
+        if let Some(processor) = self.processor.take() {
+            // Intentional leak — see field doc on `processor`.
+            std::mem::forget(processor);
+        }
     }
 }
 

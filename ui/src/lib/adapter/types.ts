@@ -314,6 +314,21 @@ export interface ContrapunkAdapter {
 	listClapPlugins(): Promise<ClapPluginDescriptor[]>;
 	addClapPluginToChain(path: string): Promise<AddedPlugin>;
 	openPluginGui(pluginId: number): Promise<void>;
+	getPluginGuiSize(pluginId: number): Promise<{ width: number; height: number } | null>;
+	openPluginGuiEmbedded(
+		pluginId: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number
+	): Promise<void>;
+	setPluginGuiFrame(
+		pluginId: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number
+	): Promise<void>;
 	closePluginGui(pluginId: number): Promise<void>;
 	removePlugin(pluginId: number): Promise<void>;
 

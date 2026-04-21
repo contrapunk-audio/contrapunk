@@ -292,6 +292,23 @@ export class PluginAdapter implements ContrapunkAdapter {
 		return { pluginId: 0, name: '', path: '', hasGui: false };
 	}
 	async openPluginGui(_pluginId: number): Promise<void> {}
+	async getPluginGuiSize(_pluginId: number): Promise<{ width: number; height: number } | null> {
+		return null;
+	}
+	async openPluginGuiEmbedded(
+		_pluginId: number,
+		_x: number,
+		_y: number,
+		_w: number,
+		_h: number
+	): Promise<void> {}
+	async setPluginGuiFrame(
+		_pluginId: number,
+		_x: number,
+		_y: number,
+		_w: number,
+		_h: number
+	): Promise<void> {}
 	async closePluginGui(_pluginId: number): Promise<void> {}
 	async removePlugin(_pluginId: number): Promise<void> {}
 }

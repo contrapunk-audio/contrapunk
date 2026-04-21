@@ -131,8 +131,11 @@ fn main() {
             commands::plugins::list_clap_plugins,
             commands::plugins::add_clap_plugin_to_chain,
             commands::plugins::open_plugin_gui,
+            commands::plugins::open_plugin_gui_embedded,
+            commands::plugins::set_plugin_gui_frame,
             commands::plugins::close_plugin_gui,
             commands::plugins::remove_plugin,
+            commands::plugins::get_plugin_gui_size,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

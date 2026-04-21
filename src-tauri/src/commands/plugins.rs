@@ -20,6 +20,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime, State};
 
 use contrapunk::chain::{AudioBlock, MidiBlockEvent};
+use contrapunk::plugin_host::clap::controller::GuiTarget;
 use contrapunk::plugin_host::clap::{
     discover_plugins, registry, ClapAudioBlock, ClapPluginController, PluginDescriptor, PluginId,
 };
@@ -172,7 +173,7 @@ impl AudioBlock for TaggedClapBlock {
 
 #[tauri::command]
 pub fn open_plugin_gui<RT: Runtime>(plugin_id: PluginId, app: AppHandle<RT>) -> Result<(), String> {
-    eprintln!("[plugins] open_plugin_gui: id={plugin_id}");
+    eprintln!("[plugins] open_plugin_gui: id={plugin_id} target=detached");
     on_main(&app, move || {
         registry::with_plugins(|map| {
             let Some(controller) = map.get_mut(&plugin_id) else {
@@ -186,7 +187,7 @@ pub fn open_plugin_gui<RT: Runtime>(plugin_id: PluginId, app: AppHandle<RT>) -> 
             if !controller.has_gui {
                 return Err("plugin does not expose a GUI".into());
             }
-            match controller.open_gui() {
+            match controller.open_gui(GuiTarget::Detached) {
                 Ok(()) => {
                     eprintln!("[plugins] open_plugin_gui: show succeeded");
                     Ok(())
@@ -198,6 +199,80 @@ pub fn open_plugin_gui<RT: Runtime>(plugin_id: PluginId, app: AppHandle<RT>) -> 
             }
         })
     })?
+}
+
+#[tauri::command]
+pub fn open_plugin_gui_embedded<RT: Runtime>(
+    plugin_id: PluginId,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    app: AppHandle<RT>,
+) -> Result<(), String> {
+    eprintln!(
+        "[plugins] open_plugin_gui_embedded: id={plugin_id} rect=({x}, {y}, {width}x{height})"
+    );
+
+    // Grab the main window's NSWindow pointer on the current thread
+    // (Tauri's ns_window returns it from any thread — it's just a
+    // pointer-fetch). Carry it as usize so the Send closure doesn't
+    // complain about raw pointers.
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main webview window not found".to_string())?;
+    let ns_window_ptr = main.ns_window().map_err(|e| format!("ns_window: {e}"))? as usize;
+    eprintln!("[plugins] open_plugin_gui_embedded: ns_window_ptr={ns_window_ptr:#x}");
+
+    on_main(&app, move || {
+        registry::with_plugins(|map| {
+            let Some(controller) = map.get_mut(&plugin_id) else {
+                return Err(format!("plugin {plugin_id} not found"));
+            };
+            if !controller.has_gui {
+                return Err("plugin does not expose a GUI".into());
+            }
+            let target = GuiTarget::EmbedInHost {
+                ns_window_ptr,
+                x,
+                y,
+                width,
+                height,
+            };
+            match controller.open_gui(target) {
+                Ok(()) => {
+                    eprintln!("[plugins] open_plugin_gui_embedded: attached");
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("[plugins] open_plugin_gui_embedded failed: {e:?}");
+                    Err(format!("embed gui: {e:?}"))
+                }
+            }
+        })
+    })?
+}
+
+#[tauri::command]
+pub fn set_plugin_gui_frame<RT: Runtime>(
+    plugin_id: PluginId,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    app: AppHandle<RT>,
+) -> Result<(), String> {
+    // Fire-and-forget: no sync_channel round-trip. Dropping the
+    // response saves ~0.5ms per call and keeps scroll sync tighter.
+    app.run_on_main_thread(move || {
+        registry::with_plugins(|map| {
+            if let Some(controller) = map.get(&plugin_id) {
+                controller.set_embed_frame(x, y, width, height);
+            }
+        });
+    })
+    .map_err(|e| format!("run_on_main_thread: {e}"))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -216,5 +291,39 @@ pub fn close_plugin_gui<RT: Runtime>(
 
 #[tauri::command]
 pub fn remove_plugin<RT: Runtime>(plugin_id: PluginId, app: AppHandle<RT>) -> Result<(), String> {
-    on_main(&app, move || registry::remove(plugin_id))
+    // Intentional leak: dropping `ClapPluginController` tears down
+    // the plugin instance + audio processor, which races with
+    // AppKit's autorelease pool draining Obj-C references that the
+    // plugin captured during GUI creation. Result is `objc_release`
+    // on freed memory → SIGSEGV. Leaking is the only safe option
+    // without a full deactivate-before-drop pass through clack's
+    // lifecycle (which would need the audio-thread processor moved
+    // back to main first).
+    on_main(&app, move || {
+        eprintln!("[plugins] remove_plugin: id={plugin_id} (intentional leak, no drop)");
+        // Don't actually remove — controller stays alive in registry
+        // until app quits. UI shows it as gone because the chain
+        // command already removed the audio block.
+    })
+}
+
+#[derive(Serialize)]
+pub struct PluginGuiSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+#[tauri::command]
+pub fn get_plugin_gui_size<RT: Runtime>(
+    plugin_id: PluginId,
+    app: AppHandle<RT>,
+) -> Result<Option<PluginGuiSize>, String> {
+    on_main(&app, move || {
+        registry::with_plugins(|map| {
+            let controller = map.get_mut(&plugin_id)?;
+            controller
+                .preferred_gui_size()
+                .map(|(width, height)| PluginGuiSize { width, height })
+        })
+    })
 }

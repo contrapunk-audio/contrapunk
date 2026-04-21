@@ -358,9 +358,6 @@
 						<span class="plugin-label">Plugin ID</span>
 						<span class="plugin-value plugin-id" title={b.typeId}>{b.typeId}</span>
 					</div>
-					<div class="plugin-note">
-						Loaded + activated. Audio routing through plugin coming in phase 2.
-					</div>
 				</div>
 			</div>
 		{/if}

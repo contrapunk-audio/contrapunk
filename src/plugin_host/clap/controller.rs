@@ -19,8 +19,25 @@ use clack_extensions::gui::{
 use clack_host::prelude::*;
 
 use super::block::ClapBlockError;
+use super::embed::EmbeddedPluginView;
 use super::host::{host_info, ContrapunkHost, ContrapunkHostMainThread, ContrapunkHostShared};
 use super::window::PluginWindow;
+
+/// Where the plugin's GUI should appear.
+#[derive(Clone, Copy, Debug)]
+pub enum GuiTarget {
+    /// Spawn a dedicated OS window (current default; good for big plugins).
+    Detached,
+    /// Embed the plugin's view inside Contrapunk's main Tauri window at
+    /// the given rect (webview-local coordinates, y from top).
+    EmbedInHost {
+        ns_window_ptr: usize, // carries *mut c_void; usize for Send across threads
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    },
+}
 
 /// Per-port channel counts for a plugin. Input and output.
 #[derive(Clone, Debug)]
@@ -52,9 +69,12 @@ pub struct ClapPluginController {
     pub max_frames: u32,
     pub port_layout: PortLayout,
     gui_configuration: Option<GuiConfiguration<'static>>,
-    /// Host-owned native window used for embedded GUIs. Only created
-    /// when `open_gui` is called with an embedded configuration.
+    /// Host-owned native window used for CLAP-embedded GUIs opened in
+    /// `Detached` target mode. `None` when detached mode isn't used.
     gui_window: Option<PluginWindow>,
+    /// Host-owned NSView used for GUIs embedded inside Contrapunk's
+    /// main window (`EmbedInHost` target). `None` when detached.
+    gui_embed_view: Option<EmbeddedPluginView>,
     /// Audio processor in Started state. Phase 2 moves this onto the
     /// audio thread via `take_processor`; until then it sits here so
     /// the plugin stays in the activated + processing state (GUI
@@ -226,6 +246,7 @@ impl ClapPluginController {
             port_layout,
             gui_configuration,
             gui_window: None,
+            gui_embed_view: None,
             processor: Some(processor),
             instance,
             _entry: entry,
@@ -239,6 +260,29 @@ impl ClapPluginController {
         self.processor.take()
     }
 
+    /// Preferred GUI size the plugin wants to render at, in pixels.
+    /// Queryable without opening the GUI. Returns `None` if the
+    /// plugin doesn't implement the GUI extension.
+    pub fn preferred_gui_size(&mut self) -> Option<(u32, u32)> {
+        let gui: PluginGui = self.instance.access_handler(|h| h.gui)?;
+        let config = self.gui_configuration?;
+        // `get_size` is only reliable after `create`, so call create
+        // temporarily if the GUI isn't already open. Some plugins
+        // return canned defaults before create; it's still better
+        // than our hard-coded fallback.
+        if self.gui_open {
+            let handle = &mut self.instance.plugin_handle();
+            return gui.get_size(handle).map(|s| (s.width, s.height));
+        }
+        let handle = &mut self.instance.plugin_handle();
+        if gui.create(handle, config).is_err() {
+            return None;
+        }
+        let size = gui.get_size(handle).map(|s| (s.width, s.height));
+        gui.destroy(handle);
+        size
+    }
+
     /// Open the plugin's GUI. Floating plugins get their own OS
     /// window; embedded plugins are hosted in a dedicated NSWindow
     /// we spawn. Returns Err if the plugin doesn't support GUI at
@@ -247,10 +291,10 @@ impl ClapPluginController {
     /// Idempotent: if the GUI is already open, this is a no-op.
     /// Some plugins (Aria/Garritan sforzando) `abort()` if
     /// `gui.create` is called twice without a destroy in between.
-    pub fn open_gui(&mut self) -> Result<(), GuiError> {
-        // Reconcile: if the plugin signalled that its window was
-        // closed while we weren't looking, tear our state down
-        // before re-creating — otherwise Aria-family plugins abort.
+    pub fn open_gui(&mut self, target: GuiTarget) -> Result<(), GuiError> {
+        // Reconcile: if the plugin signalled its window was closed
+        // while we weren't looking, tear down before re-creating —
+        // otherwise Aria-family plugins abort on re-create.
         let user_closed = self
             .instance
             .access_shared_handler(|shared| shared.take_gui_closed());
@@ -276,30 +320,68 @@ impl ClapPluginController {
         gui.suggest_title(handle, title.as_c_str());
 
         if config.is_floating {
+            // CLAP-floating: plugin creates its own OS window.
+            // `target` is ignored (floating plugins manage their own).
             gui.show(handle)?;
         } else {
-            // Embedded: fetch the plugin's preferred size, spawn a
-            // host NSWindow of that size, attach as parent, then show.
-            let size = gui.get_size(handle).unwrap_or(GuiSize {
-                width: 800,
-                height: 500,
-            });
-            let window = PluginWindow::new(&name, size.width as f64, size.height as f64);
-            let ns_view = window.ns_view_ptr();
-            // SAFETY: `ns_view` is a valid NSView pointer owned by
-            // `window` for as long as the window lives. We store the
-            // window on the controller so the pointer stays valid
-            // until `close_gui` destroys the plugin GUI first.
-            let clap_window = ClapWindow::from_cocoa_nsview(ns_view);
-            unsafe { gui.set_parent(handle, clap_window)? };
-            // Some plugins return an error from show() in embedded
-            // mode even when embedding worked — tolerate that.
-            let _ = gui.show(handle);
-            self.gui_window = Some(window);
+            match target {
+                GuiTarget::Detached => {
+                    // Spawn a dedicated NSWindow host.
+                    let size = gui.get_size(handle).unwrap_or(GuiSize {
+                        width: 800,
+                        height: 500,
+                    });
+                    let window = PluginWindow::new(&name, size.width as f64, size.height as f64);
+                    let ns_view = window.ns_view_ptr();
+                    // SAFETY: `ns_view` is valid while `window` is alive.
+                    let clap_window = ClapWindow::from_cocoa_nsview(ns_view);
+                    unsafe { gui.set_parent(handle, clap_window)? };
+                    let _ = gui.show(handle);
+                    self.gui_window = Some(window);
+                }
+                GuiTarget::EmbedInHost {
+                    ns_window_ptr,
+                    x,
+                    y,
+                    width,
+                    height,
+                } => {
+                    let frame = clack_extensions::gui::GuiSize {
+                        width: width as u32,
+                        height: height as u32,
+                    };
+                    let _ = frame; // unused; included for any future sizing hints
+                    let ns_rect = objc2_foundation::NSRect {
+                        origin: objc2_foundation::NSPoint { x, y },
+                        size: objc2_foundation::NSSize { width, height },
+                    };
+                    // SAFETY: caller (Tauri command) guarantees
+                    // `ns_window_ptr` came from `WebviewWindow::ns_window`
+                    // and we're on the main thread (run_on_main_thread).
+                    let view = unsafe {
+                        EmbeddedPluginView::new(ns_window_ptr as *mut std::ffi::c_void, ns_rect)
+                    }
+                    .ok_or(GuiError::CreateError)?;
+                    let ns_view = view.ns_view_ptr();
+                    let clap_window = ClapWindow::from_cocoa_nsview(ns_view);
+                    unsafe { gui.set_parent(handle, clap_window)? };
+                    let _ = gui.show(handle);
+                    self.gui_embed_view = Some(view);
+                }
+            }
         }
 
         self.gui_open = true;
         Ok(())
+    }
+
+    /// Reposition the embedded plugin view. No-op if the GUI is in
+    /// detached/floating mode. Called from the UI when the rack
+    /// scrolls or resizes.
+    pub fn set_embed_frame(&self, x: f64, y: f64, width: f64, height: f64) {
+        if let Some(view) = &self.gui_embed_view {
+            view.set_frame(x, y, width, height);
+        }
     }
 
     /// Close the plugin's GUI window. Idempotent.
@@ -312,7 +394,9 @@ impl ClapPluginController {
             let _ = gui.hide(handle);
             gui.destroy(handle);
         }
-        // Drop the host window after the plugin tore down its view.
+        // Drop host-side GUI containers AFTER the plugin destroyed
+        // its subview — reverse creation order.
+        self.gui_embed_view = None;
         self.gui_window = None;
         self.gui_open = false;
     }

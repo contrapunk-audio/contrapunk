@@ -582,6 +582,30 @@ export class TauriAdapter implements ContrapunkAdapter {
 	async openPluginGui(pluginId: number): Promise<void> {
 		await invoke('open_plugin_gui', { pluginId });
 	}
+	async getPluginGuiSize(pluginId: number): Promise<{ width: number; height: number } | null> {
+		const raw = (await invoke('get_plugin_gui_size', { pluginId })) as
+			| { width: number; height: number }
+			| null;
+		return raw;
+	}
+	async openPluginGuiEmbedded(
+		pluginId: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number
+	): Promise<void> {
+		await invoke('open_plugin_gui_embedded', { pluginId, x, y, width, height });
+	}
+	async setPluginGuiFrame(
+		pluginId: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number
+	): Promise<void> {
+		await invoke('set_plugin_gui_frame', { pluginId, x, y, width, height });
+	}
 	async closePluginGui(pluginId: number): Promise<void> {
 		await invoke('close_plugin_gui', { pluginId });
 	}

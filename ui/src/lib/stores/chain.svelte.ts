@@ -71,6 +71,26 @@ class ChainStore {
 		await adapter.openPluginGui(pluginId);
 	}
 
+	async openPluginGuiEmbedded(
+		pluginId: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number
+	) {
+		await adapter.openPluginGuiEmbedded(pluginId, x, y, width, height);
+	}
+
+	async setPluginGuiFrame(
+		pluginId: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number
+	) {
+		await adapter.setPluginGuiFrame(pluginId, x, y, width, height);
+	}
+
 	async closePluginGui(pluginId: number) {
 		await adapter.closePluginGui(pluginId);
 	}

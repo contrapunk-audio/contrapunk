@@ -62,6 +62,7 @@ pub mod audio_block;
 pub mod block;
 pub mod controller;
 pub mod discovery;
+pub mod embed;
 pub mod host;
 pub mod registry;
 pub mod window;
