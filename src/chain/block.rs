@@ -5,7 +5,7 @@
 /// Broader than [`crate::synth::SynthEvent`] because plugin-host blocks
 /// (CLAP, VST3) may need to forward CC / pitch bend / aftertouch too.
 /// FX blocks typically ignore everything (default impl is no-op).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MidiBlockEvent {
     NoteOn { note: u8, velocity: u8 },
     NoteOff { note: u8 },

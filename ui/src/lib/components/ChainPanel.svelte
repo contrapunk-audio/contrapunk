@@ -1,19 +1,57 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { synth, WAVEFORMS } from '$lib/stores/synth.svelte';
+	import { delay, reverb } from '$lib/stores/fx.svelte';
+	import { chainStore } from '$lib/stores/chain.svelte';
 	import Knob from './Knob.svelte';
 	import WaveformView from './WaveformView.svelte';
 	import EnvelopeView from './EnvelopeView.svelte';
 	import PixelSelect from './PixelSelect.svelte';
+	import ClapPluginPicker from './ClapPluginPicker.svelte';
 
 	let waveformOptions = WAVEFORMS.map((w) => ({ value: String(w.value), label: w.label }));
+	let pickerOpen = $state(false);
 
 	function onWaveformChange(v: string) {
 		synth.setWaveform(parseInt(v, 10));
 	}
+
+	onMount(() => {
+		reverb.syncFromBackend();
+		delay.syncFromBackend();
+		chainStore.refresh();
+	});
 </script>
 
 <div class="chain-wrap">
-	<div class="chain-header font-pixel">Audio chain</div>
+	<div class="chain-header-row">
+		<div class="chain-header font-pixel">Audio chain</div>
+		<button class="pixel-btn font-pixel add-plugin-btn" onclick={() => (pickerOpen = true)}>
+			+ Plugin
+		</button>
+	</div>
+
+	<!-- Dynamic block list -->
+	<div class="blocks-strip">
+		{#each chainStore.blocks as b, i (i + ':' + b.typeId)}
+			<div class="block-chip" class:builtin={b.typeId.startsWith('builtin.')}>
+				<span class="block-name font-pixel">{b.name}</span>
+				<span class="block-type font-pixel">{b.typeId}</span>
+				{#if !b.typeId.startsWith('builtin.')}
+					<button
+						class="block-remove font-pixel"
+						title="Remove from chain"
+						onclick={() => chainStore.removeAt(i)}
+					>
+						×
+					</button>
+				{/if}
+			</div>
+		{/each}
+		{#if chainStore.blocks.length === 0}
+			<div class="blocks-empty font-pixel">No blocks — audio chain is empty</div>
+		{/if}
+	</div>
 
 	<!-- Signal-flow strip -->
 	<div class="flow">
@@ -27,9 +65,20 @@
 			<div class="flow-sub">8-voice</div>
 		</div>
 		<div class="flow-arrow font-pixel">━━▶</div>
-		<div class="flow-node fx-slot font-pixel">
-			<div class="flow-title">FX</div>
-			<div class="flow-sub">(coming soon)</div>
+		<div
+			class="flow-node delay-node font-pixel"
+			class:active={delay.enabled}
+		>
+			<div class="flow-title">Delay</div>
+			<div class="flow-sub">{delay.enabled ? 'on' : 'bypass'}</div>
+		</div>
+		<div class="flow-arrow font-pixel">━━▶</div>
+		<div
+			class="flow-node reverb-node font-pixel"
+			class:active={reverb.enabled}
+		>
+			<div class="flow-title">Reverb</div>
+			<div class="flow-sub">{reverb.enabled ? 'on' : 'bypass'}</div>
 		</div>
 		<div class="flow-arrow font-pixel">━━▶</div>
 		<div class="flow-node sink font-pixel">
@@ -182,6 +231,116 @@
 			Drag knobs ↕ • Shift = fine • Double-click = reset
 		</div>
 	</div>
+
+	<ClapPluginPicker bind:open={pickerOpen} />
+
+	<!-- Delay rack -->
+	<div class="rack delay-rack">
+		<div class="rack-header">
+			<span class="rack-title delay-title font-pixel">Delay</span>
+			<button
+				class="pixel-btn power-btn font-pixel"
+				class:active={delay.enabled}
+				onclick={() => delay.setEnabled(!delay.enabled)}
+				title={delay.enabled ? 'Bypass delay' : 'Enable delay'}
+			>
+				{delay.enabled ? 'ON' : 'OFF'}
+			</button>
+		</div>
+
+		<div class="reverb-knobs">
+			<Knob
+				label="Mix"
+				value={delay.mix}
+				min={0}
+				max={1}
+				step={0.01}
+				defaultValue={0.3}
+				size={56}
+				format={(v) => `${Math.round(v * 100)}%`}
+				accent="var(--color-accent-magenta)"
+				onchange={(v) => delay.setMix(v)}
+			/>
+			<Knob
+				label="Time"
+				value={delay.timeMs}
+				min={10}
+				max={2000}
+				step={1}
+				defaultValue={375}
+				size={56}
+				format={(v) => `${Math.round(v)}ms`}
+				accent="var(--color-accent-cyan)"
+				onchange={(v) => delay.setTimeMs(Math.round(v))}
+			/>
+			<Knob
+				label="Fbk"
+				value={delay.feedback}
+				min={0}
+				max={0.95}
+				step={0.01}
+				defaultValue={0.35}
+				size={56}
+				format={(v) => `${Math.round(v * 100)}%`}
+				accent="var(--color-accent-gold)"
+				onchange={(v) => delay.setFeedback(v)}
+			/>
+		</div>
+	</div>
+
+	<!-- Reverb rack -->
+	<div class="rack reverb-rack">
+		<div class="rack-header">
+			<span class="rack-title reverb-title font-pixel">Reverb</span>
+			<button
+				class="pixel-btn power-btn font-pixel"
+				class:active={reverb.enabled}
+				onclick={() => reverb.setEnabled(!reverb.enabled)}
+				title={reverb.enabled ? 'Bypass reverb' : 'Enable reverb'}
+			>
+				{reverb.enabled ? 'ON' : 'OFF'}
+			</button>
+		</div>
+
+		<div class="reverb-knobs">
+			<Knob
+				label="Mix"
+				value={reverb.mix}
+				min={0}
+				max={1}
+				step={0.01}
+				defaultValue={0.3}
+				size={56}
+				format={(v) => `${Math.round(v * 100)}%`}
+				accent="var(--color-accent-cyan)"
+				onchange={(v) => reverb.setMix(v)}
+			/>
+			<Knob
+				label="Room"
+				value={reverb.roomSize}
+				min={0}
+				max={1}
+				step={0.01}
+				defaultValue={0.7}
+				size={56}
+				format={(v) => `${Math.round(v * 100)}%`}
+				accent="var(--color-accent-magenta)"
+				onchange={(v) => reverb.setRoomSize(v)}
+			/>
+			<Knob
+				label="Damp"
+				value={reverb.damping}
+				min={0}
+				max={1}
+				step={0.01}
+				defaultValue={0.5}
+				size={56}
+				format={(v) => `${Math.round(v * 100)}%`}
+				accent="var(--color-accent-gold)"
+				onchange={(v) => reverb.setDamping(v)}
+			/>
+		</div>
+	</div>
 </div>
 
 <style>
@@ -194,11 +353,76 @@
 		gap: 8px;
 	}
 
+	.chain-header-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
 	.chain-header {
 		color: var(--color-accent-gold);
 		font-size: var(--font-size-xs);
 		letter-spacing: 2px;
 		text-transform: uppercase;
+	}
+
+	.add-plugin-btn {
+		padding: 2px 10px !important;
+		font-size: var(--font-size-xs) !important;
+	}
+
+	.blocks-strip {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		padding: 4px 8px;
+		background: rgba(15, 14, 26, 0.4);
+		border: 1px solid var(--color-border);
+		min-height: 30px;
+		align-items: center;
+	}
+
+	.blocks-empty {
+		color: var(--color-text-dim);
+		font-size: var(--font-size-xs);
+		padding: 4px;
+	}
+
+	.block-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 6px;
+		background: rgba(15, 14, 26, 0.7);
+		border: 1px solid var(--color-accent-cyan-dim);
+	}
+
+	.block-chip.builtin {
+		border-color: var(--color-border);
+	}
+
+	.block-name {
+		color: var(--color-accent-magenta);
+		font-size: var(--font-size-xs);
+	}
+
+	.block-type {
+		color: var(--color-text-dim);
+		font-size: var(--font-size-xs);
+	}
+
+	.block-remove {
+		background: transparent;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-secondary);
+		padding: 0 6px;
+		cursor: pointer;
+		font-size: var(--font-size-xs);
+	}
+
+	.block-remove:hover {
+		color: rgb(255, 120, 120);
+		border-color: rgba(200, 40, 40, 0.6);
 	}
 
 	/* Signal flow strip */
@@ -245,9 +469,28 @@
 		box-shadow: var(--glow-magenta);
 	}
 
-	.flow-node.fx-slot {
-		opacity: 0.5;
+	.flow-node.reverb-node,
+	.flow-node.delay-node {
+		opacity: 0.55;
 		border-style: dashed;
+	}
+	.flow-node.reverb-node.active {
+		opacity: 1;
+		border-style: solid;
+		border-color: var(--color-accent-cyan-dim);
+		box-shadow: 0 0 10px rgba(0, 200, 255, 0.18);
+	}
+	.flow-node.reverb-node.active .flow-title {
+		color: var(--color-accent-cyan);
+	}
+	.flow-node.delay-node.active {
+		opacity: 1;
+		border-style: solid;
+		border-color: var(--color-accent-magenta-dim);
+		box-shadow: 0 0 10px rgba(255, 51, 136, 0.18);
+	}
+	.flow-node.delay-node.active .flow-title {
+		color: var(--color-accent-magenta);
 	}
 
 	.flow-node.sink {
@@ -344,6 +587,35 @@
 		font-size: var(--font-size-xs);
 		letter-spacing: 0.5px;
 		text-align: center;
+	}
+
+	/* Reverb rack */
+	.reverb-rack {
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.03),
+			0 0 20px rgba(0, 200, 255, 0.06);
+	}
+
+	.reverb-title {
+		color: var(--color-accent-cyan);
+	}
+
+	.delay-rack {
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.03),
+			0 0 20px rgba(255, 51, 136, 0.06);
+	}
+
+	.delay-title {
+		color: var(--color-accent-magenta);
+	}
+
+	.reverb-knobs {
+		display: flex;
+		justify-content: space-around;
+		align-items: flex-start;
+		gap: 12px;
+		padding: 6px 4px 2px;
 	}
 
 	/* Collapse rack-grid on narrow windows */

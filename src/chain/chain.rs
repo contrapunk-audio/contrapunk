@@ -1,6 +1,10 @@
 //! The [`Chain`] container — a linear pipeline of [`AudioBlock`]s.
 
+use ringbuf::traits::Consumer;
+use ringbuf::HeapCons;
+
 use super::block::{AudioBlock, MidiBlockEvent};
+use super::command::ChainCommand;
 
 /// A linear audio-processing chain.
 ///
@@ -8,19 +12,36 @@ use super::block::{AudioBlock, MidiBlockEvent};
 /// audio (a synth); subsequent blocks shape it (FX). Every block
 /// receives every MIDI event; FX blocks ignore them by default.
 ///
-/// This v1 has no dynamic add/remove API — the chain is built once at
-/// audio-clock startup. Rigs and plugin loading will introduce a
-/// command queue later.
+/// Chains are mutated at runtime via a lock-free SPSC command queue
+/// fed by a [`crate::chain::ChainCommander`]. The queue is drained at
+/// the top of each [`Chain::process`] call so additions/removals take
+/// effect on the next audio buffer without blocking the audio thread.
 pub struct Chain {
     blocks: Vec<Box<dyn AudioBlock>>,
     sample_rate: u32,
+    /// Consumer half of the command queue. `None` when the chain was
+    /// built without a commander (tests, headless contexts).
+    rx: Option<HeapCons<ChainCommand>>,
 }
 
 impl Chain {
+    /// Create a chain with no command queue — useful for tests and
+    /// static chains that never mutate at runtime.
     pub fn new(sample_rate: u32) -> Self {
         Self {
             blocks: Vec::new(),
             sample_rate,
+            rx: None,
+        }
+    }
+
+    /// Create a chain wired to the consumer half of a command queue.
+    /// Pair with [`crate::chain::ChainCommander::new_split`].
+    pub fn with_queue(sample_rate: u32, rx: HeapCons<ChainCommand>) -> Self {
+        Self {
+            blocks: Vec::new(),
+            sample_rate,
+            rx: Some(rx),
         }
     }
 
@@ -29,6 +50,29 @@ impl Chain {
     pub fn push(&mut self, mut block: Box<dyn AudioBlock>) {
         block.set_sample_rate(self.sample_rate);
         self.blocks.push(block);
+    }
+
+    /// Drain pending [`ChainCommand`]s from the queue. Called at the
+    /// top of `process()`; also safe to call from the audio thread
+    /// directly (e.g. before the first buffer).
+    fn drain_commands(&mut self) {
+        let Some(rx) = self.rx.as_mut() else { return };
+        while let Some(cmd) = rx.try_pop() {
+            match cmd {
+                ChainCommand::PushBlock(mut block) => {
+                    block.set_sample_rate(self.sample_rate);
+                    self.blocks.push(block);
+                }
+                ChainCommand::RemoveAt(idx) => {
+                    if idx < self.blocks.len() {
+                        self.blocks.remove(idx);
+                    }
+                }
+                ChainCommand::Clear => {
+                    self.blocks.clear();
+                }
+            }
+        }
     }
 
     /// Reset all blocks. Safe to call from the audio thread.
@@ -46,10 +90,11 @@ impl Chain {
         }
     }
 
-    /// Process one buffer. Each block processes in order on the same
-    /// interleaved buffer. Interleaved channels ({@code channels} must
-    /// match the cpal stream's channel count).
+    /// Process one buffer. Drains pending `ChainCommand`s first, then
+    /// runs each block in order on the same interleaved buffer.
+    /// `channels` must match the cpal stream's channel count.
     pub fn process(&mut self, buffer: &mut [f32], channels: usize) {
+        self.drain_commands();
         for b in &mut self.blocks {
             b.process(buffer, channels);
         }
@@ -150,5 +195,84 @@ mod tests {
         chain.push(Box::new(Silent));
         assert!(!chain.is_empty());
         assert_eq!(chain.len(), 1);
+    }
+
+    #[test]
+    fn queue_push_block_applies_on_next_process() {
+        use crate::chain::ChainCommander;
+
+        let (commander, rx) = ChainCommander::new_split();
+        let mut chain = Chain::with_queue(48_000, rx);
+        // Initial process: chain is empty, buffer passes through.
+        let mut buf = [1.0f32; 8];
+        chain.process(&mut buf, 2);
+        assert!(buf.iter().all(|&x| x == 1.0));
+
+        // Push a Silent block; next process should zero the buffer.
+        commander.push_block(Box::new(Silent)).expect("push");
+        chain.process(&mut buf, 2);
+        assert!(buf.iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    fn queue_remove_at_removes_block() {
+        use crate::chain::ChainCommander;
+
+        let (commander, rx) = ChainCommander::new_split();
+        let mut chain = Chain::with_queue(48_000, rx);
+        commander.push_block(Box::new(Silent)).expect("push");
+        let mut buf = [1.0f32; 8];
+        chain.process(&mut buf, 2);
+        assert!(buf.iter().all(|&x| x == 0.0));
+
+        commander.remove_at(0).expect("remove");
+        // After removal the chain is empty again.
+        for s in buf.iter_mut() {
+            *s = 2.0;
+        }
+        chain.process(&mut buf, 2);
+        assert!(buf.iter().all(|&x| x == 2.0));
+    }
+
+    #[test]
+    fn queue_clear_empties_chain() {
+        use crate::chain::ChainCommander;
+
+        let (commander, rx) = ChainCommander::new_split();
+        let mut chain = Chain::with_queue(48_000, rx);
+        commander
+            .push_block(Box::new(Gain { amount: 0.0 }))
+            .expect("push");
+        commander
+            .push_block(Box::new(Gain { amount: 0.0 }))
+            .expect("push");
+        commander.clear().expect("clear");
+        let mut buf = [0.5f32; 8];
+        chain.process(&mut buf, 2);
+        assert!(buf.iter().all(|&x| x == 0.5));
+    }
+
+    #[test]
+    fn commander_mirror_tracks_pushes() {
+        use crate::chain::ChainCommander;
+
+        let (commander, _rx) = ChainCommander::new_split();
+        commander.register_initial_blocks(vec![crate::chain::BlockDescriptor {
+            type_id: "test.silent".into(),
+            name: "silent".into(),
+        }]);
+        assert_eq!(commander.snapshot().len(), 1);
+        commander
+            .push_block(Box::new(Gain { amount: 1.0 }))
+            .unwrap();
+        let snap = commander.snapshot();
+        assert_eq!(snap.len(), 2);
+        assert_eq!(snap[1].type_id, "test.gain");
+
+        commander.remove_at(0).unwrap();
+        assert_eq!(commander.snapshot().len(), 1);
+
+        commander.clear().unwrap();
+        assert_eq!(commander.snapshot().len(), 0);
     }
 }

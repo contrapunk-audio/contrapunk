@@ -10,12 +10,16 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
 import type {
+	ChainBlock,
+	ClapPluginDescriptor,
 	ContrapunkAdapter,
+	DelayState,
 	EngineState,
 	GuitarConfig,
 	MidiDevice,
 	NoteState,
 	Preset,
+	ReverbState,
 	SynthState,
 	TransportState
 } from './types';
@@ -489,5 +493,83 @@ export class TauriAdapter implements ContrapunkAdapter {
 	}
 	async setSynthMasterGain(value: number): Promise<void> {
 		await invoke('set_synth_master_gain', { value });
+	}
+
+	// -- Built-in FX (reverb) --
+
+	async getReverbState(): Promise<ReverbState> {
+		const raw = (await invoke('get_reverb_state')) as Record<string, unknown>;
+		return {
+			enabled: raw.enabled as boolean,
+			mix: raw.mix as number,
+			roomSize: raw.room_size as number,
+			damping: raw.damping as number
+		};
+	}
+	async setReverbEnabled(enabled: boolean): Promise<void> {
+		await invoke('set_reverb_enabled', { enabled });
+	}
+	async setReverbMix(value: number): Promise<void> {
+		await invoke('set_reverb_mix', { value });
+	}
+	async setReverbRoomSize(value: number): Promise<void> {
+		await invoke('set_reverb_room_size', { value });
+	}
+	async setReverbDamping(value: number): Promise<void> {
+		await invoke('set_reverb_damping', { value });
+	}
+
+	async getDelayState(): Promise<DelayState> {
+		const raw = (await invoke('get_delay_state')) as Record<string, unknown>;
+		return {
+			enabled: raw.enabled as boolean,
+			mix: raw.mix as number,
+			timeMs: raw.time_ms as number,
+			feedback: raw.feedback as number
+		};
+	}
+	async setDelayEnabled(enabled: boolean): Promise<void> {
+		await invoke('set_delay_enabled', { enabled });
+	}
+	async setDelayMix(value: number): Promise<void> {
+		await invoke('set_delay_mix', { value });
+	}
+	async setDelayTimeMs(ms: number): Promise<void> {
+		await invoke('set_delay_time_ms', { ms });
+	}
+	async setDelayFeedback(value: number): Promise<void> {
+		await invoke('set_delay_feedback', { value });
+	}
+
+	// -- Chain topology --
+
+	async listChainBlocks(): Promise<ChainBlock[]> {
+		const raw = (await invoke('list_chain_blocks')) as Array<Record<string, unknown>>;
+		return raw.map((b) => ({
+			typeId: b.type_id as string,
+			name: b.name as string
+		}));
+	}
+	async removeChainBlock(index: number): Promise<void> {
+		await invoke('remove_chain_block', { index });
+	}
+	async clearChain(): Promise<void> {
+		await invoke('clear_chain');
+	}
+
+	// -- CLAP plugin host --
+
+	async listClapPlugins(): Promise<ClapPluginDescriptor[]> {
+		const raw = (await invoke('list_clap_plugins')) as Array<Record<string, unknown>>;
+		return raw.map((p) => ({
+			id: p.id as string,
+			name: p.name as string,
+			vendor: (p.vendor as string) ?? '',
+			version: (p.version as string) ?? '',
+			path: p.path as string
+		}));
+	}
+	async addClapPluginToChain(path: string): Promise<void> {
+		await invoke('add_clap_plugin_to_chain', { path });
 	}
 }

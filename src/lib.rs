@@ -49,6 +49,7 @@
 pub mod audio;
 pub mod chain;
 pub mod chord;
+pub mod fx;
 pub mod harmony;
 pub mod midi;
 pub mod preset;
@@ -66,3 +67,7 @@ pub mod router;
 /// Server module for network-based MIDI harmony processing (native-only).
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
+
+/// External plugin hosting (CLAP, future VST3/AU). Native-only.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod plugin_host;

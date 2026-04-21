@@ -32,17 +32,28 @@ fn main() {
                 .lock()
                 .ok()
                 .and_then(|mut guard| guard.take());
-            if let Err(e) = audio_clock::start(
+            let reverb_params = Arc::clone(&state.reverb_params);
+            let delay_params = Arc::clone(&state.delay_params);
+            match audio_clock::start(
                 app.handle().clone(),
                 transport,
                 metronome_enabled,
                 synth_params,
                 synth_rx,
+                reverb_params,
+                delay_params,
             ) {
-                eprintln!(
-                    "[main] audio_clock::start failed: {} (transport will not tick)",
-                    e
-                );
+                Ok(commander) => {
+                    if let Ok(mut slot) = state.chain_commander.lock() {
+                        *slot = Some(commander);
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[main] audio_clock::start failed: {} (transport will not tick)",
+                        e
+                    );
+                }
             }
             Ok(())
         })
@@ -101,6 +112,24 @@ fn main() {
             commands::synth::set_synth_cutoff_hz,
             commands::synth::set_synth_resonance,
             commands::synth::set_synth_master_gain,
+            // Built-in FX (reverb + delay)
+            commands::fx::get_reverb_state,
+            commands::fx::set_reverb_enabled,
+            commands::fx::set_reverb_mix,
+            commands::fx::set_reverb_room_size,
+            commands::fx::set_reverb_damping,
+            commands::fx::get_delay_state,
+            commands::fx::set_delay_enabled,
+            commands::fx::set_delay_mix,
+            commands::fx::set_delay_time_ms,
+            commands::fx::set_delay_feedback,
+            // Audio chain topology
+            commands::chain::list_chain_blocks,
+            commands::chain::remove_chain_block,
+            commands::chain::clear_chain,
+            // CLAP plugin hosting
+            commands::plugins::list_clap_plugins,
+            commands::plugins::add_clap_plugin_to_chain,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

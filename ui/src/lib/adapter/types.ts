@@ -73,6 +73,37 @@ export interface SynthState {
 	masterGain: number;
 }
 
+/** Snapshot of built-in reverb parameters. */
+export interface ReverbState {
+	enabled: boolean;
+	mix: number;
+	roomSize: number;
+	damping: number;
+}
+
+/** Snapshot of built-in delay parameters. */
+export interface DelayState {
+	enabled: boolean;
+	mix: number;
+	timeMs: number;
+	feedback: number;
+}
+
+/** One block in the live audio chain. */
+export interface ChainBlock {
+	typeId: string;
+	name: string;
+}
+
+/** Descriptor for a discovered CLAP plugin on disk. */
+export interface ClapPluginDescriptor {
+	id: string;
+	name: string;
+	vendor: string;
+	version: string;
+	path: string;
+}
+
 /** Snapshot of transport / clock state. */
 export interface TransportState {
 	running: boolean;
@@ -249,6 +280,31 @@ export interface ContrapunkAdapter {
 	setSynthCutoffHz(hz: number): Promise<void>;
 	setSynthResonance(value: number): Promise<void>;
 	setSynthMasterGain(value: number): Promise<void>;
+
+	// -- Built-in FX (reverb) --
+
+	getReverbState(): Promise<ReverbState>;
+	setReverbEnabled(enabled: boolean): Promise<void>;
+	setReverbMix(value: number): Promise<void>;
+	setReverbRoomSize(value: number): Promise<void>;
+	setReverbDamping(value: number): Promise<void>;
+
+	getDelayState(): Promise<DelayState>;
+	setDelayEnabled(enabled: boolean): Promise<void>;
+	setDelayMix(value: number): Promise<void>;
+	setDelayTimeMs(ms: number): Promise<void>;
+	setDelayFeedback(value: number): Promise<void>;
+
+	// -- Audio chain topology --
+
+	listChainBlocks(): Promise<ChainBlock[]>;
+	removeChainBlock(index: number): Promise<void>;
+	clearChain(): Promise<void>;
+
+	// -- CLAP plugin host --
+
+	listClapPlugins(): Promise<ClapPluginDescriptor[]>;
+	addClapPluginToChain(path: string): Promise<void>;
 
 	// -- Lifecycle --
 

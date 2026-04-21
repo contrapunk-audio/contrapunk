@@ -28,7 +28,8 @@ use cpal::SampleFormat;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use contrapunk::chain::Chain;
+use contrapunk::chain::{BlockDescriptor, Chain, ChainCommandConsumer, ChainCommander};
+use contrapunk::fx::{Delay, DelayParams, Reverb, ReverbParams};
 use contrapunk::synth::{Synth, SynthEvent, SynthParams};
 use contrapunk::transport::{BeatCrossing, Transport};
 
@@ -114,8 +115,30 @@ pub fn start(
     metronome_enabled: Arc<AtomicBool>,
     synth_params: Arc<SynthParams>,
     synth_rx: Option<mpsc::Receiver<SynthEvent>>,
-) -> Result<(), String> {
+    reverb_params: Arc<ReverbParams>,
+    delay_params: Arc<DelayParams>,
+) -> Result<Arc<ChainCommander>, String> {
     let (tx, rx) = mpsc::channel::<BeatCrossing>();
+
+    // Build the chain-command queue upfront so we can register the
+    // initial (startup) blocks in the commander's mirror before the
+    // audio thread starts consuming.
+    let (commander, chain_rx) = ChainCommander::new_split();
+    let commander = Arc::new(commander);
+    commander.register_initial_blocks(vec![
+        BlockDescriptor {
+            type_id: "builtin.synth".into(),
+            name: "Synth".into(),
+        },
+        BlockDescriptor {
+            type_id: "builtin.delay".into(),
+            name: "Delay".into(),
+        },
+        BlockDescriptor {
+            type_id: "builtin.reverb".into(),
+            name: "Reverb".into(),
+        },
+    ]);
 
     // Forwarding thread: pulls BeatCrossings and emits Tauri events.
     {
@@ -142,7 +165,16 @@ pub fn start(
     {
         let transport = Arc::clone(&transport);
         thread::spawn(move || {
-            match build_and_run_stream(transport, metronome_enabled, synth_params, synth_rx, tx) {
+            match build_and_run_stream(
+                transport,
+                metronome_enabled,
+                synth_params,
+                synth_rx,
+                reverb_params,
+                delay_params,
+                chain_rx,
+                tx,
+            ) {
                 Ok(_stream) => {
                     let _ = ready_tx.send(Ok(()));
                     // Park the thread to keep the Stream alive. cpal's
@@ -161,7 +193,8 @@ pub fn start(
 
     ready_rx
         .recv()
-        .map_err(|e| format!("audio-clock thread died: {}", e))?
+        .map_err(|e| format!("audio-clock thread died: {}", e))??;
+    Ok(commander)
 }
 
 fn build_and_run_stream(
@@ -169,6 +202,9 @@ fn build_and_run_stream(
     metronome_enabled: Arc<AtomicBool>,
     synth_params: Arc<SynthParams>,
     synth_rx: Option<mpsc::Receiver<SynthEvent>>,
+    reverb_params: Arc<ReverbParams>,
+    delay_params: Arc<DelayParams>,
+    chain_rx: ChainCommandConsumer,
     crossing_tx: mpsc::Sender<BeatCrossing>,
 ) -> Result<cpal::Stream, String> {
     let host = cpal::default_host();
@@ -213,13 +249,17 @@ fn build_and_run_stream(
             let mut click = Click::new(click_total_samples);
             let sr_f = sample_rate as f32;
 
-            // Build the audio chain. Today: just the built-in synth.
-            // FX blocks (reverb / delay / EQ / compressor) push after
-            // the synth in later work. CLAP / VST3 plugin blocks are
-            // also pushed here once their hosts exist.
+            // Build the audio chain. Order: synth first, then FX
+            // blocks that shape its output in place. CLAP / VST3
+            // plugin blocks are also pushed here once their hosts
+            // exist.
             let synth = Synth::new(synth_params, synth_rx, sample_rate);
-            let mut chain = Chain::new(sample_rate);
+            let reverb = Reverb::new(reverb_params, sample_rate);
+            let delay = Delay::new(delay_params, sample_rate);
+            let mut chain = Chain::with_queue(sample_rate, chain_rx);
             chain.push(Box::new(synth));
+            chain.push(Box::new(delay));
+            chain.push(Box::new(reverb));
 
             device.build_output_stream(
                 &stream_config,

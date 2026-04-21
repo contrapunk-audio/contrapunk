@@ -663,6 +663,36 @@ export class WasmAdapter implements ContrapunkAdapter {
 	async setSynthResonance(_value: number): Promise<void> {}
 	async setSynthMasterGain(_value: number): Promise<void> {}
 
+	// -- FX (no built-in FX in browser; stubs) --
+
+	async getReverbState() {
+		return { enabled: false, mix: 0.3, roomSize: 0.7, damping: 0.5 };
+	}
+	async setReverbEnabled(_enabled: boolean): Promise<void> {}
+	async setReverbMix(_value: number): Promise<void> {}
+	async setReverbRoomSize(_value: number): Promise<void> {}
+	async setReverbDamping(_value: number): Promise<void> {}
+
+	async getDelayState() {
+		return { enabled: false, mix: 0.3, timeMs: 375, feedback: 0.35 };
+	}
+	async setDelayEnabled(_enabled: boolean): Promise<void> {}
+	async setDelayMix(_value: number): Promise<void> {}
+	async setDelayTimeMs(_ms: number): Promise<void> {}
+	async setDelayFeedback(_value: number): Promise<void> {}
+
+	// -- Chain topology + CLAP (no native host in browser; stubs) --
+
+	async listChainBlocks() {
+		return [];
+	}
+	async removeChainBlock(_index: number): Promise<void> {}
+	async clearChain(): Promise<void> {}
+	async listClapPlugins() {
+		return [];
+	}
+	async addClapPluginToChain(_path: string): Promise<void> {}
+
 	private stopNotePolling(): void {
 		if (this.pollingHandle !== null) {
 			cancelAnimationFrame(this.pollingHandle);

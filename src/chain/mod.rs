@@ -30,6 +30,15 @@
 
 pub mod block;
 pub mod chain;
+pub mod command;
+pub mod commander;
 
 pub use block::{AudioBlock, MidiBlockEvent};
 pub use chain::Chain;
+pub use command::ChainCommand;
+pub use commander::{BlockDescriptor, ChainCommander};
+
+/// Consumer half of the chain command queue. Re-exported so downstream
+/// crates (e.g. the Tauri binary) can reference the type without a
+/// direct dependency on `ringbuf`.
+pub type ChainCommandConsumer = ringbuf::HeapCons<ChainCommand>;

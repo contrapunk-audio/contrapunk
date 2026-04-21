@@ -34,6 +34,12 @@ midir = "0.10"
 clap = { version = "4", features = ["derive"] }
 cpal = "0.15"
 rmp-serde = "1.3"
+# CLAP plugin hosting. `clack-host` is the idiomatic safe wrapper over
+# the CLAP ABI. Not yet on crates.io — pinned by rev so upstream
+# churn can't break our build. See src/plugin_host/clap/mod.rs for
+# the full rationale.
+clack-host = { git = "https://github.com/prokopyl/clack", rev = "4541f03792635dfdc6be9441a01b786e9b4ccf18" }
+thiserror = "1.0"
 
 [dependencies.wasm-bindgen]
 version = "0.2"

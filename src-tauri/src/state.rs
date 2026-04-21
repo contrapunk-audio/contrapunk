@@ -9,6 +9,8 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
+use contrapunk::chain::ChainCommander;
+use contrapunk::fx::{DelayParams, ReverbParams};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::preset::PresetManager;
 use contrapunk::synth::{SynthEvent, SynthParams};
@@ -95,6 +97,20 @@ pub struct AppState {
     /// Receiver, stored in an Option so the audio_clock setup hook can
     /// `.take()` it and move it into the stream callback.
     pub synth_rx: Mutex<Option<mpsc::Receiver<SynthEvent>>>,
+
+    /// Built-in reverb parameters. Read by the audio callback each
+    /// buffer; mutated by Tauri command handlers in response to UI
+    /// changes.
+    pub reverb_params: Arc<ReverbParams>,
+
+    /// Built-in delay parameters. Same atomic-mutation pattern as
+    /// `reverb_params`.
+    pub delay_params: Arc<DelayParams>,
+
+    /// Main-thread handle for mutating the live audio chain at
+    /// runtime (add/remove blocks). Populated by the audio-clock
+    /// setup hook after the Chain is constructed.
+    pub chain_commander: Mutex<Option<Arc<ChainCommander>>>,
 }
 
 impl Default for AppState {
@@ -125,6 +141,9 @@ impl Default for AppState {
                 tx
             },
             synth_rx: Mutex::new(None),
+            reverb_params: Arc::new(ReverbParams::default()),
+            delay_params: Arc::new(DelayParams::default()),
+            chain_commander: Mutex::new(None),
         }
     }
 }
