@@ -1,9 +1,8 @@
-//! Minimal CLAP host implementation.
+//! Host implementation for loaded CLAP plugins.
 //!
-//! Only enough surface to satisfy `clack-host`'s trait bounds so
-//! `PluginInstance::new` compiles. No extensions are declared yet — we
-//! will layer on `HostLog`, `HostGui`, `HostParams`, `HostTimer` when
-//! the follow-up iteration actually drives plugins through audio.
+//! Declares [`HostLog`], [`HostGui`], [`HostAudioPorts`], and
+//! [`HostNotePorts`] so the plugin can query them. Each impl is
+//! minimal but sufficient to satisfy the spec.
 //!
 //! # Threading
 //!
@@ -12,12 +11,15 @@
 //! * [`SharedHandler`] — any thread (`Send + Sync`).
 //! * [`MainThreadHandler`] — main thread only.
 //! * [`AudioProcessorHandler`] — audio thread only.
-//!
-//! Until we wire a plugin into `ClapBlock::process`, the audio-thread
-//! handler is `()`. The main-thread handler holds the initialised
-//! plugin handle so the chain controller can call into the plugin
-//! between audio buffers (parameter reads, extension queries).
 
+use clack_extensions::audio_ports::{
+    AudioPortRescanFlags, HostAudioPorts, HostAudioPortsImpl, PluginAudioPorts,
+};
+use clack_extensions::gui::{GuiSize, HostGui, HostGuiImpl, PluginGui};
+use clack_extensions::log::{HostLog, HostLogImpl, LogSeverity};
+use clack_extensions::note_ports::{
+    HostNotePorts, HostNotePortsImpl, NoteDialects, NotePortRescanFlags,
+};
 use clack_host::prelude::*;
 
 /// Human-facing host identity returned to every plugin on load.
@@ -31,9 +33,8 @@ pub fn host_info() -> HostInfo {
     .expect("HostInfo strings are static and contain no NULs")
 }
 
-/// The zero-sized host type that glues the three thread-scoped
-/// handlers together. Implementing [`HostHandlers`] is what lets us
-/// call `PluginInstance::<ContrapunkHost>::new(...)`.
+/// Zero-sized marker that implements [`HostHandlers`]. Every plugin we
+/// load is parameterised on this type.
 pub struct ContrapunkHost;
 
 impl HostHandlers for ContrapunkHost {
@@ -41,21 +42,35 @@ impl HostHandlers for ContrapunkHost {
     type MainThread<'a> = ContrapunkHostMainThread<'a>;
     type AudioProcessor<'a> = ();
 
-    fn declare_extensions(_builder: &mut HostExtensions<Self>, _shared: &Self::Shared<'_>) {
-        // Intentionally empty for v1. Log / GUI / Params / Timer
-        // extensions will be registered here once the real block is
-        // wired to the audio callback.
+    fn declare_extensions(builder: &mut HostExtensions<Self>, _shared: &Self::Shared<'_>) {
+        builder
+            .register::<HostLog>()
+            .register::<HostGui>()
+            .register::<HostAudioPorts>()
+            .register::<HostNotePorts>();
     }
 }
 
-/// Shared host state accessible from any thread. Lives for the life
-/// of the plugin instance. Kept empty for v1 — no inter-thread
-/// plumbing needed while the block is stubbed.
-pub struct ContrapunkHostShared;
+/// Shared host state, accessible from any thread. Tracks whether the
+/// plugin has signalled that its floating window was closed.
+pub struct ContrapunkHostShared {
+    gui_closed: std::sync::Mutex<bool>,
+}
 
 impl ContrapunkHostShared {
     pub fn new() -> Self {
-        Self
+        Self {
+            gui_closed: std::sync::Mutex::new(false),
+        }
+    }
+
+    /// Read and clear the "gui closed" flag. Polled by the main
+    /// thread so the controller knows when to destroy GUI resources.
+    pub fn take_gui_closed(&self) -> bool {
+        let mut flag = self.gui_closed.lock().expect("gui_closed mutex");
+        let was = *flag;
+        *flag = false;
+        was
     }
 }
 
@@ -66,51 +81,81 @@ impl Default for ContrapunkHostShared {
 }
 
 impl<'a> SharedHandler<'a> for ContrapunkHostShared {
-    fn initializing(&self, _instance: InitializingPluginHandle<'a>) {
-        // Hook to grab extension pointers. No-op for v1.
-    }
-
-    fn request_restart(&self) {
-        // Plugin asking to be restarted. We ignore for now; a real
-        // impl would signal the main thread to recreate the plugin.
-    }
-
-    fn request_process(&self) {
-        // Plugin asking us to begin processing. Our stream is always
-        // active while the chain exists, so no action needed.
-    }
-
-    fn request_callback(&self) {
-        // Plugin asking for `on_main_thread` to be called. Will be
-        // routed through a channel when we add Timer / GUI support.
-    }
+    fn initializing(&self, _instance: InitializingPluginHandle<'a>) {}
+    fn request_restart(&self) {}
+    fn request_process(&self) {}
+    fn request_callback(&self) {}
 }
 
-/// Main-thread-only host state. Holds the initialised plugin handle
-/// so the chain controller can talk to the plugin between buffers.
+/// Main-thread host state. Caches the plugin's GUI and audio-ports
+/// extension handles so we can call them without re-querying each time.
 pub struct ContrapunkHostMainThread<'a> {
     _shared: &'a ContrapunkHostShared,
-    plugin: Option<InitializedPluginHandle<'a>>,
+    pub gui: Option<PluginGui>,
+    pub audio_ports: Option<PluginAudioPorts>,
 }
 
 impl<'a> ContrapunkHostMainThread<'a> {
     pub fn new(shared: &'a ContrapunkHostShared) -> Self {
         Self {
             _shared: shared,
-            plugin: None,
+            gui: None,
+            audio_ports: None,
         }
-    }
-
-    /// Access the initialised plugin handle, if the plugin has
-    /// finished the `initialize` phase. Used by follow-up work to read
-    /// the plugin's extensions.
-    pub fn plugin(&self) -> Option<&InitializedPluginHandle<'a>> {
-        self.plugin.as_ref()
     }
 }
 
 impl<'a> MainThreadHandler<'a> for ContrapunkHostMainThread<'a> {
     fn initialized(&mut self, instance: InitializedPluginHandle<'a>) {
-        self.plugin = Some(instance);
+        self.gui = instance.get_extension();
+        self.audio_ports = instance.get_extension();
     }
+}
+
+// ------------ Extension implementations ------------
+
+impl HostLogImpl for ContrapunkHostShared {
+    fn log(&self, severity: LogSeverity, message: &str) {
+        if severity <= LogSeverity::Debug {
+            return;
+        }
+        eprintln!("[clap/{severity}] {message}");
+    }
+}
+
+impl HostGuiImpl for ContrapunkHostShared {
+    fn resize_hints_changed(&self) {}
+
+    fn request_resize(&self, _new_size: GuiSize) -> Result<(), HostError> {
+        // Floating windows own their own sizing.
+        Ok(())
+    }
+
+    fn request_show(&self) -> Result<(), HostError> {
+        Ok(())
+    }
+
+    fn request_hide(&self) -> Result<(), HostError> {
+        Ok(())
+    }
+
+    fn closed(&self, _was_destroyed: bool) {
+        if let Ok(mut flag) = self.gui_closed.lock() {
+            *flag = true;
+        }
+    }
+}
+
+impl HostAudioPortsImpl for ContrapunkHostMainThread<'_> {
+    fn is_rescan_flag_supported(&self, _flag: AudioPortRescanFlags) -> bool {
+        false
+    }
+    fn rescan(&mut self, _flag: AudioPortRescanFlags) {}
+}
+
+impl HostNotePortsImpl for ContrapunkHostMainThread<'_> {
+    fn supported_dialects(&self) -> NoteDialects {
+        NoteDialects::CLAP
+    }
+    fn rescan(&mut self, _flags: NotePortRescanFlags) {}
 }

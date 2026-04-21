@@ -507,6 +507,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "clack-extensions"
+version = "0.1.0"
+source = "git+https://github.com/prokopyl/clack?rev=4541f03792635dfdc6be9441a01b786e9b4ccf18#4541f03792635dfdc6be9441a01b786e9b4ccf18"
+dependencies = [
+ "bitflags 2.11.1",
+ "clack-common",
+ "clack-host",
+ "clap-sys 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "clack-host"
 version = "0.1.0"
 source = "git+https://github.com/prokopyl/clack?rev=4541f03792635dfdc6be9441a01b786e9b4ccf18#4541f03792635dfdc6be9441a01b786e9b4ccf18"
@@ -610,12 +621,16 @@ name = "contrapunk"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "clack-extensions",
  "clack-host",
  "clap",
  "cpal",
  "getrandom 0.2.17",
  "js-sys",
  "midir",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "pitch-detection",
  "rand 0.8.5",
  "ringbuf",

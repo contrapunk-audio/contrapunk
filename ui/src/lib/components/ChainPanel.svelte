@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { synth, WAVEFORMS } from '$lib/stores/synth.svelte';
 	import { delay, reverb } from '$lib/stores/fx.svelte';
-	import { chainStore } from '$lib/stores/chain.svelte';
+	import { chainStore, parsePluginId } from '$lib/stores/chain.svelte';
 	import Knob from './Knob.svelte';
 	import WaveformView from './WaveformView.svelte';
 	import EnvelopeView from './EnvelopeView.svelte';
@@ -31,55 +31,37 @@
 		</button>
 	</div>
 
-	<!-- Dynamic block list -->
-	<div class="blocks-strip">
-		{#each chainStore.blocks as b, i (i + ':' + b.typeId)}
-			<div class="block-chip" class:builtin={b.typeId.startsWith('builtin.')}>
-				<span class="block-name font-pixel">{b.name}</span>
-				<span class="block-type font-pixel">{b.typeId}</span>
-				{#if !b.typeId.startsWith('builtin.')}
-					<button
-						class="block-remove font-pixel"
-						title="Remove from chain"
-						onclick={() => chainStore.removeAt(i)}
-					>
-						×
-					</button>
-				{/if}
-			</div>
-		{/each}
-		{#if chainStore.blocks.length === 0}
-			<div class="blocks-empty font-pixel">No blocks — audio chain is empty</div>
-		{/if}
-	</div>
-
-	<!-- Signal-flow strip -->
+	<!-- Signal-flow strip: dynamic based on chain state -->
 	<div class="flow">
 		<div class="flow-node source font-pixel">
 			<div class="flow-title">Harmony</div>
 			<div class="flow-sub">MIDI</div>
 		</div>
-		<div class="flow-arrow font-pixel">━━▶</div>
-		<div class="flow-node synth-node font-pixel">
-			<div class="flow-title">Synth</div>
-			<div class="flow-sub">8-voice</div>
-		</div>
-		<div class="flow-arrow font-pixel">━━▶</div>
-		<div
-			class="flow-node delay-node font-pixel"
-			class:active={delay.enabled}
-		>
-			<div class="flow-title">Delay</div>
-			<div class="flow-sub">{delay.enabled ? 'on' : 'bypass'}</div>
-		</div>
-		<div class="flow-arrow font-pixel">━━▶</div>
-		<div
-			class="flow-node reverb-node font-pixel"
-			class:active={reverb.enabled}
-		>
-			<div class="flow-title">Reverb</div>
-			<div class="flow-sub">{reverb.enabled ? 'on' : 'bypass'}</div>
-		</div>
+		{#each chainStore.blocks as b, i (i + ':' + b.typeId)}
+			<div class="flow-arrow font-pixel">━━▶</div>
+			{#if b.typeId === 'builtin.synth'}
+				<div class="flow-node synth-node font-pixel">
+					<div class="flow-title">Synth</div>
+					<div class="flow-sub">8-voice</div>
+				</div>
+			{:else if b.typeId === 'builtin.delay'}
+				<div class="flow-node delay-node font-pixel" class:active={delay.enabled}>
+					<div class="flow-title">Delay</div>
+					<div class="flow-sub">{delay.enabled ? 'on' : 'bypass'}</div>
+				</div>
+			{:else if b.typeId === 'builtin.reverb'}
+				<div class="flow-node reverb-node font-pixel" class:active={reverb.enabled}>
+					<div class="flow-title">Reverb</div>
+					<div class="flow-sub">{reverb.enabled ? 'on' : 'bypass'}</div>
+				</div>
+			{:else}
+				<!-- Plugin flow node -->
+				<div class="flow-node plugin-node font-pixel" title={b.typeId}>
+					<div class="flow-title">{b.name}</div>
+					<div class="flow-sub">CLAP</div>
+				</div>
+			{/if}
+		{/each}
 		<div class="flow-arrow font-pixel">━━▶</div>
 		<div class="flow-node sink font-pixel">
 			<div class="flow-title">Output</div>
@@ -341,6 +323,48 @@
 			/>
 		</div>
 	</div>
+
+	<!-- One rack per loaded CLAP plugin -->
+	{#each chainStore.blocks as b, i (i + ':' + b.typeId)}
+		{#if !b.typeId.startsWith('builtin.')}
+			{@const pluginId = parsePluginId(b.typeId)}
+			<div class="rack plugin-rack">
+				<div class="rack-header">
+					<span class="rack-title plugin-title font-pixel">{b.name}</span>
+					<div class="plugin-actions">
+						<button
+							class="pixel-btn font-pixel plugin-open-btn"
+							onclick={() => pluginId !== null && chainStore.openPluginGui(pluginId)}
+							disabled={pluginId === null}
+							title={pluginId === null ? 'Plugin has no id' : 'Open plugin window'}
+						>
+							Open UI
+						</button>
+						<button
+							class="pixel-btn font-pixel plugin-remove-btn"
+							onclick={() => chainStore.removeAt(i)}
+							title="Remove from chain"
+						>
+							Remove
+						</button>
+					</div>
+				</div>
+				<div class="plugin-body font-pixel">
+					<div class="plugin-row">
+						<span class="plugin-label">Type</span>
+						<span class="plugin-value">CLAP</span>
+					</div>
+					<div class="plugin-row">
+						<span class="plugin-label">Plugin ID</span>
+						<span class="plugin-value plugin-id" title={b.typeId}>{b.typeId}</span>
+					</div>
+					<div class="plugin-note">
+						Loaded + activated. Audio routing through plugin coming in phase 2.
+					</div>
+				</div>
+			</div>
+		{/if}
+	{/each}
 </div>
 
 <style>
@@ -392,23 +416,27 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		padding: 2px 6px;
+		padding: 2px 8px;
 		background: rgba(15, 14, 26, 0.7);
-		border: 1px solid var(--color-accent-cyan-dim);
+		border: 1px solid var(--color-border);
+		max-width: 200px;
+		overflow: hidden;
 	}
 
-	.block-chip.builtin {
-		border-color: var(--color-border);
+	.block-chip:not(.builtin) {
+		border-color: var(--color-accent-cyan-dim);
 	}
 
 	.block-name {
 		color: var(--color-accent-magenta);
 		font-size: var(--font-size-xs);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
-	.block-type {
-		color: var(--color-text-dim);
-		font-size: var(--font-size-xs);
+	.block-chip:not(.builtin) .block-name {
+		color: var(--color-accent-cyan);
 	}
 
 	.block-remove {
@@ -467,6 +495,15 @@
 	.flow-node.synth-node {
 		border-color: var(--color-accent-magenta-dim);
 		box-shadow: var(--glow-magenta);
+	}
+
+	.flow-node.plugin-node {
+		border-color: var(--color-accent-cyan-dim);
+		background: rgba(0, 60, 90, 0.5);
+		box-shadow: 0 0 10px rgba(0, 200, 255, 0.15);
+	}
+	.flow-node.plugin-node .flow-title {
+		color: var(--color-accent-cyan);
 	}
 
 	.flow-node.reverb-node,
@@ -608,6 +645,79 @@
 
 	.delay-title {
 		color: var(--color-accent-magenta);
+	}
+
+	/* Plugin racks (one per loaded CLAP) */
+	.plugin-rack {
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.03),
+			0 0 20px rgba(0, 200, 255, 0.08);
+		border-color: var(--color-accent-cyan-dim);
+	}
+
+	.plugin-title {
+		color: var(--color-accent-cyan);
+	}
+
+	.plugin-actions {
+		display: flex;
+		gap: 6px;
+	}
+
+	.plugin-open-btn,
+	.plugin-remove-btn {
+		padding: 2px 10px !important;
+		font-size: var(--font-size-xs) !important;
+	}
+
+	.plugin-open-btn[disabled] {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.plugin-remove-btn:hover {
+		border-color: rgba(200, 40, 40, 0.6);
+		color: rgb(255, 120, 120);
+	}
+
+	.plugin-body {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 6px 4px 2px;
+	}
+
+	.plugin-row {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+		font-size: var(--font-size-xs);
+	}
+
+	.plugin-label {
+		color: var(--color-text-secondary);
+		min-width: 72px;
+		letter-spacing: 1px;
+		text-transform: uppercase;
+	}
+
+	.plugin-value {
+		color: var(--color-text-primary);
+	}
+
+	.plugin-value.plugin-id {
+		color: var(--color-text-dim);
+		font-family: monospace;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.plugin-note {
+		color: var(--color-text-dim);
+		font-size: var(--font-size-xs);
+		padding-top: 4px;
+		font-style: italic;
 	}
 
 	.reverb-knobs {

@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import '../app.css';
 	import Particles from '$lib/components/Particles.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { adapter } from '$lib/adapter';
+	import { chainStore } from '$lib/stores/chain.svelte';
 
 	let { children } = $props();
 
@@ -13,6 +14,10 @@
 
 	$effect(() => {
 		ui.detectSystemMotionPreference();
+	});
+
+	onMount(() => {
+		chainStore.refresh();
 	});
 
 	// Tear down adapter background loops on unmount (prevents RAF leaks

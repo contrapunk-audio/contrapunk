@@ -104,6 +104,14 @@ export interface ClapPluginDescriptor {
 	path: string;
 }
 
+/** Returned from addClapPluginToChain — plugin is live, has a stable id for GUI control. */
+export interface AddedPlugin {
+	pluginId: number;
+	name: string;
+	path: string;
+	hasGui: boolean;
+}
+
 /** Snapshot of transport / clock state. */
 export interface TransportState {
 	running: boolean;
@@ -304,7 +312,10 @@ export interface ContrapunkAdapter {
 	// -- CLAP plugin host --
 
 	listClapPlugins(): Promise<ClapPluginDescriptor[]>;
-	addClapPluginToChain(path: string): Promise<void>;
+	addClapPluginToChain(path: string): Promise<AddedPlugin>;
+	openPluginGui(pluginId: number): Promise<void>;
+	closePluginGui(pluginId: number): Promise<void>;
+	removePlugin(pluginId: number): Promise<void>;
 
 	// -- Lifecycle --
 

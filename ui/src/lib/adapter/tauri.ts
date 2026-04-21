@@ -10,6 +10,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
 import type {
+	AddedPlugin,
 	ChainBlock,
 	ClapPluginDescriptor,
 	ContrapunkAdapter,
@@ -569,7 +570,22 @@ export class TauriAdapter implements ContrapunkAdapter {
 			path: p.path as string
 		}));
 	}
-	async addClapPluginToChain(path: string): Promise<void> {
-		await invoke('add_clap_plugin_to_chain', { path });
+	async addClapPluginToChain(path: string): Promise<AddedPlugin> {
+		const raw = (await invoke('add_clap_plugin_to_chain', { path })) as Record<string, unknown>;
+		return {
+			pluginId: raw.plugin_id as number,
+			name: raw.name as string,
+			path: raw.path as string,
+			hasGui: raw.has_gui as boolean
+		};
+	}
+	async openPluginGui(pluginId: number): Promise<void> {
+		await invoke('open_plugin_gui', { pluginId });
+	}
+	async closePluginGui(pluginId: number): Promise<void> {
+		await invoke('close_plugin_gui', { pluginId });
+	}
+	async removePlugin(pluginId: number): Promise<void> {
+		await invoke('remove_plugin', { pluginId });
 	}
 }

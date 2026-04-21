@@ -58,9 +58,16 @@
 //! * No parameter automation, no preset save/load, no per-block audio
 //!   routing graph beyond "serial stereo".
 
+pub mod audio_block;
 pub mod block;
+pub mod controller;
 pub mod discovery;
 pub mod host;
+pub mod registry;
+pub mod window;
 
+pub use audio_block::ClapAudioBlock;
 pub use block::ClapBlock;
+pub use controller::ClapPluginController;
 pub use discovery::{discover_plugins, PluginDescriptor};
+pub use registry::PluginId;

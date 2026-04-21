@@ -130,6 +130,9 @@ fn main() {
             // CLAP plugin hosting
             commands::plugins::list_clap_plugins,
             commands::plugins::add_clap_plugin_to_chain,
+            commands::plugins::open_plugin_gui,
+            commands::plugins::close_plugin_gui,
+            commands::plugins::remove_plugin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

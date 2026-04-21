@@ -1,29 +1,49 @@
 //! Tauri commands for CLAP plugin hosting.
 //!
 //! * [`list_clap_plugins`] scans the filesystem and returns every
-//!   `.clap` bundle found. Invoked by the "Add plugin" picker in the
-//!   chain panel.
-//! * [`add_clap_plugin_to_chain`] constructs a [`ClapBlock`] and
-//!   pushes it onto the live audio chain via the main-thread
-//!   [`ChainCommander`]. The command queue delivers it to the audio
-//!   thread, which appends it to the chain on the next buffer.
+//!   `.clap` bundle found.
+//! * [`add_clap_plugin_to_chain`] instantiates + activates the plugin
+//!   on the main thread, stores it in the registry, and pushes a
+//!   `ClapBlock` onto the live audio chain.
+//! * [`open_plugin_gui`] / [`close_plugin_gui`] drive the plugin's
+//!   floating GUI window (macOS Cocoa / Win32 / X11). All GUI calls
+//!   are dispatched to the main thread because native windows have
+//!   thread affinity.
 //!
-//! See `src/plugin_host/clap/` for the scaffolding these commands
-//! delegate to. `ClapBlock` is still a stub that emits silence — the
-//! plumbing for actual audio flow through the plugin is the next
-//! iteration inside that module. Wiring it here now means the UI
-//! side is ready when block.rs is upgraded.
+//! The main-thread dispatcher pattern uses a oneshot channel so the
+//! Tauri command (which may run on a worker thread) can receive the
+//! result synchronously.
 
-use tauri::State;
+use std::sync::mpsc;
 
-use contrapunk::plugin_host::clap::{discover_plugins, ClapBlock, PluginDescriptor};
+use serde::Serialize;
+use tauri::{AppHandle, Manager, Runtime, State};
+
+use contrapunk::chain::{AudioBlock, MidiBlockEvent};
+use contrapunk::plugin_host::clap::{
+    discover_plugins, registry, ClapAudioBlock, ClapPluginController, PluginDescriptor, PluginId,
+};
 
 use crate::state::AppState;
 
+/// Run `f` on the main thread and return its result. Uses a
+/// crossbeam-free oneshot `mpsc::sync_channel(1)`. `f` must be
+/// `Send + 'static` because Tauri moves it onto the main loop.
+fn on_main<R, F, RT>(app: &AppHandle<RT>, f: F) -> Result<R, String>
+where
+    RT: Runtime,
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let (tx, rx) = mpsc::sync_channel::<R>(1);
+    app.run_on_main_thread(move || {
+        let _ = tx.send(f());
+    })
+    .map_err(|e| format!("run_on_main_thread: {e}"))?;
+    rx.recv().map_err(|e| format!("main-thread recv: {e}"))
+}
+
 /// Discover every CLAP plugin installed on the machine.
-///
-/// Walks the OS-standard CLAP directories + `$CLAP_PATH`. Returns the
-/// list sorted by name so the UI can render it directly.
 #[tauri::command]
 pub fn list_clap_plugins() -> Vec<PluginDescriptor> {
     let mut out = discover_plugins();
@@ -31,13 +51,59 @@ pub fn list_clap_plugins() -> Vec<PluginDescriptor> {
     out
 }
 
-/// Push a CLAP plugin onto the live audio chain.
-///
-/// Returns `Ok(())` once the command has been enqueued. The audio
-/// thread consumes it on the next buffer.
+/// Shape returned to the UI after a successful plugin add.
+#[derive(Serialize)]
+pub struct AddedPlugin {
+    pub plugin_id: PluginId,
+    pub name: String,
+    pub path: String,
+    pub has_gui: bool,
+}
+
 #[tauri::command]
-pub fn add_clap_plugin_to_chain(path: String, state: State<AppState>) -> Result<(), String> {
-    let block = ClapBlock::new(&path).map_err(|e| e.to_string())?;
+pub fn add_clap_plugin_to_chain<RT: Runtime>(
+    path: String,
+    state: State<AppState>,
+    app: AppHandle<RT>,
+) -> Result<AddedPlugin, String> {
+    let sample_rate = state.transport.sample_rate() as f64;
+    eprintln!("[plugins] add_clap_plugin_to_chain: path={path} sr={sample_rate}");
+
+    // Activate + register on the main thread (PluginInstance is !Send).
+    let path_for_main = path.clone();
+    let load_result = on_main(&app, move || {
+        eprintln!("[plugins] (main-thread) activating: {path_for_main}");
+        ClapPluginController::load_and_activate(&path_for_main, sample_rate, 32, 4096)
+            .map_err(|e| {
+                eprintln!("[plugins] load_and_activate failed: {e}");
+                e.to_string()
+            })
+            .map(|mut controller| {
+                let name = controller.name.clone();
+                let path = controller.path.clone();
+                let has_gui = controller.has_gui;
+                let layout = controller.port_layout.clone();
+                // Take the started audio processor out of the controller —
+                // it moves to the audio thread inside ClapAudioBlock.
+                let processor = controller.take_processor();
+                let id = registry::insert(controller);
+                eprintln!("[plugins] registered id={id} name={name} has_gui={has_gui}");
+                (id, name, path, has_gui, processor, layout)
+            })
+    })??;
+
+    let (plugin_id, name, controller_path, has_gui, processor_opt, port_layout) = load_result;
+    let processor = processor_opt.ok_or_else(|| {
+        // Roll back registry if activation produced no processor.
+        let id = plugin_id;
+        let app2 = app.clone();
+        let _ = app2.run_on_main_thread(move || registry::remove(id));
+        "plugin activation produced no audio processor".to_string()
+    })?;
+
+    // Build the audio-thread block that actually drives the plugin.
+    let sr_u32 = sample_rate as u32;
+    let block = ClapAudioBlock::new(name.clone(), processor, sr_u32, 4096, port_layout);
 
     let guard = state
         .chain_commander
@@ -46,6 +112,109 @@ pub fn add_clap_plugin_to_chain(path: String, state: State<AppState>) -> Result<
     let commander = guard
         .as_ref()
         .ok_or_else(|| "audio chain not initialized".to_string())?;
-    commander.push_block(Box::new(block))?;
-    Ok(())
+
+    let _ = commander
+        .push_block(Box::new(TaggedClapBlock::new(block, plugin_id)))
+        .map_err(|e| {
+            // If push fails, roll back the registry insert so the UI
+            // doesn't dangle.
+            let id = plugin_id;
+            let _ = app.run_on_main_thread(move || registry::remove(id));
+            e
+        })?;
+
+    Ok(AddedPlugin {
+        plugin_id,
+        name,
+        path: controller_path,
+        has_gui,
+    })
+}
+
+/// Wraps a `ClapAudioBlock` so the chain carries the plugin id in
+/// its `type_id()`. That lets the UI map from chain index → registry
+/// id without a side channel.
+struct TaggedClapBlock {
+    inner: ClapAudioBlock,
+    type_id: String,
+}
+
+impl TaggedClapBlock {
+    fn new(inner: ClapAudioBlock, plugin_id: PluginId) -> Self {
+        let type_id = format!("clap:{plugin_id}");
+        Self { inner, type_id }
+    }
+}
+
+impl AudioBlock for TaggedClapBlock {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn type_id(&self) -> &str {
+        &self.type_id
+    }
+    fn process(&mut self, buffer: &mut [f32], channels: usize) {
+        self.inner.process(buffer, channels);
+    }
+    fn midi_event(&mut self, event: MidiBlockEvent) {
+        self.inner.midi_event(event);
+    }
+    fn reset(&mut self) {
+        self.inner.reset();
+    }
+    fn set_sample_rate(&mut self, sample_rate: u32) {
+        self.inner.set_sample_rate(sample_rate);
+    }
+    fn enabled(&self) -> bool {
+        self.inner.enabled()
+    }
+}
+
+#[tauri::command]
+pub fn open_plugin_gui<RT: Runtime>(plugin_id: PluginId, app: AppHandle<RT>) -> Result<(), String> {
+    eprintln!("[plugins] open_plugin_gui: id={plugin_id}");
+    on_main(&app, move || {
+        registry::with_plugins(|map| {
+            let Some(controller) = map.get_mut(&plugin_id) else {
+                eprintln!("[plugins] open_plugin_gui: id={plugin_id} not in registry");
+                return Err(format!("plugin {plugin_id} not found"));
+            };
+            eprintln!(
+                "[plugins] open_plugin_gui: found name={} has_gui={}",
+                controller.name, controller.has_gui
+            );
+            if !controller.has_gui {
+                return Err("plugin does not expose a GUI".into());
+            }
+            match controller.open_gui() {
+                Ok(()) => {
+                    eprintln!("[plugins] open_plugin_gui: show succeeded");
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("[plugins] open_plugin_gui: create/show failed: {e:?}");
+                    Err(format!("open gui: {e:?}"))
+                }
+            }
+        })
+    })?
+}
+
+#[tauri::command]
+pub fn close_plugin_gui<RT: Runtime>(
+    plugin_id: PluginId,
+    app: AppHandle<RT>,
+) -> Result<(), String> {
+    on_main(&app, move || {
+        registry::with_plugins(|map| {
+            if let Some(controller) = map.get_mut(&plugin_id) {
+                controller.close_gui();
+            }
+        })
+    })
+}
+
+#[tauri::command]
+pub fn remove_plugin<RT: Runtime>(plugin_id: PluginId, app: AppHandle<RT>) -> Result<(), String> {
+    on_main(&app, move || registry::remove(plugin_id))
 }

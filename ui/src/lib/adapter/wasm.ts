@@ -691,7 +691,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 	async listClapPlugins() {
 		return [];
 	}
-	async addClapPluginToChain(_path: string): Promise<void> {}
+	async addClapPluginToChain(_path: string) {
+		return { pluginId: 0, name: '', path: '', hasGui: false };
+	}
+	async openPluginGui(_pluginId: number): Promise<void> {}
+	async closePluginGui(_pluginId: number): Promise<void> {}
+	async removePlugin(_pluginId: number): Promise<void> {}
 
 	private stopNotePolling(): void {
 		if (this.pollingHandle !== null) {
