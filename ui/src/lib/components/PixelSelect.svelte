@@ -102,7 +102,7 @@
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
 		color: var(--color-text-primary);
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		padding: 3px 4px;
 		border-radius: 0;
 		cursor: pointer;
@@ -112,7 +112,7 @@
 	}
 
 	.small .pixel-select-trigger {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		padding: 2px 3px;
 	}
 
@@ -136,7 +136,7 @@
 
 	.trigger-arrow {
 		color: var(--color-accent-cyan);
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		flex-shrink: 0;
 	}
 
@@ -160,7 +160,7 @@
 		background: none;
 		border: none;
 		color: var(--color-text-primary);
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		padding: 3px 4px;
 		text-align: left;
 		cursor: pointer;
@@ -170,7 +170,7 @@
 	}
 
 	.small .pixel-select-option {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		padding: 2px 3px;
 	}
 

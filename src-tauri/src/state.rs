@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::preset::PresetManager;
+use contrapunk::synth::{SynthEvent, SynthParams};
 use contrapunk::transport::Transport;
 
 /// Application state managed by Tauri.
@@ -75,6 +76,25 @@ pub struct AppState {
     /// callback (see `audio_clock`). Shared across command threads and
     /// the audio thread via atomics.
     pub transport: Arc<Transport>,
+
+    /// Metronome audible-click toggle. Read by the audio callback on
+    /// every beat crossing; no click synthesis when false. Off by default
+    /// so enabling the transport doesn't produce surprise audio.
+    pub metronome_enabled: Arc<AtomicBool>,
+
+    /// Built-in synth parameters (waveform, ADSR, filter, master gain).
+    /// Read by the audio callback each buffer; mutated by Tauri command
+    /// handlers in response to UI changes.
+    pub synth_params: Arc<SynthParams>,
+
+    /// Sender half of the synth's MIDI-event channel. The router thread
+    /// pushes events here whenever harmony produces a note-on/off; the
+    /// audio callback drains the receiver end on every buffer.
+    pub synth_tx: mpsc::Sender<SynthEvent>,
+
+    /// Receiver, stored in an Option so the audio_clock setup hook can
+    /// `.take()` it and move it into the stream callback.
+    pub synth_rx: Mutex<Option<mpsc::Receiver<SynthEvent>>>,
 }
 
 impl Default for AppState {
@@ -98,6 +118,26 @@ impl Default for AppState {
             // Placeholder sample rate; audio_clock::start() corrects it
             // to the actual cpal device rate at app launch.
             transport: Transport::new(48_000),
+            metronome_enabled: Arc::new(AtomicBool::new(false)),
+            synth_params: Arc::new(SynthParams::default()),
+            synth_tx: {
+                let (tx, _) = mpsc::channel();
+                tx
+            },
+            synth_rx: Mutex::new(None),
         }
+    }
+}
+
+impl AppState {
+    /// Build AppState with a freshly-connected synth MIDI channel. Use
+    /// this instead of `default()` so the audio-clock setup hook has a
+    /// matching rx to `.take()`.
+    pub fn new() -> Self {
+        let mut base = Self::default();
+        let (tx, rx) = mpsc::channel::<SynthEvent>();
+        base.synth_tx = tx;
+        base.synth_rx = Mutex::new(Some(rx));
+        base
     }
 }

@@ -7,10 +7,13 @@
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import Fretboard from '$lib/components/Fretboard.svelte';
+	import SettingsModal from '$lib/components/SettingsModal.svelte';
+	import ChainPanel from '$lib/components/ChainPanel.svelte';
 	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { synth } from '$lib/stores/synth.svelte';
 
 	// Virtual input sentinels (must match MidiDevices.svelte and engine.rs)
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
@@ -63,10 +66,12 @@
 
 		(async () => {
 			try {
+				ui.restoreAppearance();
 				await adapter.init();
 				await engine.syncFromBackend();
 				await engine.restoreSettings();
 				await midi.refresh();
+				await synth.syncFromBackend();
 				initDone = true;
 			} catch (e) {
 				initError = `Init failed: ${e}`;
@@ -170,35 +175,63 @@
 	<!-- Top: Status bar -->
 	<StatusBar />
 
+	<!-- Settings modal (overlays the whole app when open) -->
+	<SettingsModal />
+
 	{#if initDone}
-		<!-- Middle: 3-column content area -->
-		<div class="content-area">
-			<!-- Left column: MIDI devices + Guitar Input + Presets -->
-			<div class="column column-left">
-				<MidiDevices>
-					{#if isGuitarAudioSelected}
-						<GuitarInputPanel />
-					{/if}
-				</MidiDevices>
-				<PresetManager />
-			</div>
-
-			<!-- Center column: Harmony controls -->
-			<div class="column column-center">
-				<ControlPanel />
-			</div>
-
-			<!-- Right column: Active Notes -->
-			<div class="column column-right">
-				<ActiveNotes />
-			</div>
+		<!-- Tab switcher -->
+		<div class="tab-strip">
+			<button
+				class="tab-btn font-pixel"
+				class:active={ui.activeTab === 'play'}
+				onclick={() => (ui.activeTab = 'play')}
+			>
+				Play
+			</button>
+			<button
+				class="tab-btn font-pixel"
+				class:active={ui.activeTab === 'chain'}
+				onclick={() => (ui.activeTab = 'chain')}
+			>
+				Chain
+			</button>
 		</div>
 
-		<!-- Bottom: Fretboard overlay + Sacred piano keyboard -->
-		<div class="piano-area">
-			<Fretboard />
-			<Piano />
-		</div>
+		{#if ui.activeTab === 'play'}
+			<!-- Middle: 3-column content area -->
+			<div class="content-area">
+				<!-- Left column: MIDI devices + Guitar Input + Presets -->
+				<div class="column column-left">
+					<MidiDevices>
+						{#if isGuitarAudioSelected}
+							<GuitarInputPanel />
+						{/if}
+					</MidiDevices>
+					<PresetManager />
+				</div>
+
+				<!-- Center column: Harmony controls -->
+				<div class="column column-center">
+					<ControlPanel />
+				</div>
+
+				<!-- Right column: Active Notes -->
+				<div class="column column-right">
+					<ActiveNotes />
+				</div>
+			</div>
+
+			<!-- Bottom: Fretboard overlay + Sacred piano keyboard -->
+			<div class="piano-area">
+				<Fretboard />
+				<Piano />
+			</div>
+		{:else}
+			<!-- Chain tab: audio signal flow + synth params -->
+			<div class="chain-area">
+				<ChainPanel />
+			</div>
+		{/if}
 	{:else if !initError}
 		<div class="init-loading font-pixel">Initializing engine...</div>
 	{/if}
@@ -207,11 +240,45 @@
 <style>
 	.app-layout {
 		display: grid;
-		grid-template-rows: auto 1fr auto;
+		grid-template-rows: auto auto 1fr auto;
 		height: 100vh;
 		width: 100vw;
 		overflow: hidden;
-		background: var(--color-bg-deep);
+		/* Transparent so particles show through wherever panels don't
+		   paint. Panels below set their own semi-transparent backgrounds. */
+		background: transparent;
+	}
+
+	.tab-strip {
+		display: flex;
+		background: rgba(15, 14, 26, 0.88);
+		border-bottom: 1px solid var(--color-border);
+		padding: 0 8px;
+	}
+
+	.tab-btn {
+		background: transparent;
+		border: none;
+		border-bottom: 2px solid transparent;
+		color: var(--color-text-secondary);
+		font-size: var(--font-size-xs);
+		padding: 6px 14px;
+		cursor: pointer;
+	}
+
+	.tab-btn:hover {
+		color: var(--color-accent-cyan);
+	}
+
+	.tab-btn.active {
+		color: var(--color-accent-magenta);
+		border-bottom-color: var(--color-accent-magenta);
+		box-shadow: 0 2px 0 var(--color-accent-magenta) inset;
+	}
+
+	.chain-area {
+		background: rgba(15, 14, 26, 0.88);
+		overflow-y: auto;
 	}
 
 	.content-area {
@@ -223,7 +290,7 @@
 	}
 
 	.column {
-		background: var(--color-bg-base);
+		background: rgba(15, 14, 26, 0.88);
 		overflow-y: auto;
 		overflow-x: hidden;
 		padding: 4px;
@@ -245,7 +312,7 @@
 
 	.piano-area {
 		border-top: 1px solid var(--color-border);
-		background: var(--color-bg-deep);
+		background: rgba(10, 10, 26, 0.88);
 	}
 
 	/* === Music-reactive vignette === */

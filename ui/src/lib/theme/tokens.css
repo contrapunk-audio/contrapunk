@@ -43,13 +43,39 @@
 	--glow-teal: 0 0 8px #00ccaa55, 0 0 20px #00ccaa22;
 
 	/* === Typography === */
-	--font-pixel: 'Press Start 2P', monospace;
+	/* Pixel / retro faces */
+	--font-press-start: 'Press Start 2P', monospace;
+	--font-vt323: 'VT323', monospace;
+	--font-silkscreen: 'Silkscreen', monospace;
+	--font-pixelify: 'Pixelify Sans', sans-serif;
+	--font-dotgothic: 'DotGothic16', monospace;
+	--font-jersey: 'Jersey 10', sans-serif;
+	--font-tiny5: 'Tiny5', monospace;
+	--font-workbench: 'Workbench', sans-serif;
+	/* Readable mono */
+	--font-jetbrains: 'JetBrains Mono', monospace;
+	--font-fira: 'Fira Code', monospace;
+	--font-plex: 'IBM Plex Mono', monospace;
+	/* System fallback */
 	--font-reading: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-	--font-size-xs: 8px;    /* Pixel font base size — use at 8px multiples */
-	--font-size-sm: 10px;
-	--font-size-md: 12px;
-	--font-size-lg: 16px;
-	--font-size-xl: 24px;
+	/* Legacy alias — body + components use this. Body class overrides
+	   the mapping at runtime (see app.css .font-* rules). */
+	--font-pixel: var(--font-press-start);
+
+	/* Base font sizes scale with viewport so the UI stays proportional
+	   on any monitor. clamp(min, responsive, max) keeps them legible
+	   everywhere without going microscopic or huge. Applied to the
+	   whole UI; multiplied by `--ui-scale` (see `html { zoom }` in
+	   app.css) for user-controlled density. */
+	--font-size-xs: clamp(8px, 0.75vmin + 6px, 14px);
+	--font-size-sm: clamp(10px, 0.9vmin + 7px, 16px);
+	--font-size-md: clamp(12px, 1.1vmin + 8px, 20px);
+	--font-size-lg: clamp(16px, 1.5vmin + 10px, 28px);
+	--font-size-xl: clamp(24px, 2.2vmin + 14px, 40px);
+
+	/* User-controlled global UI scale. Applied via `html { zoom: var(--ui-scale) }`.
+	   Defaults to 1.0; range in the UI slider is 0.75–2.0. */
+	--ui-scale: 1;
 }
 
 /* === Performance Toggle ===

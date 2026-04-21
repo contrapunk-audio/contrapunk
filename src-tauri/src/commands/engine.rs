@@ -19,6 +19,7 @@ use contrapunk::chord::chord_display_with_analysis;
 use contrapunk::harmony::HarmonyEngine;
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
+use contrapunk::synth::SynthEvent;
 
 use crate::guitar_bridge::GuitarBridge;
 use crate::state::AppState;
@@ -207,6 +208,10 @@ pub fn start_routing(
     // Reset before spawning so a flag set from a prior session doesn't fire.
     panic_flag.store(false, Ordering::SeqCst);
 
+    // Clone the synth event sender so the router thread can push note
+    // events into the built-in synth alongside external MIDI output.
+    let synth_tx = state.synth_tx.clone();
+
     // Spawn router thread
     thread::spawn(move || {
         if let Err(e) = run_tauri_router(
@@ -228,6 +233,7 @@ pub fn start_routing(
             app_handle,
             detune,
             panic_flag,
+            synth_tx,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -312,6 +318,7 @@ fn run_tauri_router(
     app_handle: AppHandle,
     detune_cents: Arc<AtomicI32>,
     panic_pending: Arc<std::sync::atomic::AtomicBool>,
+    synth_tx: mpsc::Sender<SynthEvent>,
 ) -> anyhow::Result<()> {
     let (
         key,
@@ -446,6 +453,7 @@ fn run_tauri_router(
                     &borrowed_notes,
                     &chord_name,
                     routing_mode,
+                    &synth_tx,
                 );
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -540,6 +548,7 @@ fn run_tauri_router(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_midi_message(
     bytes: &[u8],
     engine: &mut HarmonyEngine,
@@ -549,6 +558,7 @@ fn process_midi_message(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
+    synth_tx: &mpsc::Sender<SynthEvent>,
 ) {
     let msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
@@ -572,6 +582,7 @@ fn process_midi_message(
                     borrowed_notes,
                     chord_name,
                     routing_mode,
+                    synth_tx,
                 );
             } else {
                 handle_note_on(
@@ -585,6 +596,7 @@ fn process_midi_message(
                     borrowed_notes,
                     chord_name,
                     routing_mode,
+                    synth_tx,
                 );
             }
         }
@@ -600,6 +612,7 @@ fn process_midi_message(
                 borrowed_notes,
                 chord_name,
                 routing_mode,
+                synth_tx,
             );
         }
         _ => {
@@ -608,6 +621,7 @@ fn process_midi_message(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_note_on(
     channel: Channel,
     note: Note,
@@ -619,9 +633,19 @@ fn handle_note_on(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
+    synth_tx: &mpsc::Sender<SynthEvent>,
 ) {
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
+
+    // Fan each harmony voice into the built-in synth so speakers play
+    // the same notes that go out the external MIDI ports.
+    for &n in notes.iter() {
+        let _ = synth_tx.send(SynthEvent::NoteOn {
+            note: u8::from(n),
+            velocity: u8::from(velocity),
+        });
+    }
 
     // Update shared state — recover from poisoned mutexes rather than panic.
     {
@@ -692,6 +716,7 @@ fn handle_note_on(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_note_off(
     channel: Channel,
     note: Note,
@@ -703,9 +728,16 @@ fn handle_note_off(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     _chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
+    synth_tx: &mpsc::Sender<SynthEvent>,
 ) {
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
+
+    // Fan releases into the built-in synth so its voices finish with
+    // the same timing as the external MIDI note-offs.
+    for &n in notes.iter() {
+        let _ = synth_tx.send(SynthEvent::NoteOff { note: u8::from(n) });
+    }
 
     {
         let mut in_notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());

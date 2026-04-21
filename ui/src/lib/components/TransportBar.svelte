@@ -27,6 +27,10 @@
 		}
 	}
 
+	async function toggleClick() {
+		await transport.toggleMetronome();
+	}
+
 	/** Pips 0..beatsPerBar-1, highlighted when === beatInBar. */
 	let pips = $derived(Array.from({ length: transport.beatsPerBar }, (_, i) => i));
 </script>
@@ -64,6 +68,15 @@
 			></span>
 		{/each}
 	</div>
+
+	<button
+		class="click-btn font-pixel"
+		class:on={transport.metronomeEnabled}
+		onclick={toggleClick}
+		title={transport.metronomeEnabled ? 'Mute metronome click' : 'Enable metronome click'}
+	>
+		Click
+	</button>
 </div>
 
 <style>
@@ -102,13 +115,14 @@
 	}
 
 	.bpm-label {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 	}
 
 	.bpm-input {
-		width: 42px;
-		padding: 2px 4px;
+		min-width: 4ch;
+		width: auto;
+		padding: 2px 6px;
 		border: 1px solid var(--color-border);
 		background: var(--color-widget-bg);
 		color: var(--color-accent-cyan);
@@ -151,5 +165,24 @@
 	.pip.active.downbeat {
 		background: var(--color-accent-magenta);
 		box-shadow: 0 0 6px var(--color-accent-magenta);
+	}
+
+	.click-btn {
+		font-size: var(--font-size-xs);
+		padding: 4px 10px;
+		border: 1px solid var(--color-border);
+		background: var(--color-widget-bg);
+		color: var(--color-text-dim);
+		cursor: pointer;
+	}
+
+	.click-btn.on {
+		color: var(--color-accent-gold);
+		border-color: var(--color-accent-gold);
+		box-shadow: 0 0 4px var(--color-accent-gold);
+	}
+
+	.click-btn:hover {
+		border-color: var(--color-accent-cyan);
 	}
 </style>

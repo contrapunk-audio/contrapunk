@@ -18,12 +18,27 @@ use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
-        .manage(AppState::default())
+        .manage(AppState::new())
         .setup(|app| {
-            // Start the audio clock: a silent cpal output stream that ticks
-            // the Transport and emits `beat-update` events.
-            let transport = Arc::clone(&app.state::<AppState>().transport);
-            if let Err(e) = audio_clock::start(app.handle().clone(), transport) {
+            // Start the audio clock: a cpal output stream that ticks the
+            // Transport, emits `beat-update` events, synthesizes metronome
+            // clicks, and renders the built-in synth.
+            let state = app.state::<AppState>();
+            let transport = Arc::clone(&state.transport);
+            let metronome_enabled = Arc::clone(&state.metronome_enabled);
+            let synth_params = Arc::clone(&state.synth_params);
+            let synth_rx = state
+                .synth_rx
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take());
+            if let Err(e) = audio_clock::start(
+                app.handle().clone(),
+                transport,
+                metronome_enabled,
+                synth_params,
+                synth_rx,
+            ) {
                 eprintln!(
                     "[main] audio_clock::start failed: {} (transport will not tick)",
                     e
@@ -74,6 +89,18 @@ fn main() {
             commands::transport::transport_reset,
             commands::transport::set_bpm,
             commands::transport::set_time_signature,
+            commands::transport::set_metronome_enabled,
+            // Built-in synth
+            commands::synth::get_synth_state,
+            commands::synth::set_synth_enabled,
+            commands::synth::set_synth_waveform,
+            commands::synth::set_synth_attack_ms,
+            commands::synth::set_synth_decay_ms,
+            commands::synth::set_synth_sustain,
+            commands::synth::set_synth_release_ms,
+            commands::synth::set_synth_cutoff_hz,
+            commands::synth::set_synth_resonance,
+            commands::synth::set_synth_master_gain,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

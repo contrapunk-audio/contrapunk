@@ -89,7 +89,7 @@
 
 	.borrowed-from {
 		color: var(--color-piano-borrowed);
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		text-align: center;
 		margin-bottom: 4px;
 		-webkit-font-smoothing: none;
@@ -105,14 +105,14 @@
 
 	.section-label {
 		color: var(--color-text-dim);
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		min-width: 36px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
 
 	.note-list {
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		letter-spacing: 0.5px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
@@ -129,7 +129,7 @@
 
 	.note-none {
 		color: var(--color-text-dim);
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}

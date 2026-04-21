@@ -313,7 +313,7 @@
 
 	.device-label {
 		display: block;
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-secondary);
 		margin-bottom: 3px;
 		-webkit-font-smoothing: none;
@@ -335,14 +335,14 @@
 		display: flex;
 		align-items: center;
 		gap: 3px;
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 	}
 
 	.channel-count-input {
 		width: 32px;
 		padding: 1px 3px;
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		background: var(--color-bg-panel);
 		color: var(--color-text);
 		border: 1px solid var(--color-border);
@@ -356,7 +356,7 @@
 	}
 
 	.device-error {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		padding: 3px 4px;
 		background: var(--color-bg-panel);
@@ -383,7 +383,7 @@
 		border: 1px solid var(--color-border);
 		color: var(--color-accent-cyan);
 		font-family: var(--font-pixel);
-		font-size: 8px;
+		font-size: var(--font-size-xs);
 		text-align: center;
 		padding: 0;
 	}
@@ -394,7 +394,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
@@ -458,7 +458,7 @@
 
 	.dial-value {
 		font-family: var(--font-reading);
-		font-size: 10px;
+		font-size: var(--font-size-sm);
 		color: var(--color-text-primary);
 		text-align: center;
 		line-height: 1;
@@ -472,7 +472,7 @@
 		width: 20px;
 		height: 14px;
 		padding: 0;
-		font-size: 8px;
+		font-size: var(--font-size-xs);
 		line-height: 1;
 		color: var(--color-text-dim);
 		background: transparent;
@@ -504,7 +504,7 @@
 	}
 
 	.dial-label {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-secondary);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
@@ -519,7 +519,7 @@
 
 	.technique-btn {
 		flex: 1;
-		font-size: 6px !important;
+		font-size: var(--font-size-xs) !important;
 		padding: 3px 2px !important;
 		text-align: center;
 		color: var(--color-text-dim);
@@ -536,7 +536,7 @@
 	/* === Calibrate button === */
 	.calibrate-btn {
 		width: 100%;
-		font-size: 7px !important;
+		font-size: var(--font-size-xs) !important;
 		padding: 5px 8px !important;
 		text-align: center;
 		color: var(--color-accent-teal);
@@ -556,7 +556,7 @@
 	}
 
 	.calibration-status {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		padding: 2px 4px;
 		margin-bottom: 4px;
@@ -570,7 +570,7 @@
 
 	/* === Detection status === */
 	.detection-status {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		padding: 3px 4px;
 		background: var(--color-bg-panel);
@@ -587,7 +587,7 @@
 	}
 
 	.channel-warning {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-accent-amber);
 		padding: 2px 4px;
 		background: rgba(255, 170, 0, 0.1);
@@ -609,7 +609,7 @@
 	}
 
 	.tuner-title {
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-primary);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
@@ -621,14 +621,14 @@
 	}
 
 	.tuner-instruction {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-secondary);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
 
 	.tuner-target {
-		font-size: 8px;
+		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		text-align: center;
 		padding: 4px 0;
@@ -641,18 +641,18 @@
 		justify-content: center;
 		align-items: baseline;
 		gap: 8px;
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
 
 	.tuner-note {
 		color: var(--color-accent-magenta);
-		font-size: 10px;
+		font-size: var(--font-size-sm);
 	}
 
 	.tuner-cents {
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 	}
 
 	.tuner-cents-good {
@@ -665,7 +665,7 @@
 
 	.tuner-meter {
 		text-align: center;
-		font-size: 8px;
+		font-size: var(--font-size-xs);
 		letter-spacing: 1px;
 		color: var(--color-text-secondary);
 		-webkit-font-smoothing: none;
@@ -682,14 +682,14 @@
 
 	.tuner-advice {
 		text-align: center;
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
 
 	.tuner-hold {
 		text-align: center;
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
@@ -727,7 +727,7 @@
 	}
 
 	.tuner-btn {
-		font-size: 6px !important;
+		font-size: var(--font-size-xs) !important;
 		padding: 3px 8px !important;
 		color: var(--color-text-secondary);
 		border-color: var(--color-border);

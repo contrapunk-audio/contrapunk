@@ -44,6 +44,9 @@ class TransportStore {
 	/** performance.now() timestamp of the last beat crossing. */
 	lastCrossedAt = $state(0);
 
+	/** Whether the audible metronome click is on. */
+	metronomeEnabled = $state(false);
+
 	/** Pull a fresh snapshot from the backend. */
 	async syncFromBackend() {
 		try {
@@ -54,6 +57,7 @@ class TransportStore {
 			this.beatUnit = s.beatUnit;
 			this.sampleRate = s.sampleRate;
 			this.bar = s.bar;
+			this.metronomeEnabled = s.metronomeEnabled;
 		} catch {
 			// Backend not ready; try again after init completes.
 		}
@@ -86,6 +90,15 @@ class TransportStore {
 		this.beatsPerBar = beatsPerBar;
 		this.beatUnit = beatUnit;
 		await adapter.setTimeSignature(beatsPerBar, beatUnit);
+	}
+
+	async setMetronomeEnabled(enabled: boolean) {
+		this.metronomeEnabled = enabled;
+		await adapter.setMetronomeEnabled(enabled);
+	}
+
+	async toggleMetronome() {
+		await this.setMetronomeEnabled(!this.metronomeEnabled);
 	}
 
 	/** Called by the Tauri adapter when a `beat-update` event fires. */

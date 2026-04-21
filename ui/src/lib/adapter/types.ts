@@ -60,6 +60,19 @@ export interface Preset {
 	isBuiltin: boolean;
 }
 
+/** Snapshot of built-in synth parameters. */
+export interface SynthState {
+	enabled: boolean;
+	waveform: number;
+	attackMs: number;
+	decayMs: number;
+	sustain: number;
+	releaseMs: number;
+	cutoffHz: number;
+	resonance: number;
+	masterGain: number;
+}
+
 /** Snapshot of transport / clock state. */
 export interface TransportState {
 	running: boolean;
@@ -70,6 +83,7 @@ export interface TransportState {
 	samplePos: number;
 	beatPosition: number;
 	bar: number;
+	metronomeEnabled: boolean;
 }
 
 /**
@@ -219,6 +233,22 @@ export interface ContrapunkAdapter {
 
 	/** Set the time signature (beats per bar × beat unit). */
 	setTimeSignature(beatsPerBar: number, beatUnit: number): Promise<void>;
+
+	/** Toggle the audible metronome click. Off by default. */
+	setMetronomeEnabled(enabled: boolean): Promise<void>;
+
+	// -- Built-in synth (Tier 1 audio output) --
+
+	getSynthState(): Promise<SynthState>;
+	setSynthEnabled(enabled: boolean): Promise<void>;
+	setSynthWaveform(value: number): Promise<void>;
+	setSynthAttackMs(ms: number): Promise<void>;
+	setSynthDecayMs(ms: number): Promise<void>;
+	setSynthSustain(level: number): Promise<void>;
+	setSynthReleaseMs(ms: number): Promise<void>;
+	setSynthCutoffHz(hz: number): Promise<void>;
+	setSynthResonance(value: number): Promise<void>;
+	setSynthMasterGain(value: number): Promise<void>;
 
 	// -- Lifecycle --
 

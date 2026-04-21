@@ -16,16 +16,8 @@
 		}
 	}
 
-	/**
-	 * Toggle animations on/off. Persists the preference in localStorage.
-	 */
-	function toggleFx() {
-		ui.toggleAnimations();
-		try {
-			localStorage.setItem('contrapunk-fx', ui.animationsEnabled ? 'on' : 'off');
-		} catch {
-			// localStorage unavailable (SSR or privacy mode)
-		}
+	function openSettings() {
+		ui.openSettings();
 	}
 
 	// Restore FX preference from localStorage on mount
@@ -81,14 +73,14 @@
 	<!-- Spacer -->
 	<div class="spacer"></div>
 
-	<!-- FX toggle -->
+	<!-- Settings -->
 	<button
-		class="fx-btn pixel-btn font-pixel"
-		class:fx-off={!ui.animationsEnabled}
-		onclick={toggleFx}
-		title={ui.animationsEnabled ? 'Disable visual effects' : 'Enable visual effects'}
+		class="settings-btn pixel-btn font-pixel"
+		onclick={openSettings}
+		title="Settings"
+		aria-label="Open settings"
 	>
-		FX
+		Settings
 	</button>
 
 	<!-- Brand -->
@@ -102,7 +94,8 @@
 		align-items: center;
 		gap: 8px;
 		padding: 4px 8px;
-		background: var(--color-bg-panel);
+		/* Semi-transparent so particles drift through behind the top bar. */
+		background: rgba(21, 20, 40, 0.88);
 		border-bottom: 1px solid var(--color-border);
 		height: 32px;
 		min-height: 32px;
@@ -132,7 +125,7 @@
 	}
 
 	.status-indicator {
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
@@ -166,7 +159,7 @@
 	}
 
 	.borrowed-label {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		color: var(--color-accent-amber);
 		white-space: nowrap;
 		-webkit-font-smoothing: none;
@@ -177,26 +170,17 @@
 		flex: 1;
 	}
 
-	/* FX Toggle Button */
-	.fx-btn {
-		padding: 2px 6px;
-		font-size: 7px;
-		min-width: 24px;
-		background: var(--color-accent-teal);
-		border: 1px solid var(--color-accent-cyan-dim);
-		color: #ffffff;
-		box-shadow: var(--glow-teal);
-	}
-
-	.fx-btn:hover {
-		border-color: var(--color-accent-cyan);
-	}
-
-	.fx-btn.fx-off {
+	.settings-btn {
+		padding: 4px 10px;
+		font-size: var(--font-size-xs);
 		background: var(--color-widget-inactive);
-		border-color: var(--color-border);
-		color: var(--color-text-dim);
-		box-shadow: none;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-secondary);
+	}
+
+	.settings-btn:hover {
+		border-color: var(--color-accent-cyan);
+		color: var(--color-accent-cyan);
 	}
 
 	.brand-logo {
@@ -206,7 +190,7 @@
 	}
 
 	.brand {
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		white-space: nowrap;
 		opacity: 0.6;

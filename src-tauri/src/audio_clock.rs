@@ -1,26 +1,25 @@
-//! Cpal silent-output stream that drives the app's transport clock.
+//! Cpal output stream that drives the app's transport clock and
+//! synthesizes metronome clicks.
 //!
 //! # Model
 //!
 //! A single cpal output stream runs for the life of the application.
-//! The stream is silent (fills buffers with zeros) — its only job is to
-//! tick an [`Arc<Transport>`] on a deterministic schedule. Later work
-//! (metronome, plugin hosting) can repurpose the same callback to
-//! actually produce audio.
-//!
-//! The callback also detects beat-boundary crossings and pushes them
-//! onto an `mpsc::Sender<BeatCrossing>`. A separate forwarding thread
-//! pulls crossings and emits `beat-update` Tauri events for the UI.
+//! The stream's callback:
+//!   1. Ticks the shared [`Transport`] by `frames`.
+//!   2. If a beat boundary was crossed, enqueues a `BeatCrossing` for
+//!      the UI event forwarder and (if metronome is enabled) kicks
+//!      off a short decaying-sine click.
+//!   3. Mixes any active click into the output buffer; silence otherwise.
 //!
 //! # Thread ownership
 //!
-//! `cpal::Stream` is `!Send` on several platforms. Rather than store it
-//! in Tauri's managed state (which requires `Send + Sync`), we hand it
-//! to a dedicated audio-owner thread that parks itself and lets the
-//! stream's OS-driven callback run in the background for the process
-//! lifetime. Dropping the app terminates the process and the stream
-//! along with it.
+//! `cpal::Stream` is `!Send` on several platforms. A dedicated
+//! audio-owner thread holds the stream and parks itself so the
+//! stream's OS-driven callback runs in the background for the process
+//! lifetime. Dropping the app terminates the process and the stream.
 
+use std::f32::consts::TAU;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
 
@@ -29,6 +28,7 @@ use cpal::SampleFormat;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use contrapunk::synth::{Synth, SynthEvent, SynthParams};
 use contrapunk::transport::{BeatCrossing, Transport};
 
 /// Payload for the `beat-update` Tauri event.
@@ -41,14 +41,79 @@ struct BeatUpdatePayload {
     running: bool,
 }
 
+/// Click-envelope duration in seconds. ~15 ms feels percussive without
+/// smearing adjacent beats at high tempo.
+const CLICK_SECS: f32 = 0.015;
+/// Peak amplitude of the click. Deliberately conservative so there's
+/// headroom once harmony audio flows through the same stream later.
+const CLICK_GAIN: f32 = 0.30;
+/// Frequency used for the downbeat (beat 0 in the bar).
+const CLICK_FREQ_DOWNBEAT: f32 = 900.0;
+/// Frequency used for other beats.
+const CLICK_FREQ_OFFBEAT: f32 = 600.0;
+
+/// Per-stream click synthesis state. Lives inside the cpal callback
+/// closure, mutated only on the audio thread.
+struct Click {
+    active: bool,
+    freq: f32,
+    phase: f32,
+    samples_remaining: u32,
+    total: u32,
+}
+
+impl Click {
+    fn new(total: u32) -> Self {
+        Self {
+            active: false,
+            freq: 0.0,
+            phase: 0.0,
+            samples_remaining: 0,
+            total,
+        }
+    }
+
+    fn trigger(&mut self, freq: f32) {
+        self.active = true;
+        self.freq = freq;
+        self.phase = 0.0;
+        self.samples_remaining = self.total;
+    }
+
+    /// Render the next sample of the click envelope. Returns 0.0 when
+    /// inactive. Advances phase and decrements the remaining counter.
+    fn next_sample(&mut self, sample_rate: f32) -> f32 {
+        if !self.active || self.samples_remaining == 0 {
+            return 0.0;
+        }
+        let decay = self.samples_remaining as f32 / self.total as f32;
+        let v = self.phase.sin() * CLICK_GAIN * decay;
+        self.phase += TAU * self.freq / sample_rate;
+        if self.phase > TAU {
+            self.phase -= TAU;
+        }
+        self.samples_remaining -= 1;
+        if self.samples_remaining == 0 {
+            self.active = false;
+        }
+        v
+    }
+}
+
 /// Start the audio clock. Spawns a dedicated thread that owns the cpal
 /// stream for the app lifetime and a forwarding thread that drains
 /// beat crossings to the Tauri event bus.
 ///
-/// Returns only after the stream has been built and started; any cpal
-/// setup errors bubble out as `Result::Err(String)`. Once this returns
-/// Ok, the transport will tick whenever its `running` flag is true.
-pub fn start(app_handle: AppHandle, transport: Arc<Transport>) -> Result<(), String> {
+/// `metronome_enabled` — read on the audio thread at each beat crossing
+/// to decide whether to trigger a click. Toggled via Tauri command
+/// from the UI.
+pub fn start(
+    app_handle: AppHandle,
+    transport: Arc<Transport>,
+    metronome_enabled: Arc<AtomicBool>,
+    synth_params: Arc<SynthParams>,
+    synth_rx: Option<mpsc::Receiver<SynthEvent>>,
+) -> Result<(), String> {
     let (tx, rx) = mpsc::channel::<BeatCrossing>();
 
     // Forwarding thread: pulls BeatCrossings and emits Tauri events.
@@ -76,7 +141,7 @@ pub fn start(app_handle: AppHandle, transport: Arc<Transport>) -> Result<(), Str
     {
         let transport = Arc::clone(&transport);
         thread::spawn(move || {
-            match build_and_run_stream(transport, tx) {
+            match build_and_run_stream(transport, metronome_enabled, synth_params, synth_rx, tx) {
                 Ok(_stream) => {
                     let _ = ready_tx.send(Ok(()));
                     // Park the thread to keep the Stream alive. cpal's
@@ -98,10 +163,11 @@ pub fn start(app_handle: AppHandle, transport: Arc<Transport>) -> Result<(), Str
         .map_err(|e| format!("audio-clock thread died: {}", e))?
 }
 
-/// Build the cpal output stream and start it. Returns the live `Stream`,
-/// which must be kept in scope or the audio callback stops.
 fn build_and_run_stream(
     transport: Arc<Transport>,
+    metronome_enabled: Arc<AtomicBool>,
+    synth_params: Arc<SynthParams>,
+    synth_rx: Option<mpsc::Receiver<SynthEvent>>,
     crossing_tx: mpsc::Sender<BeatCrossing>,
 ) -> Result<cpal::Stream, String> {
     let host = cpal::default_host();
@@ -115,7 +181,6 @@ fn build_and_run_stream(
     let sample_rate = config.sample_rate().0;
     let channels = config.channels();
 
-    // Sync the transport's sample rate with the actual device rate.
     transport.set_sample_rate(sample_rate);
     eprintln!(
         "[audio-clock] cpal stream: {}Hz, {} channels, format={:?}",
@@ -126,71 +191,100 @@ fn build_and_run_stream(
 
     let sample_format = config.sample_format();
     let stream_config: cpal::StreamConfig = config.into();
+    let click_total_samples = (sample_rate as f32 * CLICK_SECS) as u32;
 
-    // The callback must not allocate or lock. Our crossing_tx.send()
-    // uses std::sync::mpsc which does allocate on occasion — for M2
-    // this is acceptable because crossings occur ≤1× per buffer and
-    // the queue is drained at UI rate. Swap for rtrb if dropouts.
-    let advance_cb = {
-        let transport = Arc::clone(&transport);
-        let crossing_tx = crossing_tx;
-        move |frames: u32| {
-            if let Some(crossing) = transport.advance(frames) {
-                let _ = crossing_tx.send(crossing);
-            }
-        }
-    };
+    // Build the synth — only wired on the F32 path below. If no rx was
+    // provided (non-default AppState), we still run with an empty one.
+    let synth_rx = synth_rx.unwrap_or_else(|| {
+        let (_tx, rx) = mpsc::channel();
+        rx
+    });
 
     let err_fn = |err: cpal::StreamError| {
         eprintln!("[audio-clock] stream error: {}", err);
     };
 
     let stream = match sample_format {
-        SampleFormat::F32 => device.build_output_stream(
-            &stream_config,
-            {
-                let cb = advance_cb;
+        SampleFormat::F32 => {
+            let transport = Arc::clone(&transport);
+            let metronome_enabled = Arc::clone(&metronome_enabled);
+            let crossing_tx = crossing_tx.clone();
+            let mut click = Click::new(click_total_samples);
+            let sr_f = sample_rate as f32;
+            let mut synth = Synth::new(synth_params, synth_rx, sample_rate);
+            device.build_output_stream(
+                &stream_config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                     let frames = data.len() as u32 / channels as u32;
-                    for s in data.iter_mut() {
-                        *s = 0.0;
+
+                    if let Some(crossing) = transport.advance(frames) {
+                        let _ = crossing_tx.send(crossing);
+                        if metronome_enabled.load(Ordering::Relaxed) {
+                            let freq = if crossing.beat_in_bar == 0 {
+                                CLICK_FREQ_DOWNBEAT
+                            } else {
+                                CLICK_FREQ_OFFBEAT
+                            };
+                            click.trigger(freq);
+                        }
                     }
-                    cb(frames);
-                }
-            },
-            err_fn,
-            None,
-        ),
-        SampleFormat::I16 => device.build_output_stream(
-            &stream_config,
-            {
-                let cb = advance_cb;
+
+                    // Synth writes its signal into the output buffer first,
+                    // overwriting whatever was there (silence on first call).
+                    synth.render(data, channels as usize);
+
+                    // Metronome click is mixed on top of the synth signal.
+                    for frame in data.chunks_mut(channels as usize) {
+                        let v = click.next_sample(sr_f);
+                        if v != 0.0 {
+                            for s in frame.iter_mut() {
+                                *s += v;
+                            }
+                        }
+                    }
+                },
+                err_fn,
+                None,
+            )
+        }
+        SampleFormat::I16 => {
+            // Clicks not implemented for non-F32 formats. Transport
+            // still ticks; stream outputs silence.
+            let transport = Arc::clone(&transport);
+            let crossing_tx = crossing_tx.clone();
+            device.build_output_stream(
+                &stream_config,
                 move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
                     let frames = data.len() as u32 / channels as u32;
+                    if let Some(crossing) = transport.advance(frames) {
+                        let _ = crossing_tx.send(crossing);
+                    }
                     for s in data.iter_mut() {
                         *s = 0;
                     }
-                    cb(frames);
-                }
-            },
-            err_fn,
-            None,
-        ),
-        SampleFormat::U16 => device.build_output_stream(
-            &stream_config,
-            {
-                let cb = advance_cb;
+                },
+                err_fn,
+                None,
+            )
+        }
+        SampleFormat::U16 => {
+            let transport = Arc::clone(&transport);
+            let crossing_tx = crossing_tx.clone();
+            device.build_output_stream(
+                &stream_config,
                 move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
                     let frames = data.len() as u32 / channels as u32;
+                    if let Some(crossing) = transport.advance(frames) {
+                        let _ = crossing_tx.send(crossing);
+                    }
                     for s in data.iter_mut() {
                         *s = u16::MAX / 2;
                     }
-                    cb(frames);
-                }
-            },
-            err_fn,
-            None,
-        ),
+                },
+                err_fn,
+                None,
+            )
+        }
         other => return Err(format!("Unsupported sample format: {:?}", other)),
     }
     .map_err(|e| format!("Failed to build output stream: {}", e))?;
@@ -199,7 +293,5 @@ fn build_and_run_stream(
         .play()
         .map_err(|e| format!("Failed to start output stream: {}", e))?;
 
-    // Transport stays stopped until the user hits Play. The callback
-    // ticks immediately but `advance()` is a no-op until then.
     Ok(stream)
 }

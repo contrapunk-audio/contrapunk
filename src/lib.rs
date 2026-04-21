@@ -51,6 +51,7 @@ pub mod chord;
 pub mod harmony;
 pub mod midi;
 pub mod preset;
+pub mod synth;
 pub mod transport;
 
 // =============================================================================

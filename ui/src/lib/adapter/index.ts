@@ -62,5 +62,6 @@ export type {
 	MidiDevice,
 	NoteState,
 	Preset,
+	SynthState,
 	TransportState
 } from './types';

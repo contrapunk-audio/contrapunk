@@ -37,6 +37,9 @@
 		height: 100vh;
 		width: 100vw;
 		overflow: hidden;
-		background: var(--color-bg-deep);
+		/* Transparent so the Particles canvas (z-index 0) bleeds through
+		   wherever panels / columns don't cover the screen. Body's own
+		   background paints the base color. */
+		background: transparent;
 	}
 </style>

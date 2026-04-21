@@ -185,7 +185,7 @@
 	}
 
 	.key-label {
-		font-size: 5px;
+		font-size: var(--font-size-xs);
 		color: var(--color-bg-deep);
 		pointer-events: none;
 		line-height: 1;
@@ -196,7 +196,7 @@
 
 	.black-key .key-label {
 		color: var(--color-text-primary);
-		font-size: 4px;
+		font-size: var(--font-size-xs);
 	}
 
 	.scale-overlay {

@@ -626,7 +626,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 			sampleRate: 48_000,
 			samplePos: 0,
 			beatPosition: 0,
-			bar: 0
+			bar: 0,
+			metronomeEnabled: false
 		};
 	}
 
@@ -635,6 +636,32 @@ export class WasmAdapter implements ContrapunkAdapter {
 	async transportReset(): Promise<void> {}
 	async setBpm(_bpm: number): Promise<void> {}
 	async setTimeSignature(_beatsPerBar: number, _beatUnit: number): Promise<void> {}
+	async setMetronomeEnabled(_enabled: boolean): Promise<void> {}
+
+	// -- Synth (no built-in synth in browser; stubs) --
+
+	async getSynthState() {
+		return {
+			enabled: false,
+			waveform: 0,
+			attackMs: 5,
+			decayMs: 120,
+			sustain: 0.7,
+			releaseMs: 250,
+			cutoffHz: 6000,
+			resonance: 0.2,
+			masterGain: 0.25
+		};
+	}
+	async setSynthEnabled(_enabled: boolean): Promise<void> {}
+	async setSynthWaveform(_value: number): Promise<void> {}
+	async setSynthAttackMs(_ms: number): Promise<void> {}
+	async setSynthDecayMs(_ms: number): Promise<void> {}
+	async setSynthSustain(_level: number): Promise<void> {}
+	async setSynthReleaseMs(_ms: number): Promise<void> {}
+	async setSynthCutoffHz(_hz: number): Promise<void> {}
+	async setSynthResonance(_value: number): Promise<void> {}
+	async setSynthMasterGain(_value: number): Promise<void> {}
 
 	private stopNotePolling(): void {
 		if (this.pollingHandle !== null) {

@@ -153,14 +153,14 @@
 
 	.refresh-btn {
 		padding: 3px 6px !important;
-		font-size: 7px !important;
+		font-size: var(--font-size-xs) !important;
 		min-width: 20px;
 		text-align: center;
 	}
 
 	.keyboard-hint {
 		color: var(--color-accent-cyan);
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		margin-top: 4px;
 		padding: 2px 4px;
 		background: var(--color-bg-panel);
@@ -171,7 +171,7 @@
 
 	.error-text {
 		color: #ff4466;
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		margin-top: 3px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
@@ -191,7 +191,7 @@
 
 	.slot-label {
 		color: var(--color-text-secondary);
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		white-space: nowrap;
 		min-width: 56px;
 		-webkit-font-smoothing: none;

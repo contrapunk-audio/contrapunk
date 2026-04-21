@@ -1,4 +1,7 @@
-//! Tauri commands for transport control (play, stop, BPM, time sig).
+//! Tauri commands for transport control (play, stop, BPM, time sig,
+//! metronome click).
+
+use std::sync::atomic::Ordering;
 
 use serde::Serialize;
 use tauri::State;
@@ -16,6 +19,7 @@ pub struct TransportState {
     pub sample_pos: u64,
     pub beat_position: f64,
     pub bar: u64,
+    pub metronome_enabled: bool,
 }
 
 #[tauri::command]
@@ -31,7 +35,13 @@ pub fn get_transport_state(state: State<AppState>) -> TransportState {
         sample_pos: t.sample_pos(),
         beat_position: t.beat_position(),
         bar: t.bar(),
+        metronome_enabled: state.metronome_enabled.load(Ordering::Relaxed),
     }
+}
+
+#[tauri::command]
+pub fn set_metronome_enabled(enabled: bool, state: State<AppState>) {
+    state.metronome_enabled.store(enabled, Ordering::Relaxed);
 }
 
 #[tauri::command]

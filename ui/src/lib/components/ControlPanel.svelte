@@ -9,232 +9,268 @@
 		VOICE_LEADING_STYLES,
 		COUNTERPOINT_SPECIES,
 		COUNTERPOINT_STRICTNESS,
-		type KeyName,
 		type HarmonyModeName,
 		type ScaleModeName,
 		type OctaveModeName,
 		type VoiceLeadingStyleName,
+		type CounterpointSpeciesName,
+		type CounterpointStrictnessName,
+		type KeyName
 	} from '$lib/stores/engine.svelte';
+	import PixelSelect from './PixelSelect.svelte';
 
-	// Track which scale family section is expanded
-	let expandedFamily = $state<string | null>('Diatonic');
-
-	function toggleFamily(family: string) {
-		expandedFamily = expandedFamily === family ? null : family;
-	}
-
-	// Voice position labels
+	// --- Voice labels (fixed to 4 voices: Soprano/Alto/Tenor/Bass) ---
 	function voiceLabel(index: number, count: number): string {
 		const names = ['Soprano', 'Alto', 'Tenor', 'Bass'];
-		if (count <= 4) {
-			return `${names[index] || 'Voice'} (${index + 1})`;
-		}
+		if (count <= 4) return `${names[index] || 'Voice'} (${index + 1})`;
 		return `Voice (${index + 1})`;
+	}
+
+	// --- Dropdown option lists ---
+	let keyOptions = ALL_KEYS.map((k) => ({ value: k, label: KEY_DISPLAY[k] }));
+	let modeOptions = ALL_MODES.map((m) => ({ value: m.name, label: m.label }));
+	let octaveOptions = OCTAVE_MODES.map((om) => ({ value: om.name, label: om.label }));
+	let vlStyleOptions = VOICE_LEADING_STYLES.map((s) => ({ value: s.name, label: s.label }));
+	let familyOptions = SCALE_FAMILIES.map((g) => ({ value: g.family, label: g.label }));
+	let speciesOptions = COUNTERPOINT_SPECIES.map((sp) => ({ value: sp.name, label: sp.label }));
+	let strictnessOptions = COUNTERPOINT_STRICTNESS.map((s) => ({ value: s.name, label: s.label }));
+	let voiceCountOptions = [1, 2, 3, 4].map((c) => ({
+		value: String(c),
+		label: c === 1 ? '1 voice' : `${c} voices`
+	}));
+
+	// --- Current scale family derived from the selected scale mode ---
+	let currentFamily = $derived(
+		SCALE_FAMILIES.find((g) => g.modes.some((m) => m.name === engine.scaleMode))?.family ??
+			SCALE_FAMILIES[0].family
+	);
+
+	// --- Scale-mode options for the currently-selected family ---
+	let scaleInFamilyOptions = $derived(
+		(SCALE_FAMILIES.find((g) => g.family === currentFamily)?.modes ?? []).map((m) => ({
+			value: m.name,
+			label: m.label
+		}))
+	);
+
+	// --- Voice-position options ---
+	let voicePositionOptions = $derived(
+		Array.from({ length: engine.voiceCount }, (_, i) => ({
+			value: String(i),
+			label: voiceLabel(i, engine.voiceCount)
+		}))
+	);
+
+	// --- Handlers ---
+	function onFamilyChange(family: string) {
+		const group = SCALE_FAMILIES.find((g) => g.family === family);
+		if (!group || group.modes.length === 0) return;
+		// If the current scale mode isn't in the new family, switch to its first mode.
+		if (!group.modes.some((m) => m.name === engine.scaleMode)) {
+			engine.setScaleMode(group.modes[0].name);
+		}
+	}
+
+	function onScaleModeChange(name: string) {
+		engine.setScaleMode(name as ScaleModeName);
+	}
+
+	function onModeChange(name: string) {
+		engine.setMode(name as HarmonyModeName);
+	}
+
+	function onOctaveChange(name: string) {
+		engine.setOctaveMode(name as OctaveModeName);
+	}
+
+	function onVlStyleChange(name: string) {
+		engine.setVoiceLeading(true, name as VoiceLeadingStyleName);
+	}
+
+	function onVoicePositionChange(val: string) {
+		engine.setVoicePosition(parseInt(val, 10));
+	}
+
+	function onSpeciesChange(name: string) {
+		engine.setCounterpointSpecies(name as CounterpointSpeciesName);
+	}
+
+	function onStrictnessChange(name: string) {
+		engine.setCounterpointStrictness(name as CounterpointStrictnessName);
+	}
+
+	function onKeyChange(value: string) {
+		engine.setAutoKey(false);
+		engine.setKey(value as KeyName);
+	}
+
+	function onVoiceCountChange(value: string) {
+		engine.setVoiceCount(parseInt(value, 10));
 	}
 </script>
 
-<!-- Key Selector -->
+<!-- Key dropdown + auto toggle -->
 <div class="card">
 	<div class="card-header font-pixel">
-		Key
+		<span>Key</span>
 		<button
 			class="pixel-btn auto-key-btn"
 			class:toggle-on={engine.autoKey}
 			onclick={() => engine.setAutoKey(!engine.autoKey)}
+			title="Auto-detect key from played notes"
 		>
 			{engine.autoKey ? 'AUTO' : 'MANUAL'}
 		</button>
 	</div>
-	<div class="key-grid">
-		{#each ALL_KEYS as key}
-			<button
-				class="pixel-btn"
-				class:active={engine.key === key}
-				onclick={() => { engine.setAutoKey(false); engine.setKey(key); }}
-			>
-				{KEY_DISPLAY[key]}
-			</button>
-		{/each}
+	<PixelSelect options={keyOptions} value={engine.key} placeholder="Key" onchange={onKeyChange} />
+</div>
+
+<!-- Mode + Octave (side by side) -->
+<div class="row-2col">
+	<div class="card">
+		<div class="card-header font-pixel">Mode</div>
+		<PixelSelect
+			options={modeOptions}
+			value={engine.mode}
+			placeholder="Mode"
+			onchange={onModeChange}
+		/>
+	</div>
+	<div class="card">
+		<div class="card-header font-pixel">Octave</div>
+		<PixelSelect
+			options={octaveOptions}
+			value={engine.octaveMode}
+			placeholder="Octave"
+			onchange={onOctaveChange}
+		/>
 	</div>
 </div>
 
-<!-- Harmony Mode Selector -->
-<div class="card">
-	<div class="card-header font-pixel">Mode</div>
-	<div class="mode-grid">
-		{#each ALL_MODES as m}
-			<button
-				class="pixel-btn"
-				class:active={engine.mode === m.name}
-				onclick={() => engine.setMode(m.name)}
-				title={m.label}
-			>
-				{m.shortLabel}
-			</button>
-		{/each}
-	</div>
-
-	{#if engine.mode === 'StrictCounterpoint'}
-		<div class="card-subheader font-pixel">Species</div>
-		<div class="species-grid">
-			{#each COUNTERPOINT_SPECIES as sp}
-				<button
-					class="pixel-btn"
-					class:active={engine.counterpointSpecies === sp.name}
-					onclick={() => engine.setCounterpointSpecies(sp.name)}
-					title={sp.tooltip}
-				>
-					{sp.shortLabel}
-				</button>
-			{/each}
-		</div>
-		<div class="card-subheader font-pixel">Strictness</div>
-		<div class="strictness-grid">
-			{#each COUNTERPOINT_STRICTNESS as st}
-				<button
-					class="pixel-btn"
-					class:active={engine.counterpointStrictness === st.name}
-					onclick={() => engine.setCounterpointStrictness(st.name)}
-					title={st.tooltip}
-				>
-					{st.label}
-				</button>
-			{/each}
-		</div>
-	{/if}
-</div>
-
-<!-- Scale Mode Selector (grouped by family) -->
-<div class="card">
-	<div class="card-header font-pixel">Scale</div>
-	{#each SCALE_FAMILIES as group}
-		<button
-			class="family-header font-pixel"
-			class:expanded={expandedFamily === group.family}
-			onclick={() => toggleFamily(group.family)}
-		>
-			<span class="family-arrow">{expandedFamily === group.family ? 'v' : '>'}</span>
-			{group.label}
-		</button>
-		{#if expandedFamily === group.family}
-			<div class="scale-grid">
-				{#each group.modes as mode}
-					<button
-						class="pixel-btn scale-btn"
-						class:scale-active={engine.scaleMode === mode.name}
-						onclick={() => engine.setScaleMode(mode.name)}
-						title={mode.label}
-					>
-						{mode.label}
-					</button>
-				{/each}
-			</div>
-		{/if}
-	{/each}
-</div>
-
-<!-- Octave Mode Selector -->
-<div class="card">
-	<div class="card-header font-pixel">Octave</div>
-	<div class="octave-grid">
-		{#each OCTAVE_MODES as om}
-			<button
-				class="pixel-btn"
-				class:active={engine.octaveMode === om.name}
-				onclick={() => engine.setOctaveMode(om.name)}
-			>
-				{om.label}
-			</button>
-		{/each}
-	</div>
-</div>
-
-<!-- Voice Leading -->
-<div class="card">
-	<div class="card-header font-pixel">Voice Leading</div>
-	<div class="toggle-row">
-		<button
-			class="pixel-btn toggle-btn"
-			class:toggle-on={engine.voiceLeadingEnabled}
-			onclick={() => engine.setVoiceLeading(!engine.voiceLeadingEnabled)}
-		>
-			{engine.voiceLeadingEnabled ? 'ON' : 'OFF'}
-		</button>
-	</div>
-	{#if engine.voiceLeadingEnabled}
-		<div class="style-grid">
-			{#each VOICE_LEADING_STYLES as style}
-				<button
-					class="pixel-btn"
-					class:active={engine.voiceLeadingStyle === style.name}
-					onclick={() => engine.setVoiceLeading(true, style.name)}
-				>
-					{style.label}
-				</button>
-			{/each}
-		</div>
-	{/if}
-</div>
-
-<!-- Modal Interchange -->
-<div class="card">
-	<div class="card-header font-pixel">Interchange</div>
-	<div class="toggle-row">
-		<button
-			class="pixel-btn toggle-btn"
-			class:toggle-on={engine.interchangeEnabled}
-			onclick={() => engine.setInterchange(!engine.interchangeEnabled)}
-		>
-			{engine.interchangeEnabled ? 'ON' : 'OFF'}
-		</button>
-	</div>
-	{#if engine.interchangeEnabled}
-		<div class="range-row">
-			<span class="range-label font-pixel">Range: {engine.interchangeRange}</span>
-			<input
-				type="range"
-				min="1"
-				max="5"
-				step="1"
-				value={engine.interchangeRange}
-				oninput={(e) => engine.setInterchange(true, parseInt((e.target as HTMLInputElement).value, 10))}
-				class="pixel-range"
+<!-- Counterpoint Species + Strictness (only when mode = StrictCounterpoint) -->
+{#if engine.mode === 'StrictCounterpoint'}
+	<div class="row-2col">
+		<div class="card">
+			<div class="card-header font-pixel">Species</div>
+			<PixelSelect
+				options={speciesOptions}
+				value={engine.counterpointSpecies}
+				placeholder="Species"
+				onchange={onSpeciesChange}
 			/>
 		</div>
-	{/if}
-</div>
-
-<!-- Voice Count & Position -->
-<div class="card">
-	<div class="card-header font-pixel">Voices</div>
-	<div class="count-grid">
-		{#each [1, 2, 3, 4] as count}
-			<button
-				class="pixel-btn"
-				class:active={engine.voiceCount === count}
-				onclick={() => engine.setVoiceCount(count)}
-			>
-				{count}
-			</button>
-		{/each}
-	</div>
-	{#if engine.voiceCount > 1}
-		<div class="card-subheader font-pixel">You play</div>
-		<div class="voice-grid">
-			{#each Array.from({ length: engine.voiceCount }, (_, i) => i) as idx}
-				<button
-					class="pixel-btn"
-					class:active={engine.voicePosition === idx}
-					onclick={() => engine.setVoicePosition(idx)}
-				>
-					{voiceLabel(idx, engine.voiceCount)}
-				</button>
-			{/each}
+		<div class="card">
+			<div class="card-header font-pixel">Strictness</div>
+			<PixelSelect
+				options={strictnessOptions}
+				value={engine.counterpointStrictness}
+				placeholder="Strictness"
+				onchange={onStrictnessChange}
+			/>
 		</div>
-	{/if}
+	</div>
+{/if}
+
+<!-- Scale Family + Scale Mode in family (side by side) -->
+<div class="row-2col">
+	<div class="card">
+		<div class="card-header font-pixel">Family</div>
+		<PixelSelect
+			options={familyOptions}
+			value={currentFamily}
+			placeholder="Family"
+			onchange={onFamilyChange}
+		/>
+	</div>
+	<div class="card">
+		<div class="card-header font-pixel">Scale</div>
+		<PixelSelect
+			options={scaleInFamilyOptions}
+			value={engine.scaleMode}
+			placeholder="Scale"
+			onchange={onScaleModeChange}
+		/>
+	</div>
 </div>
 
-<!-- Detune -->
+<!-- Voice Count + Voice Position (side by side) -->
+<div class="row-2col">
+	<div class="card">
+		<div class="card-header font-pixel">Voices</div>
+		<PixelSelect
+			options={voiceCountOptions}
+			value={String(engine.voiceCount)}
+			placeholder="Voices"
+			onchange={onVoiceCountChange}
+		/>
+	</div>
+	<div class="card">
+		<div class="card-header font-pixel">You play</div>
+		{#if engine.voiceCount > 1}
+			<PixelSelect
+				options={voicePositionOptions}
+				value={String(engine.voicePosition)}
+				placeholder="Position"
+				onchange={onVoicePositionChange}
+			/>
+		{:else}
+			<span class="inline-note font-pixel">Solo melody</span>
+		{/if}
+	</div>
+</div>
+
+<!-- Voice Leading + Interchange (side by side) -->
+<div class="row-2col">
+	<div class="card">
+		<div class="card-header font-pixel">
+			<span>Voice Leading</span>
+			<button
+				class="pixel-btn toggle-btn"
+				class:toggle-on={engine.voiceLeadingEnabled}
+				onclick={() => engine.setVoiceLeading(!engine.voiceLeadingEnabled)}
+			>
+				{engine.voiceLeadingEnabled ? 'ON' : 'OFF'}
+			</button>
+		</div>
+		{#if engine.voiceLeadingEnabled}
+			<PixelSelect
+				options={vlStyleOptions}
+				value={engine.voiceLeadingStyle}
+				placeholder="Style"
+				onchange={onVlStyleChange}
+			/>
+		{/if}
+	</div>
+	<div class="card">
+		<div class="card-header font-pixel">
+			<span>Interchange</span>
+			<button
+				class="pixel-btn toggle-btn"
+				class:toggle-on={engine.interchangeEnabled}
+				onclick={() => engine.setInterchange(!engine.interchangeEnabled)}
+			>
+				{engine.interchangeEnabled ? 'ON' : 'OFF'}
+			</button>
+		</div>
+		{#if engine.interchangeEnabled}
+			<div class="range-row">
+				<span class="range-label font-pixel">Rng</span>
+				<input
+					type="range"
+					min="1"
+					max="5"
+					step="1"
+					value={engine.interchangeRange}
+					oninput={(e) => engine.setInterchange(true, parseInt((e.target as HTMLInputElement).value, 10))}
+					class="pixel-range"
+				/>
+				<span class="range-label font-pixel">{engine.interchangeRange}</span>
+			</div>
+		{/if}
+	</div>
+</div>
+
+<!-- Detune (full width) -->
 <div class="card">
 	<div class="card-header font-pixel">Detune</div>
 	<div class="range-row">
@@ -270,18 +306,27 @@
 		color: var(--color-accent-gold);
 		font-size: var(--font-size-xs);
 		margin-bottom: 4px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 4px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
 
-	.card-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
+	.row-2col {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		align-items: stretch;
+	}
+
+	.row-2col > .card {
+		margin-bottom: 4px;
 	}
 
 	.auto-key-btn {
-		font-size: 6px !important;
+		font-size: var(--font-size-xs) !important;
 		padding: 2px 6px !important;
 		margin: 0;
 	}
@@ -299,119 +344,23 @@
 		gap: 2px;
 	}
 
-	.mode-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 2px;
-	}
-
-	.species-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 2px;
-		margin-bottom: 4px;
-	}
-
-	.strictness-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 2px;
-	}
-
-	.scale-grid {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 2px;
-		padding: 2px 0;
-	}
-
-	.octave-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 2px;
-	}
-
-	.style-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 2px;
-		margin-top: 4px;
-	}
-
 	.count-grid {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
 		gap: 2px;
-		margin-bottom: 4px;
 	}
 
-	.card-subheader {
-		color: var(--color-text-secondary);
-		font-size: 7px;
-		margin: 4px 0 2px;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-	}
-
-	.voice-grid {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 2px;
-	}
-
-	.family-header {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		width: 100%;
-		background: var(--color-bg-panel);
-		border: 1px solid var(--color-border);
-		color: var(--color-accent-amber);
-		font-size: 7px;
-		padding: 3px 6px;
-		cursor: pointer;
-		border-radius: 0;
-		margin-bottom: 1px;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-		text-align: left;
-	}
-
-	.family-header:hover {
-		border-color: var(--color-accent-cyan-dim);
-	}
-
-	.family-header.expanded {
-		border-color: var(--color-accent-cyan);
-	}
-
-	.family-arrow {
-		font-size: 6px;
-		width: 8px;
-		text-align: center;
-	}
-
-	.scale-btn {
-		font-size: 6px !important;
-		padding: 3px 6px !important;
-		text-align: left;
-	}
-
-	.scale-btn.scale-active {
-		background: var(--color-accent-cyan-dim);
-		border-color: var(--color-accent-cyan);
-		box-shadow: var(--glow-cyan);
-		color: #ffffff;
-	}
-
-	.toggle-row {
-		display: flex;
-		align-items: center;
-		gap: 6px;
+	.inline-note {
+		display: block;
+		color: var(--color-text-dim);
+		font-size: var(--font-size-xs);
+		padding: 4px 0;
 	}
 
 	.toggle-btn {
 		min-width: 40px;
+		padding: 2px 6px !important;
+		font-size: var(--font-size-xs) !important;
 	}
 
 	.toggle-btn.toggle-on {
@@ -430,7 +379,7 @@
 
 	.range-label {
 		color: var(--color-text-secondary);
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		white-space: nowrap;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
@@ -458,13 +407,6 @@
 		cursor: pointer;
 	}
 
-	.detune-presets {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 2px;
-		margin-top: 4px;
-	}
-
 	.pixel-range::-moz-range-thumb {
 		width: 10px;
 		height: 14px;
@@ -472,5 +414,12 @@
 		border: 1px solid var(--color-accent-gold);
 		border-radius: 0;
 		cursor: pointer;
+	}
+
+	.detune-presets {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 2px;
+		margin-top: 4px;
 	}
 </style>

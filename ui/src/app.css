@@ -2,10 +2,136 @@
 @import "$lib/theme/tokens.css";
 @import "$lib/theme/pixel.css";
 
+/* Global UI scale. User-configurable via ui store; defaults to 1.0.
+   `zoom` scales everything (layout, text, borders) proportionally;
+   it's supported in all modern browsers and Tauri's WebView. */
+html {
+	zoom: var(--ui-scale);
+}
+
 body {
 	background: var(--color-bg-deep);
 	color: var(--color-text-primary);
 	font-family: var(--font-pixel);
 	margin: 0;
 	overflow: hidden;
+}
+
+/* Font mode classes on <body>. Each class remaps what .font-pixel means,
+   so every component that opted in to the pixel-font look follows the
+   active choice. Pixel fonts keep crunchy rendering; clean enables
+   antialiasing. */
+
+body.font-press-start,
+body.font-press-start .font-pixel,
+body.font-press-start .pixel-btn {
+	font-family: var(--font-press-start);
+	-webkit-font-smoothing: none;
+	-moz-osx-font-smoothing: unset;
+	text-rendering: optimizeSpeed;
+	letter-spacing: 0;
+}
+
+body.font-vt323,
+body.font-vt323 .font-pixel,
+body.font-vt323 .pixel-btn {
+	font-family: var(--font-vt323);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	letter-spacing: 1px;
+}
+
+body.font-silkscreen,
+body.font-silkscreen .font-pixel,
+body.font-silkscreen .pixel-btn {
+	font-family: var(--font-silkscreen);
+	-webkit-font-smoothing: none;
+	text-rendering: optimizeSpeed;
+	letter-spacing: 0;
+}
+
+body.font-pixelify,
+body.font-pixelify .font-pixel,
+body.font-pixelify .pixel-btn {
+	font-family: var(--font-pixelify);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	letter-spacing: 0;
+}
+
+body.font-dotgothic,
+body.font-dotgothic .font-pixel,
+body.font-dotgothic .pixel-btn {
+	font-family: var(--font-dotgothic);
+	-webkit-font-smoothing: none;
+	text-rendering: optimizeSpeed;
+	letter-spacing: 0;
+}
+
+body.font-jersey,
+body.font-jersey .font-pixel,
+body.font-jersey .pixel-btn {
+	font-family: var(--font-jersey);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	letter-spacing: 0;
+}
+
+body.font-tiny5,
+body.font-tiny5 .font-pixel,
+body.font-tiny5 .pixel-btn {
+	font-family: var(--font-tiny5);
+	-webkit-font-smoothing: none;
+	text-rendering: optimizeSpeed;
+	letter-spacing: 0;
+}
+
+body.font-workbench,
+body.font-workbench .font-pixel,
+body.font-workbench .pixel-btn {
+	font-family: var(--font-workbench);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	letter-spacing: 0;
+}
+
+body.font-jetbrains,
+body.font-jetbrains .font-pixel,
+body.font-jetbrains .pixel-btn {
+	font-family: var(--font-jetbrains);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+	letter-spacing: 0;
+}
+
+body.font-fira,
+body.font-fira .font-pixel,
+body.font-fira .pixel-btn {
+	font-family: var(--font-fira);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+	letter-spacing: 0;
+}
+
+body.font-plex,
+body.font-plex .font-pixel,
+body.font-plex .pixel-btn {
+	font-family: var(--font-plex);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+	letter-spacing: 0;
+}
+
+body.font-clean,
+body.font-clean .font-pixel,
+body.font-clean .pixel-btn {
+	font-family: var(--font-reading);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+	letter-spacing: normal;
+	font-smooth: auto;
 }

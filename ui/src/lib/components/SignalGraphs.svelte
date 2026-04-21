@@ -123,7 +123,7 @@
 	}
 
 	.graph-label {
-		font-size: 5px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		width: 18px;
 		text-align: right;
@@ -146,7 +146,7 @@
 	}
 
 	.gate-btn {
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		padding: 2px 4px;
 		background: var(--color-widget-inactive);
 		border: 1px solid var(--color-border);

@@ -199,7 +199,7 @@
 
 	.loading-text {
 		color: var(--color-text-dim);
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		margin-bottom: 3px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
@@ -207,7 +207,7 @@
 
 	.error-text {
 		color: #ff4466;
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		margin-bottom: 3px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
@@ -245,7 +245,7 @@
 		border-radius: 0;
 		cursor: pointer;
 		color: var(--color-text-primary);
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		text-align: left;
 		transition: none;
 		-webkit-font-smoothing: none;
@@ -280,7 +280,7 @@
 	}
 
 	.builtin-badge {
-		font-size: 5px;
+		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		white-space: nowrap;
 	}
@@ -289,7 +289,7 @@
 		background: none;
 		border: 1px solid var(--color-border);
 		color: var(--color-text-dim);
-		font-size: 6px;
+		font-size: var(--font-size-xs);
 		padding: 1px 3px;
 		cursor: pointer;
 		border-radius: 0;
@@ -318,7 +318,7 @@
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
 		color: var(--color-text-primary);
-		font-size: 7px;
+		font-size: var(--font-size-xs);
 		padding: 3px 4px;
 		border-radius: 0;
 		outline: none;
@@ -337,13 +337,13 @@
 	.save-confirm-btn,
 	.save-cancel-btn {
 		padding: 3px 6px !important;
-		font-size: 6px !important;
+		font-size: var(--font-size-xs) !important;
 		min-width: 20px;
 	}
 
 	.save-btn {
 		width: 100%;
-		font-size: 7px !important;
+		font-size: var(--font-size-xs) !important;
 		padding: 3px 6px !important;
 	}
 </style>
