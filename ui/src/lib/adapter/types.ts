@@ -40,26 +40,6 @@ export interface NoteState {
 	currentKey: string;
 }
 
-/** Humanization engine configuration. */
-export interface HumanizeState {
-	enabled: boolean;
-	jitterEnabled: boolean;
-	jitterMinMs: number;
-	jitterMaxMs: number;
-	velocityEnabled: boolean;
-	velocityVariation: number;
-	durationEnabled: boolean;
-	durationVariationMs: number;
-	swingEnabled: boolean;
-	swingAmount: number;
-	bpm: number;
-	metronomeEnabled: boolean;
-	metronomeSubdivision?: string;  // "None" | "Eighth" | "Sixteenth"
-	metronomeSound?: string;        // "Woodblock" | "Rimshot" | "Cowbell" | "HiHat"
-	metronomeVolume?: number;       // 0.0-1.0
-	metronomeCountInBars?: number;  // 0, 1, or 2
-}
-
 /** Guitar DSP pipeline configuration sent to the backend. */
 export interface GuitarConfig {
 	latencyMs: number;
@@ -137,14 +117,6 @@ export interface ContrapunkAdapter {
 	 */
 	setCounterpointStrictness(strictness: string): Promise<void>;
 
-	// -- Humanization --
-
-	/** Get the current humanization configuration. */
-	getHumanizeState(): Promise<HumanizeState>;
-
-	/** Update humanization configuration (partial update). */
-	setHumanizeConfig(config: Partial<HumanizeState>): Promise<void>;
-
 	// -- MIDI devices --
 
 	/** List available MIDI input devices. */
@@ -175,7 +147,7 @@ export interface ContrapunkAdapter {
 	 */
 	onNoteUpdate(callback: (state: NoteState) => void): () => void;
 
-	// -- Virtual Input (keyboard, generator) --
+	// -- Virtual Input (keyboard) --
 
 	/** Inject a Note On event directly (for virtual inputs like computer keyboard). */
 	injectNoteOn(note: number, velocity?: number): Promise<number[]>;
@@ -197,20 +169,6 @@ export interface ContrapunkAdapter {
 	/** Delete a custom preset by name. */
 	deletePreset(name: string): Promise<void>;
 
-	// -- Audio output --
-
-	/** List available audio output devices (desktop only). Returns empty on WASM/plugin. */
-	listAudioOutputDevices(): Promise<{ name: string; is_default: boolean }[]>;
-
-	/** Start audio output. `undefined` device = system default. */
-	startAudioOutput(opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void>;
-
-	/** Stop audio output. */
-	stopAudioOutput(): Promise<void>;
-
-	/** Whether audio output is currently running. */
-	isAudioOutputRunning(): Promise<boolean>;
-
 	// -- Guitar input --
 
 	/** List available audio input devices (via cpal on desktop). */
@@ -222,20 +180,6 @@ export interface ContrapunkAdapter {
 	/** Set the guitar DSP pipeline configuration. */
 	setGuitarConfig(config: GuitarConfig): Promise<void>;
 
-	// -- Generator --
-
-	/** Set the generator mode (e.g. "HeldNotes", "ArpeggioUp", "Chord"). */
-	setGeneratorMode(mode: string): Promise<void>;
-
-	/** Enable or disable the note generator. */
-	setGeneratorEnabled(enabled: boolean): Promise<void>;
-
-	/** Set the notes the generator should use as source material (MIDI note numbers). */
-	setGeneratorNotes(notes: number[]): Promise<void>;
-
-	/** Set the chord type for Chord mode (e.g. "Major", "Minor", "Dom7"). */
-	setGeneratorChordType(chordType: string): Promise<void>;
-
 	// -- Detune --
 
 	/** Set global detune in cents (sends pitch bend to all outputs). */
@@ -243,17 +187,6 @@ export interface ContrapunkAdapter {
 
 	/** Get the current detune value in cents. */
 	getDetune(): number;
-
-	// -- Suggestions --
-
-	/** Get ranked next-note suggestions (top 12). */
-	getSuggestions?(): { note: number; score: number }[];
-
-	/** Set a suggestion weight by term name. */
-	setSuggestionWeight?(term: string, value: number): void;
-
-	/** Reset suggestion weights to defaults. */
-	resetSuggestionWeights?(): void;
 
 	// -- Lifecycle --
 

@@ -15,24 +15,15 @@ use tauri::{AppHandle, Emitter, State};
 use wmidi::{Channel, MidiMessage, Note, Velocity};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
-use contrapunk::audio_out::{MidiEvent, MidiProducer};
 use contrapunk::chord::chord_display_with_analysis;
-use contrapunk::generator::{GeneratorEvent, NoteGenerator};
 use contrapunk::harmony::HarmonyEngine;
-use contrapunk::humanize::{DelayQueue, HumanizeConfig, HumanizedNote, Humanizer};
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
 
 use crate::guitar_bridge::GuitarBridge;
 use crate::state::AppState;
 
-/// Sentinel value for the "Guitar Audio" virtual input.
-/// When `input_idx` equals this value, we spawn a GuitarBridge
-/// instead of connecting to a physical MIDI input port.
 /// Virtual input sentinels — must match the values in MidiDevices.svelte.
-/// Using small memorable values instead of MAX_SAFE_INTEGER to avoid
-/// cross-language integer size mismatches.
-const VIRTUAL_NOTE_GENERATOR: usize = 999_999;
 const VIRTUAL_COMPUTER_KEYBOARD: usize = 999_998;
 const GUITAR_AUDIO_SENTINEL: usize = 999_997;
 
@@ -47,15 +38,6 @@ pub struct NoteUpdatePayload {
     pub current_key: String,
 }
 
-/// Payload for the "beat-update" Tauri event (replaces JS setInterval approximation).
-#[derive(Clone, Serialize)]
-pub struct BeatUpdatePayload {
-    pub beat_position: f64,
-    pub beat_number: u8,
-    pub bpm: f64,
-    pub running: bool,
-}
-
 /// Payload for the "guitar-signal" Tauri event (UI signal feedback).
 #[derive(Clone, Serialize)]
 pub struct GuitarSignalPayload {
@@ -65,6 +47,32 @@ pub struct GuitarSignalPayload {
     pub note_state: u8,
     pub note_name: String,
     pub midi_note: u8,
+}
+
+/// Inject a Note-On event into the active router pipeline.
+///
+/// Used by virtual inputs (e.g. Computer Keyboard) in the UI. Only has
+/// effect while routing is active; returns an error otherwise.
+#[tauri::command]
+pub fn inject_note_on(
+    note: u8,
+    velocity: Option<u8>,
+    state: State<AppState>,
+) -> Result<Vec<u8>, String> {
+    let tx_guard = state.router_tx.lock().map_err(|e| e.to_string())?;
+    let tx = tx_guard.as_ref().ok_or("Routing not active")?;
+    let vel = velocity.unwrap_or(100).clamp(1, 127);
+    tx.send(vec![0x90, note, vel]).map_err(|e| e.to_string())?;
+    Ok(vec![note])
+}
+
+/// Inject a Note-Off event into the active router pipeline.
+#[tauri::command]
+pub fn inject_note_off(note: u8, state: State<AppState>) -> Result<Vec<u8>, String> {
+    let tx_guard = state.router_tx.lock().map_err(|e| e.to_string())?;
+    let tx = tx_guard.as_ref().ok_or("Routing not active")?;
+    tx.send(vec![0x80, note, 0]).map_err(|e| e.to_string())?;
+    Ok(vec![note])
 }
 
 /// Returns the current note state snapshot.
@@ -124,24 +132,6 @@ pub fn start_routing(
         )
     };
 
-    // Share the humanize config with the router thread so live UI
-    // changes (metronome toggle, swing, BPM) take effect immediately.
-    let humanize_config = Arc::clone(&state.humanize_config);
-
-    // Capture generator config for the router thread.
-    // The generator lives inside the router loop (like the harmony engine)
-    // so live UI changes require stop+restart of routing.
-    let generator_config = {
-        let gen = state.generator.lock().map_err(|e| e.to_string())?;
-        (
-            gen.enabled(),
-            gen.mode().clone(),
-            gen.selected_notes().to_vec(),
-            gen.velocity(),
-            gen.note_duration_beats(),
-        )
-    };
-
     let routing_mode = { *state.routing_mode.lock().map_err(|e| e.to_string())? };
 
     // Capture guitar config for the router thread
@@ -196,6 +186,14 @@ pub fn start_routing(
 
     state.is_running.store(true, Ordering::SeqCst);
 
+    // Create the MIDI-input channel up front so we can share the Sender with
+    // inject_note_on / inject_note_off commands (virtual input from the UI).
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    {
+        let mut slot = state.router_tx.lock().map_err(|e| e.to_string())?;
+        *slot = Some(tx.clone());
+    }
+
     // Clone Arcs for the router thread
     let in_notes = Arc::clone(&input_notes);
     let harm_notes = Arc::clone(&harmony_notes);
@@ -203,10 +201,6 @@ pub fn start_routing(
     let ch_name = Arc::clone(&chord_name);
     let stop = Arc::clone(&stop_signal);
     let output_indices_clone = output_indices.clone();
-
-    // Share the audio-out producer slot with the router thread so
-    // toggling audio output doesn't require stop+restart routing.
-    let audio_out_slot = Arc::clone(&state.audio_out_producer);
 
     let detune = Arc::clone(&state.detune_cents);
 
@@ -216,20 +210,19 @@ pub fn start_routing(
             input_idx,
             &output_indices_clone,
             engine_config,
-            humanize_config,
             routing_mode,
             is_guitar,
             guitar_device,
             guitar_channel,
             guitar_config,
-            generator_config,
+            tx,
+            rx,
             in_notes,
             harm_notes,
             borr_notes,
             ch_name,
             stop,
             app_handle,
-            audio_out_slot,
             detune,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
@@ -251,6 +244,11 @@ pub fn stop_routing(state: State<AppState>) -> Result<(), String> {
         if let Some(stop) = sig.take() {
             stop.store(true, Ordering::SeqCst);
         }
+    }
+
+    // Drop the injection sender so further inject_note_on/off calls fail fast
+    if let Ok(mut tx_slot) = state.router_tx.lock() {
+        *tx_slot = None;
     }
 
     state.is_running.store(false, Ordering::SeqCst);
@@ -290,32 +288,24 @@ type EngineConfig = (
     contrapunk::harmony::CounterpointStrictness,
 );
 
-type GeneratorConfig = (
-    bool,                                 // enabled
-    contrapunk::generator::GeneratorMode, // mode
-    Vec<wmidi::Note>,                     // selected_notes
-    u8,                                   // velocity
-    f64,                                  // note_duration_beats
-);
-
+#[allow(clippy::too_many_arguments)]
 fn run_tauri_router(
     input_port: usize,
     output_ports: &[usize],
     config: EngineConfig,
-    humanize_config: Arc<Mutex<HumanizeConfig>>,
     routing_mode: contrapunk::harmony::RoutingMode,
     is_guitar: bool,
     guitar_device: String,
     guitar_channel: usize,
     guitar_config: GuitarInputConfig,
-    generator_config: GeneratorConfig,
+    tx: mpsc::Sender<Vec<u8>>,
+    rx: mpsc::Receiver<Vec<u8>>,
     input_notes: Arc<Mutex<HashSet<u8>>>,
     harmony_notes: Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: Arc<Mutex<HashSet<u8>>>,
     chord_name: Arc<Mutex<String>>,
     stop_signal: Arc<std::sync::atomic::AtomicBool>,
     app_handle: AppHandle,
-    audio_out_slot: Arc<Mutex<Option<MidiProducer>>>,
     detune_cents: Arc<AtomicI32>,
 ) -> anyhow::Result<()> {
     let (
@@ -332,13 +322,12 @@ fn run_tauri_router(
         cp_strictness,
     ) = config;
 
-    // Create channel for MIDI input — both physical MIDI and guitar
-    // bridge send Vec<u8> through the same channel.
-    let (tx, rx) = mpsc::channel::<Vec<u8>>();
-
-    // Connect to either Guitar Audio bridge or physical MIDI input
+    // Connect to either Guitar Audio bridge, physical MIDI input, or
+    // nothing at all (Computer Keyboard virtual input — notes are pushed
+    // by inject_note_on/off commands via the shared router_tx).
     let _midi_conn;
     let _guitar_bridge;
+    let is_keyboard = input_port == VIRTUAL_COMPUTER_KEYBOARD;
 
     // Signal channel for guitar UI feedback (only used in guitar mode)
     let (signal_tx, signal_rx) = mpsc::channel::<crate::guitar_bridge::GuitarSignalInfo>();
@@ -358,8 +347,15 @@ fn run_tauri_router(
             .map_err(|e| anyhow::anyhow!("Guitar bridge start error: {}", e))?;
         _guitar_bridge = Some(bridge);
         _midi_conn = None;
+    } else if is_keyboard {
+        // Computer Keyboard mode: no physical connection. The tx is kept
+        // alive by the AppState clone so inject_note_on/off can push.
+        // Drop the local tx copy; AppState keeps the channel open.
+        drop(tx);
+        _midi_conn = None;
+        _guitar_bridge = None;
     } else {
-        // Physical MIDI mode: existing behavior
+        // Physical MIDI mode
         _midi_conn = Some(connect_input(input_port, tx)?);
         _guitar_bridge = None;
     };
@@ -381,29 +377,6 @@ fn run_tauri_router(
     engine.set_counterpoint_species(cp_species);
     engine.set_counterpoint_strictness(cp_strictness);
 
-    // Create humanizer + metronome from the shared config.
-    let initial_hconfig = humanize_config
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
-    let mut humanizer = Humanizer::new(initial_hconfig);
-    let mut delay_queue = DelayQueue::new();
-    let mut metronome = contrapunk::humanize::Metronome::new();
-    metronome.enabled = humanizer.config().metronome_enabled;
-    let epoch = Instant::now();
-    let now_ms = || epoch.elapsed().as_secs_f64() * 1000.0;
-
-    humanizer.clock_mut().start(now_ms());
-
-    // Create note generator from captured config
-    let (gen_enabled, gen_mode, gen_notes, gen_velocity, gen_duration) = generator_config;
-    let mut generator = NoteGenerator::new();
-    generator.set_mode(gen_mode);
-    generator.set_enabled(gen_enabled);
-    generator.set_selected_notes(gen_notes);
-    generator.set_velocity(gen_velocity);
-    generator.set_note_duration_beats(gen_duration);
-
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();
     let emit_interval = Duration::from_millis(33);
@@ -411,112 +384,10 @@ fn run_tauri_router(
     // Detune: track the previous value so we only send pitch bend on change.
     let mut prev_detune_cents: i32 = detune_cents.load(Ordering::Relaxed);
 
-    // Take initial audio-out producer if available. The router owns it
-    // for the duration; hot-swap happens below if audio-out is toggled.
-    let mut audio_out: Option<MidiProducer> = {
-        audio_out_slot
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-    };
-
-    // Pending metronome NoteOff: (midi_note, fire_at_ms). Delayed so the
-    // PolySynth envelope has time to rise before release — pushing NoteOn
-    // and NoteOff in the same frame produces silence.
-    let mut pending_metro_off: Option<(u8, f64)> = None;
-
     // Main routing loop
     loop {
         if stop_signal.load(Ordering::SeqCst) {
             break;
-        }
-
-        // Fire pending metronome NoteOff if its time has come.
-        if let Some((note, fire_at)) = pending_metro_off {
-            if now_ms() >= fire_at {
-                if let Some(ref mut producer) = audio_out {
-                    let _ = producer.push(MidiEvent::NoteOff { voice: 255, note });
-                }
-                pending_metro_off = None;
-            }
-        }
-
-        // Hot-swap audio-out producer: if the slot has a new producer
-        // (audio-out was started/restarted), take it. If our producer
-        // is dead (audio-out was stopped and consumer dropped), the
-        // pushes silently fail until a new producer appears.
-        if let Ok(mut slot) = audio_out_slot.try_lock() {
-            if slot.is_some() {
-                // New producer available — swap in
-                audio_out = slot.take();
-            }
-        }
-
-        // Poll for humanize config changes from the UI (metronome toggle,
-        // BPM, swing, etc.). Non-blocking: skip if the lock is held.
-        if let Ok(shared) = humanize_config.try_lock() {
-            humanizer.update_config(shared.clone());
-        }
-
-        // Tick humanizer
-        let current_ms = now_ms();
-        humanizer.tick(current_ms);
-
-        // Push the current beat-phase position into the harmony engine.
-        engine.set_counterpoint_beat_phase(Some(humanizer.clock().beat_position()));
-
-        // Emit beat-update event on every beat crossing so the UI gets
-        // Rust-driven timing instead of a drifting JS setInterval.
-        if let Some(beat_num) = humanizer.clock().beat_crossed() {
-            let _ = app_handle.emit(
-                "beat-update",
-                BeatUpdatePayload {
-                    beat_position: humanizer.clock().beat_position(),
-                    beat_number: beat_num,
-                    bpm: humanizer.config().bpm,
-                    running: humanizer.clock().running,
-                },
-            );
-        }
-
-        // Generate metronome clicks on subdivision crossings and send
-        // to the configured output port (or port 0 if unset).
-        // Also push to the audio synth so it clicks through speakers
-        // without requiring an external GM drum kit on channel 10.
-        if let Some(crossing) = humanizer.clock().subdivision_crossed() {
-            metronome.enabled = humanizer.config().metronome_enabled;
-            if let Some(click_bytes) =
-                metronome.generate_click_for_crossing(&crossing, humanizer.config())
-            {
-                let metro_port = humanizer.config().metronome_output_port.unwrap_or(0);
-                let _ = output_router.send_to_port(metro_port, &click_bytes);
-
-                // Audio-out: short sine click through PolySynth.
-                // Accent (beat 0) = C7 (96) loud, others = G6 (91) softer.
-                if let Some(ref mut producer) = audio_out {
-                    // Release any previous click first
-                    if let Some((prev_note, _)) = pending_metro_off.take() {
-                        let _ = producer.push(MidiEvent::NoteOff {
-                            voice: 255,
-                            note: prev_note,
-                        });
-                    }
-                    let (click_note, click_vel) = if crossing.sixteenth == 0 && crossing.beat == 0 {
-                        (96u8, 120u8) // accent: C7
-                    } else if crossing.sixteenth == 0 {
-                        (91u8, 90u8) // normal beat: G6
-                    } else {
-                        (98u8, 60u8) // subdivision: D7, quiet
-                    };
-                    let _ = producer.push(MidiEvent::NoteOn {
-                        voice: 255,
-                        note: click_note,
-                        velocity: click_vel,
-                    });
-                    // Schedule NoteOff 50ms later so the envelope has time to rise
-                    pending_metro_off = Some((click_note, now_ms() + 50.0));
-                }
-            }
         }
 
         // Apply detune as MIDI pitch bend when the value changes.
@@ -536,174 +407,18 @@ fn run_tauri_router(
             }
         }
 
-        // Drain delay queue — fanout to audio synth for delayed harmony notes.
-        for hn in delay_queue.drain_ready(current_ms) {
-            let _ =
-                send_humanized_note(&hn, &mut output_router, audio_out.as_mut(), hn.voice_index);
-        }
-
-        // Tick the note generator and route any resulting events through
-        // the harmony engine and output router.
-        let beat_pos = humanizer.clock().beat_position();
-        let bpm = humanizer.config().bpm;
-        let gen_events = generator.tick(beat_pos, bpm);
-        for event in gen_events {
-            match event {
-                GeneratorEvent::NoteOn(note, velocity) => {
-                    let vel = Velocity::try_from(velocity.clamp(1, 127)).unwrap();
-                    let notes = engine.harmonize_note_on(note);
-                    let num_outputs = output_router.connection_count();
-
-                    // Update shared input note state
-                    {
-                        let mut in_notes = input_notes.lock().unwrap();
-                        in_notes.insert(note as u8);
-                    }
-                    {
-                        let mut harm_notes = harmony_notes.lock().unwrap();
-                        for &n in notes.iter().skip(1) {
-                            harm_notes.insert(n as u8);
-                        }
-                    }
-                    if engine.last_borrowed_from().is_some() {
-                        let mut borr = borrowed_notes.lock().unwrap();
-                        for &n in notes.iter().skip(1) {
-                            borr.insert(n as u8);
-                        }
-                    }
-
-                    // Route through outputs (channel-based, matching routing_mode)
-                    let port_map = engine.last_port_map();
-                    match routing_mode {
-                        contrapunk::harmony::RoutingMode::ChannelBased => {
-                            for (i, &n) in notes.iter().enumerate() {
-                                let voice_channel = match i + 1 {
-                                    1 => Channel::Ch2,
-                                    2 => Channel::Ch3,
-                                    3 => Channel::Ch4,
-                                    4 => Channel::Ch5,
-                                    5 => Channel::Ch6,
-                                    6 => Channel::Ch7,
-                                    _ => Channel::Ch8,
-                                };
-                                let msg = MidiMessage::NoteOn(voice_channel, n, vel);
-                                let mut buf = vec![0u8; msg.bytes_size()];
-                                let _ = msg.copy_to_slice(&mut buf);
-                                let _ = output_router.send_to_first(&buf);
-                                if let Some(ref mut producer) = audio_out {
-                                    let _ = producer.push(MidiEvent::NoteOn {
-                                        voice: i as u8,
-                                        note: u8::from(n),
-                                        velocity,
-                                    });
-                                }
-                            }
-                        }
-                        contrapunk::harmony::RoutingMode::PortBased => {
-                            for (i, &n) in notes.iter().enumerate() {
-                                let port = if i < port_map.len() { port_map[i] } else { i };
-                                if port >= num_outputs {
-                                    continue;
-                                }
-                                let msg = MidiMessage::NoteOn(Channel::Ch1, n, vel);
-                                let mut buf = vec![0u8; msg.bytes_size()];
-                                let _ = msg.copy_to_slice(&mut buf);
-                                let _ = output_router.send_to_port(port, &buf);
-                                if let Some(ref mut producer) = audio_out {
-                                    let _ = producer.push(MidiEvent::NoteOn {
-                                        voice: i as u8,
-                                        note: u8::from(n),
-                                        velocity,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-                GeneratorEvent::NoteOff(note) => {
-                    let notes = engine.harmonize_note_off(note);
-                    let num_outputs = output_router.connection_count();
-
-                    // Update shared note state
-                    {
-                        let mut in_notes = input_notes.lock().unwrap();
-                        in_notes.remove(&(note as u8));
-                    }
-                    {
-                        let mut harm_notes = harmony_notes.lock().unwrap();
-                        let mut borr = borrowed_notes.lock().unwrap();
-                        for &n in notes.iter().skip(1) {
-                            harm_notes.remove(&(n as u8));
-                            borr.remove(&(n as u8));
-                        }
-                    }
-
-                    let port_map = engine.last_port_map();
-                    let vel = Velocity::MIN;
-                    match routing_mode {
-                        contrapunk::harmony::RoutingMode::ChannelBased => {
-                            for (i, &n) in notes.iter().enumerate() {
-                                let voice_channel = match i + 1 {
-                                    1 => Channel::Ch2,
-                                    2 => Channel::Ch3,
-                                    3 => Channel::Ch4,
-                                    4 => Channel::Ch5,
-                                    5 => Channel::Ch6,
-                                    6 => Channel::Ch7,
-                                    _ => Channel::Ch8,
-                                };
-                                let msg = MidiMessage::NoteOff(voice_channel, n, vel);
-                                let mut buf = vec![0u8; msg.bytes_size()];
-                                let _ = msg.copy_to_slice(&mut buf);
-                                let _ = output_router.send_to_first(&buf);
-                                if let Some(ref mut producer) = audio_out {
-                                    let _ = producer.push(MidiEvent::NoteOff {
-                                        voice: i as u8,
-                                        note: u8::from(n),
-                                    });
-                                }
-                            }
-                        }
-                        contrapunk::harmony::RoutingMode::PortBased => {
-                            for (i, &n) in notes.iter().enumerate() {
-                                let port = if i < port_map.len() { port_map[i] } else { i };
-                                if port >= num_outputs {
-                                    continue;
-                                }
-                                let msg = MidiMessage::NoteOff(Channel::Ch1, n, vel);
-                                let mut buf = vec![0u8; msg.bytes_size()];
-                                let _ = msg.copy_to_slice(&mut buf);
-                                let _ = output_router.send_to_port(port, &buf);
-                                if let Some(ref mut producer) = audio_out {
-                                    let _ = producer.push(MidiEvent::NoteOff {
-                                        voice: i as u8,
-                                        note: u8::from(n),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // Process MIDI messages
         match rx.recv_timeout(Duration::from_millis(5)) {
             Ok(message) => {
-                let current_ms = now_ms();
                 process_midi_message(
                     &message,
                     &mut engine,
                     &mut output_router,
-                    &mut humanizer,
-                    &mut delay_queue,
-                    current_ms,
                     &input_notes,
                     &harmony_notes,
                     &borrowed_notes,
                     &chord_name,
                     routing_mode,
-                    audio_out.as_mut(),
                 );
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -802,15 +517,11 @@ fn process_midi_message(
     bytes: &[u8],
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
-    humanizer: &mut Humanizer,
-    delay_queue: &mut DelayQueue,
-    now_ms: f64,
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
-    mut audio_out: Option<&mut MidiProducer>,
 ) {
     let msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
@@ -829,15 +540,11 @@ fn process_midi_message(
                     velocity,
                     engine,
                     output,
-                    humanizer,
-                    delay_queue,
-                    now_ms,
                     input_notes,
                     harmony_notes,
                     borrowed_notes,
                     chord_name,
                     routing_mode,
-                    audio_out.as_deref_mut(),
                 );
             } else {
                 handle_note_on(
@@ -846,15 +553,11 @@ fn process_midi_message(
                     velocity,
                     engine,
                     output,
-                    humanizer,
-                    delay_queue,
-                    now_ms,
                     input_notes,
                     harmony_notes,
                     borrowed_notes,
                     chord_name,
                     routing_mode,
-                    audio_out.as_deref_mut(),
                 );
             }
         }
@@ -865,15 +568,11 @@ fn process_midi_message(
                 velocity,
                 engine,
                 output,
-                humanizer,
-                delay_queue,
-                now_ms,
                 input_notes,
                 harmony_notes,
                 borrowed_notes,
                 chord_name,
                 routing_mode,
-                audio_out.as_deref_mut(),
             );
         }
         _ => {
@@ -888,15 +587,11 @@ fn handle_note_on(
     velocity: Velocity,
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
-    humanizer: &mut Humanizer,
-    delay_queue: &mut DelayQueue,
-    now_ms: f64,
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
-    mut audio_out: Option<&mut MidiProducer>,
 ) {
     let notes = engine.harmonize_note_on(note);
     let num_outputs = output.connection_count();
@@ -938,10 +633,7 @@ fn handle_note_on(
     match routing_mode {
         contrapunk::harmony::RoutingMode::ChannelBased => {
             // MPE: all voices on port 0, each on its own MIDI channel.
-            // Ch 1 (index 0) = master, Ch 2+ = voices (melody first, then harmonies)
             for (i, &n) in notes.iter().enumerate() {
-                // Voice i → MIDI channel i+1 (channel 2 = melody, 3 = harm1, etc.)
-                // Channel enum is 0-indexed: Ch2 = Channel::Ch2
                 let voice_channel = match i + 1 {
                     1 => Channel::Ch2,
                     2 => Channel::Ch3,
@@ -951,33 +643,11 @@ fn handle_note_on(
                     6 => Channel::Ch7,
                     _ => Channel::Ch8,
                 };
-
-                if i == 0 {
-                    let msg = MidiMessage::NoteOn(voice_channel, n, velocity);
-                    let mut buf = vec![0u8; msg.bytes_size()];
-                    let _ = msg.copy_to_slice(&mut buf);
-                    let _ = output.send_to_first(&buf);
-                    // Fanout to audio synth queue (fire-and-forget).
-                    if let Some(ref mut producer) = audio_out {
-                        let _ = producer.push(MidiEvent::NoteOn {
-                            voice: i as u8,
-                            note: u8::from(n),
-                            velocity: u8::from(velocity),
-                        });
-                    }
-                } else {
-                    let hn = humanizer.humanize_note_on(n, voice_channel, velocity, 0, i as u8);
-                    if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(
-                            &hn,
-                            output,
-                            audio_out.as_deref_mut(),
-                            hn.voice_index,
-                        );
-                    } else {
-                        delay_queue.push(hn, now_ms);
-                    }
-                }
+                let msg = MidiMessage::NoteOn(voice_channel, n, velocity);
+                let mut buf = vec![0u8; msg.bytes_size()];
+                let _ = msg.copy_to_slice(&mut buf);
+                let _ = output.send_to_first(&buf);
+                let _ = i;
             }
         }
         contrapunk::harmony::RoutingMode::PortBased => {
@@ -986,32 +656,10 @@ fn handle_note_on(
                 if port >= num_outputs {
                     continue;
                 }
-
-                if i == 0 {
-                    let msg = MidiMessage::NoteOn(channel, n, velocity);
-                    let mut buf = vec![0u8; msg.bytes_size()];
-                    let _ = msg.copy_to_slice(&mut buf);
-                    let _ = output.send_to_port(port, &buf);
-                    if let Some(ref mut producer) = audio_out {
-                        let _ = producer.push(MidiEvent::NoteOn {
-                            voice: i as u8,
-                            note: u8::from(n),
-                            velocity: u8::from(velocity),
-                        });
-                    }
-                } else {
-                    let hn = humanizer.humanize_note_on(n, channel, velocity, port, i as u8);
-                    if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(
-                            &hn,
-                            output,
-                            audio_out.as_deref_mut(),
-                            hn.voice_index,
-                        );
-                    } else {
-                        delay_queue.push(hn, now_ms);
-                    }
-                }
+                let msg = MidiMessage::NoteOn(channel, n, velocity);
+                let mut buf = vec![0u8; msg.bytes_size()];
+                let _ = msg.copy_to_slice(&mut buf);
+                let _ = output.send_to_port(port, &buf);
             }
         }
     }
@@ -1023,15 +671,11 @@ fn handle_note_off(
     velocity: Velocity,
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
-    humanizer: &mut Humanizer,
-    delay_queue: &mut DelayQueue,
-    now_ms: f64,
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     _chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
-    mut audio_out: Option<&mut MidiProducer>,
 ) {
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
@@ -1063,32 +707,11 @@ fn handle_note_off(
                     6 => Channel::Ch7,
                     _ => Channel::Ch8,
                 };
-
-                if i == 0 {
-                    let msg = MidiMessage::NoteOff(voice_channel, n, velocity);
-                    let mut buf = vec![0u8; msg.bytes_size()];
-                    let _ = msg.copy_to_slice(&mut buf);
-                    let _ = output.send_to_first(&buf);
-                    // Fanout to audio synth queue (fire-and-forget).
-                    if let Some(ref mut producer) = audio_out {
-                        let _ = producer.push(MidiEvent::NoteOff {
-                            voice: i as u8,
-                            note: u8::from(n),
-                        });
-                    }
-                } else {
-                    let hn = humanizer.humanize_note_off(n, voice_channel, velocity, 0, i as u8);
-                    if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(
-                            &hn,
-                            output,
-                            audio_out.as_deref_mut(),
-                            hn.voice_index,
-                        );
-                    } else {
-                        delay_queue.push(hn, now_ms);
-                    }
-                }
+                let msg = MidiMessage::NoteOff(voice_channel, n, velocity);
+                let mut buf = vec![0u8; msg.bytes_size()];
+                let _ = msg.copy_to_slice(&mut buf);
+                let _ = output.send_to_first(&buf);
+                let _ = i;
             }
         }
         contrapunk::harmony::RoutingMode::PortBased => {
@@ -1097,67 +720,11 @@ fn handle_note_off(
                 if port >= num_outputs {
                     continue;
                 }
-
-                if i == 0 {
-                    let msg = MidiMessage::NoteOff(channel, n, velocity);
-                    let mut buf = vec![0u8; msg.bytes_size()];
-                    let _ = msg.copy_to_slice(&mut buf);
-                    let _ = output.send_to_port(port, &buf);
-                    if let Some(ref mut producer) = audio_out {
-                        let _ = producer.push(MidiEvent::NoteOff {
-                            voice: i as u8,
-                            note: u8::from(n),
-                        });
-                    }
-                } else {
-                    let hn = humanizer.humanize_note_off(n, channel, velocity, port, i as u8);
-                    if hn.delay_ms == 0 {
-                        let _ = send_humanized_note(
-                            &hn,
-                            output,
-                            audio_out.as_deref_mut(),
-                            hn.voice_index,
-                        );
-                    } else {
-                        delay_queue.push(hn, now_ms);
-                    }
-                }
+                let msg = MidiMessage::NoteOff(channel, n, velocity);
+                let mut buf = vec![0u8; msg.bytes_size()];
+                let _ = msg.copy_to_slice(&mut buf);
+                let _ = output.send_to_port(port, &buf);
             }
         }
     }
-}
-
-fn send_humanized_note(
-    note: &HumanizedNote,
-    output: &mut OutputRouter,
-    audio_out: Option<&mut MidiProducer>,
-    voice_index: u8,
-) -> anyhow::Result<()> {
-    let msg = if note.is_note_off {
-        MidiMessage::NoteOff(note.channel, note.note, note.velocity)
-    } else {
-        MidiMessage::NoteOn(note.channel, note.note, note.velocity)
-    };
-    let mut buf = vec![0u8; msg.bytes_size()];
-    msg.copy_to_slice(&mut buf)?;
-    output.send_to_port(note.port, &buf)?;
-
-    // Parallel fanout to audio synth queue (fire-and-forget; drop on full).
-    if let Some(producer) = audio_out {
-        let event = if note.is_note_off {
-            MidiEvent::NoteOff {
-                voice: voice_index,
-                note: u8::from(note.note),
-            }
-        } else {
-            MidiEvent::NoteOn {
-                voice: voice_index,
-                note: u8::from(note.note),
-                velocity: u8::from(note.velocity),
-            }
-        };
-        let _ = producer.push(event);
-    }
-
-    Ok(())
 }

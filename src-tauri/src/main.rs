@@ -30,11 +30,8 @@ fn main() {
             commands::harmony::set_counterpoint_species,
             commands::harmony::set_voice_count,
             commands::harmony::set_counterpoint_strictness,
-            commands::harmony::get_humanize_state,
-            commands::harmony::set_humanize_config,
             commands::harmony::set_detune,
             commands::harmony::get_detune,
-            commands::harmony::tap_tempo,
             // MIDI device management
             commands::midi::list_midi_inputs,
             commands::midi::list_midi_outputs,
@@ -43,6 +40,8 @@ fn main() {
             commands::engine::start_routing,
             commands::engine::stop_routing,
             commands::engine::get_note_state,
+            commands::engine::inject_note_on,
+            commands::engine::inject_note_off,
             // Guitar audio input
             commands::guitar::set_guitar_device,
             commands::guitar::set_guitar_config,
@@ -52,16 +51,6 @@ fn main() {
             commands::presets::load_preset,
             commands::presets::save_preset,
             commands::presets::delete_preset,
-            // Note generator
-            commands::generator::set_generator_mode,
-            commands::generator::set_generator_enabled,
-            commands::generator::set_generator_notes,
-            commands::generator::set_generator_chord_type,
-            // Audio output
-            commands::audio_out::list_audio_output_devices,
-            commands::audio_out::start_audio_output,
-            commands::audio_out::stop_audio_output,
-            commands::audio_out::is_audio_output_running,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

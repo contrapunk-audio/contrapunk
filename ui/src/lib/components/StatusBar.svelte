@@ -2,7 +2,6 @@
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
-	import BeatIndicator from '$lib/components/BeatIndicator.svelte';
 
 	/**
 	 * Toggle MIDI routing on/off.
@@ -62,9 +61,6 @@
 	>
 		{engine.isRunning ? 'ACTIVE' : 'STOPPED'}
 	</span>
-
-	<!-- Beat indicator (near status) -->
-	<BeatIndicator />
 
 	<!-- Chord display -->
 	<div class="chord-info">

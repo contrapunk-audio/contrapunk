@@ -672,15 +672,10 @@ class EngineStore {
 	// -- Transport --
 	isRunning = $state(false);
 
-	// -- Audio output --
-	audioOutRunning = $state(false);
-	audioOutDevice = $state<string | null>(null);
-
 	// -- Real-time note state (updated by adapter events) --
 	inputNotes = $state<number[]>([]);
 	harmonyNotes = $state<number[]>([]);
 	borrowedNotes = $state<number[]>([]);
-	generatorNotes = $state<number[]>([]);
 	inScaleNotes = $derived(computeScaleNotes(this.key, this.scaleMode));
 
 	// -- Display --
@@ -902,36 +897,6 @@ class EngineStore {
 		this.detuneCents = cents;
 		adapter.setDetune(cents);
 		this.persist();
-	}
-
-	async refreshAudioOutState() {
-		try {
-			this.audioOutRunning = await adapter.isAudioOutputRunning();
-		} catch {
-			// Adapter not ready or not supported — leave state as-is
-		}
-	}
-
-	async setAudioOut(enabled: boolean, deviceId?: string) {
-		if (enabled) {
-			try {
-				await adapter.startAudioOutput({ deviceId });
-				this.audioOutRunning = true;
-				this.audioOutDevice = deviceId ?? null;
-			} catch (err) {
-				this.audioOutRunning = false;
-				this.audioOutDevice = null;
-				throw err; // let caller decide how to display
-			}
-		} else {
-			try {
-				await adapter.stopAudioOutput();
-			} finally {
-				// Always reset state even if stop fails — the producer slot is cleared
-				// either way via Tauri command error handling.
-				this.audioOutRunning = false;
-			}
-		}
 	}
 
 	/**

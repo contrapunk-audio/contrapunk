@@ -8,12 +8,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { guitar } from '$lib/stores/guitar.svelte';
-import { beat } from '$lib/stores/beat.svelte';
 import type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
-	HumanizeState,
 	MidiDevice,
 	NoteState,
 	Preset
@@ -59,8 +57,6 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 export class TauriAdapter implements ContrapunkAdapter {
 	private _isRunning = false;
 	private _guitarSignalUnsub: UnlistenFn | null = null;
-	/** Unsubscribe handle for the Rust-driven beat-update event. */
-	private _beatUpdateUnsub: UnlistenFn | null = null;
 
 	async init(): Promise<void> {
 		// Tauri is ready when this code runs in the webview.
@@ -165,63 +161,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async getHumanizeState(): Promise<HumanizeState> {
-		try {
-			const raw = (await invoke('get_humanize_state')) as Record<string, unknown>;
-			return {
-				enabled: raw.enabled as boolean,
-				jitterEnabled: raw.jitter_enabled as boolean,
-				jitterMinMs: raw.jitter_min_ms as number,
-				jitterMaxMs: raw.jitter_max_ms as number,
-				velocityEnabled: raw.velocity_enabled as boolean,
-				velocityVariation: raw.velocity_variation as number,
-				durationEnabled: raw.duration_enabled as boolean,
-				durationVariationMs: raw.duration_variation_ms as number,
-				swingEnabled: raw.swing_enabled as boolean,
-				swingAmount: raw.swing_amount as number,
-				bpm: raw.bpm as number,
-				metronomeEnabled: raw.metronome_enabled as boolean
-			};
-		} catch (e) {
-			throw new Error(`Failed to get humanize state: ${e}`);
-		}
-	}
-
-	async setHumanizeConfig(config: Partial<HumanizeState>): Promise<void> {
-		try {
-			// Convert camelCase keys to snake_case for Rust backend
-			const snakeConfig: Record<string, unknown> = {};
-			if (config.enabled !== undefined) snakeConfig.enabled = config.enabled;
-			if (config.jitterEnabled !== undefined) snakeConfig.jitter_enabled = config.jitterEnabled;
-			if (config.jitterMinMs !== undefined) snakeConfig.jitter_min_ms = config.jitterMinMs;
-			if (config.jitterMaxMs !== undefined) snakeConfig.jitter_max_ms = config.jitterMaxMs;
-			if (config.velocityEnabled !== undefined)
-				snakeConfig.velocity_enabled = config.velocityEnabled;
-			if (config.velocityVariation !== undefined)
-				snakeConfig.velocity_variation = config.velocityVariation;
-			if (config.durationEnabled !== undefined)
-				snakeConfig.duration_enabled = config.durationEnabled;
-			if (config.durationVariationMs !== undefined)
-				snakeConfig.duration_variation_ms = config.durationVariationMs;
-			if (config.swingEnabled !== undefined) snakeConfig.swing_enabled = config.swingEnabled;
-			if (config.swingAmount !== undefined) snakeConfig.swing_amount = config.swingAmount;
-			if (config.bpm !== undefined) snakeConfig.bpm = config.bpm;
-			if (config.metronomeEnabled !== undefined)
-				snakeConfig.metronome_enabled = config.metronomeEnabled;
-			if (config.metronomeSubdivision !== undefined)
-				snakeConfig.metronome_subdivision = config.metronomeSubdivision;
-			if (config.metronomeSound !== undefined)
-				snakeConfig.metronome_sound = config.metronomeSound;
-			if (config.metronomeVolume !== undefined)
-				snakeConfig.metronome_volume = config.metronomeVolume;
-			if (config.metronomeCountInBars !== undefined)
-				snakeConfig.metronome_count_in_bars = config.metronomeCountInBars;
-			await invoke('set_humanize_config', { config: snakeConfig });
-		} catch (e) {
-			throw new Error(`Failed to set humanize config: ${e}`);
-		}
-	}
-
 	async listMidiInputs(): Promise<MidiDevice[]> {
 		try {
 			const raw = (await invoke('list_midi_inputs')) as Array<Record<string, unknown>>;
@@ -252,7 +191,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 		try {
 			await invoke('start_routing', { inputIdx, outputIndices });
 			this._isRunning = true;
-			this.startBeatListener();
 
 			// If guitar audio mode, listen for signal events and feed guitar store
 			const GUITAR_AUDIO_SENTINEL = 999_997;
@@ -296,7 +234,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 		try {
 			await invoke('stop_routing');
 			this._isRunning = false;
-			this.stopBeatListener();
 
 			// Clean up guitar signal listener
 			if (this._guitarSignalUnsub) {
@@ -399,42 +336,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async listAudioOutputDevices(): Promise<{ name: string; is_default: boolean }[]> {
-		try {
-			return (await invoke('list_audio_output_devices')) as { name: string; is_default: boolean }[];
-		} catch (e) {
-			throw new Error(`Failed to list audio output devices: ${e}`);
-		}
-	}
-
-	async startAudioOutput(opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void> {
-		try {
-			await invoke('start_audio_output', {
-				deviceId: opts.deviceId ?? null,
-				sampleRate: opts.sampleRate ?? null,
-				bufferSize: opts.bufferSize ?? null,
-			});
-		} catch (e) {
-			throw new Error(`Failed to start audio output: ${e}`);
-		}
-	}
-
-	async stopAudioOutput(): Promise<void> {
-		try {
-			await invoke('stop_audio_output');
-		} catch (e) {
-			throw new Error(`Failed to stop audio output: ${e}`);
-		}
-	}
-
-	async isAudioOutputRunning(): Promise<boolean> {
-		try {
-			return (await invoke('is_audio_output_running')) as boolean;
-		} catch (e) {
-			throw new Error(`Failed to check audio output running: ${e}`);
-		}
-	}
-
 	async listAudioDevices(): Promise<string[]> {
 		try {
 			return (await invoke('list_audio_devices')) as string[];
@@ -467,46 +368,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async setGeneratorMode(mode: string): Promise<void> {
-		try {
-			await invoke('set_generator_mode', { mode });
-		} catch (e) {
-			throw new Error(`Failed to set generator mode: ${e}`);
-		}
-	}
-
-	async setGeneratorEnabled(enabled: boolean): Promise<void> {
-		try {
-			await invoke('set_generator_enabled', { enabled });
-		} catch (e) {
-			throw new Error(`Failed to set generator enabled: ${e}`);
-		}
-	}
-
-	async setGeneratorNotes(notes: number[]): Promise<void> {
-		try {
-			await invoke('set_generator_notes', { notes });
-		} catch (e) {
-			throw new Error(`Failed to set generator notes: ${e}`);
-		}
-	}
-
-	async setGeneratorChordType(chordType: string): Promise<void> {
-		try {
-			await invoke('set_generator_chord_type', { chordType });
-		} catch (e) {
-			throw new Error(`Failed to set generator chord type: ${e}`);
-		}
-	}
-
-	async tapTempo(): Promise<number | null> {
-		try {
-			return await invoke('tap_tempo') as number | null;
-		} catch {
-			return null;
-		}
-	}
-
 	private _detuneCents = 0;
 
 	setDetune(cents: number): void {
@@ -520,49 +381,4 @@ export class TauriAdapter implements ContrapunkAdapter {
 		return this._detuneCents;
 	}
 
-	// -- Suggestions (stub — desktop path deferred to Task 8) --
-
-	getSuggestions(): { note: number; score: number }[] {
-		return [];
-	}
-
-	setSuggestionWeight(_term: string, _value: number): void {
-		// Desktop suggestion scoring deferred
-	}
-
-	resetSuggestionWeights(): void {
-		// Desktop suggestion scoring deferred
-	}
-
-	/**
-	 * Subscribe to real `beat-update` events emitted by the Rust router
-	 * thread on each BeatClock crossing. Replaces the old JS setInterval
-	 * approximation that drifted from the actual humanizer timing.
-	 */
-	private startBeatListener(): void {
-		this.stopBeatListener();
-		beat.running = true;
-		listen<{ beat_position: number; beat_number: number; bpm: number; running: boolean }>(
-			'beat-update',
-			(event) => {
-				const p = event.payload;
-				beat.beatPosition = p.beat_position;
-				beat.beatNumber = p.beat_number;
-				beat.bpm = p.bpm;
-				beat.running = p.running;
-				beat.pulse = beat.pulse + 1;
-				beat.lastCrossedAt = performance.now();
-			}
-		).then((unsub) => {
-			this._beatUpdateUnsub = unsub;
-		});
-	}
-
-	private stopBeatListener(): void {
-		if (this._beatUpdateUnsub) {
-			this._beatUpdateUnsub();
-			this._beatUpdateUnsub = null;
-		}
-		beat.running = false;
-	}
 }

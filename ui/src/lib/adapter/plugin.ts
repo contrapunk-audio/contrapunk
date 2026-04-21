@@ -11,7 +11,6 @@ import type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
-	HumanizeState,
 	MidiDevice,
 	NoteState,
 	Preset
@@ -136,29 +135,6 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('setCounterpointStrictness', strictness);
 	}
 
-	// -- Humanization (not available in plugin mode) --
-
-	async getHumanizeState(): Promise<HumanizeState> {
-		return {
-			enabled: false,
-			jitterEnabled: false,
-			jitterMinMs: 1,
-			jitterMaxMs: 10,
-			velocityEnabled: false,
-			velocityVariation: 10,
-			durationEnabled: false,
-			durationVariationMs: 0,
-			swingEnabled: false,
-			swingAmount: 0.0,
-			bpm: 120.0,
-			metronomeEnabled: false
-		};
-	}
-
-	async setHumanizeConfig(_config: Partial<HumanizeState>): Promise<void> {
-		// Not available in plugin mode
-	}
-
 	// -- MIDI devices (DAW handles routing in plugin mode) --
 
 	async listMidiInputs(): Promise<MidiDevice[]> {
@@ -216,20 +192,6 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async savePreset(_name: string): Promise<void> {}
 	async deletePreset(_name: string): Promise<void> {}
 
-	// -- Audio output (DAW handles audio routing in plugin mode) --
-
-	async listAudioOutputDevices(): Promise<{ name: string; is_default: boolean }[]> {
-		return [];
-	}
-
-	async startAudioOutput(_opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void> {}
-
-	async stopAudioOutput(): Promise<void> {}
-
-	async isAudioOutputRunning(): Promise<boolean> {
-		return false;
-	}
-
 	// -- Guitar input (plugin gets audio from DAW) --
 
 	async listAudioDevices(): Promise<string[]> {
@@ -238,13 +200,6 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async setGuitarDevice(_deviceName: string, _channel: number): Promise<void> {}
 	async setGuitarConfig(_config: GuitarConfig): Promise<void> {}
-
-	// -- Generator (not available in plugin mode yet) --
-
-	async setGeneratorMode(_mode: string): Promise<void> {}
-	async setGeneratorEnabled(_enabled: boolean): Promise<void> {}
-	async setGeneratorNotes(_notes: number[]): Promise<void> {}
-	async setGeneratorChordType(_chordType: string): Promise<void> {}
 
 	// -- Detune --
 
@@ -256,13 +211,4 @@ export class PluginAdapter implements ContrapunkAdapter {
 		return this._detuneCents;
 	}
 
-	// -- Suggestions (stub for plugin) --
-
-	getSuggestions(): { note: number; score: number }[] {
-		return [];
-	}
-
-	setSuggestionWeight(_term: string, _value: number): void {}
-
-	resetSuggestionWeights(): void {}
 }

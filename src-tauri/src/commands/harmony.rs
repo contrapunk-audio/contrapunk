@@ -180,32 +180,6 @@ pub fn set_routing_mode(mode: String, state: State<AppState>) -> Result<(), Stri
     Ok(())
 }
 
-/// Returns the current humanization configuration.
-#[tauri::command]
-pub fn get_humanize_state(state: State<AppState>) -> Result<serde_json::Value, String> {
-    let config = state.humanize_config.lock().map_err(|e| e.to_string())?;
-    serde_json::to_value(&*config).map_err(|e| e.to_string())
-}
-
-/// Updates humanization configuration from a partial JSON object.
-/// Only fields present in the input are changed; others keep their current value.
-#[tauri::command]
-pub fn set_humanize_config(
-    config: serde_json::Value,
-    state: State<AppState>,
-) -> Result<(), String> {
-    let mut current = state.humanize_config.lock().map_err(|e| e.to_string())?;
-    // Merge incoming fields into the existing config
-    let mut base = serde_json::to_value(&*current).map_err(|e| e.to_string())?;
-    if let (Some(base_obj), Some(incoming)) = (base.as_object_mut(), config.as_object()) {
-        for (k, v) in incoming {
-            base_obj.insert(k.clone(), v.clone());
-        }
-    }
-    *current = serde_json::from_value(base).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 /// Set global detune in cents. The router thread reads this atomically each
 /// frame and sends MIDI pitch bend to all output ports when the value changes.
 #[tauri::command]
@@ -214,24 +188,6 @@ pub fn set_detune(cents: i32, state: State<AppState>) -> Result<(), String> {
         .detune_cents
         .store(cents, std::sync::atomic::Ordering::Relaxed);
     Ok(())
-}
-
-/// Record a tap for tempo detection. Returns computed BPM after enough taps,
-/// and updates humanize_config.bpm so the change propagates live to the router.
-#[tauri::command]
-pub fn tap_tempo(state: State<AppState>) -> Result<Option<f64>, String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs_f64()
-        * 1000.0;
-    let mut tap = state.tap_tempo.lock().map_err(|e| e.to_string())?;
-    let bpm = tap.tap(now);
-    if let Some(bpm) = bpm {
-        let mut config = state.humanize_config.lock().map_err(|e| e.to_string())?;
-        config.bpm = bpm;
-    }
-    Ok(bpm)
 }
 
 /// Get the current detune value in cents.

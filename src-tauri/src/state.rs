@@ -5,13 +5,11 @@
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicI32};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
-use contrapunk::audio_out::{AudioOutEngine, MidiProducer};
-use contrapunk::generator::NoteGenerator;
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
-use contrapunk::humanize::{HumanizeConfig, TapTempo};
 use contrapunk::preset::PresetManager;
 
 /// Application state managed by Tauri.
@@ -22,10 +20,6 @@ use contrapunk::preset::PresetManager;
 pub struct AppState {
     /// Core harmony engine (key, mode, scale, voice leading, etc.)
     pub engine: Mutex<HarmonyEngine>,
-
-    /// Humanization configuration — wrapped in Arc so the router thread
-    /// can poll for live changes (metronome toggle, BPM, swing, etc.)
-    pub humanize_config: Arc<Mutex<HumanizeConfig>>,
 
     /// Preset manager for built-in and custom presets
     pub preset_manager: Mutex<PresetManager>,
@@ -54,24 +48,17 @@ pub struct AppState {
     /// Guitar audio channel index (0-based, e.g. 0 = left, 1 = right)
     pub guitar_channel: Mutex<usize>,
 
-    /// Note generator engine (arpeggio, scale runner, chord, etc.)
-    pub generator: Mutex<NoteGenerator>,
-
     /// MIDI routing mode (channel-based MPE or port-based)
     pub routing_mode: Mutex<RoutingMode>,
 
     /// Stop signal for the router thread — set to true to stop the current routing
     pub stop_signal: Mutex<Option<Arc<AtomicBool>>>,
 
-    /// Audio output engine (cpal stream lifecycle)
-    pub audio_out: Mutex<AudioOutEngine>,
-
-    /// MIDI producer for the audio output engine (None when engine is stopped).
-    /// Arc-wrapped so the router thread can poll for hot-swap without restart.
-    pub audio_out_producer: Arc<Mutex<Option<MidiProducer>>>,
-
-    /// Tap-tempo state for BPM detection from rhythmic taps.
-    pub tap_tempo: Mutex<TapTempo>,
+    /// Sender half of the router thread's MIDI input channel. Populated when
+    /// routing starts so that `inject_note_on` / `inject_note_off` (virtual
+    /// input from the UI) can push directly into the same pipeline physical
+    /// MIDI + guitar audio already feed.
+    pub router_tx: Mutex<Option<mpsc::Sender<Vec<u8>>>>,
 
     /// Global detune in cents. Read by the router thread each frame (lock-free).
     /// Updated by the `set_detune` command.
@@ -82,7 +69,6 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             engine: Mutex::new(HarmonyEngine::new(Key::C, HarmonyMode::PassThrough)),
-            humanize_config: Arc::new(Mutex::new(HumanizeConfig::default())),
             preset_manager: Mutex::new(PresetManager::new()),
             is_running: AtomicBool::new(false),
             input_notes: Mutex::new(HashSet::new()),
@@ -92,12 +78,9 @@ impl Default for AppState {
             guitar_config: Mutex::new(None),
             guitar_device: Mutex::new(String::new()),
             guitar_channel: Mutex::new(0),
-            generator: Mutex::new(NoteGenerator::new()),
             routing_mode: Mutex::new(RoutingMode::default()),
             stop_signal: Mutex::new(None),
-            audio_out: Mutex::new(AudioOutEngine::new()),
-            audio_out_producer: Arc::new(Mutex::new(None)),
-            tap_tempo: Mutex::new(TapTempo::new()),
+            router_tx: Mutex::new(None),
             detune_cents: Arc::new(AtomicI32::new(0)),
         }
     }

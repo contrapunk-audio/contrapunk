@@ -601,9 +601,9 @@ impl HarmonyEngine {
         self.counterpoint_beat_phase
     }
 
-    /// Updates the counterpoint beat-phase position. Call this each router
-    /// cycle with `humanizer.clock().beat_position()` to enable beat-aware
-    /// Species 2-4 behavior. Pass `None` to disable beat awareness.
+    /// Updates the counterpoint beat-phase position (0.0 .. beats_per_bar).
+    /// Required for beat-aware Species 2-4 behavior. Pass `None` to disable
+    /// beat awareness.
     pub fn set_counterpoint_beat_phase(&mut self, phase: Option<f64>) {
         self.counterpoint_beat_phase = phase;
     }
@@ -637,61 +637,6 @@ impl HarmonyEngine {
         }
         self.active_notes.clear();
         self.active_port_maps.clear();
-    }
-
-    /// Build a snapshot of the engine's current state for the suggestion overlay.
-    ///
-    /// This is a read-only operation with no locking. The snapshot captures
-    /// scale, key, chord context, and recent note history.
-    pub fn suggestion_snapshot(&self) -> crate::harmony::suggestion::SuggestionSnapshot {
-        use crate::harmony::suggestion::SuggestionSnapshot;
-
-        let mut snap = SuggestionSnapshot::default();
-
-        // Scale mask: bit i = pitch class i is in the scale
-        let offsets = self.scale_mode.intervals();
-        let tonic = self.key.semitones_from_c();
-        for offset in offsets {
-            let pc = (tonic + offset) % 12;
-            snap.scale_mask |= 1 << pc;
-        }
-        snap.key_root = tonic;
-
-        // Chord context from harmonic_context if available
-        if let Some(ref ctx) = self.harmonic_context {
-            if let Some(degree) = ctx.current_degree {
-                let chord_pcs = ctx.chord_table.chord_pcs[degree as usize];
-                snap.current_chord_root = chord_pcs[0] % 12;
-                snap.current_chord_quality = 0; // TODO: derive quality from intervals
-                for &pc in &chord_pcs {
-                    snap.chord_pc_mask |= 1 << (pc % 12);
-                }
-            } else {
-                snap.current_chord_root = 255;
-                snap.current_chord_quality = 255;
-            }
-        } else {
-            snap.current_chord_root = 255; // unknown
-            snap.current_chord_quality = 255;
-        }
-
-        // Next chord not yet implemented -- leave as default (255)
-        snap.next_chord_root = 255;
-        snap.next_chord_confidence = 0.0;
-
-        // Recent notes from active_notes keys (most recent played MIDI notes)
-        // We track from the note-on history
-        let mut notes: Vec<u8> = self.active_notes.keys().copied().collect();
-        notes.sort(); // deterministic ordering
-        let count = notes.len().min(8);
-        for (i, &n) in notes.iter().rev().take(8).enumerate() {
-            if i < 8 {
-                snap.recent_notes[i] = n;
-            }
-        }
-        snap.recent_count = count as u8;
-
-        snap
     }
 
     /// Harmonizes a single note based on the current mode.

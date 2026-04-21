@@ -59,7 +59,6 @@ export type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
-	HumanizeState,
 	MidiDevice,
 	NoteState,
 	Preset

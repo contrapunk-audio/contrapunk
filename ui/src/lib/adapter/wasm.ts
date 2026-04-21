@@ -9,15 +9,12 @@ import type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
-	HumanizeState,
 	MidiDevice,
 	NoteState,
 	Preset
 } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
-import { WebSynth } from '$lib/audio/webSynth';
 import { guitar } from '$lib/stores/guitar.svelte';
-import { beat } from '$lib/stores/beat.svelte';
 
 /**
  * Dynamically imported WASM module.
@@ -52,10 +49,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private _guitarDeviceId = '';
 	/** Currently selected guitar channel (0-based). */
 	private _guitarChannel = 0;
-	/** requestAnimationFrame handle for the beat/humanize tick loop. */
-	private tickRafHandle: number | null = null;
-	/** Browser-side Web Audio synth for audio output without external MIDI hardware. */
-	private webSynth: WebSynth | null = null;
 
 	async init(): Promise<void> {
 		if (this.initialized) return;
@@ -69,116 +62,17 @@ export class WasmAdapter implements ContrapunkAdapter {
 			}
 			engine = new wasmModule.Engine();
 			this.initialized = true;
-			// Kick off the frame-driven tick loop. Runs for the lifetime
-			// of the adapter — beat clock + metronome stay live even when
-			// no MIDI routing is active so the UI beat indicator works.
-			this.startTickLoop();
 		} catch (e) {
 			throw new Error(`Failed to initialize WASM: ${e}`);
 		}
 	}
 
 	/**
-	 * Drive `engine.tick(performance.now())` on every animation frame and
-	 * fan the result out to the beat store + any active MIDI outputs (for
-	 * metronome clicks + delayed humanized notes).
-	 */
-	private startTickLoop(): void {
-		if (this.tickRafHandle !== null) return;
-		const loop = () => {
-			if (!engine) {
-				this.tickRafHandle = null;
-				return;
-			}
-			try {
-				const result = engine.tick(performance.now()) as {
-					beat_position?: number;
-					beat_number?: number;
-					beat_crossed?: number | null;
-					metronome_on?: number[] | null;
-					metronome_off?: number[] | null;
-					scheduled_notes?: { port: number; bytes: number[] }[];
-					humanize_enabled?: boolean;
-					running?: boolean;
-					bpm?: number;
-				};
-
-				if (result) {
-					beat.beatPosition = result.beat_position ?? 0;
-					beat.beatNumber = result.beat_number ?? 0;
-					beat.running = result.running ?? false;
-					beat.bpm = result.bpm ?? 120;
-					if (result.beat_crossed !== null && result.beat_crossed !== undefined) {
-						beat.lastCrossedAt = performance.now();
-						beat.pulse = beat.pulse + 1;
-					}
-					// Metronome click bytes → route to the first active MIDI output.
-					// We use the first active output so the click rides along with
-					// whatever synth the user has selected, matching Tauri behavior.
-					const metroTarget = this.activeOutputs[0];
-					if (metroTarget && Array.isArray(result.metronome_on)) {
-						try {
-							metroTarget.send(result.metronome_on);
-						} catch {
-							/* output may have disconnected */
-						}
-					}
-					if (metroTarget && Array.isArray(result.metronome_off)) {
-						try {
-							metroTarget.send(result.metronome_off);
-						} catch {
-							/* ignore */
-						}
-					}
-					// Drain any humanized harmony notes whose delay elapsed.
-					if (Array.isArray(result.scheduled_notes)) {
-						for (const s of result.scheduled_notes) {
-							const out = this.activeOutputs[s.port % Math.max(1, this.activeOutputs.length)];
-							if (out && Array.isArray(s.bytes)) {
-								try {
-									out.send(s.bytes);
-								} catch {
-									/* ignore */
-								}
-							}
-							// Also feed scheduled notes to the Web Audio synth
-							if (this.webSynth && Array.isArray(s.bytes) && s.bytes.length >= 3) {
-								const status = s.bytes[0] & 0xf0;
-								const note = s.bytes[1];
-								const velocity = s.bytes[2];
-								if (status === 0x90 && velocity > 0) {
-									this.webSynth.noteOn(note, velocity);
-								} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
-									this.webSynth.noteOff(note);
-								}
-							}
-						}
-					}
-				}
-			} catch {
-				// Never let a tick error kill the loop — the user can keep
-				// using the UI even if one frame fails to serialize.
-			}
-			this.tickRafHandle = requestAnimationFrame(loop);
-		};
-		this.tickRafHandle = requestAnimationFrame(loop);
-	}
-
-	/** Stop the tick loop. Called from `destroy()` on teardown. */
-	private stopTickLoop(): void {
-		if (this.tickRafHandle !== null) {
-			cancelAnimationFrame(this.tickRafHandle);
-			this.tickRafHandle = null;
-		}
-	}
-
-	/**
 	 * Tear down background loops and resources. Called from the root
 	 * layout `onDestroy` hook so hot-reload and page navigation don't
-	 * leak the requestAnimationFrame loop or lingering guitar captures.
+	 * leak lingering guitar captures.
 	 */
 	destroy(): void {
-		this.stopTickLoop();
 		if (this.guitarCapture) {
 			try {
 				this.guitarCapture.stop();
@@ -320,79 +214,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async getHumanizeState(): Promise<HumanizeState> {
-		this.ensureInit();
-		try {
-			const raw = engine.get_humanize_config() as Record<string, unknown>;
-			return {
-				enabled: (raw.enabled as boolean) ?? false,
-				jitterEnabled: (raw.jitter_enabled as boolean) ?? false,
-				jitterMinMs: (raw.jitter_min_ms as number) ?? 1,
-				jitterMaxMs: (raw.jitter_max_ms as number) ?? 10,
-				velocityEnabled: (raw.velocity_enabled as boolean) ?? false,
-				velocityVariation: (raw.velocity_variation as number) ?? 15,
-				durationEnabled: (raw.duration_enabled as boolean) ?? false,
-				durationVariationMs: (raw.duration_variation_ms as number) ?? 20,
-				swingEnabled: (raw.swing_enabled as boolean) ?? false,
-				swingAmount: (raw.swing_amount as number) ?? 0.0,
-				bpm: (raw.bpm as number) ?? 120.0,
-				metronomeEnabled: (raw.metronome_enabled as boolean) ?? false
-			};
-		} catch {
-			return {
-				enabled: false,
-				jitterEnabled: false,
-				jitterMinMs: 1,
-				jitterMaxMs: 10,
-				velocityEnabled: false,
-				velocityVariation: 15,
-				durationEnabled: false,
-				durationVariationMs: 20,
-				swingEnabled: false,
-				swingAmount: 0.0,
-				bpm: 120.0,
-				metronomeEnabled: false
-			};
-		}
-	}
-
-	async setHumanizeConfig(config: Partial<HumanizeState>): Promise<void> {
-		this.ensureInit();
-		// Merge onto the current WASM config then push the full object back.
-		// The WASM `set_humanize_config` takes a full `HumanizeConfig`, so we
-		// read → patch → write to avoid blowing away fields the caller omitted.
-		try {
-			const current = engine.get_humanize_config() as Record<string, unknown>;
-			const merged = { ...current };
-			if (config.enabled !== undefined) merged.enabled = config.enabled;
-			if (config.jitterEnabled !== undefined) merged.jitter_enabled = config.jitterEnabled;
-			if (config.jitterMinMs !== undefined) merged.jitter_min_ms = config.jitterMinMs;
-			if (config.jitterMaxMs !== undefined) merged.jitter_max_ms = config.jitterMaxMs;
-			if (config.velocityEnabled !== undefined) merged.velocity_enabled = config.velocityEnabled;
-			if (config.velocityVariation !== undefined)
-				merged.velocity_variation = config.velocityVariation;
-			if (config.durationEnabled !== undefined) merged.duration_enabled = config.durationEnabled;
-			if (config.durationVariationMs !== undefined)
-				merged.duration_variation_ms = config.durationVariationMs;
-			if (config.swingEnabled !== undefined) merged.swing_enabled = config.swingEnabled;
-			if (config.swingAmount !== undefined) merged.swing_amount = config.swingAmount;
-			if (config.bpm !== undefined) merged.bpm = config.bpm;
-			if (config.metronomeEnabled !== undefined)
-				merged.metronome_enabled = config.metronomeEnabled;
-			if (config.metronomeSubdivision !== undefined)
-				merged.metronome_subdivision = config.metronomeSubdivision;
-			if (config.metronomeSound !== undefined)
-				merged.metronome_sound = config.metronomeSound;
-			if (config.metronomeVolume !== undefined)
-				merged.metronome_volume = config.metronomeVolume;
-			if (config.metronomeCountInBars !== undefined)
-				merged.metronome_count_in_bars = config.metronomeCountInBars;
-			engine.set_humanize_config(merged);
-		} catch (e) {
-			throw new Error(`Failed to set humanize config: ${e}`);
-		}
-	}
-
 	/**
 	 * Ensure Web MIDI Access is available. Caches the MIDIAccess instance.
 	 */
@@ -477,78 +298,28 @@ export class WasmAdapter implements ContrapunkAdapter {
 				let resultNotes: number[] = [];
 
 				if (status === 0x90 && velocity > 0) {
-					// Note On — humanized path: per-voice velocity jitter + delay queue.
-					// Deferred harmony notes come out later via tick()'s scheduled_notes drain.
 					try {
-						const humanized = engine.humanized_note_on(note, velocity) as {
-							immediate: { port: number; bytes: number[] }[];
-							deferred_count: number;
-							input_note: number;
-						};
-						for (const s of humanized.immediate) {
-							const out = outs[s.port % Math.max(1, outs.length)];
-							if (out) out.send(s.bytes);
-							// Feed immediate harmony notes to the Web Audio synth
-							if (self.webSynth && Array.isArray(s.bytes) && s.bytes.length >= 3) {
-								const st = s.bytes[0] & 0xf0;
-								if (st === 0x90 && s.bytes[2] > 0) {
-									self.webSynth.noteOn(s.bytes[1], s.bytes[2]);
-								}
+						resultNotes = engine.note_on(note);
+						const sorted = self.sortVoices(resultNotes);
+						for (let i = 0; i < sorted.length; i++) {
+							if (outs.length > 0) {
+								outs[i % outs.length].send([0x90, sorted[i], velocity]);
 							}
 						}
 					} catch {
-						// Fall back to plain note_on if humanization fails.
-						try {
-							resultNotes = engine.note_on(note);
-							const sorted = self.sortVoices(resultNotes);
-							for (let i = 0; i < sorted.length; i++) {
-								if (outs.length > 0) {
-									outs[i % outs.length].send([0x90, sorted[i], velocity]);
-								}
-								// Feed fallback notes to Web Audio synth
-								if (self.webSynth) {
-									self.webSynth.noteOn(sorted[i], velocity);
-								}
-							}
-						} catch {
-							/* give up on this note */
-						}
+						/* give up on this note */
 					}
 				} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
-					// Note Off — humanized release path, matches humanized_note_on delays.
 					try {
-						const humanized = engine.humanized_note_off(note) as {
-							immediate: { port: number; bytes: number[] }[];
-							deferred_count: number;
-							input_note: number;
-						};
-						for (const s of humanized.immediate) {
-							const out = outs[s.port % Math.max(1, outs.length)];
-							if (out) out.send(s.bytes);
-							// Feed immediate note-off to Web Audio synth
-							if (self.webSynth && Array.isArray(s.bytes) && s.bytes.length >= 3) {
-								const st = s.bytes[0] & 0xf0;
-								if (st === 0x80 || (st === 0x90 && s.bytes[2] === 0)) {
-									self.webSynth.noteOff(s.bytes[1]);
-								}
+						resultNotes = engine.note_off(note);
+						const sorted = self.sortVoices(resultNotes);
+						for (let i = 0; i < sorted.length; i++) {
+							if (outs.length > 0) {
+								outs[i % outs.length].send([0x80, sorted[i], 0]);
 							}
 						}
 					} catch {
-						try {
-							resultNotes = engine.note_off(note);
-							const sorted = self.sortVoices(resultNotes);
-							for (let i = 0; i < sorted.length; i++) {
-								if (outs.length > 0) {
-									outs[i % outs.length].send([0x80, sorted[i], 0]);
-								}
-								// Feed fallback note-off to Web Audio synth
-								if (self.webSynth) {
-									self.webSynth.noteOff(sorted[i]);
-								}
-							}
-						} catch {
-							/* give up */
-						}
+						/* give up */
 					}
 				} else {
 					// Pass through other MIDI messages (CC, pitch bend, etc.)
@@ -654,12 +425,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 			}
 		}
 
-		// Silence any active Web Audio synth voices (but keep the synth alive —
-		// its lifecycle is managed by startAudioOutput/stopAudioOutput)
-		if (this.webSynth) {
-			this.webSynth.silence();
-		}
-
 		// Clear engine's tracked note state
 		if (engine) {
 			try {
@@ -689,10 +454,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[i % this.activeOutputs.length].send([0x90, sorted[i], vel]);
 				}
-				// Feed injected notes to Web Audio synth
-				if (this.webSynth) {
-					this.webSynth.noteOn(sorted[i], vel);
-				}
 			}
 			return sorted;
 		} catch {
@@ -708,10 +469,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 			for (let i = 0; i < sorted.length; i++) {
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[i % this.activeOutputs.length].send([0x80, sorted[i], 0]);
-				}
-				// Feed injected note-off to Web Audio synth
-				if (this.webSynth) {
-					this.webSynth.noteOff(sorted[i]);
 				}
 			}
 			return sorted;
@@ -811,27 +568,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async listAudioOutputDevices(): Promise<{ name: string; is_default: boolean }[]> {
-		return [];
-	}
-
-	async startAudioOutput(_opts: { deviceId?: string; sampleRate?: number; bufferSize?: number }): Promise<void> {
-		if (this.webSynth) return; // already running
-		this.webSynth = new WebSynth();
-		await this.webSynth.resume();
-	}
-
-	async stopAudioOutput(): Promise<void> {
-		if (this.webSynth) {
-			this.webSynth.destroy();
-			this.webSynth = null;
-		}
-	}
-
-	async isAudioOutputRunning(): Promise<boolean> {
-		return this.webSynth !== null;
-	}
-
 	async listAudioDevices(): Promise<string[]> {
 		if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
 			return [];
@@ -860,42 +596,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 	async setGuitarConfig(_config: GuitarConfig): Promise<void> {
 		// Browser-side pitch detection doesn't use these DSP params,
 		// but accept silently so shared UI code doesn't error.
-	}
-
-	async setGeneratorMode(mode: string): Promise<void> {
-		this.ensureInit();
-		try {
-			engine.set_generator_mode(mode);
-		} catch (e) {
-			throw new Error(`Failed to set generator mode: ${e}`);
-		}
-	}
-
-	async setGeneratorEnabled(enabled: boolean): Promise<void> {
-		this.ensureInit();
-		try {
-			engine.set_generator_enabled(enabled);
-		} catch (e) {
-			throw new Error(`Failed to set generator enabled: ${e}`);
-		}
-	}
-
-	async setGeneratorNotes(notes: number[]): Promise<void> {
-		this.ensureInit();
-		try {
-			engine.set_generator_notes(new Uint8Array(notes));
-		} catch (e) {
-			throw new Error(`Failed to set generator notes: ${e}`);
-		}
-	}
-
-	async setGeneratorChordType(chordType: string): Promise<void> {
-		this.ensureInit();
-		try {
-			engine.set_generator_chord_type(chordType);
-		} catch (e) {
-			throw new Error(`Failed to set generator chord type: ${e}`);
-		}
 	}
 
 	/**
@@ -965,32 +665,4 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	// -- Suggestions --
-
-	getSuggestions(): { note: number; score: number }[] {
-		if (!this.initialized || !engine) return [];
-		try {
-			return engine.get_suggestions() ?? [];
-		} catch {
-			return [];
-		}
-	}
-
-	setSuggestionWeight(term: string, value: number): void {
-		if (!this.initialized || !engine) return;
-		try {
-			engine.set_suggestion_weight(term, value);
-		} catch {
-			// silently ignore
-		}
-	}
-
-	resetSuggestionWeights(): void {
-		if (!this.initialized || !engine) return;
-		try {
-			engine.reset_suggestion_weights();
-		} catch {
-			// silently ignore
-		}
-	}
 }

@@ -64,10 +64,6 @@ pub fn load_preset(name: String, state: State<AppState>) -> Result<(), String> {
     engine.set_interchange_enabled(preset.interchange_enabled);
     engine.set_borrowing_range(preset.borrowing_range);
 
-    // Apply humanize config
-    let mut hconfig = state.humanize_config.lock().map_err(|e| e.to_string())?;
-    *hconfig = preset.humanize_config;
-
     Ok(())
 }
 
@@ -75,7 +71,6 @@ pub fn load_preset(name: String, state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn save_preset(name: String, state: State<AppState>) -> Result<(), String> {
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    let hconfig = state.humanize_config.lock().map_err(|e| e.to_string())?;
 
     let preset = StylePreset {
         name: name.clone(),
@@ -86,7 +81,6 @@ pub fn save_preset(name: String, state: State<AppState>) -> Result<(), String> {
         voice_leading_enabled: engine.voice_leading_enabled(),
         voice_leading_style: engine.voice_leading_style(),
         octave_mode: engine.octave_mode(),
-        humanize_config: hconfig.clone(),
         scale_mode: engine.scale_mode(),
         interchange_enabled: engine.interchange_enabled(),
         borrowing_range: engine.borrowing_range(),

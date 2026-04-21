@@ -7,7 +7,6 @@
 	let { children }: { children?: Snippet } = $props();
 
 	// Virtual input sentinel values — must match src-tauri/src/commands/engine.rs
-	const VIRTUAL_NOTE_GENERATOR = 999_999;
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
 
@@ -26,7 +25,6 @@
 
 	let inputOptions = $derived([
 		...midi.inputs.map((d) => ({ value: String(d.index), label: d.name })),
-		{ value: String(VIRTUAL_NOTE_GENERATOR), label: 'Note Generator' },
 		{ value: String(VIRTUAL_COMPUTER_KEYBOARD), label: 'Computer Keyboard' },
 		{ value: String(VIRTUAL_GUITAR_AUDIO), label: 'Guitar Audio' }
 	]);
@@ -40,7 +38,7 @@
 			midi.clearInput();
 		} else {
 			const idx = parseInt(value, 10);
-			if (idx === VIRTUAL_NOTE_GENERATOR || idx === VIRTUAL_COMPUTER_KEYBOARD || idx === VIRTUAL_GUITAR_AUDIO) {
+			if (idx === VIRTUAL_COMPUTER_KEYBOARD || idx === VIRTUAL_GUITAR_AUDIO) {
 				midi.selectVirtualInput(idx);
 			} else {
 				midi.selectInput(idx);

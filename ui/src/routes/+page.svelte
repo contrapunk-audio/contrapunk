@@ -6,11 +6,7 @@
 	import GuitarInputPanel from '$lib/components/GuitarInputPanel.svelte';
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
-	import SuggestionWeights from '$lib/components/SuggestionWeights.svelte';
 	import Fretboard from '$lib/components/Fretboard.svelte';
-	import HumanizePanel from '$lib/components/HumanizePanel.svelte';
-	import GeneratorPanel from '$lib/components/GeneratorPanel.svelte';
-	import AudioOutputPanel from '$lib/components/AudioOutputPanel.svelte';
 	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
@@ -149,8 +145,8 @@
   +--------------------------------------------------+
   |             |                |                     |
   |  Left Col   |  Center Col    |  Right Col          |
-  |  (MIDI/     |  (Key/Mode/    |  (Humanize/         |
-  |   Presets)   |   Scale/VL)    |   Generator)         |
+  |  (MIDI/     |  (Key/Mode/    |  (Active Notes)     |
+  |   Presets)   |   Scale/VL)    |                     |
   |             |                |                     |
   +--------------------------------------------------+
   | Piano Keyboard (always visible, full width)      |
@@ -192,17 +188,13 @@
 				<ControlPanel />
 			</div>
 
-			<!-- Right column: Active Notes / Suggestions / Humanize / Generator -->
+			<!-- Right column: Active Notes -->
 			<div class="column column-right">
 				<ActiveNotes />
-				<SuggestionWeights />
-				<HumanizePanel />
-				<AudioOutputPanel />
-				<GeneratorPanel />
 			</div>
 		</div>
 
-		<!-- Bottom: Fretboard overlay (shown when suggestions enabled) + Sacred piano keyboard -->
+		<!-- Bottom: Fretboard overlay + Sacred piano keyboard -->
 		<div class="piano-area">
 			<Fretboard />
 			<Piano />

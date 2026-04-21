@@ -25,7 +25,6 @@ export const ACCENT_GOLD = '#ffdd44';
 // === Sacred Piano Key Colors ===
 export const PIANO_INPUT = '#00e436';
 export const PIANO_HARMONY = '#ff9933';
-export const PIANO_GENERATOR = '#ff3388';
 export const PIANO_BORROWED = '#ffaa33';
 export const PIANO_IN_SCALE = 'rgba(255, 253, 180, 0.35)';
 
@@ -46,14 +45,12 @@ export const STATUS_ERROR = '#ff3344';
 /**
  * Get the display color for a piano key based on its state.
  *
- * Priority: input (green) > harmony (orange) > borrowed (amber) >
- *           generator (magenta) > in-scale (subtle tint) > default
+ * Priority: input (green) > harmony (orange) > borrowed (amber) > default
  *
  * @param midi - MIDI note number (21-108 for 88-key piano)
  * @param inputNotes - Currently sounding input/melody notes
  * @param harmonyNotes - Currently sounding harmony notes
  * @param borrowedNotes - Notes borrowed via modal interchange
- * @param generatorNotes - Notes selected by the note generator
  * @param inScaleNotes - Notes that belong to the current scale
  * @returns CSS color string or empty string for default key color
  */
@@ -62,13 +59,11 @@ export function getPianoKeyColor(
 	inputNotes: number[] = [],
 	harmonyNotes: number[] = [],
 	borrowedNotes: number[] = [],
-	generatorNotes: number[] = [],
 	inScaleNotes: number[] = []
 ): string {
 	if (inputNotes.includes(midi)) return PIANO_INPUT;
 	if (harmonyNotes.includes(midi)) return PIANO_HARMONY;
 	if (borrowedNotes.includes(midi)) return PIANO_BORROWED;
-	if (generatorNotes.includes(midi)) return PIANO_GENERATOR;
 	return '';
 }
 
@@ -91,7 +86,6 @@ export const HLD_PALETTE = {
 	accentGold: ACCENT_GOLD,
 	pianoInput: PIANO_INPUT,
 	pianoHarmony: PIANO_HARMONY,
-	pianoGenerator: PIANO_GENERATOR,
 	pianoBorrowed: PIANO_BORROWED,
 	pianoInScale: PIANO_IN_SCALE,
 	textPrimary: TEXT_PRIMARY,

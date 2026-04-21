@@ -122,14 +122,12 @@ class MidiStore {
 
 	/** Map virtual sentinel values to persistent names. */
 	private static readonly VIRTUAL_NAMES: Record<number, string> = {
-		999_999: '__virtual_note_generator__',
 		999_998: '__virtual_computer_keyboard__',
 		999_997: '__virtual_guitar_audio__',
 	};
 
 	/** Reverse lookup: persistent name → sentinel value. */
 	private static readonly VIRTUAL_IDS: Record<string, number> = {
-		'__virtual_note_generator__': 999_999,
 		'__virtual_computer_keyboard__': 999_998,
 		'__virtual_guitar_audio__': 999_997,
 	};
@@ -145,7 +143,7 @@ class MidiStore {
 	}
 
 	/**
-	 * Select a virtual input (Guitar Audio, Computer Keyboard, Note Generator).
+	 * Select a virtual input (Guitar Audio, Computer Keyboard).
 	 */
 	selectVirtualInput(index: number) {
 		this.selectedInput = index;

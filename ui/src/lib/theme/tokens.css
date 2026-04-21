@@ -25,7 +25,6 @@
 	/* === Sacred Piano Key Colors (PRESERVED from egui) === */
 	--color-piano-input: #00e436;       /* Green — input notes (melody) */
 	--color-piano-harmony: #ff9933;     /* Orange — harmony notes (generated) */
-	--color-piano-generator: #ff3388;   /* Magenta — generator selected notes */
 	--color-piano-borrowed: #ffaa33;    /* Amber — interchange borrowed notes */
 	--color-piano-in-scale: #1a1844;    /* Subtle tint for in-scale keys */
 

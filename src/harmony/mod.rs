@@ -201,7 +201,6 @@ mod key_detect;
 mod modes;
 mod scale;
 mod stateful;
-pub mod suggestion;
 pub mod voice_leading;
 
 pub use barry_harris::{BhScaleGuard, Parity};

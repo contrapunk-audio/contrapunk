@@ -47,11 +47,8 @@
 // =============================================================================
 
 pub mod audio;
-pub mod audio_out;
 pub mod chord;
-pub mod generator;
 pub mod harmony;
-pub mod humanize;
 pub mod midi;
 pub mod preset;
 

@@ -2,7 +2,6 @@ pub mod builtins;
 pub mod storage;
 
 use crate::harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
-use crate::humanize::HumanizeConfig;
 use serde::{Deserialize, Serialize};
 
 /// A complete musical style preset bundling harmony, voice leading,
@@ -19,7 +18,6 @@ pub struct StylePreset {
     pub voice_leading_enabled: bool,
     pub voice_leading_style: VoiceLeadingStyle,
     pub octave_mode: OctaveMode,
-    pub humanize_config: HumanizeConfig,
     /// Scale mode (defaults to Ionian for backward compatibility)
     #[serde(default)]
     pub scale_mode: ScaleMode,
