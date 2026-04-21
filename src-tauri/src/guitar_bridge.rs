@@ -7,7 +7,7 @@
 //! Also sends signal info (RMS, pitch, state) via a separate channel
 //! for UI feedback in the Tauri frontend.
 
-use contrapunk::audio::guitar_input::{GuitarCalibration, GuitarInput, GuitarInputConfig};
+use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -22,7 +22,6 @@ pub struct GuitarSignalInfo {
 
 pub struct GuitarBridge {
     stream: Option<cpal::Stream>,
-    pipeline: Arc<Mutex<GuitarInput>>,
 }
 
 impl GuitarBridge {
@@ -87,9 +86,10 @@ impl GuitarBridge {
         let mut actual_config = config;
         actual_config.sample_rate = sample_rate;
 
+        // DSP state lives inside the cpal stream closure — no outer binding
+        // needed, the closure owns the only Arc reference.
         let pipeline = Arc::new(Mutex::new(GuitarInput::new(actual_config)));
 
-        let pipeline_c = Arc::clone(&pipeline);
         // Request small buffer (128 samples = ~2.7ms at 48kHz) for lower latency.
         // Falls back to driver default if the device doesn't support it.
         let stream_config = cpal::StreamConfig {
@@ -110,7 +110,7 @@ impl GuitarBridge {
 
                     // Process through DSP pipeline
                     let events = {
-                        let mut pipe = pipeline_c.lock().unwrap();
+                        let mut pipe = pipeline.lock().unwrap();
                         let evts = pipe.process_block(&mono);
 
                         // Send signal info for UI feedback
@@ -142,7 +142,6 @@ impl GuitarBridge {
 
         Ok(Self {
             stream: Some(stream),
-            pipeline,
         })
     }
 
@@ -155,21 +154,5 @@ impl GuitarBridge {
         } else {
             Err("No audio stream".into())
         }
-    }
-
-    /// Stop audio capture.
-    pub fn stop(&mut self) {
-        self.stream = None;
-    }
-
-    /// Set calibration data on the pipeline.
-    pub fn set_calibration(&self, cal: GuitarCalibration) {
-        let mut pipe = self.pipeline.lock().unwrap();
-        pipe.set_calibration(cal);
-    }
-
-    /// Get a clone of the pipeline for status queries.
-    pub fn pipeline(&self) -> Arc<Mutex<GuitarInput>> {
-        Arc::clone(&self.pipeline)
     }
 }
