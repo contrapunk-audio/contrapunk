@@ -248,10 +248,12 @@ impl Scale {
             self.transpose_diatonic(note, diatonic_degrees)
         } else if self.interchange_enabled {
             // Out-of-key with interchange: try borrowing from parallel modes
-            self.harmonize_with_interchange(note, prefer_above)
+            self.harmonize_with_interchange(note, diatonic_degrees, prefer_above)
         } else {
-            // Out-of-key without interchange: use consonant chromatic interval
-            self.harmonize_chromatic(note, prefer_above)
+            // Out-of-key without interchange: prefer a consonant chromatic
+            // interval that lands in-scale; otherwise snap+diatonic.
+            self.last_borrowed_from = None;
+            self.harmonize_chromatic(note, diatonic_degrees, prefer_above)
         }
     }
 
@@ -259,8 +261,14 @@ impl Scale {
     ///
     /// Searches parallel modes (built on the same tonic) to find one that
     /// contains the note, then uses that mode's diatonic harmonization.
-    /// Falls back to chromatic harmonization if no parallel mode contains the note.
-    pub fn harmonize_with_interchange(&mut self, note: Note, prefer_above: bool) -> Option<Note> {
+    /// Falls back to snap-to-scale + diatonic transpose if no parallel mode
+    /// contains the note — harmony stays in the current scale.
+    pub fn harmonize_with_interchange(
+        &mut self,
+        note: Note,
+        diatonic_degrees: i8,
+        prefer_above: bool,
+    ) -> Option<Note> {
         let sources = borrowing_sources(self.borrowing_range);
         for &borrowed_mode in sources {
             // Skip current mode (already checked in harmonize_smart)
@@ -269,9 +277,7 @@ impl Scale {
             }
             let borrowed_scale = Scale::new(self.tonic, borrowed_mode);
             if borrowed_scale.is_in_scale(note) {
-                // Found a parallel mode containing this note — use its diatonic third
-                let degrees = if prefer_above { 2 } else { -2 };
-                if let Some(harmony) = borrowed_scale.transpose_diatonic(note, degrees) {
+                if let Some(harmony) = borrowed_scale.transpose_diatonic(note, diatonic_degrees) {
                     self.last_borrowed_from = Some(borrowed_mode);
                     return Some(harmony);
                 }
@@ -279,21 +285,31 @@ impl Scale {
         }
         // No parallel mode contains this note — fall back to chromatic
         self.last_borrowed_from = None;
-        self.harmonize_chromatic(note, prefer_above)
+        self.harmonize_chromatic(note, diatonic_degrees, prefer_above)
     }
 
-    /// Finds a consonant chromatic harmony for an out-of-key note.
+    /// Harmonize a chromatic (out-of-scale) input note.
     ///
-    /// Tries intervals in order of consonance (3rds, 6ths, 5ths, 4ths).
-    /// Prefers intervals that land on scale tones when possible.
-    fn harmonize_chromatic(&self, note: Note, prefer_above: bool) -> Option<Note> {
+    /// First tries a consonant chromatic interval (3rds, 6ths, 5ths, 4ths)
+    /// whose harmony happens to land on a scale tone — useful for chromatic
+    /// approach notes (e.g. D# in C major → D#+M3 = G, in scale).
+    ///
+    /// If no consonant interval lands in-scale, snaps the input to the
+    /// nearest scale note and transposes diatonically. Harmony is always
+    /// in-scale — never a pure parallel interval.
+    fn harmonize_chromatic(
+        &self,
+        note: Note,
+        diatonic_degrees: i8,
+        prefer_above: bool,
+    ) -> Option<Note> {
         let intervals = if prefer_above {
             &CONSONANT_INTERVALS_ABOVE
         } else {
             &CONSONANT_INTERVALS_BELOW
         };
 
-        // First pass: try to find an interval that lands on a scale tone
+        // Phase 1: try consonant intervals, pick first that lands in-scale.
         for &interval in intervals {
             if let Some(harmony) = self.transpose_chromatic(note, interval) {
                 if self.is_in_scale(harmony) {
@@ -302,14 +318,10 @@ impl Scale {
             }
         }
 
-        // Second pass: just use the first valid consonant interval
-        for &interval in intervals {
-            if let Some(harmony) = self.transpose_chromatic(note, interval) {
-                return Some(harmony);
-            }
-        }
-
-        None
+        // Fallback: snap input to nearest scale note, then transpose
+        // diatonically. Guarantees an in-scale harmony.
+        let snapped = self.snap_to_scale(note);
+        self.transpose_diatonic(snapped, diatonic_degrees)
     }
 
     /// Given a scale degree and a reference MIDI note, find the MIDI value
@@ -532,7 +544,7 @@ mod tests {
         scale.set_borrowing_range(3);
 
         // Eb4 is not in C Ionian, but IS in C Aeolian and C Dorian
-        let result = scale.harmonize_with_interchange(Note::Eb4, true);
+        let result = scale.harmonize_with_interchange(Note::Eb4, 2, true);
         assert!(
             result.is_some(),
             "Should find harmony via interchange for Eb"
