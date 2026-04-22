@@ -16,4 +16,4 @@ contrapunk = { path = ".." }
 midir = "0.10"
 cpal = "0.15"
 wmidi = "4.0"
-rand = "0.8"
+rand = "0.10"
