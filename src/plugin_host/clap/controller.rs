@@ -339,6 +339,7 @@ impl ClapPluginController {
                     let _ = gui.show(handle);
                     self.gui_window = Some(window);
                 }
+                #[cfg(target_os = "macos")]
                 GuiTarget::EmbedInHost {
                     ns_window_ptr,
                     x,
@@ -367,6 +368,17 @@ impl ClapPluginController {
                     unsafe { gui.set_parent(handle, clap_window)? };
                     let _ = gui.show(handle);
                     self.gui_embed_view = Some(view);
+                }
+                #[cfg(not(target_os = "macos"))]
+                GuiTarget::EmbedInHost { .. } => {
+                    // Embedded GUI is macOS-only for now. Windows and
+                    // Linux will need Win32 HWND / X11 Window paths —
+                    // tracked as follow-up work in plugin_host/clap/mod.rs.
+                    eprintln!(
+                        "[clap/controller] EmbedInHost requested on non-macOS; \
+                         falling back to error so caller can retry Detached"
+                    );
+                    return Err(GuiError::CreateError);
                 }
             }
         }
