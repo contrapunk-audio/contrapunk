@@ -11,7 +11,7 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-Real-time counterpoint harmony generator. Plug in a guitar or MIDI controller, pick a key and voice leading style, and Contrapunk generates harmony voices that follow actual counterpoint rules -- Palestrina, Bach Chorale, Jazz, or Free. Built in Rust.
+Real-time counterpoint harmony generator + OSS plugin host. Plug in a guitar or MIDI controller, pick a key and voice leading style, and Contrapunk generates harmony voices that follow actual counterpoint rules -- Palestrina, Bach Chorale, Jazz, or Free. Route the output through built-in FX or any CLAP plugin you have installed. Built in Rust.
 
 Counterpoint is the art of combining independent melodic lines. Contrapunk implements these rules so you play one note and hear harmonically correct accompaniment in real-time.
 
@@ -45,14 +45,16 @@ Guitar/MIDI Input
        |
   Harmony Engine (scales, modes, voice leading rules)
        |
-  Humanizer (timing jitter, velocity variation, swing)
+  Audio Chain: Synth -> Delay -> Reverb -> CLAP plugins...
        |
-  MIDI Output
+  Speakers / MIDI Output
 ```
 
 **Harmony**: 8 modes (diatonic thirds, contrary motion, strict counterpoint, Barry Harris, etc.), 28 scales, 4 voice leading styles. Voice position is configurable -- play as soprano, alto, tenor, or bass.
 
 **Guitar Input**: audio-to-MIDI with onset detection, pitch voting, auto-calibration, and string/fret identification. Sub-10ms pluck-to-note-on on M-series Macs.
+
+**Audio chain**: 8-voice built-in synth, Freeverb reverb, stereo delay, and third-party CLAP plugins (FabFilter, sforzando, u-he Diva, Surge XT, Vital, etc.) -- all loaded at runtime, GUIs embedded inside the app window or detached. Port-layout-aware so sidechain effects work correctly. VST3 / AU / AAX on the roadmap.
 
 **Runs everywhere**: native desktop (Tauri v2), browser (WebAssembly), same Rust core.
 
