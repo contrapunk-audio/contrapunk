@@ -214,43 +214,56 @@ pub fn open_plugin_gui_embedded<RT: Runtime>(
         "[plugins] open_plugin_gui_embedded: id={plugin_id} rect=({x}, {y}, {width}x{height})"
     );
 
-    // Grab the main window's NSWindow pointer on the current thread
-    // (Tauri's ns_window returns it from any thread — it's just a
-    // pointer-fetch). Carry it as usize so the Send closure doesn't
-    // complain about raw pointers.
-    let main = app
-        .get_webview_window("main")
-        .ok_or_else(|| "main webview window not found".to_string())?;
-    let ns_window_ptr = main.ns_window().map_err(|e| format!("ns_window: {e}"))? as usize;
-    eprintln!("[plugins] open_plugin_gui_embedded: ns_window_ptr={ns_window_ptr:#x}");
+    // Embedded plugin GUIs currently require the macOS-only NSView
+    // subview trick. The Tauri `ns_window()` accessor also only exists
+    // on the Cocoa backend, so on Windows/Linux we surface a clear
+    // error that the UI can use to fall back to a detached window.
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (plugin_id, x, y, width, height, app);
+        return Err("embedded plugin GUI is only supported on macOS".into());
+    }
 
-    on_main(&app, move || {
-        registry::with_plugins(|map| {
-            let Some(controller) = map.get_mut(&plugin_id) else {
-                return Err(format!("plugin {plugin_id} not found"));
-            };
-            if !controller.has_gui {
-                return Err("plugin does not expose a GUI".into());
-            }
-            let target = GuiTarget::EmbedInHost {
-                ns_window_ptr,
-                x,
-                y,
-                width,
-                height,
-            };
-            match controller.open_gui(target) {
-                Ok(()) => {
-                    eprintln!("[plugins] open_plugin_gui_embedded: attached");
-                    Ok(())
+    #[cfg(target_os = "macos")]
+    {
+        // Grab the main window's NSWindow pointer on the current thread
+        // (Tauri's ns_window returns it from any thread — it's just a
+        // pointer-fetch). Carry it as usize so the Send closure doesn't
+        // complain about raw pointers.
+        let main = app
+            .get_webview_window("main")
+            .ok_or_else(|| "main webview window not found".to_string())?;
+        let ns_window_ptr = main.ns_window().map_err(|e| format!("ns_window: {e}"))? as usize;
+        eprintln!("[plugins] open_plugin_gui_embedded: ns_window_ptr={ns_window_ptr:#x}");
+
+        on_main(&app, move || {
+            registry::with_plugins(|map| {
+                let Some(controller) = map.get_mut(&plugin_id) else {
+                    return Err(format!("plugin {plugin_id} not found"));
+                };
+                if !controller.has_gui {
+                    return Err("plugin does not expose a GUI".into());
                 }
-                Err(e) => {
-                    eprintln!("[plugins] open_plugin_gui_embedded failed: {e:?}");
-                    Err(format!("embed gui: {e:?}"))
+                let target = GuiTarget::EmbedInHost {
+                    ns_window_ptr,
+                    x,
+                    y,
+                    width,
+                    height,
+                };
+                match controller.open_gui(target) {
+                    Ok(()) => {
+                        eprintln!("[plugins] open_plugin_gui_embedded: attached");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("[plugins] open_plugin_gui_embedded failed: {e:?}");
+                        Err(format!("embed gui: {e:?}"))
+                    }
                 }
-            }
-        })
-    })?
+            })
+        })?
+    }
 }
 
 #[tauri::command]
