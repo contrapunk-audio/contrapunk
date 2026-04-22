@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: Shipped work not yet reflected in roadmap phases — reality reconciled 2026-04-15
+stopped_at: context exhaustion at 90% (2026-04-22)
+last_updated: "2026-04-22T10:45:42.293Z"
+last_activity: 2026-04-15 - Codebase map refreshed (7 docs, commit `af7161e`); STATE.md reconciled with 2 weeks of shipped work
+progress:
+  total_phases: 29
+  completed_phases: 17
+  total_plans: 82
+  completed_plans: 65
+  percent: 79
+---
+
 # Project State
 
 ## Project Reference
@@ -40,6 +56,7 @@ Last activity: 2026-04-15 - Codebase map refreshed (7 docs, commit `af7161e`); S
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 37
 - Average duration: 3.4 min
 - Total execution time: 126.5 min
@@ -274,6 +291,7 @@ _Previous entry — stuck MIDI notes — now tracked as P0 item 2._
 **MIDI Foundation - COMPLETE**
 
 All success criteria verified:
+
 1. User can select a MIDI input device from a list of available ports
 2. User can select 2-8 MIDI output ports from available ports
 3. User can play a note on input device and hear it on the first output port
@@ -286,6 +304,7 @@ Hardware tested: Akai MPK Mini -> 4 IAC Driver buses (macOS)
 **Harmony Engine - COMPLETE**
 
 All success criteria verified:
+
 1. User can select musical key (C through B) and it affects harmony output
 2. User can switch between all 7 harmony modes and hear different results
 3. User can change key and mode while playing without stopping or restarting
@@ -300,6 +319,7 @@ All 7 modes verified working with no stuck notes.
 **GUI and Distribution - COMPLETE**
 
 All success criteria verified (6/6):
+
 1. Application opens as a native window (egui/eframe)
 2. GUI displays current configuration, active notes
 3. All settings changeable via GUI controls
@@ -314,6 +334,7 @@ Human-verified: approved.
 **Server Mode - COMPLETE**
 
 All success criteria verified (5/5):
+
 1. Application can start in server mode, listening on a configurable network port
 2. Remote clients can connect and send MIDI input to the server
 3. Server processes MIDI through harmony engine and returns harmonized output to clients
@@ -328,6 +349,7 @@ Timeout bug fixed during verification: read timeouts now non-fatal.
 **Octave Variations - COMPLETE**
 
 All success criteria verified (5/5):
+
 1. User can enable "Octave Spread" mode
 2. User can enable "Bass/Treble Split" mode
 3. User can enable "Mirror Octaves" with true note duplication (3x harmony notes)
@@ -342,6 +364,7 @@ Mirror Octaves tripling implemented with port-aware routing via last_port_map().
 **WASM and In-Browser Support - COMPLETE**
 
 All success criteria verified (5/5):
+
 1. Application compiles to WebAssembly and runs in a modern browser
 2. Web MIDI API provides input/output device access in-browser
 3. GUI renders correctly via egui's WASM backend
@@ -355,6 +378,7 @@ Human-verified: "it works well in the browser"
 **Note Generator - DEFERRED**
 
 Human verification failed:
+
 1. Note Generator feature is non-functional
 2. Voice leading modes not distinct enough between styles
 3. User chose to defer note generation work
@@ -366,6 +390,7 @@ Feedback: "voice leading isn't unique enough between different voice leading mod
 **Style Update - COMPLETE**
 
 Delivered:
+
 1. Steampunk dark theme with gold/copper/amber palette
 2. Tabbed navigation (Play/Craft/Settings) with always-visible piano
 3. 11 built-in musical style presets with character personas
@@ -382,6 +407,7 @@ Human-verified: approved
 **Docs - COMPLETE**
 
 Plan 01 (Harmony API Documentation):
+
 1. Comprehensive rustdoc for harmony module with 8-mode table and 28-scale families
 2. Chord/note evaluation algorithm fully documented with processing pipeline
 3. VecDeque sliding window algorithms documented (interval_history, melody_contour)
@@ -389,6 +415,7 @@ Plan 01 (Harmony API Documentation):
 5. All public types have examples and cross-references
 
 Plan 02 (Humanize Docs + CONTRIBUTING.md):
+
 1. Humanize module fully documented (mod.rs, config.rs, engine.rs, beat_clock.rs)
 2. CONTRIBUTING.md created with Development Setup, Architecture Overview
 3. Harmony Algorithm Deep Dive section with windowing explanation
@@ -399,7 +426,7 @@ Verified: 13/13 must-haves passed.
 
 ## Session Continuity
 
-Last session: 2026-04-15
-Stopped at: STATE.md + memory reconciled after 2 weeks of shipped work (harmony-rework, Audio Foundation Tasks 5-10, Windows infra, WASM humanize). Pitch detection + guitar input deferred per user direction.
-Resume file: None — use Prioritized Backlog above
+Last session: 2026-04-22T10:45:42.282Z
+Stopped at: context exhaustion at 90% (2026-04-22)
+Resume file: None
 Next: P0 item 1 (Audio Foundation Task 11: end-to-end smoke test + milestone tag) OR P0 item 2 (stuck MIDI notes fix), whichever you want to ship first.

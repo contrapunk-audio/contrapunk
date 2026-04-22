@@ -185,7 +185,7 @@ fn main() {
     println!("  Using: {}", device_name);
 
     let config = device.default_input_config().expect("No input config");
-    let sr = config.sample_rate().0 as usize;
+    let sr = config.sample_rate() as usize;
     let ch = config.channels() as usize;
     println!("  {}ch {}Hz", ch, sr);
     let tch = prompt_usize(&format!("  Channel [0-{}]: ", ch - 1), ch - 1);

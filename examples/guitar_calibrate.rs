@@ -212,7 +212,7 @@ fn main() {
     let config = audio_device
         .default_input_config()
         .expect("No input config");
-    let sample_rate = config.sample_rate().0 as usize;
+    let sample_rate = config.sample_rate() as usize;
     let channels = config.channels() as usize;
 
     println!("  {}ch {}Hz", channels, sample_rate);

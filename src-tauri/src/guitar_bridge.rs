@@ -76,10 +76,10 @@ impl GuitarBridge {
         eprintln!(
             "[guitar_bridge] Config: {}ch {}Hz",
             supported_config.channels(),
-            supported_config.sample_rate().0
+            supported_config.sample_rate()
         );
 
-        let sample_rate = supported_config.sample_rate().0 as usize;
+        let sample_rate = supported_config.sample_rate() as usize;
         let channels = supported_config.channels() as usize;
         let pb_range = config.pitch_bend_range;
 

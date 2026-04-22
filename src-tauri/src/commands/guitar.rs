@@ -194,7 +194,7 @@ fn run_calibration(device_name: &str, channel: usize) -> Result<GuitarCalibratio
         .default_input_config()
         .map_err(|e| format!("No supported input config: {}", e))?;
 
-    let sample_rate = supported.sample_rate().0 as f64;
+    let sample_rate = supported.sample_rate() as f64;
     let channels = supported.channels() as usize;
     let sample_format = supported.sample_format();
 

@@ -99,7 +99,7 @@ fn main() {
     let input_config = device
         .default_input_config()
         .expect("No default input config");
-    let sample_rate = input_config.sample_rate().0 as usize;
+    let sample_rate = input_config.sample_rate() as usize;
     let channels = input_config.channels() as usize;
 
     println!("  Using: {}", device_name);

@@ -215,7 +215,7 @@ fn build_and_run_stream(
     let config = device
         .default_output_config()
         .map_err(|e| format!("Default output config error: {}", e))?;
-    let sample_rate = config.sample_rate().0;
+    let sample_rate = config.sample_rate();
     let channels = config.channels();
 
     transport.set_sample_rate(sample_rate);
