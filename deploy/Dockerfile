@@ -7,9 +7,13 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
 COPY wasm/ wasm/
-# Copy src-tauri manifest so workspace resolves (source not needed for WASM build)
+# Copy workspace member manifests so `cargo metadata` resolves (sources not needed for WASM build)
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
+COPY plugin/Cargo.toml plugin/Cargo.toml
+COPY xtask/Cargo.toml xtask/Cargo.toml
 RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs
+RUN mkdir -p plugin/src && echo "" > plugin/src/lib.rs
+RUN mkdir -p xtask/src && echo "fn main() {}" > xtask/src/main.rs
 RUN wasm-pack build wasm/ --target web --out-dir /app/ui/src/lib/wasm-pkg --release
 
 # Stage 2: Build SvelteKit frontend
