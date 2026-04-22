@@ -19,6 +19,8 @@ web-sys = { version = "0.3", features = ["console"] }
 wmidi = "4.0"
 serde_json = "1.0"
 getrandom = { version = "0.2", features = ["js"] }
+# rand 0.10 pulls in getrandom 0.4; enable wasm_js so wasm32-unknown-unknown compiles
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

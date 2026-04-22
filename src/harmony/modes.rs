@@ -60,7 +60,7 @@
 //! preserves chord-tone/passing-tone parity (even degrees stay even, odd
 //! stay odd). Works with any scale but is musically intended for BH scales.
 
-use rand::Rng;
+use rand::RngExt;
 use wmidi::Note;
 
 use crate::harmony::Scale;
@@ -128,11 +128,11 @@ pub fn diatonic_fourths(note: Note, scale: &mut Scale) -> Vec<Note> {
 /// - -5 degrees: 6th below
 /// - -6 degrees: 7th below
 pub fn random_below(note: Note, scale: &mut Scale) -> Vec<Note> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Intervals: -1 (2nd below) to -6 (7th below)
     let intervals = [-1, -2, -3, -4, -5, -6];
-    let interval = intervals[rng.gen_range(0..intervals.len())];
+    let interval = intervals[rng.random_range(0..intervals.len())];
 
     match scale.harmonize_smart(note, interval, false) {
         Some(harmony) => vec![note, harmony],
@@ -146,11 +146,11 @@ pub fn random_below(note: Note, scale: &mut Scale) -> Vec<Note> {
 /// Returns input plus a random interval from 3rd to 7th below.
 /// For out-of-key notes, uses a consonant chromatic interval instead.
 pub fn random_below_no_seconds(note: Note, scale: &mut Scale) -> Vec<Note> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Intervals: -2 (3rd below) to -6 (7th below), skipping -1 (2nd)
     let intervals = [-2, -3, -4, -5, -6];
-    let interval = intervals[rng.gen_range(0..intervals.len())];
+    let interval = intervals[rng.random_range(0..intervals.len())];
 
     match scale.harmonize_smart(note, interval, false) {
         Some(harmony) => vec![note, harmony],
@@ -190,13 +190,13 @@ pub fn diatonic_fourths_directed(note: Note, scale: &mut Scale, above: bool) -> 
 /// - `above = true`: Random 2nd-7th above (+1 to +6 degrees)
 /// - `above = false`: Random 2nd-7th below (-1 to -6 degrees)
 pub fn random_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let intervals: [i8; 6] = if above {
         [1, 2, 3, 4, 5, 6]
     } else {
         [-1, -2, -3, -4, -5, -6]
     };
-    let interval = intervals[rng.gen_range(0..intervals.len())];
+    let interval = intervals[rng.random_range(0..intervals.len())];
 
     match scale.harmonize_smart(note, interval, above) {
         Some(harmony) => vec![note, harmony],
@@ -209,13 +209,13 @@ pub fn random_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> 
 /// - `above = true`: Random 3rd-7th above (+2 to +6 degrees)
 /// - `above = false`: Random 3rd-7th below (-2 to -6 degrees)
 pub fn random_no_seconds_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let intervals: [i8; 5] = if above {
         [2, 3, 4, 5, 6]
     } else {
         [-2, -3, -4, -5, -6]
     };
-    let interval = intervals[rng.gen_range(0..intervals.len())];
+    let interval = intervals[rng.random_range(0..intervals.len())];
 
     match scale.harmonize_smart(note, interval, above) {
         Some(harmony) => vec![note, harmony],
