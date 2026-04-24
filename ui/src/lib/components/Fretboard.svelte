@@ -1,24 +1,27 @@
 <script lang="ts">
+	/**
+	 * Fretboard — mirrors the interactive fretboard on the redesigned
+	 * contrapunk.com. Cell-based highlights (not circle markers):
+	 *
+	 *   - Click any fret cell → plays note + harmony via the real engine.
+	 *   - Every (string, fret) whose MIDI is in engine.inputNotes fills teal.
+	 *   - Every (string, fret) whose MIDI is in engine.harmonyNotes fills magenta.
+	 *   - Borrowed notes fill violet.
+	 *   - Active cells bloom in on arrival via a single CSS animation.
+	 *   - Note name centered inside the active cell (toggle via ui.showNoteLabels).
+	 */
 	import { engine } from '$lib/stores/engine.svelte';
 	import { adapter } from '$lib/adapter';
 	import { ui } from '$lib/stores/ui.svelte';
-
-	/** Convert a MIDI number to a short name like "C4" or "F#5". */
-	function midiName(m: number): string {
-		const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-		return names[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
-	}
 
 	// Standard tuning open string MIDI values [E2, A2, D3, G3, B3, E4]
 	const STANDARD_TUNING = [40, 45, 50, 55, 59, 64];
 	const STRING_LABELS = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
 
-	// Extended range: 24 frets to match a full guitar neck.
 	const NUM_FRETS = 24;
 	const FRET_MARKERS = [3, 5, 7, 9, 12, 15, 17, 19, 21, 24];
 	const DOUBLE_MARKERS = [12, 24];
 
-	// SVG dimensions — grow horizontally with fret count to keep cells readable.
 	const SVG_WIDTH = 1040;
 	const SVG_HEIGHT = 150;
 	const NUT_X = 42;
@@ -26,74 +29,53 @@
 	const STRING_Y_START = 20;
 	const STRING_SPACING = 20;
 
-	// Palette — matches the redesigned contrapunk.com.
-	const COLOR_INPUT = '#4fe8c3';     // teal — melody in
-	const COLOR_HARMONY = '#ff2e88';   // magenta — harmony out
-	const COLOR_BORROWED = '#8a5cff';  // violet — borrowed / interchange
-	const COLOR_PRESS = '#f5e9c9';     // cream — momentary press pulse
+	// Palette — matches contrapunk.com
+	const COLOR_INPUT = '#4fe8c3';
+	const COLOR_HARMONY = '#ff2e88';
+	const COLOR_BORROWED = '#8a5cff';
 
-	/** X position for a fret. Fret 0 = nut. */
 	function fretX(fret: number): number {
 		if (fret === 0) return NUT_X;
 		return NUT_X + (fret / NUM_FRETS) * FRET_AREA_WIDTH;
 	}
 
-	/** X center of a fret cell (between fret-1 and fret). */
 	function fretCenterX(fret: number): number {
 		if (fret === 0) return NUT_X - 10;
 		return (fretX(fret - 1) + fretX(fret)) / 2;
 	}
 
-	/** Width of a single fret cell at this fret index. */
 	function fretCellWidth(fret: number): number {
 		if (fret === 0) return 18;
 		return fretX(fret) - fretX(fret - 1);
 	}
 
-	/** Y position for a string (0 = low E at bottom, 5 = high E at top). */
 	function stringY(stringIdx: number): number {
 		return STRING_Y_START + (5 - stringIdx) * STRING_SPACING;
 	}
 
-	interface Pos { string: number; fret: number; x: number; y: number; }
-
-	/** All (string, fret) positions on the board that produce the given MIDI note. */
-	function midiToPositions(note: number): Pos[] {
-		const out: Pos[] = [];
-		for (let s = 0; s < 6; s++) {
-			const fret = note - STANDARD_TUNING[s];
-			if (fret >= 0 && fret <= NUM_FRETS) {
-				out.push({ string: s, fret, x: fretCenterX(fret), y: stringY(s) });
-			}
-		}
-		return out;
+	function midiName(m: number): string {
+		const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+		return names[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
 	}
 
-	/** All positions for the current input / harmony / borrowed notes. */
-	let inputMarkers = $derived(
-		engine.inputNotes.flatMap((n) =>
-			midiToPositions(n).map((p) => ({ ...p, midi: n }))
-		)
-	);
-	let harmonyMarkers = $derived(
-		engine.harmonyNotes.flatMap((n) =>
-			midiToPositions(n).map((p) => ({ ...p, midi: n }))
-		)
-	);
-	let borrowedMarkers = $derived(
-		engine.borrowedNotes.flatMap((n) =>
-			midiToPositions(n).map((p) => ({ ...p, midi: n }))
-		)
-	);
+	/** Classify a midi note against the current engine state.
+	 *  Input wins over harmony wins over borrowed (matches Piano priority). */
+	function cellState(midi: number): 'input' | 'harmony' | 'borrowed' | null {
+		if (engine.inputNotes.includes(midi)) return 'input';
+		if (engine.harmonyNotes.includes(midi)) return 'harmony';
+		if (engine.borrowedNotes.includes(midi)) return 'borrowed';
+		return null;
+	}
+
+	function fillFor(state: 'input' | 'harmony' | 'borrowed'): string {
+		return state === 'input' ? COLOR_INPUT : state === 'harmony' ? COLOR_HARMONY : COLOR_BORROWED;
+	}
 
 	// =========================================================
-	// Click-to-play + press-flash
+	// Click-to-play
 	// =========================================================
 
 	const pressedByPointer = new Map<number, { string: number; fret: number; midi: number }>();
-	let pressed = $state(new Set<string>()); // keys "s:f"
-
-	function posKey(s: number, f: number): string { return `${s}:${f}`; }
 
 	function handleFretDown(s: number, f: number, e: PointerEvent) {
 		const midi = STANDARD_TUNING[s] + f;
@@ -101,10 +83,9 @@
 		try {
 			target.setPointerCapture(e.pointerId);
 		} catch {
-			// pointer capture not supported — safe to ignore
+			// pointer capture can throw on some touch devices — safe to ignore
 		}
 		pressedByPointer.set(e.pointerId, { string: s, fret: f, midi });
-		pressed = new Set(pressed).add(posKey(s, f));
 		adapter.injectNoteOn(midi, 100);
 	}
 
@@ -113,63 +94,7 @@
 		if (!entry) return;
 		adapter.injectNoteOff(entry.midi);
 		pressedByPointer.delete(e.pointerId);
-		const next = new Set(pressed);
-		next.delete(posKey(entry.string, entry.fret));
-		pressed = next;
 	}
-
-	// =========================================================
-	// Flash on new note arrival (matches Piano.svelte treatment)
-	// =========================================================
-
-	let flashingInput = $state(new Set<number>());
-	let flashingHarmony = $state(new Set<number>());
-	let prevInput: Set<number> = new Set();
-	let prevHarmony: Set<number> = new Set();
-
-	function diffAndFlash(
-		current: number[],
-		prev: Set<number>,
-		flashing: Set<number>,
-		setFlashing: (s: Set<number>) => void
-	): Set<number> {
-		const curr = new Set(current);
-		const newlyArrived: number[] = [];
-		for (const m of curr) if (!prev.has(m)) newlyArrived.push(m);
-		if (newlyArrived.length === 0) return curr;
-		const next = new Set(flashing);
-		for (const m of newlyArrived) next.add(m);
-		setFlashing(next);
-		for (const m of newlyArrived) {
-			setTimeout(() => {
-				// Read the freshest flashing set via the setter's closure
-				setFlashing((() => {
-					const later = new Set(flashing);
-					later.delete(m);
-					return later;
-				})());
-			}, 260);
-		}
-		return curr;
-	}
-
-	$effect(() => {
-		prevInput = diffAndFlash(
-			engine.inputNotes,
-			prevInput,
-			flashingInput,
-			(s) => (flashingInput = s)
-		);
-	});
-
-	$effect(() => {
-		prevHarmony = diffAndFlash(
-			engine.harmonyNotes,
-			prevHarmony,
-			flashingHarmony,
-			(s) => (flashingHarmony = s)
-		);
-	});
 </script>
 
 <div class="fretboard-wrapper">
@@ -178,10 +103,8 @@
 		class="fretboard-svg"
 		xmlns="http://www.w3.org/2000/svg"
 	>
-		<!-- Background -->
+		<!-- Background + wood -->
 		<rect x="0" y="0" width={SVG_WIDTH} height={SVG_HEIGHT} fill="#0f0e1a" rx="2" />
-
-		<!-- Fretboard wood area -->
 		<rect x={NUT_X} y="12" width={FRET_AREA_WIDTH} height={STRING_SPACING * 5 + 18} fill="#1a1520" rx="1" />
 
 		<!-- Nut -->
@@ -252,77 +175,56 @@
 			</text>
 		{/each}
 
-		<!-- Invisible click/touch targets per fret cell.
-		     6 strings × 25 frets (0..24) = 150 hit targets. -->
+		<!-- Cells: one per (string, fret). Visually invisible by default;
+		     highlights + labels render only when the cell's midi matches the
+		     engine's current input/harmony/borrowed state. 6 × 25 = 150. -->
 		{#each STANDARD_TUNING as _, s}
 			{#each Array.from({ length: NUM_FRETS + 1 }, (_, f) => f) as f}
+				{@const midi = STANDARD_TUNING[s] + f}
 				{@const cx = fretCenterX(f)}
 				{@const w = fretCellWidth(f)}
 				{@const y = stringY(s)}
-				<rect
-					class="fret-hit"
-					class:pressed={pressed.has(posKey(s, f))}
-					x={cx - w / 2}
-					y={y - STRING_SPACING / 2}
-					width={w}
-					height={STRING_SPACING}
-					fill="transparent"
-					onpointerdown={(e) => handleFretDown(s, f, e)}
-					onpointerup={handleFretUp}
-					onpointercancel={handleFretUp}
-					onpointerleave={handleFretUp}
-					role="button"
-					tabindex="-1"
-					aria-label="string {s + 1} fret {f}"
-				/>
+				{@const state = cellState(midi)}
+				<g class="fret-cell">
+					<rect
+						class="fret-hit"
+						x={cx - w / 2}
+						y={y - STRING_SPACING / 2}
+						width={w}
+						height={STRING_SPACING}
+						fill="transparent"
+						onpointerdown={(e) => handleFretDown(s, f, e)}
+						onpointerup={handleFretUp}
+						onpointercancel={handleFretUp}
+						onpointerleave={handleFretUp}
+						role="button"
+						tabindex="-1"
+						aria-label="string {s + 1} fret {f}"
+					/>
+					{#if state}
+						<rect
+							class="cell-fill {state}"
+							x={cx - w / 2 + 1}
+							y={y - STRING_SPACING / 2 + 1}
+							width={w - 2}
+							height={STRING_SPACING - 2}
+							fill={fillFor(state)}
+							rx="1"
+						/>
+						{#if ui.showNoteLabels}
+							<text
+								class="cell-label"
+								x={cx}
+								y={y + 2.5}
+								text-anchor="middle"
+								fill={state === 'input' ? '#0a0612' : '#f5e9c9'}
+							>
+								{midiName(midi)}
+							</text>
+						{/if}
+					{/if}
+				</g>
 			{/each}
-		{/each}
-
-		<!-- Harmony markers (magenta) -->
-		{#each harmonyMarkers as marker}
-			<g class="marker" class:flash={flashingHarmony.has(marker.midi)}>
-				<circle cx={marker.x} cy={marker.y} r="9" fill={COLOR_HARMONY} fill-opacity="0.22" />
-				<circle cx={marker.x} cy={marker.y} r="6.5" fill={COLOR_HARMONY} stroke={COLOR_HARMONY} stroke-width="1.5" />
-				{#if ui.showNoteLabels}
-					<text x={marker.x} y={marker.y + 2.5} class="marker-label" text-anchor="middle" fill="#f5e9c9">
-						{midiName(marker.midi)}
-					</text>
-				{/if}
-			</g>
-		{/each}
-
-		<!-- Borrowed markers (violet) -->
-		{#each borrowedMarkers as marker}
-			<g class="marker">
-				<circle cx={marker.x} cy={marker.y} r="9" fill={COLOR_BORROWED} fill-opacity="0.22" />
-				<circle cx={marker.x} cy={marker.y} r="6.5" fill={COLOR_BORROWED} stroke={COLOR_BORROWED} stroke-width="1.5" />
-				{#if ui.showNoteLabels}
-					<text x={marker.x} y={marker.y + 2.5} class="marker-label" text-anchor="middle" fill="#f5e9c9">
-						{midiName(marker.midi)}
-					</text>
-				{/if}
-			</g>
-		{/each}
-
-		<!-- Input markers (teal) — drawn last so they sit on top -->
-		{#each inputMarkers as marker}
-			<g class="marker" class:flash-input={flashingInput.has(marker.midi)}>
-				<circle cx={marker.x} cy={marker.y} r="9" fill={COLOR_INPUT} fill-opacity="0.28" />
-				<circle cx={marker.x} cy={marker.y} r="6.5" fill={COLOR_INPUT} stroke={COLOR_INPUT} stroke-width="1.5" />
-				{#if ui.showNoteLabels}
-					<text x={marker.x} y={marker.y + 2.5} class="marker-label" text-anchor="middle" fill="#0a0612">
-						{midiName(marker.midi)}
-					</text>
-				{/if}
-			</g>
-		{/each}
-
-		<!-- Press-flash overlays — cream pulse at the clicked fret cell -->
-		{#each [...pressed] as key}
-			{@const [s, f] = key.split(':').map(Number)}
-			{@const cx = fretCenterX(f)}
-			{@const y = stringY(s)}
-			<circle class="press-pulse" cx={cx} cy={y} r="9" fill={COLOR_PRESS} fill-opacity="0.3" />
 		{/each}
 	</svg>
 </div>
@@ -345,53 +247,35 @@
 		-webkit-tap-highlight-color: transparent;
 	}
 
-	.marker {
+	/* Simple fade-in — matches contrapunk.com's Fretboard.
+	   No scale transform, no "dragging" motion — the cell just lights up
+	   in place with a quick bloom of opacity + glow. */
+	.cell-fill {
+		animation: fret-fade-in 160ms ease-out;
 		filter: drop-shadow(0 0 6px currentColor);
+		pointer-events: none;
+		transform-box: fill-box;
+		transform-origin: center;
 	}
+	.cell-fill.input { color: #4fe8c3; }
+	.cell-fill.harmony { color: #ff2e88; }
+	.cell-fill.borrowed { color: #8a5cff; }
 
-	.marker-label {
+	.cell-label {
 		font-family: var(--font-code);
-		font-size: 7.5px;
+		font-size: 8.5px;
 		font-weight: 600;
-		pointer-events: none;
 		letter-spacing: 0;
-	}
-
-	.marker.flash-input circle {
-		animation: cp-fret-flash-input 260ms ease-out;
-	}
-
-	.marker.flash circle {
-		animation: cp-fret-flash-harmony 260ms ease-out;
-	}
-
-	.press-pulse {
-		animation: cp-fret-press 220ms ease-out;
 		pointer-events: none;
+		animation: fret-fade-in 160ms ease-out;
 	}
 
-	@keyframes cp-fret-flash-input {
-		0%   { filter: brightness(1.8) drop-shadow(0 0 14px #4fe8c3); transform: scale(1.25); transform-origin: center; }
-		50%  { filter: brightness(1.3) drop-shadow(0 0 8px  #4fe8c3); transform: scale(1.1); }
-		100% { filter: brightness(1)   drop-shadow(0 0 4px  #4fe8c3); transform: scale(1); }
-	}
-
-	@keyframes cp-fret-flash-harmony {
-		0%   { filter: brightness(1.8) drop-shadow(0 0 14px #ff2e88); transform: scale(1.25); transform-origin: center; }
-		50%  { filter: brightness(1.3) drop-shadow(0 0 8px  #ff2e88); transform: scale(1.1); }
-		100% { filter: brightness(1)   drop-shadow(0 0 4px  #ff2e88); transform: scale(1); }
-	}
-
-	@keyframes cp-fret-press {
-		0%   { r: 12; fill-opacity: 0.5; }
-		100% { r: 18; fill-opacity: 0;   }
+	@keyframes fret-fade-in {
+		0%   { opacity: 0; }
+		100% { opacity: 1; }
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.marker.flash circle,
-		.marker.flash-input circle,
-		.press-pulse {
-			animation: none;
-		}
+		.cell-fill, .cell-label { animation: none; }
 	}
 </style>
