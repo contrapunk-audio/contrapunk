@@ -1,25 +1,32 @@
 <script lang="ts">
 	/**
-	 * HistoryStrip — rolling window of recent notes as a single-staff
-	 * sheet-music strip. Every note plots at its MIDI pitch on one shared
-	 * staff; color encodes source (teal = what the user played, magenta =
-	 * engine-generated harmony, violet = borrowed / modal interchange).
+	 * HistoryStrip — rolling window of recent notes rendered as actual
+	 * sheet-music notation via VexFlow. Single grand staff (treble +
+	 * bass), one shared memory for all voices. Color encodes the source
+	 * of each note: teal = user-played input, magenta = engine-generated
+	 * harmony, violet = borrowed / modal interchange.
 	 *
-	 * Any voice can be input — if the user plays the alto line, harmony
-	 * fills in soprano/tenor/bass. Treating them as separate staves was
-	 * wrong; they share the same pitch axis.
+	 * SVG renderer sized to 1040 × 150 viewBox to visually match the
+	 * Fretboard exactly (same aspect ratio, same apparent width/height
+	 * when stacked above it).
 	 */
 	import { onMount, onDestroy } from 'svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { Renderer, Stave, StaveNote, Formatter, Accidental, Voice } from 'vexflow';
 
-	const WINDOW = 16;
-	const MIN_MIDI = 40; // E2
-	const MAX_MIDI = 88; // E6
+	const WINDOW = 12;
+	const W = 1040;
 	const H = 150;
 
 	type Kind = 'input' | 'harmony' | 'borrowed';
 	interface Entry { kind: Kind; midi: number; ts: number; }
+
+	const COLORS: Record<Kind, string> = {
+		input: '#4fe8c3',
+		harmony: '#ff2e88',
+		borrowed: '#8a5cff',
+	};
 
 	let history = $state<Entry[]>([]);
 	let prevInput: Set<number> = new Set();
@@ -46,177 +53,175 @@
 		prevBorrowed = curr;
 	});
 
-	const COLORS: Record<Kind, string> = {
-		input: '#4fe8c3',
-		harmony: '#ff2e88',
-		borrowed: '#8a5cff',
-	};
-
-	let canvasRef: HTMLCanvasElement | null = null;
-	let rafId: number | null = null;
-
-	function midiName(m: number): string {
-		const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-		return names[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+	/** MIDI → (keySpec, accidental). VexFlow uses letter+octave notation
+	 *  (e.g. "c/4"); accidentals are attached as modifiers, not part of key. */
+	function midiToKey(m: number): { key: string; acc: string | null } {
+		const pc = ((m % 12) + 12) % 12;
+		// Map each pitch class to its "natural letter + accidental needed"
+		const map: [string, string | null][] = [
+			['c', null], ['c', '#'],
+			['d', null], ['d', '#'],
+			['e', null],
+			['f', null], ['f', '#'],
+			['g', null], ['g', '#'],
+			['a', null], ['a', '#'],
+			['b', null],
+		];
+		const [letter, acc] = map[pc];
+		const octave = Math.floor(m / 12) - 1;
+		return { key: `${letter}/${octave}`, acc };
 	}
 
+	/** Which clef a note should sit on based on its pitch.
+	 *  MIDI 60 (C4) is Middle C — conventional split point. */
+	function clefForMidi(m: number): 'treble' | 'bass' {
+		return m >= 60 ? 'treble' : 'bass';
+	}
+
+	// ===== VexFlow render =====
+
+	let svgHost: HTMLDivElement | null = null;
+	let renderer: Renderer | null = null;
+
 	function draw() {
-		const c = canvasRef;
-		if (!c) return;
-		const ctxOrNull = c.getContext('2d');
-		if (!ctxOrNull) return;
-		const ctx: CanvasRenderingContext2D = ctxOrNull;
+		const host = svgHost;
+		if (!host) return;
 
-		const dpr = window.devicePixelRatio || 1;
-		const rect = c.getBoundingClientRect();
-		const W = Math.max(rect.width, 400);
-		if (c.width !== W * dpr || c.height !== H * dpr) {
-			c.width = W * dpr;
-			c.height = H * dpr;
-			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-		}
+		// Clear previous frame
+		host.innerHTML = '';
+		renderer = new Renderer(host, Renderer.Backends.SVG);
+		renderer.resize(W, H);
+		const ctx = renderer.getContext();
 
-		ctx.clearRect(0, 0, W, H);
-		ctx.fillStyle = '#0f0e1a';
-		ctx.fillRect(0, 0, W, H);
+		// Grand staff — treble on top, bass on bottom, both full width.
+		const staffX = 10;
+		const staffW = W - 20;
+		const treble = new Stave(staffX, 10, staffW);
+		treble.addClef('treble');
+		treble.setContext(ctx).draw();
 
-		// Single staff: 5 lines, centered vertically
-		const staffPad = 56;
-		const topY = 24;
-		const staffH = H - topY - 24;
-		const lineSpacing = staffH / 6;
+		const bass = new Stave(staffX, 75, staffW);
+		bass.addClef('bass');
+		bass.setContext(ctx).draw();
 
-		ctx.strokeStyle = 'rgba(245,233,201,0.16)';
-		ctx.lineWidth = 1;
-		for (let i = 0; i < 5; i++) {
-			const y = topY + lineSpacing * (i + 1);
-			ctx.beginPath();
-			ctx.moveTo(staffPad, y);
-			ctx.lineTo(W - 10, y);
-			ctx.stroke();
-		}
-
-		// Legend (cream clef label + dot colors)
-		ctx.font = '9px "JetBrains Mono", ui-monospace, monospace';
-		ctx.fillStyle = '#f5e9c9';
-		ctx.fillText('MEMORY', 10, topY + lineSpacing * 2);
-		ctx.fillStyle = '#6a5b86';
-		ctx.fillText('pitch → time', 10, topY + lineSpacing * 3);
-
-		// Playhead bar on the right edge — always drawn
-		ctx.strokeStyle = 'rgba(245,233,201,0.45)';
-		ctx.lineWidth = 1;
-		ctx.beginPath();
-		ctx.moveTo(W - 12, topY);
-		ctx.lineTo(W - 12, H - 12);
-		ctx.stroke();
+		// Style the clefs + staff lines to match the HLD palette
+		host.querySelectorAll('path, line, rect').forEach((el) => {
+			const fill = (el as SVGElement).getAttribute('fill');
+			if (fill && fill !== 'none') {
+				(el as SVGElement).setAttribute('fill', '#b79cea');
+			}
+			const stroke = (el as SVGElement).getAttribute('stroke');
+			if (stroke && stroke !== 'none') {
+				(el as SVGElement).setAttribute('stroke', '#b79cea');
+				(el as SVGElement).setAttribute('stroke-opacity', '0.5');
+			}
+		});
 
 		if (history.length === 0) return;
 
-		const usableW = W - 14 - staffPad;
-		const xFor = (i: number, total: number) =>
-			staffPad + (total <= 1 ? usableW : (i / (total - 1)) * usableW);
+		// Build VexFlow notes, split by clef so they render on the right stave.
+		const trebleNotes: StaveNote[] = [];
+		const bassNotes: StaveNote[] = [];
+		const allEntries: { entry: Entry; vfnote: StaveNote; clef: 'treble' | 'bass' }[] = [];
 
-		function yFor(midi: number): number {
-			const clamped = Math.max(MIN_MIDI, Math.min(MAX_MIDI, midi));
-			const norm = 1 - (clamped - MIN_MIDI) / (MAX_MIDI - MIN_MIDI);
-			return topY + 6 + norm * (staffH - 12);
+		history.forEach((e) => {
+			const clef = clefForMidi(e.midi);
+			const { key, acc } = midiToKey(e.midi);
+			const note = new StaveNote({ keys: [key], duration: 'q', clef });
+			if (acc) note.addModifier(new Accidental(acc), 0);
+			const c = COLORS[e.kind];
+			note.setStyle({ fillStyle: c, strokeStyle: c, shadowBlur: 4, shadowColor: c });
+			if (clef === 'treble') trebleNotes.push(note);
+			else bassNotes.push(note);
+			allEntries.push({ entry: e, vfnote: note, clef });
+		});
+
+		// VexFlow needs Voices with a fixed beats count. Use loose timing
+		// (quarter notes = 4 per "measure"). Pad with rests where needed.
+		function renderVoice(stave: Stave, notes: StaveNote[]) {
+			if (notes.length === 0) return;
+			const voice = new Voice({
+				num_beats: Math.max(4, notes.length),
+				beat_value: 4,
+			}).setStrict(false);
+			voice.addTickables(notes);
+			new Formatter().joinVoices([voice]).format([voice], staffW - 80);
+			voice.draw(ctx, stave);
 		}
 
-		// Draw per-source connecting lines so you can see interval motion
-		// within each voice. Separate pass per kind to avoid cross-color lines.
-		(['input', 'harmony', 'borrowed'] as Kind[]).forEach((kind) => {
-			const entries = history
-				.map((e, i) => ({ i, e }))
-				.filter((p) => p.e.kind === kind);
-			if (entries.length < 2) return;
-			const color = COLORS[kind];
-			ctx.strokeStyle = color;
-			ctx.globalAlpha = 0.55;
-			ctx.lineWidth = 1.5;
-			ctx.shadowColor = color;
-			ctx.shadowBlur = 4;
-			ctx.beginPath();
-			entries.forEach((p, j) => {
-				const x = xFor(p.i, history.length);
-				const y = yFor(p.e.midi);
-				if (j === 0) ctx.moveTo(x, y);
-				else ctx.lineTo(x, y);
-			});
-			ctx.stroke();
-			ctx.shadowBlur = 0;
-			ctx.globalAlpha = 1;
-		});
+		renderVoice(treble, trebleNotes);
+		renderVoice(bass, bassNotes);
 
-		// Note heads with freshness-based alpha + glow
-		history.forEach((e, i) => {
-			const color = COLORS[e.kind];
-			const x = xFor(i, history.length);
-			const y = yFor(e.midi);
-			const freshness = i / Math.max(history.length - 1, 1);
-			ctx.globalAlpha = 0.4 + freshness * 0.6;
-			ctx.fillStyle = color;
-			ctx.shadowColor = color;
-			ctx.shadowBlur = 4 + freshness * 10;
-			ctx.fillRect(x - 3.5, y - 3.5, 7, 7);
-			ctx.shadowBlur = 0;
-		});
-		ctx.globalAlpha = 1;
-
+		// Hide note labels if the toggle is off — VexFlow does not render
+		// letter names by default so there's nothing to hide; conversely if
+		// the user WANTS them we add small text overlays under each notehead.
 		if (ui.showNoteLabels) {
-			ctx.font = '8px "JetBrains Mono", ui-monospace, monospace';
-			history.forEach((e, i) => {
-				ctx.fillStyle = COLORS[e.kind];
-				const x = xFor(i, history.length);
-				const y = yFor(e.midi);
-				ctx.fillText(midiName(e.midi), x + 5, y - 5);
+			allEntries.forEach(({ entry, vfnote, clef }) => {
+				const box = (vfnote as unknown as { getBoundingBox?: () => { x: number; y: number; w: number; h: number } }).getBoundingBox?.();
+				if (!box) return;
+				const svgNS = 'http://www.w3.org/2000/svg';
+				const text = document.createElementNS(svgNS, 'text');
+				text.setAttribute('x', String(box.x + box.w / 2));
+				text.setAttribute('y', String(clef === 'treble' ? 68 : 140));
+				text.setAttribute('text-anchor', 'middle');
+				text.setAttribute('font-family', 'JetBrains Mono, ui-monospace, monospace');
+				text.setAttribute('font-size', '8');
+				text.setAttribute('fill', COLORS[entry.kind]);
+				text.textContent = noteName(entry.midi);
+				host.querySelector('svg')?.appendChild(text);
 			});
 		}
-
-		// Soft fade on the left edge so oldest notes wash out
-		const grad = ctx.createLinearGradient(staffPad, 0, staffPad + 80, 0);
-		grad.addColorStop(0, '#0f0e1a');
-		grad.addColorStop(1, 'rgba(15,14,26,0)');
-		ctx.fillStyle = grad;
-		ctx.fillRect(staffPad, 0, 80, H);
 	}
 
-	function tick() {
+	function noteName(m: number): string {
+		const n = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+		return n[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+	}
+
+	// Re-render when history or the label toggle changes
+	$effect(() => {
+		// read reactive deps so the effect re-fires
+		history;
+		ui.showNoteLabels;
 		draw();
-		rafId = requestAnimationFrame(tick);
-	}
+	});
 
 	onMount(() => {
-		tick();
+		draw();
 		window.addEventListener('resize', draw);
 	});
 	onDestroy(() => {
-		if (rafId !== null) cancelAnimationFrame(rafId);
 		window.removeEventListener('resize', draw);
 	});
 </script>
 
-<div class="history-strip" aria-label="Recent notes — shared-staff memory">
-	<canvas bind:this={canvasRef} class="history-canvas" style:height="{H}px"></canvas>
+<div class="history-strip" aria-label="Recent notes — grand staff memory">
+	<!-- Fixed-aspect SVG host sized to match the Fretboard (1040 × 150).
+	     VexFlow renders its SVG inside at that exact pixel size; the outer
+	     CSS scales it responsively without distorting proportions. -->
+	<div
+		bind:this={svgHost}
+		class="staff-host"
+		style:aspect-ratio="1040 / 150"
+	></div>
 </div>
 
 <style>
-	/* Match the Fretboard wrapper exactly so the two components visually
-	   stack as equal-width siblings. */
 	.history-strip {
 		width: 100%;
 		padding: 0 0 2px 0;
 		background: var(--color-bg-deep);
 		border-bottom: 1px solid var(--color-border);
 	}
-	/* aspect-ratio mirrors the Fretboard SVG's 1040 × 150 viewBox so the
-	   canvas scales to the same width + rendered height as the fretboard
-	   at any container size. */
-	.history-canvas {
+	.staff-host {
 		width: 100%;
 		height: auto;
-		aspect-ratio: 1040 / 150;
 		display: block;
-		touch-action: none;
+		overflow: hidden;
+	}
+	.staff-host :global(svg) {
+		width: 100% !important;
+		height: auto !important;
+		display: block;
 	}
 </style>
