@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicBool, AtomicI32};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
+use serde::{Deserialize, Serialize};
+
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::chain::ChainCommander;
 use contrapunk::fx::{DelayParams, ReverbParams};
@@ -15,6 +17,34 @@ use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::preset::PresetManager;
 use contrapunk::synth::{SynthEvent, SynthParams};
 use contrapunk::transport::Transport;
+
+/// Maximum number of voices the app exposes. Mirrors the 8 voice slots
+/// in the output panel UI; `voice_outputs` is sized to this. The engine
+/// itself accepts any voice_count up to this value.
+pub const MAX_VOICES: usize = 8;
+
+/// Per-voice output destination. Each engine-emitted voice (by index
+/// 0..voice_count-1) can be routed independently.
+///
+/// The default — `UseDefault` — preserves the legacy behavior where
+/// every voice fans out to both the internal synth AND to external
+/// MIDI ports via the global `routing_mode`. Explicitly setting a
+/// voice's target overrides that for just that voice, so e.g. voice 0
+/// can go to `MidiPort { port: 0 }` (external synth) while voices 1-3
+/// stay on `Synth` (internal synth), with no double-tracking.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VoiceOutputTarget {
+    /// Defer to the global `routing_mode` (legacy behavior: synth + MIDI).
+    #[default]
+    UseDefault,
+    /// Send to the internal synth only. Skip external MIDI for this voice.
+    Synth,
+    /// Send to a specific external MIDI port only. Skip the internal synth.
+    MidiPort { port: usize },
+    /// Skip both synth and external MIDI. Voice is silent.
+    Off,
+}
 
 /// Application state managed by Tauri.
 ///
@@ -111,6 +141,13 @@ pub struct AppState {
     /// runtime (add/remove blocks). Populated by the audio-clock
     /// setup hook after the Chain is constructed.
     pub chain_commander: Mutex<Option<Arc<ChainCommander>>>,
+
+    /// Per-voice output routing table, indexed 0..MAX_VOICES.
+    /// Router thread reads this on every note to decide whether each
+    /// voice goes to the internal synth, to a specific MIDI port, or
+    /// nowhere. Default all `UseDefault` preserves the legacy fan-out
+    /// behavior for existing users until the UI sets explicit values.
+    pub voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
 }
 
 impl Default for AppState {
@@ -144,6 +181,7 @@ impl Default for AppState {
             reverb_params: Arc::new(ReverbParams::default()),
             delay_params: Arc::new(DelayParams::default()),
             chain_commander: Mutex::new(None),
+            voice_outputs: Arc::new(Mutex::new(vec![VoiceOutputTarget::default(); MAX_VOICES])),
         }
     }
 }

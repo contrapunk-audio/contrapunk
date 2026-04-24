@@ -14,8 +14,10 @@ import type {
 	MidiDevice,
 	NoteState,
 	Preset,
-	TransportState
+	TransportState,
+	VoiceOutputTarget
 } from './types';
+import { MAX_VOICES } from './types';
 
 declare global {
 	interface Window {
@@ -152,6 +154,21 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async startRouting(_inputIdx: number, _outputIndices: number[]): Promise<void> {}
 	async stopRouting(): Promise<void> {}
+
+	// Per-voice output routing — the plugin host handles MIDI routing
+	// outside the UI, so these are no-ops that just track the user's
+	// selection in memory for UI restoration.
+	private _voiceOutputs: VoiceOutputTarget[] = Array.from(
+		{ length: MAX_VOICES },
+		() => ({ kind: 'use_default' })
+	);
+	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void> {
+		if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;
+		this._voiceOutputs[voiceIdx] = target;
+	}
+	async getVoiceOutputs(): Promise<VoiceOutputTarget[]> {
+		return this._voiceOutputs.slice();
+	}
 
 	// -- Real-time state --
 

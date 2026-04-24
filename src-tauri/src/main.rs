@@ -84,6 +84,9 @@ fn main() {
             commands::engine::get_note_state,
             commands::engine::inject_note_on,
             commands::engine::inject_note_off,
+            // Per-voice output routing
+            commands::routing::set_voice_output,
+            commands::routing::get_voice_outputs,
             // Guitar audio input
             commands::guitar::set_guitar_device,
             commands::guitar::set_guitar_config,

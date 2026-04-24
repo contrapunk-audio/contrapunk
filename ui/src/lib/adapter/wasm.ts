@@ -12,8 +12,10 @@ import type {
 	MidiDevice,
 	NoteState,
 	Preset,
-	TransportState
+	TransportState,
+	VoiceOutputTarget
 } from './types';
+import { MAX_VOICES } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { guitar } from '$lib/stores/guitar.svelte';
 
@@ -443,6 +445,26 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.activeOutputs = [];
 		this._isRunning = false;
 		this.stopNotePolling();
+	}
+
+	// Per-voice output routing is native-only for now. The browser path
+	// has no backend to route to — tracked in the in-memory table below
+	// so UI reads/writes round-trip consistently until the WASM engine
+	// gains a synth + MIDI dispatcher of its own.
+	private _voiceOutputs: VoiceOutputTarget[] = Array.from(
+		{ length: MAX_VOICES },
+		() => ({ kind: 'use_default' })
+	);
+
+	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void> {
+		if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) {
+			throw new Error(`voiceIdx ${voiceIdx} out of range (0..${MAX_VOICES - 1})`);
+		}
+		this._voiceOutputs[voiceIdx] = target;
+	}
+
+	async getVoiceOutputs(): Promise<VoiceOutputTarget[]> {
+		return this._voiceOutputs.slice();
 	}
 
 	async injectNoteOn(note: number, velocity?: number): Promise<number[]> {
