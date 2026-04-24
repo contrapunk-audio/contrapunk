@@ -7,6 +7,7 @@
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import Fretboard from '$lib/components/Fretboard.svelte';
+	import HistoryStrip from '$lib/components/HistoryStrip.svelte';
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
 	import ChainPanel from '$lib/components/ChainPanel.svelte';
 	import { adapter } from '$lib/adapter';
@@ -221,8 +222,9 @@
 				</div>
 			</div>
 
-			<!-- Bottom: Fretboard overlay + Sacred piano keyboard -->
+			<!-- Bottom: History strip + Fretboard + Sacred piano keyboard -->
 			<div class="piano-area">
+				<HistoryStrip />
 				<Fretboard />
 				<Piano />
 			</div>
