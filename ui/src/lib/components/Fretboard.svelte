@@ -247,11 +247,11 @@
 		-webkit-tap-highlight-color: transparent;
 	}
 
-	/* Simple fade-in — matches contrapunk.com's Fretboard.
-	   No scale transform, no "dragging" motion — the cell just lights up
-	   in place with a quick bloom of opacity + glow. */
+	/* Glitch-in — CRT-flicker arrival. No fade, the cell SNAPS into
+	   existence with a brief horizontal jitter, brightness pulse, and
+	   hue wobble. Matches the click-glitch on CTAs across the site. */
 	.cell-fill {
-		animation: fret-fade-in 160ms ease-out;
+		animation: fret-glitch-in 220ms steps(6, end);
 		filter: drop-shadow(0 0 6px currentColor);
 		pointer-events: none;
 		transform-box: fill-box;
@@ -267,12 +267,18 @@
 		font-weight: 600;
 		letter-spacing: 0;
 		pointer-events: none;
-		animation: fret-fade-in 160ms ease-out;
+		animation: fret-glitch-in 220ms steps(6, end);
 	}
 
-	@keyframes fret-fade-in {
-		0%   { opacity: 0; }
-		100% { opacity: 1; }
+	/* Stepped keyframes = jittery digital feel. Translate jitter + brightness
+	   pulse + brief hue/saturation wobble. Settles into normal at 100%. */
+	@keyframes fret-glitch-in {
+		0%   { opacity: 1; transform: translateX(-4px) scaleX(1.2); filter: brightness(2.4) hue-rotate(24deg) drop-shadow(0 0 10px currentColor); }
+		20%  { opacity: 1; transform: translateX( 3px) scaleX(0.9); filter: brightness(1.8) hue-rotate(-18deg) drop-shadow(0 0 8px currentColor); }
+		40%  { opacity: 1; transform: translateX(-2px) scaleX(1.1); filter: brightness(1.5) hue-rotate(10deg) drop-shadow(0 0 6px currentColor); }
+		60%  { opacity: 0.85; transform: translateX( 1px) scaleX(1);   filter: brightness(1.2) hue-rotate(-4deg) drop-shadow(0 0 6px currentColor); }
+		80%  { opacity: 1; transform: translateX( 0)     scaleX(1);   filter: brightness(1.1) drop-shadow(0 0 6px currentColor); }
+		100% { opacity: 1; transform: translateX( 0)     scaleX(1);   filter: brightness(1) drop-shadow(0 0 6px currentColor); }
 	}
 
 	@media (prefers-reduced-motion: reduce) {
