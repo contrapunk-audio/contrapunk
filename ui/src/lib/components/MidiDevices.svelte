@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { midi } from '$lib/stores/midi.svelte';
+	import { engine } from '$lib/stores/engine.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 	import type { Snippet } from 'svelte';
 
@@ -10,15 +11,25 @@
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
 
+	// Sentinel strings used as <select> values for the non-MIDI-device
+	// slot options. MIDI device options use their numeric device index
+	// stringified. We pick values that can never collide with an int.
+	const SYNTH_VALUE = '__synth__';
+	const OFF_VALUE = '__off__';
+
 	// Auto-refresh on mount if device lists are empty (defensive — page init should
 	// already call midi.refresh(), but this ensures devices show even if that failed).
+	// Also hydrate per-voice routing from localStorage + adapter.
 	onMount(() => {
 		if (midi.inputs.length === 0 && midi.outputs.length === 0 && !midi.isLoading) {
 			midi.refresh();
 		}
+		midi.hydrateVoiceOutputs();
 	});
 
-	const MAX_OUTPUT_SLOTS = 8;
+	// Slot count is driven by the configured voice count (1..8) so the
+	// UI only shows slots that actually produce sound.
+	const slotCount = $derived(Math.max(1, Math.min(engine.voiceCount, 8)));
 
 	// Derived: is Computer Keyboard selected as input?
 	let isComputerKeyboard = $derived(midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD);
@@ -29,9 +40,13 @@
 		{ value: String(VIRTUAL_GUITAR_AUDIO), label: 'Guitar Audio' }
 	]);
 
-	let outputOptions = $derived(
-		midi.outputs.map((d) => ({ value: String(d.index), label: d.name }))
-	);
+	// Per-slot dropdown options: Internal Synth first (sensible default for
+	// no-MIDI users), then each available MIDI device, then Off last.
+	let outputOptions = $derived([
+		{ value: SYNTH_VALUE, label: 'Internal Synth' },
+		...midi.outputs.map((d) => ({ value: String(d.index), label: d.name })),
+		{ value: OFF_VALUE, label: 'Off' }
+	]);
 
 	function handleInputChange(value: string) {
 		if (value === '') {
@@ -47,28 +62,42 @@
 	}
 
 	function handleOutputChange(slotIndex: number, value: string) {
-		const newOutputs = [...midi.selectedOutputs];
-
-		if (value === '') {
-			if (slotIndex < newOutputs.length) {
-				newOutputs.splice(slotIndex, 1);
-			}
-		} else {
-			const idx = parseInt(value, 10);
-			while (newOutputs.length <= slotIndex) {
-				newOutputs.push(-1);
-			}
-			newOutputs[slotIndex] = idx;
+		if (value === SYNTH_VALUE) {
+			// Per-voice synth: skip external MIDI for this voice.
+			// Keep the positional MIDI device list unchanged so other
+			// voices are not disturbed.
+			midi.setVoiceOutput(slotIndex, { kind: 'synth' });
+			return;
 		}
-
+		if (value === OFF_VALUE) {
+			midi.setVoiceOutput(slotIndex, { kind: 'off' });
+			return;
+		}
+		// MIDI device picked. Revert this voice to default routing (so
+		// the engine's PortBased / ChannelBased logic applies), then
+		// slot the device into the positional selectedOutputs list the
+		// same way it worked before voice_outputs existed.
+		midi.setVoiceOutput(slotIndex, { kind: 'use_default' });
+		const deviceIdx = parseInt(value, 10);
+		if (Number.isNaN(deviceIdx)) return;
+		const newOutputs = [...midi.selectedOutputs];
+		while (newOutputs.length <= slotIndex) {
+			newOutputs.push(-1);
+		}
+		newOutputs[slotIndex] = deviceIdx;
 		midi.selectedOutputs = newOutputs.filter((v) => v >= 0);
 	}
 
 	function getSlotValue(slotIndex: number): string {
+		const t = midi.voiceOutputs[slotIndex];
+		if (t?.kind === 'synth') return SYNTH_VALUE;
+		if (t?.kind === 'off') return OFF_VALUE;
+		// UseDefault or MidiPort → reflect the positional MIDI device
+		// selection (preserves the pre-#36 slot-to-port mapping).
 		if (slotIndex < midi.selectedOutputs.length) {
 			return String(midi.selectedOutputs[slotIndex]);
 		}
-		return '';
+		return SYNTH_VALUE;
 	}
 
 	function slotLabel(index: number): string {
@@ -116,7 +145,7 @@
 	<div class="section-header font-ui">OUTPUTS</div>
 
 	<div class="output-slots">
-		{#each Array.from({ length: MAX_OUTPUT_SLOTS }, (_, i) => i) as slotIdx}
+		{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
 			<div class="output-slot">
 				<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
 				<PixelSelect
