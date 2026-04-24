@@ -201,13 +201,21 @@
 </div>
 
 <style>
+	/* Match the Fretboard wrapper exactly so the two components visually
+	   stack as equal-width siblings. */
 	.history-strip {
 		width: 100%;
+		padding: 0 0 2px 0;
 		background: var(--color-bg-deep);
 		border-bottom: 1px solid var(--color-border);
 	}
+	/* aspect-ratio mirrors the Fretboard SVG's 1040 × 150 viewBox so the
+	   canvas scales to the same width + rendered height as the fretboard
+	   at any container size. */
 	.history-canvas {
 		width: 100%;
+		height: auto;
+		aspect-ratio: 1040 / 150;
 		display: block;
 		touch-action: none;
 	}
