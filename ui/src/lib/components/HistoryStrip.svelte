@@ -145,9 +145,12 @@
 
 			const makeChord = (group: typeof trebleKeys, clef: 'treble' | 'bass') => {
 				if (group.length === 0) return null;
-				// VexFlow wants keys top→bottom; our sort already did that.
 				const keyStrings = group.map((k) => midiToKey(k.midi).key);
 				const n = new StaveNote({ keys: keyStrings, duration: 'q', clef });
+				// Whole-note default style controls stems + flags. Using pale
+				// violet keeps stems readable without being black (VexFlow's
+				// default). Per-key overrides below recolor the heads.
+				n.setStyle({ fillStyle: '#dcd3e8', strokeStyle: '#dcd3e8' });
 				group.forEach((k, i) => {
 					const { acc } = midiToKey(k.midi);
 					if (acc) n.addModifier(new Accidental(acc), i);
