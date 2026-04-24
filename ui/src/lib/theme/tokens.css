@@ -7,9 +7,8 @@
 /* Self-hosted primary fonts — match the redesigned contrapunk.com.
    Files live in /static/fonts/ and are served from the app origin so
    typography works offline and in the Tauri desktop build without
-   talking to fonts.gstatic.com. The pixel / retro faces continue to
-   load from Google Fonts via <link> in app.html — users opt into them
-   through the font-mode switcher. */
+   talking to fonts.gstatic.com. The app is locked to this pair
+   (Space Grotesk + JetBrains Mono) — no runtime font switcher. */
 @font-face {
 	font-family: 'Space Grotesk';
 	font-style: normal;
@@ -112,23 +111,12 @@
 	--glow-cyan: 0 0 8px #33ddff55, 0 0 20px #33ddff22;
 	--glow-teal: 0 0 8px #00ccaa55, 0 0 20px #00ccaa22;
 
-	/* === Typography === */
-	/* Pixel / retro faces (opt-in via body.font-* classes) */
-	--font-press-start: 'Press Start 2P', monospace;
-	--font-vt323: 'VT323', monospace;
-	--font-silkscreen: 'Silkscreen', monospace;
-	--font-pixelify: 'Pixelify Sans', sans-serif;
-	--font-dotgothic: 'DotGothic16', monospace;
-	--font-jersey: 'Jersey 10', sans-serif;
-	--font-tiny5: 'Tiny5', monospace;
-	--font-workbench: 'Workbench', sans-serif;
-	/* Readable mono — JetBrains Mono is self-hosted (see @font-face above) */
-	--font-jetbrains: 'JetBrains Mono', ui-monospace, monospace;
-	--font-fira: 'Fira Code', monospace;
-	--font-plex: 'IBM Plex Mono', monospace;
-	/* Readable sans — Space Grotesk is self-hosted; matches the website */
+	/* === Typography ===
+	   Locked to an opinionated pair (Space Grotesk + JetBrains Mono)
+	   matching the redesigned contrapunk.com. Self-hosted via @font-face
+	   above — no CDN fetch at runtime. */
 	--font-grotesk: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-	/* System fallback */
+	--font-jetbrains: 'JetBrains Mono', ui-monospace, monospace;
 	--font-reading: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
 	/* Semantic font roles — mirror the redesigned contrapunk.com.
@@ -141,28 +129,25 @@
 	--font-code: var(--font-jetbrains);
 	--font-mono: var(--font-jetbrains);
 	--font-body: var(--font-grotesk);
-
-	/* Legacy alias — many components reference --font-pixel. Default now
-	   routes to Space Grotesk so the app visually matches the website.
-	   The body font-mode switcher (body.font-press-start / .font-vt323 /
-	   etc.) still remaps --font-pixel per opt-in mode, so pixel-font fans
-	   stay happy. */
+	/* Legacy alias for components that still reference --font-pixel. */
 	--font-pixel: var(--font-grotesk);
 
 	/* Base font sizes scale with viewport so the UI stays proportional
 	   on any monitor. clamp(min, responsive, max) keeps them legible
-	   everywhere without going microscopic or huge. Applied to the
-	   whole UI; multiplied by `--ui-scale` (see `html { zoom }` in
-	   app.css) for user-controlled density. */
-	--font-size-xs: clamp(8px, 0.75vmin + 6px, 14px);
-	--font-size-sm: clamp(10px, 0.9vmin + 7px, 16px);
-	--font-size-md: clamp(12px, 1.1vmin + 8px, 20px);
-	--font-size-lg: clamp(16px, 1.5vmin + 10px, 28px);
-	--font-size-xl: clamp(24px, 2.2vmin + 14px, 40px);
+	   everywhere without going microscopic or huge. Multiplied by
+	   --font-scale for the user-controlled font-size slider (range
+	   0.75–1.5) — independent of --ui-scale which zooms layout. */
+	--font-size-xs: calc(clamp(8px, 0.75vmin + 6px, 14px) * var(--font-scale));
+	--font-size-sm: calc(clamp(10px, 0.9vmin + 7px, 16px) * var(--font-scale));
+	--font-size-md: calc(clamp(12px, 1.1vmin + 8px, 20px) * var(--font-scale));
+	--font-size-lg: calc(clamp(16px, 1.5vmin + 10px, 28px) * var(--font-scale));
+	--font-size-xl: calc(clamp(24px, 2.2vmin + 14px, 40px) * var(--font-scale));
 
-	/* User-controlled global UI scale. Applied via `html { zoom: var(--ui-scale) }`.
-	   Defaults to 1.0; range in the UI slider is 0.75–2.0. */
+	/* User-controlled scales.
+	   --ui-scale  → zooms entire layout via html { zoom }. Range 0.75–2.0.
+	   --font-scale → multiplies font sizes only. Range 0.75–1.5. */
 	--ui-scale: 1;
+	--font-scale: 1;
 }
 
 /* === Performance Toggle ===

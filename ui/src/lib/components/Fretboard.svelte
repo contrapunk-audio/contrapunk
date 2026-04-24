@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
 	import { adapter } from '$lib/adapter';
+	import { ui } from '$lib/stores/ui.svelte';
+
+	/** Convert a MIDI number to a short name like "C4" or "F#5". */
+	function midiName(m: number): string {
+		const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+		return names[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+	}
 
 	// Standard tuning open string MIDI values [E2, A2, D3, G3, B3, E4]
 	const STANDARD_TUNING = [40, 45, 50, 55, 59, 64];
@@ -274,24 +281,39 @@
 		<!-- Harmony markers (magenta) -->
 		{#each harmonyMarkers as marker}
 			<g class="marker" class:flash={flashingHarmony.has(marker.midi)}>
-				<circle cx={marker.x} cy={marker.y} r="7.5" fill={COLOR_HARMONY} fill-opacity="0.22" />
-				<circle cx={marker.x} cy={marker.y} r="5" fill={COLOR_HARMONY} stroke={COLOR_HARMONY} stroke-width="1.5" />
+				<circle cx={marker.x} cy={marker.y} r="9" fill={COLOR_HARMONY} fill-opacity="0.22" />
+				<circle cx={marker.x} cy={marker.y} r="6.5" fill={COLOR_HARMONY} stroke={COLOR_HARMONY} stroke-width="1.5" />
+				{#if ui.showNoteLabels}
+					<text x={marker.x} y={marker.y + 2.5} class="marker-label" text-anchor="middle" fill="#f5e9c9">
+						{midiName(marker.midi)}
+					</text>
+				{/if}
 			</g>
 		{/each}
 
 		<!-- Borrowed markers (violet) -->
 		{#each borrowedMarkers as marker}
 			<g class="marker">
-				<circle cx={marker.x} cy={marker.y} r="7.5" fill={COLOR_BORROWED} fill-opacity="0.22" />
-				<circle cx={marker.x} cy={marker.y} r="5" fill={COLOR_BORROWED} stroke={COLOR_BORROWED} stroke-width="1.5" />
+				<circle cx={marker.x} cy={marker.y} r="9" fill={COLOR_BORROWED} fill-opacity="0.22" />
+				<circle cx={marker.x} cy={marker.y} r="6.5" fill={COLOR_BORROWED} stroke={COLOR_BORROWED} stroke-width="1.5" />
+				{#if ui.showNoteLabels}
+					<text x={marker.x} y={marker.y + 2.5} class="marker-label" text-anchor="middle" fill="#f5e9c9">
+						{midiName(marker.midi)}
+					</text>
+				{/if}
 			</g>
 		{/each}
 
 		<!-- Input markers (teal) — drawn last so they sit on top -->
 		{#each inputMarkers as marker}
 			<g class="marker" class:flash-input={flashingInput.has(marker.midi)}>
-				<circle cx={marker.x} cy={marker.y} r="7.5" fill={COLOR_INPUT} fill-opacity="0.28" />
-				<circle cx={marker.x} cy={marker.y} r="5" fill={COLOR_INPUT} stroke={COLOR_INPUT} stroke-width="1.5" />
+				<circle cx={marker.x} cy={marker.y} r="9" fill={COLOR_INPUT} fill-opacity="0.28" />
+				<circle cx={marker.x} cy={marker.y} r="6.5" fill={COLOR_INPUT} stroke={COLOR_INPUT} stroke-width="1.5" />
+				{#if ui.showNoteLabels}
+					<text x={marker.x} y={marker.y + 2.5} class="marker-label" text-anchor="middle" fill="#0a0612">
+						{midiName(marker.midi)}
+					</text>
+				{/if}
 			</g>
 		{/each}
 
@@ -325,6 +347,14 @@
 
 	.marker {
 		filter: drop-shadow(0 0 6px currentColor);
+	}
+
+	.marker-label {
+		font-family: var(--font-code);
+		font-size: 7.5px;
+		font-weight: 600;
+		pointer-events: none;
+		letter-spacing: 0;
 	}
 
 	.marker.flash-input circle {

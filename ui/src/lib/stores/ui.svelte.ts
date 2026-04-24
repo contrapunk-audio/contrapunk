@@ -10,44 +10,13 @@ import { platformName } from '$lib/adapter';
 // === Persistence ===
 
 const SCALE_KEY = 'contrapunk-ui-scale';
-const FONT_KEY = 'contrapunk-ui-font';
+const FONT_SCALE_KEY = 'contrapunk-font-scale';
+const NOTE_LABELS_KEY = 'contrapunk-show-note-labels';
 
 const MIN_SCALE = 0.75;
 const MAX_SCALE = 2.0;
-
-export type FontMode =
-	| 'press-start'
-	| 'vt323'
-	| 'silkscreen'
-	| 'pixelify'
-	| 'dotgothic'
-	| 'jersey'
-	| 'tiny5'
-	| 'workbench'
-	| 'jetbrains'
-	| 'fira'
-	| 'plex'
-	| 'clean';
-
-export const FONT_OPTIONS: { value: FontMode; label: string; kind: 'pixel' | 'mono' | 'clean' }[] = [
-	// Pixel / retro
-	{ value: 'press-start', label: 'Press Start', kind: 'pixel' },
-	{ value: 'vt323', label: 'VT323', kind: 'pixel' },
-	{ value: 'silkscreen', label: 'Silkscreen', kind: 'pixel' },
-	{ value: 'pixelify', label: 'Pixelify', kind: 'pixel' },
-	{ value: 'dotgothic', label: 'DotGothic16', kind: 'pixel' },
-	{ value: 'jersey', label: 'Jersey 10', kind: 'pixel' },
-	{ value: 'tiny5', label: 'Tiny5', kind: 'pixel' },
-	{ value: 'workbench', label: 'Workbench', kind: 'pixel' },
-	// Readable mono
-	{ value: 'jetbrains', label: 'JetBrains Mono', kind: 'mono' },
-	{ value: 'fira', label: 'Fira Code', kind: 'mono' },
-	{ value: 'plex', label: 'IBM Plex Mono', kind: 'mono' },
-	// System sans
-	{ value: 'clean', label: 'Clean', kind: 'clean' }
-];
-
-const FONT_CLASSES = FONT_OPTIONS.map((o) => `font-${o.value}`);
+const MIN_FONT_SCALE = 0.75;
+const MAX_FONT_SCALE = 1.5;
 
 // === UI Store (Svelte 5 runes) ===
 
@@ -75,8 +44,11 @@ class UiStore {
 	// -- Density / readability --
 	/** Global UI zoom factor. Applied via CSS `zoom` on <html>. */
 	uiScale = $state(1.0);
-	/** Which font family the whole UI uses. See FONT_OPTIONS. */
-	fontMode = $state<FontMode>('press-start');
+	/** Typography-only scale. Multiplies --font-size-* tokens without
+	 *  affecting layout geometry the way uiScale does. */
+	fontScale = $state(1.0);
+	/** Whether to show "C4", "D#5" etc. labels on active piano keys + fretboard notes. */
+	showNoteLabels = $state(true);
 
 	/**
 	 * Toggle animations on/off and apply the reduced-motion class
@@ -124,38 +96,23 @@ class UiStore {
 		});
 	}
 
-	/**
-	 * Mark the app as initialized (call after adapter.init() succeeds).
-	 */
 	markInitialized() {
 		this.initialized = true;
 		this.error = null;
 	}
 
-	/**
-	 * Set an error state for display.
-	 */
 	setError(message: string) {
 		this.error = message;
 	}
 
-	/**
-	 * Clear the error state.
-	 */
 	clearError() {
 		this.error = null;
 	}
 
-	/**
-	 * Toggle sidebar collapsed state.
-	 */
 	toggleSidebar() {
 		this.sidebarCollapsed = !this.sidebarCollapsed;
 	}
 
-	/**
-	 * Set the active panel (e.g., 'play', 'craft', 'settings').
-	 */
 	setActivePanel(panel: string) {
 		this.activePanel = panel;
 	}
@@ -190,34 +147,41 @@ class UiStore {
 		document.documentElement.style.setProperty('--ui-scale', String(this.uiScale));
 	}
 
-	// === Font mode ===
+	// === Font scale (typography-only, independent of uiScale) ===
 
-	setFontMode(mode: FontMode) {
-		this.fontMode = mode;
-		this.applyFontMode();
+	setFontScale(scale: number) {
+		const clamped = Math.max(MIN_FONT_SCALE, Math.min(MAX_FONT_SCALE, scale));
+		this.fontScale = clamped;
+		this.applyFontScale();
 		try {
-			localStorage.setItem(FONT_KEY, mode);
+			localStorage.setItem(FONT_SCALE_KEY, String(clamped));
 		} catch {
 			/* localStorage unavailable */
 		}
 	}
 
-	/** Cycle through the available font modes (used by the compact
-	 *  keyboard-style toggle button). */
-	cycleFontMode() {
-		const idx = FONT_OPTIONS.findIndex((o) => o.value === this.fontMode);
-		const next = FONT_OPTIONS[(idx + 1) % FONT_OPTIONS.length].value;
-		this.setFontMode(next);
-	}
-
-	applyFontMode() {
+	applyFontScale() {
 		if (typeof document === 'undefined') return;
-		const body = document.body;
-		FONT_CLASSES.forEach((c) => body.classList.remove(c));
-		body.classList.add(`font-${this.fontMode}`);
+		document.documentElement.style.setProperty('--font-scale', String(this.fontScale));
 	}
 
-	/** Restore persisted density + font preferences from localStorage. */
+	// === Note labels ===
+
+	setShowNoteLabels(on: boolean) {
+		this.showNoteLabels = on;
+		try {
+			localStorage.setItem(NOTE_LABELS_KEY, on ? 'on' : 'off');
+		} catch {
+			/* localStorage unavailable */
+		}
+	}
+
+	/** Restore persisted appearance preferences from localStorage.
+	 *  Font family is no longer user-configurable — the app is locked
+	 *  to the website's typography pair (Space Grotesk + JetBrains Mono).
+	 *  Also cleans up the legacy `contrapunk-ui-font` key + any stale
+	 *  `body.font-*` class applied by a previous app version so existing
+	 *  installs don't keep rendering Press Start 2P. */
 	restoreAppearance() {
 		try {
 			const savedScale = localStorage.getItem(SCALE_KEY);
@@ -227,19 +191,30 @@ class UiStore {
 					this.uiScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, n));
 				}
 			}
-			const savedFont = localStorage.getItem(FONT_KEY);
-			const valid = FONT_OPTIONS.map((o) => o.value);
-			if (savedFont && (valid as string[]).includes(savedFont)) {
-				this.fontMode = savedFont as FontMode;
-			} else if (savedFont === 'pixel') {
-				// Legacy value from the two-mode era.
-				this.fontMode = 'press-start';
+			const savedFontScale = localStorage.getItem(FONT_SCALE_KEY);
+			if (savedFontScale) {
+				const n = parseFloat(savedFontScale);
+				if (Number.isFinite(n)) {
+					this.fontScale = Math.max(MIN_FONT_SCALE, Math.min(MAX_FONT_SCALE, n));
+				}
 			}
+			const savedLabels = localStorage.getItem(NOTE_LABELS_KEY);
+			if (savedLabels === 'off') this.showNoteLabels = false;
+
+			// Legacy cleanup — strip any font-mode body class applied by
+			// older builds and drop the stale localStorage key.
+			if (typeof document !== 'undefined') {
+				const classes = Array.from(document.body.classList);
+				for (const c of classes) {
+					if (c.startsWith('font-')) document.body.classList.remove(c);
+				}
+			}
+			localStorage.removeItem('contrapunk-ui-font');
 		} catch {
 			/* localStorage unavailable */
 		}
 		this.applyUiScale();
-		this.applyFontMode();
+		this.applyFontScale();
 	}
 }
 

@@ -1,7 +1,19 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
 	import { adapter } from '$lib/adapter';
+	import { ui } from '$lib/stores/ui.svelte';
 	import { getPianoKeyColor } from '$lib/theme/colors';
+
+	/** Contrast text color for a key based on which state is driving its fill.
+	 *  Input (teal) + default-cream fills are light → dark label.
+	 *  Harmony (magenta) + borrowed (violet) fills are mid-dark → light label.
+	 *  Un-lit black keys stay with the default pale-violet text. */
+	function labelColorFor(midi: number, isBlack: boolean): string {
+		if (engine.inputNotes.includes(midi)) return '#0a0612';    // dark on teal
+		if (engine.harmonyNotes.includes(midi)) return '#f5e9c9';  // cream on magenta
+		if (engine.borrowedNotes.includes(midi)) return '#f5e9c9'; // cream on violet
+		return isBlack ? 'var(--color-text-primary)' : 'var(--color-bg-deep)';
+	}
 
 	// MIDI range for standard 88-key piano: A0 (21) to C8 (108)
 	const PIANO_START = 21;
@@ -209,8 +221,8 @@
 				{#if inScale && !active}
 					<div class="scale-overlay"></div>
 				{/if}
-				{#if active}
-					<span class="key-label font-pixel">{midiToName(midi)}</span>
+				{#if active && ui.showNoteLabels}
+					<span class="key-label font-pixel" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
 			</div>
 		{/each}
@@ -242,8 +254,8 @@
 				{#if inScale && !active}
 					<div class="scale-overlay"></div>
 				{/if}
-				{#if active}
-					<span class="key-label font-pixel">{midiToName(midi)}</span>
+				{#if active && ui.showNoteLabels}
+					<span class="key-label font-pixel" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
 			</div>
 		{/each}
