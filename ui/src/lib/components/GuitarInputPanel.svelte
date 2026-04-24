@@ -96,14 +96,14 @@
 {#if guitar.tunerActive}
 	<!-- ============ TUNER UI ============ -->
 	<div class="guitar-panel pixel-card tuner-panel">
-		<div class="panel-header font-pixel">GUITAR INPUT</div>
+		<div class="panel-header font-ui">GUITAR INPUT</div>
 
 		{#if guitar.tunerPhase === 'noise-floor'}
 			<div class="tuner-section">
-				<div class="tuner-title font-pixel">CALIBRATING</div>
+				<div class="tuner-title font-ui">CALIBRATING</div>
 				<div class="tuner-separator"></div>
-				<div class="tuner-instruction font-pixel">Measuring noise floor...</div>
-				<div class="tuner-instruction font-pixel">Keep quiet for 3 seconds</div>
+				<div class="tuner-instruction font-ui">Measuring noise floor...</div>
+				<div class="tuner-instruction font-ui">Keep quiet for 3 seconds</div>
 				<div class="noise-progress-bar">
 					<div class="noise-progress-fill" style:width="{guitar.tunerNoiseProgress * 100}%"></div>
 				</div>
@@ -114,34 +114,34 @@
 
 		{:else if guitar.tunerPhase === 'tuning'}
 			<div class="tuner-section">
-				<div class="tuner-title font-pixel">TUNING -- String {guitar.tunerStringIndex + 1} of 6</div>
+				<div class="tuner-title font-ui">TUNING -- String {guitar.tunerStringIndex + 1} of 6</div>
 				<div class="tuner-separator"></div>
 
-				<div class="tuner-target font-pixel">
+				<div class="tuner-target font-code">
 					Pluck {tunerTarget.name} ({tunerTarget.note})
 				</div>
 
 				{#if guitar.tunerStatus === 'waiting'}
-					<div class="tuner-detected font-pixel tuner-dim">Waiting for signal...</div>
-					<div class="tuner-meter font-pixel tuner-dim">{buildMeter(0)}</div>
+					<div class="tuner-detected font-ui tuner-dim">Waiting for signal...</div>
+					<div class="tuner-meter font-code tuner-dim">{buildMeter(0)}</div>
 				{:else}
-					<div class="tuner-detected font-pixel">
+					<div class="tuner-detected font-code">
 						<span class="tuner-note">{guitar.tunerDetectedNote}</span>
 						<span class="tuner-cents" class:tuner-cents-good={Math.abs(guitar.tunerCents) <= 8} class:tuner-cents-bad={Math.abs(guitar.tunerCents) > 8}>
 							{guitar.tunerCents >= 0 ? '+' : ''}{guitar.tunerCents} cents
 						</span>
 					</div>
-					<div class="tuner-meter font-pixel" class:meter-intune={Math.abs(guitar.tunerCents) <= 8} class:meter-off={Math.abs(guitar.tunerCents) > 8}>
+					<div class="tuner-meter font-code" class:meter-intune={Math.abs(guitar.tunerCents) <= 8} class:meter-off={Math.abs(guitar.tunerCents) > 8}>
 						{buildMeter(guitar.tunerCents)}
 					</div>
 
 					{#if guitar.tunerStatus === 'sharp'}
-						<div class="tuner-advice font-pixel tuner-amber">SHARP -- tune down</div>
+						<div class="tuner-advice font-ui tuner-amber">SHARP -- tune down</div>
 					{:else if guitar.tunerStatus === 'flat'}
-						<div class="tuner-advice font-pixel tuner-amber">FLAT -- tune up</div>
+						<div class="tuner-advice font-ui tuner-amber">FLAT -- tune up</div>
 					{:else if guitar.tunerStatus === 'holding' || guitar.tunerStatus === 'in-tune'}
-						<div class="tuner-advice font-pixel tuner-cyan">IN TUNE</div>
-						<div class="tuner-hold font-pixel tuner-cyan">
+						<div class="tuner-advice font-ui tuner-cyan">IN TUNE</div>
+						<div class="tuner-hold font-code tuner-cyan">
 							{buildHoldBar(guitar.tunerHoldProgress)} holding...
 						</div>
 					{/if}
@@ -155,9 +155,9 @@
 
 		{:else if guitar.tunerPhase === 'complete'}
 			<div class="tuner-section">
-				<div class="tuner-title font-pixel tuner-cyan">TUNING COMPLETE</div>
+				<div class="tuner-title font-ui tuner-cyan">TUNING COMPLETE</div>
 				<div class="tuner-separator"></div>
-				<div class="tuner-instruction font-pixel tuner-cyan">All 6 strings tuned!</div>
+				<div class="tuner-instruction font-ui tuner-cyan">All 6 strings tuned!</div>
 				<div class="tuner-actions">
 					<button class="tuner-btn pixel-btn" onclick={() => { guitar.tunerActive = false; }}>CLOSE</button>
 				</div>
@@ -168,13 +168,13 @@
 {:else}
 	<!-- ============ NORMAL PANEL ============ -->
 	<div class="guitar-panel pixel-card">
-		<div class="panel-header font-pixel">GUITAR INPUT</div>
+		<div class="panel-header font-ui">GUITAR INPUT</div>
 
 		<!-- Audio device + channel selector -->
 		<div class="device-section">
-			<span class="device-label font-pixel">DEVICE</span>
+			<span class="device-label font-ui">DEVICE</span>
 			{#if guitar.audioDeviceError}
-				<div class="device-error font-pixel">{guitar.audioDeviceError}</div>
+				<div class="device-error font-ui">{guitar.audioDeviceError}</div>
 			{:else}
 				<div class="device-select-row">
 					<PixelSelect
@@ -186,12 +186,12 @@
 					/>
 				</div>
 				<div class="channel-header">
-					<span class="device-label font-pixel channel-label">CHANNEL</span>
-					<label class="channel-override font-pixel">
+					<span class="device-label font-ui channel-label">CHANNEL</span>
+					<label class="channel-override font-ui">
 						CH#
 						<input
 							type="number"
-							class="channel-count-input font-pixel"
+							class="channel-count-input font-code"
 							min="1"
 							max="32"
 							value={guitar.maxChannels}
@@ -206,7 +206,7 @@
 				<div class="channel-row">
 					{#each channelNumbers as ch}
 						<button
-							class="channel-btn font-pixel"
+							class="channel-btn font-code"
 							class:channel-active={guitar.selectedChannel === ch}
 							onclick={() => handleChannelChange(ch)}
 						>
@@ -221,29 +221,29 @@
 		<div class="dials-row">
 			<div class="dial-container">
 				<div class="dial dial-cyan">
-					<button class="dial-arrow dial-up font-pixel" onclick={() => guitar.setLatency(guitar.latencyMs + 1)} aria-label="Increase latency">+</button>
+					<button class="dial-arrow dial-up font-ui" onclick={() => guitar.setLatency(guitar.latencyMs + 1)} aria-label="Increase latency">+</button>
 					<span class="dial-value">{latencyDisplay}</span>
-					<button class="dial-arrow dial-down font-pixel" onclick={() => guitar.setLatency(guitar.latencyMs - 1)} aria-label="Decrease latency">-</button>
+					<button class="dial-arrow dial-down font-ui" onclick={() => guitar.setLatency(guitar.latencyMs - 1)} aria-label="Decrease latency">-</button>
 				</div>
-				<span class="dial-label font-pixel">LATENCY</span>
+				<span class="dial-label font-ui">LATENCY</span>
 			</div>
 
 			<div class="dial-container">
 				<div class="dial dial-amber">
-					<button class="dial-arrow dial-up font-pixel" onclick={() => guitar.setGain(guitar.gain + 0.05)} aria-label="Increase gain">+</button>
+					<button class="dial-arrow dial-up font-ui" onclick={() => guitar.setGain(guitar.gain + 0.05)} aria-label="Increase gain">+</button>
 					<span class="dial-value">{gainDisplay}</span>
-					<button class="dial-arrow dial-down font-pixel" onclick={() => guitar.setGain(guitar.gain - 0.05)} aria-label="Decrease gain">-</button>
+					<button class="dial-arrow dial-down font-ui" onclick={() => guitar.setGain(guitar.gain - 0.05)} aria-label="Decrease gain">-</button>
 				</div>
-				<span class="dial-label font-pixel">GAIN</span>
+				<span class="dial-label font-ui">GAIN</span>
 			</div>
 
 			<div class="dial-container">
 				<div class="dial dial-teal">
-					<button class="dial-arrow dial-up font-pixel" onclick={() => guitar.setStringConfidence(guitar.stringConfidence + 0.05)} aria-label="Increase confidence">+</button>
+					<button class="dial-arrow dial-up font-ui" onclick={() => guitar.setStringConfidence(guitar.stringConfidence + 0.05)} aria-label="Increase confidence">+</button>
 					<span class="dial-value">{confidenceDisplay}</span>
-					<button class="dial-arrow dial-down font-pixel" onclick={() => guitar.setStringConfidence(guitar.stringConfidence - 0.05)} aria-label="Decrease confidence">-</button>
+					<button class="dial-arrow dial-down font-ui" onclick={() => guitar.setStringConfidence(guitar.stringConfidence - 0.05)} aria-label="Decrease confidence">-</button>
 				</div>
-				<span class="dial-label font-pixel">CONFIDENCE</span>
+				<span class="dial-label font-ui">CONFIDENCE</span>
 			</div>
 		</div>
 
@@ -270,17 +270,17 @@
 			{guitar.calibrating ? 'CALIBRATING...' : guitar.calibrated ? 'CALIBRATED' : 'TUNE + CALIBRATE'}
 		</button>
 		{#if guitar.calibrationStatus}
-			<div class="calibration-status font-pixel" class:calibrated={guitar.calibrated}>
+			<div class="calibration-status font-ui" class:calibrated={guitar.calibrated}>
 				{guitar.calibrationStatus}
 			</div>
 		{/if}
 
 		<!-- Live detection status -->
-		<div class="detection-status font-pixel" class:detecting={guitar.detecting}>
+		<div class="detection-status font-ui" class:detecting={guitar.detecting}>
 			{detectionLine}
 		</div>
 		{#if channelMismatch}
-			<div class="channel-warning font-pixel">
+			<div class="channel-warning font-ui">
 				Using ch{guitar.activeChannel} (wanted ch{guitar.selectedChannel} — restart to change)
 			</div>
 		{/if}
@@ -382,7 +382,7 @@
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
 		color: var(--color-accent-cyan);
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: var(--font-size-xs);
 		text-align: center;
 		padding: 0;

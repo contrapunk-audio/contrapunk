@@ -79,7 +79,7 @@
 
 <!-- Input Device Section -->
 <div class="midi-section pixel-card">
-	<div class="section-header font-pixel">INPUT</div>
+	<div class="section-header font-ui">INPUT</div>
 
 	<div class="input-row">
 		<PixelSelect
@@ -100,11 +100,11 @@
 	</div>
 
 	{#if isComputerKeyboard}
-		<div class="keyboard-hint font-pixel">Z-M: C3-B3, Q-U: C4-C5</div>
+		<div class="keyboard-hint font-code">Z-M: C3-B3, Q-U: C4-C5</div>
 	{/if}
 
 	{#if midi.error}
-		<div class="error-text font-pixel">{midi.error}</div>
+		<div class="error-text font-ui">{midi.error}</div>
 	{/if}
 </div>
 
@@ -113,12 +113,12 @@
 
 <!-- Output Device Section -->
 <div class="midi-section pixel-card">
-	<div class="section-header font-pixel">OUTPUTS</div>
+	<div class="section-header font-ui">OUTPUTS</div>
 
 	<div class="output-slots">
 		{#each Array.from({ length: MAX_OUTPUT_SLOTS }, (_, i) => i) as slotIdx}
 			<div class="output-slot">
-				<span class="slot-label font-pixel">{slotLabel(slotIdx)}</span>
+				<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
 				<PixelSelect
 					options={outputOptions}
 					value={getSlotValue(slotIdx)}

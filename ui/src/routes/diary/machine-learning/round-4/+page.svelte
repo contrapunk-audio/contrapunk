@@ -407,7 +407,7 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 	.round-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		letter-spacing: 3px;
@@ -460,14 +460,14 @@
 		align-items: center;
 	}
 	.comp-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		letter-spacing: 2px;
 		margin-bottom: 4px;
 	}
 	.comp-value {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 22px;
 		color: var(--color-accent-cyan);
 	}
@@ -491,7 +491,7 @@
 		text-align: center;
 	}
 	.feature-num {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 28px;
 		color: var(--color-accent-cyan);
 	}
@@ -514,7 +514,7 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 	.station-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		letter-spacing: 2px;
@@ -561,7 +561,7 @@
 	}
 	.tab-acc {
 		display: block;
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 14px;
 		margin-top: 4px;
 	}
@@ -577,7 +577,7 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 	.mc-header .mc-col {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 8px;
 		color: var(--color-text-dim);
 		letter-spacing: 1px;
@@ -654,7 +654,7 @@
 	}
 	.bar-value {
 		width: 50px;
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 11px;
 		text-align: right;
 		flex-shrink: 0;
@@ -668,7 +668,7 @@
 		margin-bottom: 16px;
 	}
 	.viz-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 9px;
 		color: var(--color-text-dim);
 		text-transform: uppercase;
@@ -710,7 +710,7 @@
 	}
 	.finding-icon {
 		flex-shrink: 0;
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 10px;
 		width: 24px;
 		height: 24px;
@@ -753,7 +753,7 @@
 		margin-top: 16px;
 	}
 	.nav-link {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-sm);
 		color: var(--color-accent-cyan);
 		text-decoration: none;

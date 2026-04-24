@@ -30,7 +30,7 @@
 		border-right: none;
 	}
 	.stat-value {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 22px;
 		font-weight: 700;
 	}

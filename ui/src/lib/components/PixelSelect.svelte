@@ -53,7 +53,7 @@
 	tabindex="-1"
 >
 	<button
-		class="pixel-select-trigger font-pixel"
+		class="pixel-select-trigger font-ui"
 		class:open
 		class:placeholder={value === ''}
 		onclick={toggle}
@@ -66,7 +66,7 @@
 	{#if open}
 		<div class="pixel-select-dropdown">
 			<button
-				class="pixel-select-option font-pixel"
+				class="pixel-select-option font-ui"
 				class:active={value === ''}
 				onclick={() => select('')}
 				type="button"
@@ -75,7 +75,7 @@
 			</button>
 			{#each options as opt}
 				<button
-					class="pixel-select-option font-pixel"
+					class="pixel-select-option font-ui"
 					class:active={opt.value === value}
 					onclick={() => select(opt.value)}
 					type="button"

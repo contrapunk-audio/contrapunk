@@ -188,7 +188,7 @@
 	}
 
 	.stage-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 8px;
 		color: var(--color-text-dim);
 		letter-spacing: 2px;
@@ -226,7 +226,7 @@
 	}
 
 	.result-note {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 16px;
 		color: var(--color-accent-cyan);
 		letter-spacing: 1px;
@@ -283,7 +283,7 @@
 	}
 
 	.selector-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 8px;
 		color: var(--color-text-dim);
 		letter-spacing: 2px;

@@ -118,6 +118,6 @@
 		justify-content: center;
 		font-size: 10px;
 		color: var(--color-text-dim);
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 	}
 </style>

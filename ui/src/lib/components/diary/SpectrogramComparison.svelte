@@ -119,7 +119,7 @@
 
 	.spec-loading,
 	.spec-error {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 10px;
 		color: var(--color-text-dim);
 		text-align: center;
@@ -151,7 +151,7 @@
 	}
 
 	.spec-vs {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		letter-spacing: 2px;

@@ -758,7 +758,7 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 	.round-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		letter-spacing: 3px;
@@ -791,7 +791,7 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 	.station-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		letter-spacing: 2px;
@@ -876,7 +876,7 @@
 		align-items: center;
 	}
 	.selector-acc {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 15px;
 	}
 	.selector-meta {
@@ -896,7 +896,7 @@
 		margin-bottom: 20px;
 	}
 	.model-detail-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-teal);
 		letter-spacing: 2px;
@@ -927,7 +927,7 @@
 		justify-content: center;
 		background: var(--color-bg-panel);
 		border: 1px solid var(--color-border);
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 10px;
 		color: var(--color-accent-cyan);
 		margin-top: 2px;
@@ -956,7 +956,7 @@
 		margin: 0;
 	}
 	.io-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		letter-spacing: 2px;
 		margin-bottom: 6px;
@@ -971,7 +971,7 @@
 		margin-top: 16px;
 	}
 	.insight-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-amber);
 		letter-spacing: 2px;
@@ -1008,7 +1008,7 @@
 	}
 	.tab-acc {
 		display: block;
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 14px;
 		margin-top: 4px;
 	}
@@ -1051,7 +1051,7 @@
 	}
 	.bar-value {
 		width: 50px;
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 11px;
 		text-align: right;
 		flex-shrink: 0;
@@ -1080,7 +1080,7 @@
 	}
 	.finding-icon {
 		flex-shrink: 0;
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 8px;
 		width: 24px;
 		height: 24px;
@@ -1127,7 +1127,7 @@
 		margin-top: 24px;
 	}
 	.hear-heading {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-teal);
 		letter-spacing: 2px;
@@ -1152,7 +1152,7 @@
 	}
 	.next-link a {
 		display: inline-block;
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-sm);
 		color: var(--color-accent-cyan);
 		text-decoration: none;

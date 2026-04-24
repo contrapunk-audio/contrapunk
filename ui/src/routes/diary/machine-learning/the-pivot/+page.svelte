@@ -367,7 +367,7 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 	.section-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-amber, #ffaa33);
 		letter-spacing: 3px;
@@ -398,7 +398,7 @@
 		border-bottom: none;
 	}
 	.station-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-amber, #ffaa33);
 		letter-spacing: 2px;
@@ -444,7 +444,7 @@
 		font-size: 13px;
 	}
 	.journey-table th {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 9px;
 		color: var(--color-text-dim);
 		letter-spacing: 1px;
@@ -460,12 +460,12 @@
 		color: var(--color-text-secondary);
 	}
 	.journey-table .round-num {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		color: var(--color-accent-cyan);
 		width: 48px;
 	}
 	.journey-table .acc {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		color: var(--color-accent-cyan);
 	}
 	.journey-table .acc.best {
@@ -499,7 +499,7 @@
 	}
 	.finding-icon {
 		flex-shrink: 0;
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 10px;
 		width: 24px;
 		height: 24px;
@@ -521,7 +521,7 @@
 		text-align: center;
 	}
 	.equation-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 9px;
 		color: var(--color-text-dim);
 		letter-spacing: 2px;
@@ -568,7 +568,7 @@
 		font-size: 13px;
 	}
 	.compare-table th {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 9px;
 		color: var(--color-text-dim);
 		letter-spacing: 1px;
@@ -611,7 +611,7 @@
 		margin: 20px 0;
 	}
 	.arch-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 9px;
 		color: var(--color-text-dim);
 		letter-spacing: 2px;
@@ -657,7 +657,7 @@
 		border: 1px dashed var(--color-border);
 	}
 	.arch-branch-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 8px;
 		letter-spacing: 1px;
 	}
@@ -703,7 +703,7 @@
 		margin-top: 16px;
 	}
 	.nav-link {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-sm);
 		color: var(--color-accent-cyan);
 		text-decoration: none;

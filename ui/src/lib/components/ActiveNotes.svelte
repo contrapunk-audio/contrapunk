@@ -22,39 +22,39 @@
 </script>
 
 <div class="card">
-	<div class="card-header font-pixel">Notes</div>
+	<div class="card-header font-ui">Notes</div>
 
 	<!-- Chord name (prominent) -->
 	{#if engine.chordName}
-		<div class="chord-name font-pixel">{engine.chordName}</div>
+		<div class="chord-name font-code">{engine.chordName}</div>
 	{/if}
 
 	<!-- Interchange source -->
 	{#if engine.lastBorrowedFrom}
-		<div class="borrowed-from font-pixel">from {engine.lastBorrowedFrom}</div>
+		<div class="borrowed-from font-code">from {engine.lastBorrowedFrom}</div>
 	{/if}
 
 	<!-- Input notes -->
 	<div class="note-section">
-		<span class="section-label font-pixel">INPUT</span>
+		<span class="section-label font-ui">INPUT</span>
 		{#if hasInput}
-			<span class="note-list input-notes font-pixel">
+			<span class="note-list input-notes font-code">
 				{inputNames.join('  ')}
 			</span>
 		{:else}
-			<span class="note-none font-pixel">(none)</span>
+			<span class="note-none font-code">(none)</span>
 		{/if}
 	</div>
 
 	<!-- Harmony notes -->
 	<div class="note-section">
-		<span class="section-label font-pixel">HARMONY</span>
+		<span class="section-label font-ui">HARMONY</span>
 		{#if hasHarmony}
-			<span class="note-list harmony-notes font-pixel">
+			<span class="note-list harmony-notes font-code">
 				{harmonyNames.join('  ')}
 			</span>
 		{:else}
-			<span class="note-none font-pixel">(none)</span>
+			<span class="note-none font-code">(none)</span>
 		{/if}
 	</div>
 </div>

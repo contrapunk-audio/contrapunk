@@ -12,15 +12,6 @@
 	image-rendering: crisp-edges;
 }
 
-/* === Pixel Font Rendering — disable antialiasing === */
-.font-pixel {
-	font-family: var(--font-pixel);
-	-webkit-font-smoothing: none;
-	-moz-osx-font-smoothing: unset;
-	font-smooth: never;
-	text-rendering: optimizeSpeed;
-}
-
 /* === Sharp corners everywhere — no border-radius === */
 .pixel-card {
 	border-radius: 0;
@@ -30,7 +21,7 @@
 
 /* === Pixel Button — base style === */
 .pixel-btn {
-	font-family: var(--font-pixel);
+	font-family: var(--font-ui);
 	font-size: var(--font-size-xs);
 	padding: 4px 8px;
 	background: var(--color-widget-inactive);

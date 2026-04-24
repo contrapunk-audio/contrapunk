@@ -81,7 +81,7 @@
 		text-align: center;
 	}
 	.tagline-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-sm);
 		color: var(--color-accent-magenta);
 		letter-spacing: 4px;
@@ -110,7 +110,7 @@
 		padding: 32px 24px;
 	}
 	.section-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		letter-spacing: 2px;
@@ -140,7 +140,7 @@
 		box-shadow: 0 0 20px rgba(51, 221, 255, 0.07);
 	}
 	.chapter-phase {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 9px;
 		color: var(--color-text-dim);
 	}

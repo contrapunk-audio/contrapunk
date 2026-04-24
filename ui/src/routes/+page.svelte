@@ -170,7 +170,7 @@
 	{/if}
 
 	{#if initError}
-		<div class="init-error font-pixel">{initError}</div>
+		<div class="init-error font-ui">{initError}</div>
 	{/if}
 
 	<!-- Top: Status bar -->
@@ -183,14 +183,14 @@
 		<!-- Tab switcher -->
 		<div class="tab-strip">
 			<button
-				class="tab-btn font-pixel"
+				class="tab-btn font-ui"
 				class:active={ui.activeTab === 'play'}
 				onclick={() => (ui.activeTab = 'play')}
 			>
 				Play
 			</button>
 			<button
-				class="tab-btn font-pixel"
+				class="tab-btn font-ui"
 				class:active={ui.activeTab === 'chain'}
 				onclick={() => (ui.activeTab = 'chain')}
 			>
@@ -235,7 +235,7 @@
 			</div>
 		{/if}
 	{:else if !initError}
-		<div class="init-loading font-pixel">Initializing engine...</div>
+		<div class="init-loading font-ui">Initializing engine...</div>
 	{/if}
 </div>
 

@@ -29,7 +29,7 @@
 		font-size: 11px;
 	}
 	.brand {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		text-decoration: none;

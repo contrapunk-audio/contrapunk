@@ -172,7 +172,7 @@
 
 <div class="piano-wrapper">
 	{#if engine.chordName}
-		<div class="chord-display font-pixel">{engine.chordName}</div>
+		<div class="chord-display font-code">{engine.chordName}</div>
 	{/if}
 	<div class="piano-container" style="--num-white-keys: {NUM_WHITE_KEYS};">
 		<!-- White keys -->
@@ -203,7 +203,7 @@
 					<span class="flash flash-{f.kind}" onanimationend={() => removeFlash(f.id)}></span>
 				{/each}
 				{#if active && ui.showNoteLabels}
-					<span class="key-label font-pixel" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
+					<span class="key-label font-code" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
 			</div>
 		{/each}
@@ -237,7 +237,7 @@
 					<span class="flash flash-{f.kind}" onanimationend={() => removeFlash(f.id)}></span>
 				{/each}
 				{#if active && ui.showNoteLabels}
-					<span class="key-label font-pixel" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
+					<span class="key-label font-code" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
 			</div>
 		{/each}

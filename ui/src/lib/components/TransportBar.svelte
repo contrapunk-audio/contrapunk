@@ -37,7 +37,7 @@
 
 <div class="transport-bar">
 	<button
-		class="play-btn font-pixel"
+		class="play-btn font-ui"
 		class:running={transport.running}
 		onclick={togglePlay}
 		title={transport.running ? 'Stop transport' : 'Start transport'}
@@ -46,9 +46,9 @@
 	</button>
 
 	<label class="bpm-field">
-		<span class="bpm-label font-pixel">BPM</span>
+		<span class="bpm-label font-ui">BPM</span>
 		<input
-			class="bpm-input font-pixel"
+			class="bpm-input font-code"
 			type="number"
 			min="40"
 			max="240"
@@ -70,7 +70,7 @@
 	</div>
 
 	<button
-		class="click-btn font-pixel"
+		class="click-btn font-ui"
 		class:on={transport.metronomeEnabled}
 		onclick={toggleClick}
 		title={transport.metronomeEnabled ? 'Mute metronome click' : 'Enable metronome click'}

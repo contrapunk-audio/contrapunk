@@ -38,7 +38,7 @@
 <div class="status-bar">
 	<!-- Transport: Start/Stop button -->
 	<button
-		class="transport-btn font-pixel"
+		class="transport-btn font-ui"
 		class:running={engine.isRunning}
 		disabled={!engine.isRunning && midi.selectedInput === null}
 		onclick={toggleTransport}
@@ -49,7 +49,7 @@
 
 	<!-- Status indicator -->
 	<span
-		class="status-indicator font-pixel"
+		class="status-indicator font-ui"
 		class:active={engine.isRunning}
 	>
 		{engine.isRunning ? 'ACTIVE' : 'STOPPED'}
@@ -61,12 +61,12 @@
 	<!-- Chord display -->
 	<div class="chord-info">
 		{#if engine.chordName}
-			<span class="chord-name font-pixel">{engine.chordName}</span>
+			<span class="chord-name font-code">{engine.chordName}</span>
 		{:else}
-			<span class="chord-name font-pixel dim">---</span>
+			<span class="chord-name font-code dim">---</span>
 		{/if}
 		{#if engine.interchangeEnabled && engine.lastBorrowedFrom}
-			<span class="borrowed-label font-pixel">from {engine.lastBorrowedFrom}</span>
+			<span class="borrowed-label font-code">from {engine.lastBorrowedFrom}</span>
 		{/if}
 	</div>
 
@@ -75,7 +75,7 @@
 
 	<!-- Settings -->
 	<button
-		class="settings-btn pixel-btn font-pixel"
+		class="settings-btn pixel-btn font-ui"
 		onclick={openSettings}
 		title="Settings"
 		aria-label="Open settings"
@@ -85,7 +85,7 @@
 
 	<!-- Brand -->
 	<img src="/logo.svg" alt="Contrapunk" class="brand-logo" />
-	<span class="brand font-pixel">Contrapunk</span>
+	<span class="brand font-ui">Contrapunk</span>
 </div>
 
 <style>

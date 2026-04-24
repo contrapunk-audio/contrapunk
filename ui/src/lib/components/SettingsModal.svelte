@@ -79,8 +79,8 @@
 	<div class="backdrop" onclick={onBackdrop}>
 		<div class="modal pixel-card" role="dialog" aria-modal="true" aria-label="Settings">
 			<div class="modal-header">
-				<span class="title font-pixel">Settings</span>
-				<button class="close-btn pixel-btn font-pixel" onclick={close} title="Close (Esc)">
+				<span class="title font-ui">Settings</span>
+				<button class="close-btn pixel-btn font-ui" onclick={close} title="Close (Esc)">
 					×
 				</button>
 			</div>
@@ -88,10 +88,10 @@
 			<div class="modal-body">
 				<!-- Appearance section -->
 				<section class="section">
-					<h3 class="section-title font-pixel">Appearance</h3>
+					<h3 class="section-title font-ui">Appearance</h3>
 
 					<div class="row">
-						<label class="row-label font-pixel" for="settings-ui-scale">UI scale</label>
+						<label class="row-label font-ui" for="settings-ui-scale">UI scale</label>
 						<div class="row-control">
 							<input
 								id="settings-ui-scale"
@@ -104,7 +104,7 @@
 								oninput={onScaleInput}
 								onchange={onScaleCommit}
 							/>
-							<span class="value font-pixel">
+							<span class="value font-code">
 								{previewPercent}%{#if previewPercent !== currentPercent}
 									<span class="pending">*</span>
 								{/if}
@@ -113,7 +113,7 @@
 					</div>
 
 					<div class="row">
-						<label class="row-label font-pixel" for="settings-font-scale">Font size</label>
+						<label class="row-label font-ui" for="settings-font-scale">Font size</label>
 						<div class="row-control">
 							<input
 								id="settings-font-scale"
@@ -126,7 +126,7 @@
 								oninput={onFontScaleInput}
 								onchange={onFontScaleCommit}
 							/>
-							<span class="value font-pixel">
+							<span class="value font-code">
 								{previewFontPercent}%{#if previewFontPercent !== currentFontPercent}
 									<span class="pending">*</span>
 								{/if}
@@ -135,17 +135,17 @@
 					</div>
 
 					<div class="row">
-						<span class="row-label font-pixel">Note labels</span>
+						<span class="row-label font-ui">Note labels</span>
 						<div class="row-control">
 							<button
-								class="pixel-btn font-pixel"
+								class="pixel-btn font-ui"
 								class:active={ui.showNoteLabels}
 								onclick={toggleNoteLabels}
 								type="button"
 							>
 								{ui.showNoteLabels ? 'On' : 'Off'}
 							</button>
-							<span class="hint font-pixel">
+							<span class="hint font-ui">
 								{ui.showNoteLabels ? 'C4, D#5 on active keys' : 'Keys + frets only'}
 							</span>
 						</div>
@@ -154,19 +154,19 @@
 
 				<!-- Effects section -->
 				<section class="section">
-					<h3 class="section-title font-pixel">Effects</h3>
+					<h3 class="section-title font-ui">Effects</h3>
 
 					<div class="row">
-						<span class="row-label font-pixel">Visual FX</span>
+						<span class="row-label font-ui">Visual FX</span>
 						<div class="row-control">
 							<button
-								class="pixel-btn font-pixel"
+								class="pixel-btn font-ui"
 								class:active={ui.animationsEnabled}
 								onclick={toggleFx}
 							>
 								{ui.animationsEnabled ? 'On' : 'Off'}
 							</button>
-							<span class="hint font-pixel">
+							<span class="hint font-ui">
 								{ui.animationsEnabled ? 'Glows + particles' : 'Reduced motion'}
 							</span>
 						</div>

@@ -129,8 +129,6 @@
 	--font-code: var(--font-jetbrains);
 	--font-mono: var(--font-jetbrains);
 	--font-body: var(--font-grotesk);
-	/* Legacy alias for components that still reference --font-pixel. */
-	--font-pixel: var(--font-grotesk);
 
 	/* Base font sizes scale with viewport so the UI stays proportional
 	   on any monitor. clamp(min, responsive, max) keeps them legible
