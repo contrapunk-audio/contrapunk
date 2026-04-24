@@ -4,6 +4,76 @@
    "A DAW that feels like exploring a neon-lit dungeon"
    ================================================================= */
 
+/* Self-hosted primary fonts — match the redesigned contrapunk.com.
+   Files live in /static/fonts/ and are served from the app origin so
+   typography works offline and in the Tauri desktop build without
+   talking to fonts.gstatic.com. The pixel / retro faces continue to
+   load from Google Fonts via <link> in app.html — users opt into them
+   through the font-mode switcher. */
+@font-face {
+	font-family: 'Space Grotesk';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/space-grotesk-400.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'Space Grotesk';
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+	src: url('/fonts/space-grotesk-500.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'Space Grotesk';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('/fonts/space-grotesk-600.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'Space Grotesk';
+	font-style: normal;
+	font-weight: 700;
+	font-display: swap;
+	src: url('/fonts/space-grotesk-700.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-400.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-500.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-600.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 700;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-700.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 800;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-800.woff2') format('woff2');
+}
+
 :root {
 	/* === Background Layers (deep to shallow) === */
 	--color-bg-deep: #0a0a1a;           /* Deepest void — full-screen background */
@@ -43,7 +113,7 @@
 	--glow-teal: 0 0 8px #00ccaa55, 0 0 20px #00ccaa22;
 
 	/* === Typography === */
-	/* Pixel / retro faces */
+	/* Pixel / retro faces (opt-in via body.font-* classes) */
 	--font-press-start: 'Press Start 2P', monospace;
 	--font-vt323: 'VT323', monospace;
 	--font-silkscreen: 'Silkscreen', monospace;
@@ -52,15 +122,32 @@
 	--font-jersey: 'Jersey 10', sans-serif;
 	--font-tiny5: 'Tiny5', monospace;
 	--font-workbench: 'Workbench', sans-serif;
-	/* Readable mono */
-	--font-jetbrains: 'JetBrains Mono', monospace;
+	/* Readable mono — JetBrains Mono is self-hosted (see @font-face above) */
+	--font-jetbrains: 'JetBrains Mono', ui-monospace, monospace;
 	--font-fira: 'Fira Code', monospace;
 	--font-plex: 'IBM Plex Mono', monospace;
+	/* Readable sans — Space Grotesk is self-hosted; matches the website */
+	--font-grotesk: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
 	/* System fallback */
 	--font-reading: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-	/* Legacy alias — body + components use this. Body class overrides
-	   the mapping at runtime (see app.css .font-* rules). */
-	--font-pixel: var(--font-press-start);
+
+	/* Semantic font roles — mirror the redesigned contrapunk.com.
+	     --font-display: hero + page titles                    → JetBrains Mono bold
+	     --font-ui:      buttons, nav, pills, labels, chrome   → Space Grotesk
+	     --font-code:    code snippets, stats, URLs            → JetBrains Mono
+	     --font-body:    paragraphs + running text             → Space Grotesk */
+	--font-display: var(--font-jetbrains);
+	--font-ui: var(--font-grotesk);
+	--font-code: var(--font-jetbrains);
+	--font-mono: var(--font-jetbrains);
+	--font-body: var(--font-grotesk);
+
+	/* Legacy alias — many components reference --font-pixel. Default now
+	   routes to Space Grotesk so the app visually matches the website.
+	   The body font-mode switcher (body.font-press-start / .font-vt323 /
+	   etc.) still remaps --font-pixel per opt-in mode, so pixel-font fans
+	   stay happy. */
+	--font-pixel: var(--font-grotesk);
 
 	/* Base font sizes scale with viewport so the UI stays proportional
 	   on any monitor. clamp(min, responsive, max) keeps them legible
