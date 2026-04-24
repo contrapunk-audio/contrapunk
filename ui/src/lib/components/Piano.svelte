@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
+	import { adapter } from '$lib/adapter';
 	import { getPianoKeyColor } from '$lib/theme/colors';
 
 	// MIDI range for standard 88-key piano: A0 (21) to C8 (108)
@@ -31,7 +32,6 @@
 
 	// For each black key, find the white key just below it and compute x offset
 	function getBlackKeyPosition(midi: number, whiteKeyWidthPx: number): number {
-		// The white key immediately below this black key
 		const prevWhite = midi - 1;
 		const wIndex = whiteKeyIndex.get(prevWhite);
 		if (wIndex === undefined) return 0;
@@ -52,13 +52,13 @@
 	/** Get box-shadow for active keys (neon glow). */
 	function keyGlow(midi: number): string {
 		if (engine.inputNotes.includes(midi)) {
-			return '0 0 6px #00e436, 0 0 14px #00e43666';
+			return '0 0 6px #4fe8c3, 0 0 14px #4fe8c366';
 		}
 		if (engine.harmonyNotes.includes(midi)) {
-			return '0 0 6px #ff9933, 0 0 14px #ff993366';
+			return '0 0 6px #ff2e88, 0 0 14px #ff2e8866';
 		}
 		if (engine.borrowedNotes.includes(midi)) {
-			return '0 0 6px #ffaa33, 0 0 14px #ffaa3366';
+			return '0 0 6px #8a5cff, 0 0 14px #8a5cff66';
 		}
 		return 'none';
 	}
@@ -78,6 +78,104 @@
 	}
 
 	const NUM_WHITE_KEYS = whiteKeys.length; // 52
+
+	// =========================================================
+	// Click-to-play wiring + press-flash animation (issue #38)
+	// =========================================================
+
+	// Tracks which pointer ids hold which midi notes so we can release
+	// correctly on pointerup, pointercancel, or pointerleave.
+	const pressedByPointer = new Map<number, number>();
+
+	// Midi notes currently showing the press-flash class.
+	let pressing = $state(new Set<number>());
+
+	function handlePointerDown(midi: number, e: PointerEvent) {
+		const el = e.currentTarget as HTMLElement;
+		try {
+			el.setPointerCapture(e.pointerId);
+		} catch {
+			// setPointerCapture can throw on some touch devices — safe to ignore
+		}
+		pressedByPointer.set(e.pointerId, midi);
+		pressing = new Set(pressing).add(midi);
+		adapter.injectNoteOn(midi, 100);
+	}
+
+	function releasePointer(midi: number, pointerId: number) {
+		if (pressedByPointer.get(pointerId) === midi) {
+			adapter.injectNoteOff(midi);
+			pressedByPointer.delete(pointerId);
+		}
+		const next = new Set(pressing);
+		next.delete(midi);
+		pressing = next;
+	}
+
+	function handlePointerUp(midi: number, e: PointerEvent) {
+		releasePointer(midi, e.pointerId);
+	}
+
+	function handlePointerCancel(midi: number, e: PointerEvent) {
+		releasePointer(midi, e.pointerId);
+	}
+
+	// =========================================================
+	// Harmony / input flash on new note arrival (issue #37)
+	// Fires a brief bloom animation whenever the engine emits a new note.
+	// =========================================================
+
+	// Notes currently showing the harmony-flash class.
+	let flashingHarmony = $state(new Set<number>());
+	let flashingInput = $state(new Set<number>());
+
+	// Previous sets, tracked outside $effect so we diff against the last snapshot.
+	let prevHarmony: Set<number> = new Set();
+	let prevInput: Set<number> = new Set();
+
+	$effect(() => {
+		const currentHarmony = new Set(engine.harmonyNotes);
+		const newlyArrived: number[] = [];
+		for (const m of currentHarmony) {
+			if (!prevHarmony.has(m)) newlyArrived.push(m);
+		}
+		prevHarmony = currentHarmony;
+		if (newlyArrived.length === 0) return;
+
+		const next = new Set(flashingHarmony);
+		for (const m of newlyArrived) next.add(m);
+		flashingHarmony = next;
+
+		for (const m of newlyArrived) {
+			setTimeout(() => {
+				const later = new Set(flashingHarmony);
+				later.delete(m);
+				flashingHarmony = later;
+			}, 220);
+		}
+	});
+
+	$effect(() => {
+		const currentInput = new Set(engine.inputNotes);
+		const newlyArrived: number[] = [];
+		for (const m of currentInput) {
+			if (!prevInput.has(m)) newlyArrived.push(m);
+		}
+		prevInput = currentInput;
+		if (newlyArrived.length === 0) return;
+
+		const next = new Set(flashingInput);
+		for (const m of newlyArrived) next.add(m);
+		flashingInput = next;
+
+		for (const m of newlyArrived) {
+			setTimeout(() => {
+				const later = new Set(flashingInput);
+				later.delete(m);
+				flashingInput = later;
+			}, 220);
+		}
+	});
 </script>
 
 <div class="piano-wrapper">
@@ -94,9 +192,19 @@
 			<div
 				class="white-key"
 				class:in-scale={inScale && !active}
+				class:pressed={pressing.has(midi)}
+				class:flash-harmony={flashingHarmony.has(midi)}
+				class:flash-input={flashingInput.has(midi)}
 				data-midi={midi}
 				style:background={color || 'var(--color-text-primary)'}
 				style:box-shadow={glow}
+				onpointerdown={(e) => handlePointerDown(midi, e)}
+				onpointerup={(e) => handlePointerUp(midi, e)}
+				onpointercancel={(e) => handlePointerCancel(midi, e)}
+				onpointerleave={(e) => handlePointerCancel(midi, e)}
+				role="button"
+				tabindex="-1"
+				aria-label={midiToName(midi)}
 			>
 				{#if inScale && !active}
 					<div class="scale-overlay"></div>
@@ -115,11 +223,21 @@
 			<div
 				class="black-key"
 				class:in-scale={inScale && !active}
+				class:pressed={pressing.has(midi)}
+				class:flash-harmony={flashingHarmony.has(midi)}
+				class:flash-input={flashingInput.has(midi)}
 				data-midi={midi}
 				style:left="calc({getBlackKeyPosition(midi, 1)} * (100% / {NUM_WHITE_KEYS}))"
 				style:width="calc(0.6 * (100% / {NUM_WHITE_KEYS}))"
 				style:background={color || '#111'}
 				style:box-shadow={glow}
+				onpointerdown={(e) => handlePointerDown(midi, e)}
+				onpointerup={(e) => handlePointerUp(midi, e)}
+				onpointercancel={(e) => handlePointerCancel(midi, e)}
+				onpointerleave={(e) => handlePointerCancel(midi, e)}
+				role="button"
+				tabindex="-1"
+				aria-label={midiToName(midi)}
 			>
 				{#if inScale && !active}
 					<div class="scale-overlay"></div>
@@ -167,6 +285,11 @@
 		align-items: flex-end;
 		justify-content: center;
 		padding-bottom: 2px;
+		cursor: pointer;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-tap-highlight-color: transparent;
+		transition: transform 60ms ease-out;
 	}
 
 	.black-key {
@@ -182,6 +305,11 @@
 		align-items: flex-end;
 		justify-content: center;
 		padding-bottom: 2px;
+		cursor: pointer;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-tap-highlight-color: transparent;
+		transition: transform 60ms ease-out;
 	}
 
 	.key-label {
@@ -212,5 +340,53 @@
 
 	.black-key .scale-overlay {
 		background: rgba(255, 253, 140, 0.2);
+	}
+
+	/* =========================================================
+	   Press-flash (pointerdown) + harmony/input flash on new note
+	   ========================================================= */
+
+	.white-key.pressed,
+	.black-key.pressed {
+		animation: cp-key-press 160ms ease-out;
+	}
+
+	@keyframes cp-key-press {
+		0%   { transform: scaleY(0.94); filter: brightness(1.4); }
+		60%  { transform: scaleY(0.98); filter: brightness(1.2); }
+		100% { transform: scaleY(1);    filter: brightness(1);   }
+	}
+
+	.white-key.flash-input,
+	.black-key.flash-input {
+		animation: cp-flash-input 220ms ease-out;
+	}
+
+	.white-key.flash-harmony,
+	.black-key.flash-harmony {
+		animation: cp-flash-harmony 220ms ease-out;
+	}
+
+	@keyframes cp-flash-input {
+		0%   { box-shadow: 0 0 24px #4fe8c3, 0 0 48px #4fe8c3aa, 0 0 0 2px #4fe8c3; filter: brightness(1.6); }
+		50%  { box-shadow: 0 0 14px #4fe8c3, 0 0 28px #4fe8c388; filter: brightness(1.3); }
+		100% { box-shadow: 0 0 6px #4fe8c3, 0 0 14px #4fe8c366; filter: brightness(1);   }
+	}
+
+	@keyframes cp-flash-harmony {
+		0%   { box-shadow: 0 0 24px #ff2e88, 0 0 48px #ff2e88aa, 0 0 0 2px #ff2e88; filter: brightness(1.6); }
+		50%  { box-shadow: 0 0 14px #ff2e88, 0 0 28px #ff2e8888; filter: brightness(1.3); }
+		100% { box-shadow: 0 0 6px #ff2e88, 0 0 14px #ff2e8866; filter: brightness(1);   }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.white-key, .black-key {
+			transition: none;
+		}
+		.white-key.pressed, .black-key.pressed,
+		.white-key.flash-input, .black-key.flash-input,
+		.white-key.flash-harmony, .black-key.flash-harmony {
+			animation: none;
+		}
 	}
 </style>
