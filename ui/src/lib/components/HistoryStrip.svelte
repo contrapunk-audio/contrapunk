@@ -141,8 +141,8 @@
 		function renderVoice(stave: Stave, notes: StaveNote[]) {
 			if (notes.length === 0) return;
 			const voice = new Voice({
-				num_beats: Math.max(4, notes.length),
-				beat_value: 4,
+				numBeats: Math.max(4, notes.length),
+				beatValue: 4,
 			}).setStrict(false);
 			voice.addTickables(notes);
 			new Formatter().joinVoices([voice]).format([voice], staffW - 80);
