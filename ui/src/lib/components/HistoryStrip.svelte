@@ -17,7 +17,9 @@
 
 	const WINDOW = 12;
 	const W = 1040;
-	const H = 150;
+	// Taller than the fretboard so the grand staff has room to breathe;
+	// the outer CSS keeps the horizontal width matched to Fretboard.
+	const H = 240;
 
 	type Kind = 'input' | 'harmony' | 'borrowed';
 	interface Entry { kind: Kind; midi: number; ts: number; }
@@ -95,13 +97,16 @@
 		const ctx = renderer.getContext();
 
 		// Grand staff — treble on top, bass on bottom, both full width.
+		// Vertical layout: 20px top margin, treble stave centered in the
+		// upper half, 24px gutter, bass stave in the lower half, 20px
+		// bottom margin.
 		const staffX = 10;
 		const staffW = W - 20;
-		const treble = new Stave(staffX, 10, staffW);
+		const treble = new Stave(staffX, 20, staffW);
 		treble.addClef('treble');
 		treble.setContext(ctx).draw();
 
-		const bass = new Stave(staffX, 75, staffW);
+		const bass = new Stave(staffX, 130, staffW);
 		bass.addClef('bass');
 		bass.setContext(ctx).draw();
 
@@ -209,11 +214,7 @@
 	<!-- Fixed-aspect SVG host sized to match the Fretboard (1040 × 150).
 	     VexFlow renders its SVG inside at that exact pixel size; the outer
 	     CSS scales it responsively without distorting proportions. -->
-	<div
-		bind:this={svgHost}
-		class="staff-host"
-		style:aspect-ratio="1040 / 150"
-	></div>
+	<div bind:this={svgHost} class="staff-host"></div>
 </div>
 
 <style>
@@ -226,6 +227,11 @@
 	.staff-host {
 		width: 100%;
 		height: auto;
+		/* aspect-ratio locked to the SVG's native 1040 × 240 viewBox so the
+		   strip scales width-first, taking whatever vertical room it needs
+		   to keep clefs + staff lines readable. Width still matches the
+		   Fretboard; height is ~60% taller to give notation room. */
+		aspect-ratio: 1040 / 240 !important;
 		display: block;
 		overflow: hidden;
 	}
