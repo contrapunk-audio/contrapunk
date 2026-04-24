@@ -63,5 +63,7 @@ export type {
 	NoteState,
 	Preset,
 	SynthState,
-	TransportState
+	TransportState,
+	VoiceOutputTarget
 } from './types';
+export { MAX_VOICES } from './types';

@@ -7,13 +7,35 @@
  */
 
 import { adapter } from '$lib/adapter';
-import type { MidiDevice } from '$lib/adapter';
+import type { MidiDevice, VoiceOutputTarget } from '$lib/adapter';
+import { MAX_VOICES } from '$lib/adapter/types';
 
 const MIDI_SETTINGS_KEY = 'contrapunk-midi';
+const VOICE_OUTPUTS_KEY = 'contrapunk-voice-outputs';
 
 interface MidiSettings {
 	inputName: string | null;
 	outputNames: string[];
+}
+
+function loadVoiceOutputs(): VoiceOutputTarget[] | null {
+	try {
+		const raw = localStorage.getItem(VOICE_OUTPUTS_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw);
+		if (!Array.isArray(parsed)) return null;
+		return parsed.slice(0, MAX_VOICES);
+	} catch {
+		return null;
+	}
+}
+
+function saveVoiceOutputs(targets: VoiceOutputTarget[]) {
+	try {
+		localStorage.setItem(VOICE_OUTPUTS_KEY, JSON.stringify(targets));
+	} catch {
+		// localStorage unavailable
+	}
 }
 
 function loadMidiSettings(): MidiSettings | null {
@@ -44,6 +66,12 @@ class MidiStore {
 	// -- Selection state --
 	selectedInput = $state<number | null>(null);
 	selectedOutputs = $state<number[]>([]);
+
+	// -- Per-voice output routing (issue #36 / backed by #57) --
+	// Length is always MAX_VOICES. UseDefault preserves legacy behavior.
+	voiceOutputs = $state<VoiceOutputTarget[]>(
+		Array.from({ length: MAX_VOICES }, () => ({ kind: 'use_default' as const }))
+	);
 
 	// -- Loading / error state --
 	isLoading = $state(false);
@@ -180,6 +208,53 @@ class MidiStore {
 	setOutputs(indices: number[]) {
 		this.selectedOutputs = indices.filter((idx) => this.outputs.some((d) => d.index === idx));
 		this.persist();
+	}
+
+	/**
+	 * Set the output destination for a single voice.
+	 * Updates the reactive store, pushes to the backend via the adapter,
+	 * and persists to localStorage so the selection survives reloads.
+	 */
+	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget) {
+		if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;
+		const next = this.voiceOutputs.slice();
+		next[voiceIdx] = target;
+		this.voiceOutputs = next;
+		saveVoiceOutputs(next);
+		try {
+			await adapter.setVoiceOutput(voiceIdx, target);
+		} catch (e) {
+			this.error = `Failed to set voice output: ${e}`;
+		}
+	}
+
+	/**
+	 * Hydrate voiceOutputs from localStorage and push to the backend.
+	 * Falls back to the backend's current state if no saved selection
+	 * exists (first run, fresh install). Call once at app init.
+	 */
+	async hydrateVoiceOutputs() {
+		const saved = loadVoiceOutputs();
+		if (saved && saved.length > 0) {
+			const padded: VoiceOutputTarget[] = Array.from({ length: MAX_VOICES }, (_, i) =>
+				saved[i] ?? { kind: 'use_default' }
+			);
+			this.voiceOutputs = padded;
+			try {
+				await Promise.all(padded.map((t, i) => adapter.setVoiceOutput(i, t)));
+			} catch {
+				// Non-fatal — UI still reflects user's prior choice
+			}
+			return;
+		}
+		try {
+			const current = await adapter.getVoiceOutputs();
+			if (Array.isArray(current) && current.length === MAX_VOICES) {
+				this.voiceOutputs = current;
+			}
+		} catch {
+			// Adapter may be stubbed (browser / plugin host)
+		}
 	}
 
 	/**
