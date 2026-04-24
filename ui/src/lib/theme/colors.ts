@@ -23,9 +23,11 @@ export const ACCENT_AMBER = '#ffaa33';
 export const ACCENT_GOLD = '#ffdd44';
 
 // === Sacred Piano Key Colors ===
-export const PIANO_INPUT = '#00e436';
-export const PIANO_HARMONY = '#ff9933';
-export const PIANO_BORROWED = '#ffaa33';
+// Refreshed to match the redesigned contrapunk.com palette
+// (teal input, magenta harmony, violet borrowed). See issue #37.
+export const PIANO_INPUT = '#4fe8c3';     // teal — melody in
+export const PIANO_HARMONY = '#ff2e88';   // magenta — harmony out
+export const PIANO_BORROWED = '#8a5cff';  // violet — borrowed / modal interchange
 export const PIANO_IN_SCALE = 'rgba(255, 253, 180, 0.35)';
 
 // === Text ===
