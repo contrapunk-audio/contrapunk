@@ -30,29 +30,41 @@
 		borrowed: '#8a5cff',
 	};
 
-	let history = $state<Entry[]>([]);
-	let prevInput: Set<number> = new Set();
-	let prevHarmony: Set<number> = new Set();
-	let prevBorrowed: Set<number> = new Set();
+	/** A Moment is a single point in engine state — a chord of notes all
+	 *  sounding together. Every engine change pushes one moment. */
+	interface Moment { ts: number; keys: Array<{ midi: number; kind: Kind }>; }
 
-	function push(kind: Kind, midi: number) {
-		history = [...history.slice(-(WINDOW - 1)), { kind, midi, ts: Date.now() }];
+	let history = $state<Moment[]>([]);
+	let lastSig = '';
+
+	/** Build a stable string signature of the current engine state so we
+	 *  can detect "same chord, no change" and skip duplicate pushes. */
+	function stateSig(inp: number[], har: number[], bor: number[]): string {
+		return `i:${[...inp].sort().join(',')}|h:${[...har].sort().join(',')}|b:${[...bor].sort().join(',')}`;
+	}
+
+	function buildMoment(inp: number[], har: number[], bor: number[]): Moment {
+		const keys: Array<{ midi: number; kind: Kind }> = [];
+		for (const m of inp) keys.push({ midi: m, kind: 'input' });
+		for (const m of har) keys.push({ midi: m, kind: 'harmony' });
+		for (const m of bor) keys.push({ midi: m, kind: 'borrowed' });
+		// Sort top-to-bottom by pitch so VexFlow renders chord heads cleanly.
+		keys.sort((a, b) => b.midi - a.midi);
+		return { ts: Date.now(), keys };
 	}
 
 	$effect(() => {
-		const curr = new Set(engine.inputNotes);
-		for (const m of curr) if (!prevInput.has(m)) push('input', m);
-		prevInput = curr;
-	});
-	$effect(() => {
-		const curr = new Set(engine.harmonyNotes);
-		for (const m of curr) if (!prevHarmony.has(m)) push('harmony', m);
-		prevHarmony = curr;
-	});
-	$effect(() => {
-		const curr = new Set(engine.borrowedNotes);
-		for (const m of curr) if (!prevBorrowed.has(m)) push('borrowed', m);
-		prevBorrowed = curr;
+		const inp = engine.inputNotes;
+		const har = engine.harmonyNotes;
+		const bor = engine.borrowedNotes;
+		const sig = stateSig(inp, har, bor);
+		if (sig === lastSig) return;
+		lastSig = sig;
+		// Skip the initial all-empty snapshot so the strip doesn't start
+		// with a silent rest — only push when at least one voice is active.
+		if (inp.length === 0 && har.length === 0 && bor.length === 0) return;
+		const moment = buildMoment(inp, har, bor);
+		history = [...history.slice(-(WINDOW - 1)), moment];
 	});
 
 	/** MIDI → (keySpec, accidental). VexFlow uses letter+octave notation
@@ -111,33 +123,46 @@
 		bass.setContext(ctx).draw();
 
 		// Style the clefs + staff lines to match the HLD palette.
-		// VexFlow defaults to black which is invisible on our dark bg;
-		// override to a readable pale violet at full opacity.
+		// VexFlow draws in black (default SVG fill/stroke). Elements that
+		// lack an explicit stroke attribute still render black — force the
+		// override unconditionally so staff LINES also take the new color.
 		host.querySelectorAll('path, line, rect, text').forEach((el) => {
 			const svgEl = el as SVGElement;
-			const fill = svgEl.getAttribute('fill');
-			if (fill !== 'none') svgEl.setAttribute('fill', '#dcd3e8');
-			const stroke = svgEl.getAttribute('stroke');
-			if (stroke && stroke !== 'none') svgEl.setAttribute('stroke', '#dcd3e8');
+			if (svgEl.getAttribute('fill') !== 'none') svgEl.setAttribute('fill', '#dcd3e8');
+			if (svgEl.getAttribute('stroke') !== 'none') svgEl.setAttribute('stroke', '#dcd3e8');
 		});
 
 		if (history.length === 0) return;
 
-		// Build VexFlow notes, split by clef so they render on the right stave.
+		// Each moment becomes one StaveNote per clef (treble above C4, bass
+		// below). All notes in the moment share an x-position — they render
+		// as a CHORD, one stack per time-step, not as separate quarter notes.
 		const trebleNotes: StaveNote[] = [];
 		const bassNotes: StaveNote[] = [];
-		const allEntries: { entry: Entry; vfnote: StaveNote; clef: 'treble' | 'bass' }[] = [];
 
-		history.forEach((e) => {
-			const clef = clefForMidi(e.midi);
-			const { key, acc } = midiToKey(e.midi);
-			const note = new StaveNote({ keys: [key], duration: 'q', clef });
-			if (acc) note.addModifier(new Accidental(acc), 0);
-			const c = COLORS[e.kind];
-			note.setStyle({ fillStyle: c, strokeStyle: c, shadowBlur: 4, shadowColor: c });
-			if (clef === 'treble') trebleNotes.push(note);
-			else bassNotes.push(note);
-			allEntries.push({ entry: e, vfnote: note, clef });
+		history.forEach((moment) => {
+			const trebleKeys = moment.keys.filter((k) => clefForMidi(k.midi) === 'treble');
+			const bassKeys = moment.keys.filter((k) => clefForMidi(k.midi) === 'bass');
+
+			const makeChord = (group: typeof trebleKeys, clef: 'treble' | 'bass') => {
+				if (group.length === 0) return null;
+				// VexFlow wants keys top→bottom; our sort already did that.
+				const keyStrings = group.map((k) => midiToKey(k.midi).key);
+				const n = new StaveNote({ keys: keyStrings, duration: 'q', clef });
+				group.forEach((k, i) => {
+					const { acc } = midiToKey(k.midi);
+					if (acc) n.addModifier(new Accidental(acc), i);
+					const c = COLORS[k.kind];
+					(n as unknown as { setKeyStyle: (i: number, s: object) => void })
+						.setKeyStyle(i, { fillStyle: c, strokeStyle: c });
+				});
+				return n;
+			};
+
+			const tn = makeChord(trebleKeys, 'treble');
+			const bn = makeChord(bassKeys, 'bass');
+			if (tn) trebleNotes.push(tn);
+			if (bn) bassNotes.push(bn);
 		});
 
 		// VexFlow needs Voices with a fixed beats count. Use loose timing
@@ -167,24 +192,27 @@
 		renderVoice(treble, trebleNotes);
 		renderVoice(bass, bassNotes);
 
-		// Hide note labels if the toggle is off — VexFlow does not render
-		// letter names by default so there's nothing to hide; conversely if
-		// the user WANTS them we add small text overlays under each notehead.
+		// Note-name labels: per-chord pitch class list under each moment.
 		if (ui.showNoteLabels) {
-			allEntries.forEach(({ entry, vfnote, clef }) => {
-				const box = (vfnote as unknown as { getBoundingBox?: () => { x: number; y: number; w: number; h: number } }).getBoundingBox?.();
-				if (!box) return;
-				const svgNS = 'http://www.w3.org/2000/svg';
-				const text = document.createElementNS(svgNS, 'text');
-				text.setAttribute('x', String(box.x + box.w / 2));
-				text.setAttribute('y', String(clef === 'treble' ? 68 : 140));
-				text.setAttribute('text-anchor', 'middle');
-				text.setAttribute('font-family', 'JetBrains Mono, ui-monospace, monospace');
-				text.setAttribute('font-size', '8');
-				text.setAttribute('fill', COLORS[entry.kind]);
-				text.textContent = noteName(entry.midi);
-				host.querySelector('svg')?.appendChild(text);
-			});
+			const svgNS = 'http://www.w3.org/2000/svg';
+			const svgRoot = host.querySelector('svg');
+			if (svgRoot) {
+				history.forEach((moment, mi) => {
+					const chordLabel = moment.keys.map((k) => noteName(k.midi)).join(' ');
+					// Position roughly under each chord column based on index.
+					const colW = (W - 80) / Math.max(history.length, 1);
+					const x = 60 + colW * (mi + 0.5);
+					const t = document.createElementNS(svgNS, 'text');
+					t.setAttribute('x', String(x));
+					t.setAttribute('y', String(H - 6));
+					t.setAttribute('text-anchor', 'middle');
+					t.setAttribute('font-family', 'JetBrains Mono, ui-monospace, monospace');
+					t.setAttribute('font-size', '8');
+					t.setAttribute('fill', '#8888aa');
+					t.textContent = chordLabel;
+					svgRoot.appendChild(t);
+				});
+			}
 		}
 	}
 
