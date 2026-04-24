@@ -197,7 +197,7 @@
 	.plugin-path {
 		color: var(--color-text-dim);
 		font-size: var(--font-size-xs);
-		font-family: monospace;
+		font-family: var(--font-code);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

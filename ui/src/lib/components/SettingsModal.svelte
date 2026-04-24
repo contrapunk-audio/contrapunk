@@ -1,25 +1,5 @@
 <script lang="ts">
-	import { ui, FONT_OPTIONS } from '$lib/stores/ui.svelte';
-
-	let fontOpen = $state(false);
-	let fontTriggerEl: HTMLDivElement | undefined = $state();
-
-	let currentFont = $derived(FONT_OPTIONS.find((o) => o.value === ui.fontMode) ?? FONT_OPTIONS[0]);
-
-	function toggleFont() {
-		fontOpen = !fontOpen;
-	}
-
-	function pickFont(value: typeof currentFont.value) {
-		ui.setFontMode(value);
-		fontOpen = false;
-	}
-
-	function onFontBlur(e: FocusEvent) {
-		if (fontTriggerEl && !fontTriggerEl.contains(e.relatedTarget as Node)) {
-			fontOpen = false;
-		}
-	}
+	import { ui } from '$lib/stores/ui.svelte';
 
 	/**
 	 * Preview value used while the user drags the scale slider. Committed
@@ -27,23 +7,42 @@
 	 * page doesn't re-zoom frame-by-frame during the drag.
 	 */
 	let previewScale = $state(ui.uiScale);
+	let previewFontScale = $state(ui.fontScale);
 
-	// Keep the preview in sync when the store is updated from elsewhere
+	// Keep the previews in sync when the store is updated from elsewhere
 	// (e.g. localStorage restore on init).
 	$effect(() => {
 		previewScale = ui.uiScale;
 	});
+	$effect(() => {
+		previewFontScale = ui.fontScale;
+	});
 
 	let previewPercent = $derived(Math.round(previewScale * 100));
 	let currentPercent = $derived(Math.round(ui.uiScale * 100));
+	let previewFontPercent = $derived(Math.round(previewFontScale * 100));
+	let currentFontPercent = $derived(Math.round(ui.fontScale * 100));
 
 	function onScaleInput(e: Event) {
 		const v = Number((e.target as HTMLInputElement).value);
 		if (Number.isFinite(v)) previewScale = v;
 	}
-
 	function onScaleCommit() {
 		ui.setUiScale(previewScale);
+	}
+
+	function onFontScaleInput(e: Event) {
+		const v = Number((e.target as HTMLInputElement).value);
+		if (Number.isFinite(v)) {
+			previewFontScale = v;
+			// Live-preview the typography without committing to localStorage.
+			if (typeof document !== 'undefined') {
+				document.documentElement.style.setProperty('--font-scale', String(v));
+			}
+		}
+	}
+	function onFontScaleCommit() {
+		ui.setFontScale(previewFontScale);
 	}
 
 	function toggleFx() {
@@ -53,6 +52,10 @@
 		} catch {
 			/* localStorage unavailable */
 		}
+	}
+
+	function toggleNoteLabels() {
+		ui.setShowNoteLabels(!ui.showNoteLabels);
 	}
 
 	function close() {
@@ -110,40 +113,41 @@
 					</div>
 
 					<div class="row">
-						<span class="row-label font-pixel">Font</span>
-						<div
-							class="row-control font-select"
-							bind:this={fontTriggerEl}
-							onfocusout={onFontBlur}
-							role="listbox"
-							tabindex="-1"
-						>
+						<label class="row-label font-pixel" for="settings-font-scale">Font size</label>
+						<div class="row-control">
+							<input
+								id="settings-font-scale"
+								class="scale-slider"
+								type="range"
+								min="0.75"
+								max="1.5"
+								step="0.05"
+								value={previewFontScale}
+								oninput={onFontScaleInput}
+								onchange={onFontScaleCommit}
+							/>
+							<span class="value font-pixel">
+								{previewFontPercent}%{#if previewFontPercent !== currentFontPercent}
+									<span class="pending">*</span>
+								{/if}
+							</span>
+						</div>
+					</div>
+
+					<div class="row">
+						<span class="row-label font-pixel">Note labels</span>
+						<div class="row-control">
 							<button
-								class="font-trigger pixel-btn"
-								class:open={fontOpen}
-								onclick={toggleFont}
+								class="pixel-btn font-pixel"
+								class:active={ui.showNoteLabels}
+								onclick={toggleNoteLabels}
 								type="button"
 							>
-								<span class="font-trigger-label font-pixel">{currentFont.label}</span>
-								<span class="font-trigger-sample font-{currentFont.value}">Aa 123</span>
-								<span class="font-trigger-arrow">{fontOpen ? '▴' : '▾'}</span>
+								{ui.showNoteLabels ? 'On' : 'Off'}
 							</button>
-
-							{#if fontOpen}
-								<div class="font-dropdown">
-									{#each FONT_OPTIONS as opt}
-										<button
-											class="font-option"
-											class:active={opt.value === ui.fontMode}
-											onclick={() => pickFont(opt.value)}
-											type="button"
-										>
-											<span class="font-option-label font-pixel">{opt.label}</span>
-											<span class="font-option-sample font-{opt.value}">Aa 123</span>
-										</button>
-									{/each}
-								</div>
-							{/if}
+							<span class="hint font-pixel">
+								{ui.showNoteLabels ? 'C4, D#5 on active keys' : 'Keys + frets only'}
+							</span>
 						</div>
 					</div>
 				</section>
@@ -238,7 +242,7 @@
 
 	.row {
 		display: grid;
-		grid-template-columns: 80px 1fr;
+		grid-template-columns: 90px 1fr;
 		align-items: center;
 		gap: 10px;
 	}
@@ -291,115 +295,6 @@
 		color: var(--color-accent-magenta);
 		margin-left: 2px;
 	}
-
-	/* Font dropdown */
-	.font-select {
-		position: relative;
-		flex: 1;
-	}
-
-	.font-trigger {
-		width: 100%;
-		display: grid;
-		grid-template-columns: 1fr auto auto;
-		align-items: center;
-		gap: 10px;
-		padding: 6px 10px;
-		font-size: var(--font-size-xs);
-		text-align: left;
-		background: var(--color-widget-bg);
-	}
-
-	.font-trigger.open {
-		border-color: var(--color-accent-cyan);
-		box-shadow: var(--glow-cyan);
-	}
-
-	.font-trigger-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.font-trigger-sample {
-		font-size: var(--font-size-sm);
-		color: var(--color-accent-cyan);
-		white-space: nowrap;
-	}
-
-	.font-trigger-arrow {
-		color: var(--color-accent-cyan);
-		font-size: var(--font-size-xs);
-	}
-
-	.font-dropdown {
-		position: absolute;
-		top: 100%;
-		left: 0;
-		right: 0;
-		z-index: 10;
-		background: var(--color-bg-panel);
-		border: 1px solid var(--color-accent-cyan);
-		border-top: none;
-		max-height: 240px;
-		overflow-y: auto;
-		box-shadow: var(--glow-cyan);
-	}
-
-	.font-option {
-		width: 100%;
-		display: grid;
-		grid-template-columns: 1fr auto;
-		align-items: center;
-		gap: 10px;
-		background: transparent;
-		border: none;
-		color: var(--color-text-primary);
-		font-size: var(--font-size-xs);
-		padding: 5px 10px;
-		cursor: pointer;
-		text-align: left;
-	}
-
-	.font-option:hover {
-		background: var(--color-accent-cyan);
-		color: var(--color-bg-deep);
-	}
-
-	.font-option:hover .font-option-sample {
-		color: var(--color-bg-deep);
-	}
-
-	.font-option.active {
-		color: var(--color-accent-magenta);
-	}
-
-	.font-option-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.font-option-sample {
-		font-size: var(--font-size-sm);
-		color: var(--color-accent-cyan);
-		white-space: nowrap;
-	}
-
-	/* Per-face preview rules for the font selector tiles. Each preview
-	   renders "Aa 123" in its own face so you can compare at a glance. */
-	.font-press-start { font-family: var(--font-press-start); -webkit-font-smoothing: none; text-rendering: optimizeSpeed; }
-	.font-vt323 { font-family: var(--font-vt323); -webkit-font-smoothing: antialiased; letter-spacing: 1px; }
-	.font-silkscreen { font-family: var(--font-silkscreen); -webkit-font-smoothing: none; text-rendering: optimizeSpeed; }
-	.font-pixelify { font-family: var(--font-pixelify); -webkit-font-smoothing: antialiased; }
-	.font-dotgothic { font-family: var(--font-dotgothic); -webkit-font-smoothing: none; text-rendering: optimizeSpeed; }
-	.font-jersey { font-family: var(--font-jersey); -webkit-font-smoothing: antialiased; }
-	.font-tiny5 { font-family: var(--font-tiny5); -webkit-font-smoothing: none; text-rendering: optimizeSpeed; }
-	.font-workbench { font-family: var(--font-workbench); -webkit-font-smoothing: antialiased; }
-	.font-jetbrains { font-family: var(--font-jetbrains); -webkit-font-smoothing: antialiased; }
-	.font-fira { font-family: var(--font-fira); -webkit-font-smoothing: antialiased; }
-	.font-plex { font-family: var(--font-plex); -webkit-font-smoothing: antialiased; }
-	.font-clean { font-family: var(--font-reading); -webkit-font-smoothing: antialiased; letter-spacing: normal; }
 
 	.hint {
 		font-size: var(--font-size-xs);

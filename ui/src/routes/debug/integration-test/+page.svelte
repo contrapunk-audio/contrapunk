@@ -439,7 +439,7 @@
 
 <style>
 	.page {
-		font-family: 'SF Mono', 'Fira Code', monospace;
+		font-family: var(--font-code);
 		background: #0a0a0f;
 		color: #e0e0e0;
 		min-height: 100vh;
