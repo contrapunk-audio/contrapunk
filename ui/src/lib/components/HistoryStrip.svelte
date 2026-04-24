@@ -15,7 +15,12 @@
 	import { ui } from '$lib/stores/ui.svelte';
 	import { Renderer, Stave, StaveNote, Formatter, Accidental, Voice } from 'vexflow';
 
-	const WINDOW = 12;
+	// How many chord moments to keep on-screen. At 1040px staff width with
+	// ~80px per chord column, 16 is the practical ceiling before VexFlow's
+	// Formatter crunches x-spacing. New moments push the oldest off the
+	// left edge (FIFO). If a single moment has many voices (e.g. 8-voice
+	// chord), it stacks vertically — ledger lines handle extreme pitches.
+	const WINDOW = 16;
 	const W = 1040;
 	// Slightly taller than the Fretboard so the bass stave has room to
 	// breathe at the bottom without clipping + the chord labels fit
