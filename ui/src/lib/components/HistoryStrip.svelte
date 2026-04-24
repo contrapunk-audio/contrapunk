@@ -1,13 +1,13 @@
 <script lang="ts">
 	/**
-	 * HistoryStrip — rolling window of recent input + harmony notes
-	 * rendered as sheet-music-style canvas. Two staves: top = melody in
-	 * (teal), bottom = harmony out (magenta). Notes connect with a line so
-	 * you can see the interval motion over time. Playhead at the right edge.
+	 * HistoryStrip — rolling window of recent notes as a single-staff
+	 * sheet-music strip. Every note plots at its MIDI pitch on one shared
+	 * staff; color encodes source (teal = what the user played, magenta =
+	 * engine-generated harmony, violet = borrowed / modal interchange).
 	 *
-	 * The engine exposes "currently sounding" note arrays (snapshots).
-	 * We diff those snapshots on every change and push each new arrival
-	 * into a FIFO buffer keyed to the arrival timestamp, then draw.
+	 * Any voice can be input — if the user plays the alto line, harmony
+	 * fills in soprano/tenor/bass. Treating them as separate staves was
+	 * wrong; they share the same pitch axis.
 	 */
 	import { onMount, onDestroy } from 'svelte';
 	import { engine } from '$lib/stores/engine.svelte';
@@ -16,17 +16,15 @@
 	const WINDOW = 16;
 	const MIN_MIDI = 40; // E2
 	const MAX_MIDI = 88; // E6
-
-	// Canvas pixel dimensions. Height mirrors the Fretboard (150) so the
-	// two instruments visually stack as equals. Width is fluid via CSS.
 	const H = 150;
 
-	type Kind = 'input' | 'harmony';
+	type Kind = 'input' | 'harmony' | 'borrowed';
 	interface Entry { kind: Kind; midi: number; ts: number; }
 
 	let history = $state<Entry[]>([]);
 	let prevInput: Set<number> = new Set();
 	let prevHarmony: Set<number> = new Set();
+	let prevBorrowed: Set<number> = new Set();
 
 	function push(kind: Kind, midi: number) {
 		history = [...history.slice(-(WINDOW - 1)), { kind, midi, ts: Date.now() }];
@@ -37,24 +35,36 @@
 		for (const m of curr) if (!prevInput.has(m)) push('input', m);
 		prevInput = curr;
 	});
-
 	$effect(() => {
 		const curr = new Set(engine.harmonyNotes);
 		for (const m of curr) if (!prevHarmony.has(m)) push('harmony', m);
 		prevHarmony = curr;
 	});
+	$effect(() => {
+		const curr = new Set(engine.borrowedNotes);
+		for (const m of curr) if (!prevBorrowed.has(m)) push('borrowed', m);
+		prevBorrowed = curr;
+	});
 
-	// ===== Canvas draw =====
+	const COLORS: Record<Kind, string> = {
+		input: '#4fe8c3',
+		harmony: '#ff2e88',
+		borrowed: '#8a5cff',
+	};
 
 	let canvasRef: HTMLCanvasElement | null = null;
 	let rafId: number | null = null;
+
+	function midiName(m: number): string {
+		const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+		return names[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+	}
 
 	function draw() {
 		const c = canvasRef;
 		if (!c) return;
 		const ctxOrNull = c.getContext('2d');
 		if (!ctxOrNull) return;
-		// Narrow once so nested closures (drawVoice) see the non-null type.
 		const ctx: CanvasRenderingContext2D = ctxOrNull;
 
 		const dpr = window.devicePixelRatio || 1;
@@ -67,143 +77,108 @@
 		}
 
 		ctx.clearRect(0, 0, W, H);
-
-		// Background — match the fretboard wood-on-void treatment
 		ctx.fillStyle = '#0f0e1a';
 		ctx.fillRect(0, 0, W, H);
 
-		// Two stave bands (top = melody, bottom = harmony). 5 lines each.
-		const bandPad = 18;
-		const topY = bandPad;
-		const bandH = (H - bandPad * 2) / 2;
-		const bottomY = bandPad + bandH + 6;
-		const lineSpacing = (bandH - 20) / 4; // 5 lines → 4 spaces
-		const staffPad = 56; // room on the left for the CLEF labels
+		// Single staff: 5 lines, centered vertically
+		const staffPad = 56;
+		const topY = 24;
+		const staffH = H - topY - 24;
+		const lineSpacing = staffH / 6;
 
 		ctx.strokeStyle = 'rgba(245,233,201,0.16)';
 		ctx.lineWidth = 1;
-		for (let band = 0; band < 2; band++) {
-			const y0 = band === 0 ? topY : bottomY;
-			for (let i = 0; i < 5; i++) {
-				const y = y0 + 10 + i * lineSpacing;
-				ctx.beginPath();
-				ctx.moveTo(staffPad, y);
-				ctx.lineTo(W - 10, y);
-				ctx.stroke();
-			}
-		}
-
-		// Clef-style voice labels
-		ctx.font = '9px "JetBrains Mono", ui-monospace, monospace';
-		ctx.fillStyle = '#4fe8c3';
-		ctx.fillText('MELODY · IN',  10, topY + 10 + lineSpacing * 1 + 3);
-		ctx.fillStyle = '#ff2e88';
-		ctx.fillText('HARMONY · OUT', 10, bottomY + 10 + lineSpacing * 1 + 3);
-
-		// Fade overlay left edge so older notes wash out
-		const fadeW = 80;
-		const grad = ctx.createLinearGradient(staffPad, 0, staffPad + fadeW, 0);
-		grad.addColorStop(0, '#0f0e1a');
-		grad.addColorStop(1, 'rgba(15,14,26,0)');
-
-		if (history.length === 0) {
-			// Playhead only — staves wait for input
-			ctx.strokeStyle = 'rgba(245,233,201,0.35)';
-			ctx.lineWidth = 1;
+		for (let i = 0; i < 5; i++) {
+			const y = topY + lineSpacing * (i + 1);
 			ctx.beginPath();
-			ctx.moveTo(W - 12, topY);
-			ctx.lineTo(W - 12, bottomY + bandH);
+			ctx.moveTo(staffPad, y);
+			ctx.lineTo(W - 10, y);
 			ctx.stroke();
-			return;
 		}
 
-		// Place each entry along the time axis. Index (older → newer)
-		// maps linearly to x from staffPad → W - 14.
+		// Legend (cream clef label + dot colors)
+		ctx.font = '9px "JetBrains Mono", ui-monospace, monospace';
+		ctx.fillStyle = '#f5e9c9';
+		ctx.fillText('MEMORY', 10, topY + lineSpacing * 2);
+		ctx.fillStyle = '#6a5b86';
+		ctx.fillText('pitch → time', 10, topY + lineSpacing * 3);
+
+		// Playhead bar on the right edge — always drawn
+		ctx.strokeStyle = 'rgba(245,233,201,0.45)';
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.moveTo(W - 12, topY);
+		ctx.lineTo(W - 12, H - 12);
+		ctx.stroke();
+
+		if (history.length === 0) return;
+
 		const usableW = W - 14 - staffPad;
 		const xFor = (i: number, total: number) =>
 			staffPad + (total <= 1 ? usableW : (i / (total - 1)) * usableW);
 
-		/** y for a midi within one of the bands. Each band spans MIN_MIDI..MAX_MIDI. */
-		function yFor(midi: number, band: 0 | 1): number {
-			const y0 = band === 0 ? topY : bottomY;
+		function yFor(midi: number): number {
 			const clamped = Math.max(MIN_MIDI, Math.min(MAX_MIDI, midi));
 			const norm = 1 - (clamped - MIN_MIDI) / (MAX_MIDI - MIN_MIDI);
-			return y0 + 8 + norm * (bandH - 16);
+			return topY + 6 + norm * (staffH - 12);
 		}
 
-		// Split entries by voice keeping their global ordering (needed for
-		// connecting lines — consecutive notes of the same voice link up).
-		const inputEntries:  { i: number; e: Entry }[] = [];
-		const harmEntries:   { i: number; e: Entry }[] = [];
-		history.forEach((e, i) => {
-			if (e.kind === 'input')   inputEntries.push({ i, e });
-			if (e.kind === 'harmony') harmEntries.push({ i, e });
-		});
-
-		function drawVoice(list: { i: number; e: Entry }[], band: 0 | 1, color: string) {
-			if (list.length === 0) return;
-
-			// Connecting line through note heads (shows interval motion)
+		// Draw per-source connecting lines so you can see interval motion
+		// within each voice. Separate pass per kind to avoid cross-color lines.
+		(['input', 'harmony', 'borrowed'] as Kind[]).forEach((kind) => {
+			const entries = history
+				.map((e, i) => ({ i, e }))
+				.filter((p) => p.e.kind === kind);
+			if (entries.length < 2) return;
+			const color = COLORS[kind];
 			ctx.strokeStyle = color;
-			ctx.globalAlpha = 0.7;
+			ctx.globalAlpha = 0.55;
 			ctx.lineWidth = 1.5;
 			ctx.shadowColor = color;
-			ctx.shadowBlur = 6;
+			ctx.shadowBlur = 4;
 			ctx.beginPath();
-			list.forEach((p, j) => {
+			entries.forEach((p, j) => {
 				const x = xFor(p.i, history.length);
-				const y = yFor(p.e.midi, band);
+				const y = yFor(p.e.midi);
 				if (j === 0) ctx.moveTo(x, y);
 				else ctx.lineTo(x, y);
 			});
 			ctx.stroke();
 			ctx.shadowBlur = 0;
-
-			// Note heads — brighter for recent, fading toward the left
-			list.forEach((p) => {
-				const x = xFor(p.i, history.length);
-				const y = yFor(p.e.midi, band);
-				const freshness = p.i / Math.max(history.length - 1, 1);
-				ctx.globalAlpha = 0.4 + freshness * 0.6;
-				ctx.fillStyle = color;
-				ctx.shadowColor = color;
-				ctx.shadowBlur = 6 + freshness * 10;
-				ctx.fillRect(x - 3, y - 3, 6, 6);
-				ctx.shadowBlur = 0;
-			});
 			ctx.globalAlpha = 1;
+		});
 
-			// Labels, gated on toggle
-			if (ui.showNoteLabels) {
-				ctx.fillStyle = color;
-				ctx.font = '8px "JetBrains Mono", ui-monospace, monospace';
-				list.forEach((p) => {
-					const x = xFor(p.i, history.length);
-					const y = yFor(p.e.midi, band);
-					ctx.fillText(midiName(p.e.midi), x + 5, y - 5);
-				});
-			}
+		// Note heads with freshness-based alpha + glow
+		history.forEach((e, i) => {
+			const color = COLORS[e.kind];
+			const x = xFor(i, history.length);
+			const y = yFor(e.midi);
+			const freshness = i / Math.max(history.length - 1, 1);
+			ctx.globalAlpha = 0.4 + freshness * 0.6;
+			ctx.fillStyle = color;
+			ctx.shadowColor = color;
+			ctx.shadowBlur = 4 + freshness * 10;
+			ctx.fillRect(x - 3.5, y - 3.5, 7, 7);
+			ctx.shadowBlur = 0;
+		});
+		ctx.globalAlpha = 1;
+
+		if (ui.showNoteLabels) {
+			ctx.font = '8px "JetBrains Mono", ui-monospace, monospace';
+			history.forEach((e, i) => {
+				ctx.fillStyle = COLORS[e.kind];
+				const x = xFor(i, history.length);
+				const y = yFor(e.midi);
+				ctx.fillText(midiName(e.midi), x + 5, y - 5);
+			});
 		}
 
-		drawVoice(inputEntries, 0, '#4fe8c3');
-		drawVoice(harmEntries,  1, '#ff2e88');
-
-		// Left-edge fade
+		// Soft fade on the left edge so oldest notes wash out
+		const grad = ctx.createLinearGradient(staffPad, 0, staffPad + 80, 0);
+		grad.addColorStop(0, '#0f0e1a');
+		grad.addColorStop(1, 'rgba(15,14,26,0)');
 		ctx.fillStyle = grad;
-		ctx.fillRect(staffPad, 0, fadeW, H);
-
-		// Playhead
-		ctx.strokeStyle = 'rgba(245,233,201,0.45)';
-		ctx.lineWidth = 1;
-		ctx.beginPath();
-		ctx.moveTo(W - 12, topY);
-		ctx.lineTo(W - 12, bottomY + bandH);
-		ctx.stroke();
-	}
-
-	function midiName(m: number): string {
-		const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-		return names[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+		ctx.fillRect(staffPad, 0, 80, H);
 	}
 
 	function tick() {
@@ -221,7 +196,7 @@
 	});
 </script>
 
-<div class="history-strip" aria-label="Recent melody + harmony history">
+<div class="history-strip" aria-label="Recent notes — shared-staff memory">
 	<canvas bind:this={canvasRef} class="history-canvas" style:height="{H}px"></canvas>
 </div>
 
@@ -231,7 +206,6 @@
 		background: var(--color-bg-deep);
 		border-bottom: 1px solid var(--color-border);
 	}
-
 	.history-canvas {
 		width: 100%;
 		display: block;
