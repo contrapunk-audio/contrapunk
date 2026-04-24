@@ -84,8 +84,9 @@
 	let renderer: Renderer | null = null;
 
 	function draw() {
-		const host = svgHost;
-		if (!host) return;
+		const hostOrNull = svgHost;
+		if (!hostOrNull) return;
+		const host: HTMLDivElement = hostOrNull;
 
 		// Clear previous frame
 		host.innerHTML = '';
