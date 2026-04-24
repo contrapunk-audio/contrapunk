@@ -85,11 +85,11 @@
 
 <div class="graphs-container">
 	<div class="graph-row">
-		<span class="graph-label font-pixel">AMP</span>
+		<span class="graph-label font-ui">AMP</span>
 		<canvas bind:this={ampCanvas} width={WIDTH} height={HEIGHT} class="signal-canvas"></canvas>
 		<div class="gate-controls">
 			<button
-				class="gate-btn font-pixel"
+				class="gate-btn font-ui"
 				class:gate-on={guitar.noiseGateEnabled}
 				onclick={() => { guitar.noiseGateEnabled = !guitar.noiseGateEnabled; }}
 				title="Noise Gate"

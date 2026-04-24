@@ -77,7 +77,7 @@
 		align-items: center;
 		justify-content: center;
 		margin: 0 auto;
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 16px;
 		color: var(--color-text-dim);
 	}
@@ -115,7 +115,7 @@
 		color: var(--color-text-primary);
 	}
 	.round-accuracy {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 16px;
 		color: var(--color-accent-cyan);
 	}

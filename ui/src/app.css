@@ -20,11 +20,28 @@ body {
 	text-rendering: optimizeLegibility;
 }
 
-/* Legacy hooks retained so any component that still references
-   `.font-pixel` or `.pixel-btn` picks up the locked default (Space Grotesk).
-   The font-mode switcher was removed — the app ships with an opinionated
-   typography pair (Space Grotesk + JetBrains Mono) matching the website. */
-.font-pixel,
+/* Semantic role utilities. See tokens.css for the --font-* variable
+   definitions and which font each role uses.
+     .font-ui   — buttons, labels, chrome, nav, form inputs
+     .font-code — technical readouts (note names, BPM, stats, IDs)
+     .font-body — prose / paragraphs (rarely needed; body already uses it)
+     .font-display — page titles / hero headings
+   Chrome + technical readouts keep the retro pixel-rendering
+   aesthetic (no antialiasing, optimizeSpeed). Prose and display don't. */
+.font-ui,
 .pixel-btn {
 	font-family: var(--font-ui);
+	-webkit-font-smoothing: none;
+	text-rendering: optimizeSpeed;
+}
+.font-code {
+	font-family: var(--font-code);
+	-webkit-font-smoothing: none;
+	text-rendering: optimizeSpeed;
+}
+.font-body {
+	font-family: var(--font-body);
+}
+.font-display {
+	font-family: var(--font-display);
 }

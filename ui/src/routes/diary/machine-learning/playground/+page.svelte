@@ -514,7 +514,7 @@
 	}
 
 	.label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		letter-spacing: 2px;
@@ -598,7 +598,7 @@
 	}
 
 	.input-title {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 12px;
 		color: var(--color-text-primary);
 	}
@@ -613,7 +613,7 @@
 		font-size: 10px;
 		color: var(--color-accent-teal);
 		margin-top: 8px;
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -623,7 +623,7 @@
 		position: absolute;
 		top: 8px;
 		right: 8px;
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 8px;
 		color: var(--color-text-dim);
 		letter-spacing: 1px;
@@ -685,7 +685,7 @@
 	}
 
 	.step-num {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 12px;
 		color: var(--color-text-dim);
 	}
@@ -746,7 +746,7 @@
 		gap: 16px;
 		font-size: 11px;
 		color: var(--color-text-dim);
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		margin-bottom: 8px;
 	}
 
@@ -778,7 +778,7 @@
 		background: var(--color-accent-cyan);
 		color: var(--color-bg-deep);
 		border: none;
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 13px;
 		letter-spacing: 1px;
 		cursor: pointer;
@@ -816,7 +816,7 @@
 	}
 
 	.result-rank {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 12px;
 		color: var(--color-text-dim);
 		width: 24px;
@@ -830,7 +830,7 @@
 		font-size: 13px;
 		color: var(--color-text-primary);
 		width: 120px;
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 	}
 
 	.result-bar-wrap {
@@ -853,7 +853,7 @@
 	}
 
 	.result-pct {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 11px;
 		color: var(--color-text-secondary);
 		width: 48px;
@@ -929,7 +929,7 @@
 	}
 
 	.explainer-num {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 18px;
 		color: var(--color-accent-cyan);
 		margin-bottom: 4px;
@@ -978,7 +978,7 @@
 	.tech-val {
 		font-size: 12px;
 		color: var(--color-text-primary);
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 	}
 
 	/* ======================================================================

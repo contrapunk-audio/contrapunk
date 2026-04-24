@@ -25,45 +25,45 @@
 
 <div class="chain-wrap">
 	<div class="chain-header-row">
-		<div class="chain-header font-pixel">Audio chain</div>
-		<button class="pixel-btn font-pixel add-plugin-btn" onclick={() => (pickerOpen = true)}>
+		<div class="chain-header font-ui">Audio chain</div>
+		<button class="pixel-btn font-ui add-plugin-btn" onclick={() => (pickerOpen = true)}>
 			+ Plugin
 		</button>
 	</div>
 
 	<!-- Signal-flow strip: dynamic based on chain state -->
 	<div class="flow">
-		<div class="flow-node source font-pixel">
+		<div class="flow-node source font-ui">
 			<div class="flow-title">Harmony</div>
 			<div class="flow-sub">MIDI</div>
 		</div>
 		{#each chainStore.blocks as b, i (i + ':' + b.typeId)}
-			<div class="flow-arrow font-pixel">━━▶</div>
+			<div class="flow-arrow font-ui">━━▶</div>
 			{#if b.typeId === 'builtin.synth'}
-				<div class="flow-node synth-node font-pixel">
+				<div class="flow-node synth-node font-ui">
 					<div class="flow-title">Synth</div>
 					<div class="flow-sub">8-voice</div>
 				</div>
 			{:else if b.typeId === 'builtin.delay'}
-				<div class="flow-node delay-node font-pixel" class:active={delay.enabled}>
+				<div class="flow-node delay-node font-ui" class:active={delay.enabled}>
 					<div class="flow-title">Delay</div>
 					<div class="flow-sub">{delay.enabled ? 'on' : 'bypass'}</div>
 				</div>
 			{:else if b.typeId === 'builtin.reverb'}
-				<div class="flow-node reverb-node font-pixel" class:active={reverb.enabled}>
+				<div class="flow-node reverb-node font-ui" class:active={reverb.enabled}>
 					<div class="flow-title">Reverb</div>
 					<div class="flow-sub">{reverb.enabled ? 'on' : 'bypass'}</div>
 				</div>
 			{:else}
 				<!-- Plugin flow node -->
-				<div class="flow-node plugin-node font-pixel" title={b.typeId}>
+				<div class="flow-node plugin-node font-ui" title={b.typeId}>
 					<div class="flow-title">{b.name}</div>
 					<div class="flow-sub">CLAP</div>
 				</div>
 			{/if}
 		{/each}
-		<div class="flow-arrow font-pixel">━━▶</div>
-		<div class="flow-node sink font-pixel">
+		<div class="flow-arrow font-ui">━━▶</div>
+		<div class="flow-node sink font-ui">
 			<div class="flow-title">Output</div>
 			<div class="flow-sub">Speakers</div>
 		</div>
@@ -72,9 +72,9 @@
 	<!-- Synth rack: Serum-inspired -->
 	<div class="rack">
 		<div class="rack-header">
-			<span class="rack-title font-pixel">Synth</span>
+			<span class="rack-title font-ui">Synth</span>
 			<button
-				class="pixel-btn power-btn font-pixel"
+				class="pixel-btn power-btn font-ui"
 				class:active={synth.enabled}
 				onclick={() => synth.setEnabled(!synth.enabled)}
 				title={synth.enabled ? 'Bypass synth' : 'Enable synth'}
@@ -86,7 +86,7 @@
 		<div class="rack-grid">
 			<!-- OSC section -->
 			<section class="rack-section osc">
-				<div class="section-label font-pixel">Osc</div>
+				<div class="section-label font-ui">Osc</div>
 				<WaveformView waveform={synth.waveform} height={60} />
 				<PixelSelect
 					options={waveformOptions}
@@ -98,7 +98,7 @@
 
 			<!-- FILTER section -->
 			<section class="rack-section filter">
-				<div class="section-label font-pixel">Filter</div>
+				<div class="section-label font-ui">Filter</div>
 				<div class="knob-row">
 					<Knob
 						label="Cutoff"
@@ -129,7 +129,7 @@
 
 			<!-- ENV section -->
 			<section class="rack-section env">
-				<div class="section-label font-pixel">Env</div>
+				<div class="section-label font-ui">Env</div>
 				<EnvelopeView
 					attackMs={synth.attackMs}
 					decayMs={synth.decayMs}
@@ -191,7 +191,7 @@
 
 			<!-- AMP section -->
 			<section class="rack-section amp">
-				<div class="section-label font-pixel">Amp</div>
+				<div class="section-label font-ui">Amp</div>
 				<div class="knob-row single">
 					<Knob
 						label="Master"
@@ -209,7 +209,7 @@
 			</section>
 		</div>
 
-		<div class="rack-footer font-pixel">
+		<div class="rack-footer font-ui">
 			Drag knobs ↕ • Shift = fine • Double-click = reset
 		</div>
 	</div>
@@ -219,9 +219,9 @@
 	<!-- Delay rack -->
 	<div class="rack delay-rack">
 		<div class="rack-header">
-			<span class="rack-title delay-title font-pixel">Delay</span>
+			<span class="rack-title delay-title font-ui">Delay</span>
 			<button
-				class="pixel-btn power-btn font-pixel"
+				class="pixel-btn power-btn font-ui"
 				class:active={delay.enabled}
 				onclick={() => delay.setEnabled(!delay.enabled)}
 				title={delay.enabled ? 'Bypass delay' : 'Enable delay'}
@@ -273,9 +273,9 @@
 	<!-- Reverb rack -->
 	<div class="rack reverb-rack">
 		<div class="rack-header">
-			<span class="rack-title reverb-title font-pixel">Reverb</span>
+			<span class="rack-title reverb-title font-ui">Reverb</span>
 			<button
-				class="pixel-btn power-btn font-pixel"
+				class="pixel-btn power-btn font-ui"
 				class:active={reverb.enabled}
 				onclick={() => reverb.setEnabled(!reverb.enabled)}
 				title={reverb.enabled ? 'Bypass reverb' : 'Enable reverb'}
@@ -330,10 +330,10 @@
 			{@const pluginId = parsePluginId(b.typeId)}
 			<div class="rack plugin-rack">
 				<div class="rack-header">
-					<span class="rack-title plugin-title font-pixel">{b.name}</span>
+					<span class="rack-title plugin-title font-ui">{b.name}</span>
 					<div class="plugin-actions">
 						<button
-							class="pixel-btn font-pixel plugin-open-btn"
+							class="pixel-btn font-ui plugin-open-btn"
 							onclick={() => pluginId !== null && chainStore.openPluginGui(pluginId)}
 							disabled={pluginId === null}
 							title={pluginId === null ? 'Plugin has no id' : 'Open plugin window'}
@@ -341,7 +341,7 @@
 							Open UI
 						</button>
 						<button
-							class="pixel-btn font-pixel plugin-remove-btn"
+							class="pixel-btn font-ui plugin-remove-btn"
 							onclick={() => chainStore.removeAt(i)}
 							title="Remove from chain"
 						>
@@ -349,14 +349,14 @@
 						</button>
 					</div>
 				</div>
-				<div class="plugin-body font-pixel">
+				<div class="plugin-body font-ui">
 					<div class="plugin-row">
 						<span class="plugin-label">Type</span>
 						<span class="plugin-value">CLAP</span>
 					</div>
 					<div class="plugin-row">
 						<span class="plugin-label">Plugin ID</span>
-						<span class="plugin-value plugin-id" title={b.typeId}>{b.typeId}</span>
+						<span class="plugin-value plugin-id font-code" title={b.typeId}>{b.typeId}</span>
 					</div>
 				</div>
 			</div>

@@ -101,7 +101,7 @@
 	}
 
 	.side-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-sm);
 		color: var(--color-text-dim);
 		text-align: center;
@@ -119,7 +119,7 @@
 	}
 
 	.vs-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		letter-spacing: 2px;

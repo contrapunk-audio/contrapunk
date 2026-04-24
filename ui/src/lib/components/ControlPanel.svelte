@@ -111,7 +111,7 @@
 
 <!-- Key dropdown + auto toggle -->
 <div class="card">
-	<div class="card-header font-pixel">
+	<div class="card-header font-ui">
 		<span>Key</span>
 		<button
 			class="pixel-btn auto-key-btn"
@@ -128,7 +128,7 @@
 <!-- Mode + Octave (side by side) -->
 <div class="row-2col">
 	<div class="card">
-		<div class="card-header font-pixel">Mode</div>
+		<div class="card-header font-ui">Mode</div>
 		<PixelSelect
 			options={modeOptions}
 			value={engine.mode}
@@ -137,7 +137,7 @@
 		/>
 	</div>
 	<div class="card">
-		<div class="card-header font-pixel">Octave</div>
+		<div class="card-header font-ui">Octave</div>
 		<PixelSelect
 			options={octaveOptions}
 			value={engine.octaveMode}
@@ -151,7 +151,7 @@
 {#if engine.mode === 'StrictCounterpoint'}
 	<div class="row-2col">
 		<div class="card">
-			<div class="card-header font-pixel">Species</div>
+			<div class="card-header font-ui">Species</div>
 			<PixelSelect
 				options={speciesOptions}
 				value={engine.counterpointSpecies}
@@ -160,7 +160,7 @@
 			/>
 		</div>
 		<div class="card">
-			<div class="card-header font-pixel">Strictness</div>
+			<div class="card-header font-ui">Strictness</div>
 			<PixelSelect
 				options={strictnessOptions}
 				value={engine.counterpointStrictness}
@@ -174,7 +174,7 @@
 <!-- Scale Family + Scale Mode in family (side by side) -->
 <div class="row-2col">
 	<div class="card">
-		<div class="card-header font-pixel">Family</div>
+		<div class="card-header font-ui">Family</div>
 		<PixelSelect
 			options={familyOptions}
 			value={currentFamily}
@@ -183,7 +183,7 @@
 		/>
 	</div>
 	<div class="card">
-		<div class="card-header font-pixel">Scale</div>
+		<div class="card-header font-ui">Scale</div>
 		<PixelSelect
 			options={scaleInFamilyOptions}
 			value={engine.scaleMode}
@@ -196,7 +196,7 @@
 <!-- Voice Count + Voice Position (side by side) -->
 <div class="row-2col">
 	<div class="card">
-		<div class="card-header font-pixel">Voices</div>
+		<div class="card-header font-ui">Voices</div>
 		<PixelSelect
 			options={voiceCountOptions}
 			value={String(engine.voiceCount)}
@@ -205,7 +205,7 @@
 		/>
 	</div>
 	<div class="card">
-		<div class="card-header font-pixel">You play</div>
+		<div class="card-header font-ui">You play</div>
 		{#if engine.voiceCount > 1}
 			<PixelSelect
 				options={voicePositionOptions}
@@ -214,7 +214,7 @@
 				onchange={onVoicePositionChange}
 			/>
 		{:else}
-			<span class="inline-note font-pixel">Solo melody</span>
+			<span class="inline-note font-ui">Solo melody</span>
 		{/if}
 	</div>
 </div>
@@ -222,7 +222,7 @@
 <!-- Voice Leading + Interchange (side by side) -->
 <div class="row-2col">
 	<div class="card">
-		<div class="card-header font-pixel">
+		<div class="card-header font-ui">
 			<span>Voice Leading</span>
 			<button
 				class="pixel-btn toggle-btn"
@@ -242,7 +242,7 @@
 		{/if}
 	</div>
 	<div class="card">
-		<div class="card-header font-pixel">
+		<div class="card-header font-ui">
 			<span>Interchange</span>
 			<button
 				class="pixel-btn toggle-btn"
@@ -254,7 +254,7 @@
 		</div>
 		{#if engine.interchangeEnabled}
 			<div class="range-row">
-				<span class="range-label font-pixel">Rng</span>
+				<span class="range-label font-ui">Rng</span>
 				<input
 					type="range"
 					min="1"
@@ -264,7 +264,7 @@
 					oninput={(e) => engine.setInterchange(true, parseInt((e.target as HTMLInputElement).value, 10))}
 					class="pixel-range"
 				/>
-				<span class="range-label font-pixel">{engine.interchangeRange}</span>
+				<span class="range-label font-code">{engine.interchangeRange}</span>
 			</div>
 		{/if}
 	</div>
@@ -272,9 +272,9 @@
 
 <!-- Detune (full width) -->
 <div class="card">
-	<div class="card-header font-pixel">Detune</div>
+	<div class="card-header font-ui">Detune</div>
 	<div class="range-row">
-		<span class="range-label font-pixel">{engine.detuneCents > 0 ? '+' : ''}{engine.detuneCents}¢</span>
+		<span class="range-label font-code">{engine.detuneCents > 0 ? '+' : ''}{engine.detuneCents}¢</span>
 		<input
 			type="range"
 			min="-100"

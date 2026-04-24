@@ -164,11 +164,11 @@
 				<circle cx={p.x} cy={p.y} r="1.2" fill="#555577" />
 			{/each}
 		</svg>
-		<div class="knob-value font-pixel" class:dragging>{displayValue(value)}</div>
+		<div class="knob-value font-code" class:dragging>{displayValue(value)}</div>
 	</div>
 
 	{#if label}
-		<div class="knob-label font-pixel">{label}</div>
+		<div class="knob-label font-ui">{label}</div>
 	{/if}
 </div>
 

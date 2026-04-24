@@ -101,19 +101,19 @@
 </script>
 
 <div class="preset-section pixel-card">
-	<div class="section-header font-pixel">PRESETS</div>
+	<div class="section-header font-ui">PRESETS</div>
 
 	{#if isLoading}
-		<div class="loading-text font-pixel">Loading...</div>
+		<div class="loading-text font-ui">Loading...</div>
 	{:else if error}
-		<div class="error-text font-pixel">{error}</div>
+		<div class="error-text font-ui">{error}</div>
 	{/if}
 
 	<!-- Preset list -->
 	<div class="preset-list">
 		{#each presets as preset}
 			<div
-				class="preset-item font-pixel"
+				class="preset-item font-ui"
 				class:preset-active={activePreset === preset.name}
 				onclick={() => handleLoadPreset(preset.name)}
 				onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') handleLoadPreset(preset.name); }}
@@ -127,7 +127,7 @@
 						<span class="builtin-badge">BUILT-IN</span>
 					{:else}
 						<button
-							class="delete-btn font-pixel"
+							class="delete-btn font-ui"
 							onclick={(e: MouseEvent) => {
 								e.stopPropagation();
 								if (confirmDelete === preset.name) {
@@ -152,7 +152,7 @@
 			<div class="save-form">
 				<input
 					type="text"
-					class="save-input font-pixel"
+					class="save-input font-ui"
 					bind:value={saveName}
 					placeholder="Preset name..."
 					onkeydown={handleSaveKeydown}

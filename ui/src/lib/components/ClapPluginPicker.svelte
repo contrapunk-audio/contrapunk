@@ -43,29 +43,29 @@
 		}}
 	></div>
 	<div class="modal" role="dialog" aria-label="CLAP plugin picker">
-		<div class="modal-header font-pixel">
+		<div class="modal-header font-ui">
 			<span>Add CLAP plugin</span>
-			<button class="pixel-btn font-pixel" onclick={() => (open = false)}>X</button>
+			<button class="pixel-btn font-ui" onclick={() => (open = false)}>X</button>
 		</div>
 		<div class="modal-body">
 			<input
-				class="search font-pixel"
+				class="search font-ui"
 				type="text"
 				placeholder="Search…"
 				bind:value={search}
 				autofocus
 			/>
 			{#if chainStore.loadingPlugins}
-				<div class="status font-pixel">Scanning…</div>
+				<div class="status font-ui">Scanning…</div>
 			{:else if chainStore.clapPlugins.length === 0}
-				<div class="status font-pixel">
+				<div class="status font-ui">
 					No .clap plugins found on disk.<br />
 					Install a CLAP plugin, then press Rescan.
 				</div>
 			{:else}
 				<div class="plugin-list">
 					{#each filtered as p (p.path)}
-						<button class="plugin-row font-pixel" onclick={() => addPlugin(p)}>
+						<button class="plugin-row font-ui" onclick={() => addPlugin(p)}>
 							<div class="plugin-name">{p.name}</div>
 							<div class="plugin-meta">
 								{p.vendor || '—'}
@@ -73,16 +73,16 @@
 									· {p.version}
 								{/if}
 							</div>
-							<div class="plugin-path">{p.path}</div>
+							<div class="plugin-path font-code">{p.path}</div>
 						</button>
 					{/each}
 				</div>
 			{/if}
 			{#if error}
-				<div class="error font-pixel">{error}</div>
+				<div class="error font-ui">{error}</div>
 			{/if}
 		</div>
-		<div class="modal-footer font-pixel">
+		<div class="modal-footer font-ui">
 			<button
 				class="pixel-btn"
 				disabled={chainStore.loadingPlugins}

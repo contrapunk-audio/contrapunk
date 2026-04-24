@@ -190,7 +190,7 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 	.label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-magenta);
 		letter-spacing: 2px;
@@ -227,7 +227,7 @@
 	.step:first-child { border-radius: 4px 0 0 4px; }
 	.step:last-child { border-radius: 0 4px 4px 0; }
 	.step-num {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 18px;
 		color: var(--color-accent-cyan);
 	}
@@ -265,7 +265,7 @@
 		background: var(--color-widget-bg);
 	}
 	.tool-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: 11px;
 	}
 	.tool-desc {
@@ -303,7 +303,7 @@
 		flex: 1;
 	}
 	.pivot-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-accent-amber, #ffaa33);
 		letter-spacing: 2px;

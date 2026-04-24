@@ -148,7 +148,7 @@
 		margin-top: 4px;
 	}
 	.time {
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		font-size: 8px;
 		color: var(--color-text-dim);
 	}

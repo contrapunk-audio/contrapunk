@@ -184,7 +184,7 @@
 	}
 
 	.spectrogram-label {
-		font-family: var(--font-pixel);
+		font-family: var(--font-ui);
 		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
 		letter-spacing: 1px;
@@ -210,7 +210,7 @@
 		font-size: 9px;
 		color: var(--color-text-dim);
 		pointer-events: none;
-		font-family: var(--font-pixel);
+		font-family: var(--font-code);
 		letter-spacing: 1px;
 	}
 
