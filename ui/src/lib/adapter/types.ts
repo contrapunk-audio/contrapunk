@@ -6,6 +6,26 @@
  */
 
 /** Represents a MIDI device (input or output). */
+/** Maximum number of voices the app exposes. Must match MAX_VOICES in
+ *  `src-tauri/src/state.rs`. */
+export const MAX_VOICES = 8;
+
+/** Per-voice output destination. Shape mirrors the Rust `VoiceOutputTarget`
+ *  enum with `#[serde(tag = "kind", rename_all = "snake_case")]` — see
+ *  `src-tauri/src/state.rs` and the `voice_output_target_json_shape_is_tagged`
+ *  test in `src-tauri/src/commands/routing.rs`.
+ *
+ *    - `use_default` — defer to global routing_mode (legacy behavior)
+ *    - `synth`       — internal synth only, skip MIDI
+ *    - `midi_port`   — specific MIDI port only, skip synth
+ *    - `off`         — voice is silent
+ */
+export type VoiceOutputTarget =
+	| { kind: 'use_default' }
+	| { kind: 'synth' }
+	| { kind: 'midi_port'; port: number }
+	| { kind: 'off' };
+
 export interface MidiDevice {
 	index: number;
 	name: string;
@@ -200,6 +220,22 @@ export interface ContrapunkAdapter {
 
 	/** Stop the currently active MIDI routing. */
 	stopRouting(): Promise<void>;
+
+	// -- Per-voice output routing --
+
+	/**
+	 * Set the output destination for a single voice by index (0..7).
+	 * Each voice can go independently to the internal synth, a specific
+	 * external MIDI port, nowhere (off), or fall back to the global
+	 * routing mode (use_default).
+	 */
+	setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void>;
+
+	/**
+	 * Get the current voice-output routing table. Array length = MAX_VOICES
+	 * (8). Each entry is the destination for that voice index.
+	 */
+	getVoiceOutputs(): Promise<VoiceOutputTarget[]>;
 
 	// -- Real-time state --
 

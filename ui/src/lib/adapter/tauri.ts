@@ -22,7 +22,8 @@ import type {
 	Preset,
 	ReverbState,
 	SynthState,
-	TransportState
+	TransportState,
+	VoiceOutputTarget
 } from './types';
 
 /**
@@ -275,6 +276,22 @@ export class TauriAdapter implements ContrapunkAdapter {
 			guitar.velocity = 0;
 		} catch (e) {
 			throw new Error(`Failed to stop routing: ${e}`);
+		}
+	}
+
+	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void> {
+		try {
+			await invoke('set_voice_output', { voiceIdx, target });
+		} catch (e) {
+			throw new Error(`Failed to set voice output: ${e}`);
+		}
+	}
+
+	async getVoiceOutputs(): Promise<VoiceOutputTarget[]> {
+		try {
+			return (await invoke('get_voice_outputs')) as VoiceOutputTarget[];
+		} catch (e) {
+			throw new Error(`Failed to get voice outputs: ${e}`);
 		}
 	}
 

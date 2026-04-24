@@ -11,5 +11,6 @@ pub mod harmony;
 pub mod midi;
 pub mod plugins;
 pub mod presets;
+pub mod routing;
 pub mod synth;
 pub mod transport;
