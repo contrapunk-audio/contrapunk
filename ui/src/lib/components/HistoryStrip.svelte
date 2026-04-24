@@ -17,9 +17,10 @@
 
 	const WINDOW = 12;
 	const W = 1040;
-	// Same aspect ratio as the Fretboard (1040 × 150). Grand staff packs
-	// tightly — no top padding, minimal gutter between treble + bass.
-	const H = 150;
+	// Slightly taller than the Fretboard so the bass stave has room to
+	// breathe at the bottom without clipping + the chord labels fit
+	// underneath. Width still matches Fretboard.
+	const H = 180;
 
 	type Kind = 'input' | 'harmony' | 'borrowed';
 	interface Entry { kind: Kind; midi: number; ts: number; }
@@ -108,9 +109,8 @@
 		renderer.resize(W, H);
 		const ctx = renderer.getContext();
 
-		// Grand staff — compact. Treble at y=0 (no top padding), bass at
-		// y=70 so the two staves fit inside the 150px strip matching the
-		// Fretboard's footprint.
+		// Grand staff — treble at y=0 (no top padding), bass at y=70,
+		// bottom margin of ~30px for chord labels.
 		const staffX = 10;
 		const staffW = W - 20;
 		const treble = new Stave(staffX, 0, staffW);
@@ -254,9 +254,9 @@
 	.staff-host {
 		width: 100%;
 		height: auto;
-		/* Aspect ratio matches the Fretboard (1040 × 150) exactly so the
-		   two components stack as visually equal siblings. */
-		aspect-ratio: 1040 / 150 !important;
+		/* Slightly taller than the Fretboard so bass stave + chord labels
+		   don't clip. Width scales with parent; height tracks proportionally. */
+		aspect-ratio: 1040 / 180 !important;
 		display: block;
 		overflow: hidden;
 	}
