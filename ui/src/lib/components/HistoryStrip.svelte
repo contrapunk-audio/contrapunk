@@ -17,9 +17,9 @@
 
 	const WINDOW = 12;
 	const W = 1040;
-	// Taller than the fretboard so the grand staff has room to breathe;
-	// the outer CSS keeps the horizontal width matched to Fretboard.
-	const H = 240;
+	// Same aspect ratio as the Fretboard (1040 × 150). Grand staff packs
+	// tightly — no top padding, minimal gutter between treble + bass.
+	const H = 150;
 
 	type Kind = 'input' | 'harmony' | 'borrowed';
 	interface Entry { kind: Kind; midi: number; ts: number; }
@@ -108,17 +108,16 @@
 		renderer.resize(W, H);
 		const ctx = renderer.getContext();
 
-		// Grand staff — treble on top, bass on bottom, both full width.
-		// Vertical layout: 20px top margin, treble stave centered in the
-		// upper half, 24px gutter, bass stave in the lower half, 20px
-		// bottom margin.
+		// Grand staff — compact. Treble at y=0 (no top padding), bass at
+		// y=70 so the two staves fit inside the 150px strip matching the
+		// Fretboard's footprint.
 		const staffX = 10;
 		const staffW = W - 20;
-		const treble = new Stave(staffX, 20, staffW);
+		const treble = new Stave(staffX, 0, staffW);
 		treble.addClef('treble');
 		treble.setContext(ctx).draw();
 
-		const bass = new Stave(staffX, 130, staffW);
+		const bass = new Stave(staffX, 70, staffW);
 		bass.addClef('bass');
 		bass.setContext(ctx).draw();
 
@@ -255,11 +254,9 @@
 	.staff-host {
 		width: 100%;
 		height: auto;
-		/* aspect-ratio locked to the SVG's native 1040 × 240 viewBox so the
-		   strip scales width-first, taking whatever vertical room it needs
-		   to keep clefs + staff lines readable. Width still matches the
-		   Fretboard; height is ~60% taller to give notation room. */
-		aspect-ratio: 1040 / 240 !important;
+		/* Aspect ratio matches the Fretboard (1040 × 150) exactly so the
+		   two components stack as visually equal siblings. */
+		aspect-ratio: 1040 / 150 !important;
 		display: block;
 		overflow: hidden;
 	}
