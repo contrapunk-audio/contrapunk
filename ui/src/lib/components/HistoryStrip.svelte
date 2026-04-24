@@ -104,17 +104,15 @@
 		bass.addClef('bass');
 		bass.setContext(ctx).draw();
 
-		// Style the clefs + staff lines to match the HLD palette
-		host.querySelectorAll('path, line, rect').forEach((el) => {
-			const fill = (el as SVGElement).getAttribute('fill');
-			if (fill && fill !== 'none') {
-				(el as SVGElement).setAttribute('fill', '#b79cea');
-			}
-			const stroke = (el as SVGElement).getAttribute('stroke');
-			if (stroke && stroke !== 'none') {
-				(el as SVGElement).setAttribute('stroke', '#b79cea');
-				(el as SVGElement).setAttribute('stroke-opacity', '0.5');
-			}
+		// Style the clefs + staff lines to match the HLD palette.
+		// VexFlow defaults to black which is invisible on our dark bg;
+		// override to a readable pale violet at full opacity.
+		host.querySelectorAll('path, line, rect, text').forEach((el) => {
+			const svgEl = el as SVGElement;
+			const fill = svgEl.getAttribute('fill');
+			if (fill !== 'none') svgEl.setAttribute('fill', '#dcd3e8');
+			const stroke = svgEl.getAttribute('stroke');
+			if (stroke && stroke !== 'none') svgEl.setAttribute('stroke', '#dcd3e8');
 		});
 
 		if (history.length === 0) return;
@@ -140,13 +138,24 @@
 		// (quarter notes = 4 per "measure"). Pad with rests where needed.
 		function renderVoice(stave: Stave, notes: StaveNote[]) {
 			if (notes.length === 0) return;
-			const voice = new Voice({
-				numBeats: Math.max(4, notes.length),
-				beatValue: 4,
-			}).setStrict(false);
+			const voice = new Voice({ numBeats: notes.length, beatValue: 4 }).setStrict(false);
 			voice.addTickables(notes);
 			new Formatter().joinVoices([voice]).format([voice], staffW - 80);
 			voice.draw(ctx, stave);
+			// After-the-fact color pass — setStyle on a note only colors the
+			// primary shape; stems + flags inherit VexFlow's default. Re-paint
+			// the note-head children so every glyph takes the right source color.
+			notes.forEach((n) => {
+				const color = (n.getStyle()?.fillStyle as string | undefined) ?? '#dcd3e8';
+				const group = (n as unknown as { attrs?: { id?: string } }).attrs?.id;
+				if (!group) return;
+				const el = host.querySelector(`#${CSS.escape(group)}`);
+				if (!el) return;
+				el.querySelectorAll('path, rect, ellipse, circle').forEach((p) => {
+					(p as SVGElement).setAttribute('fill', color);
+					(p as SVGElement).setAttribute('stroke', color);
+				});
+			});
 		}
 
 		renderVoice(treble, trebleNotes);
