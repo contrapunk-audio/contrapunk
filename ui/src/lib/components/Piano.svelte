@@ -133,61 +133,41 @@
 	}
 
 	// =========================================================
-	// Harmony / input flash on new note arrival (issue #37)
-	// Fires a brief bloom animation whenever the engine emits a new note.
+	// Harmony / input flash on new note arrival (issue #37, perf #53)
+	// Each arrival mounts one overlay element keyed by id; animationend
+	// removes it. No Set-mutation, no setTimeout-driven second update.
 	// =========================================================
 
-	// Notes currently showing the harmony-flash class.
-	let flashingHarmony = $state(new Set<number>());
-	let flashingInput = $state(new Set<number>());
+	type Flash = { id: number; midi: number; kind: 'harmony' | 'input' };
+	let flashes = $state<Flash[]>([]);
+	let nextFlashId = 0;
 
-	// Previous sets, tracked outside $effect so we diff against the last snapshot.
 	let prevHarmony: Set<number> = new Set();
 	let prevInput: Set<number> = new Set();
 
 	$effect(() => {
 		const currentHarmony = new Set(engine.harmonyNotes);
-		const newlyArrived: number[] = [];
+		const newly: Flash[] = [];
 		for (const m of currentHarmony) {
-			if (!prevHarmony.has(m)) newlyArrived.push(m);
+			if (!prevHarmony.has(m)) newly.push({ id: nextFlashId++, midi: m, kind: 'harmony' });
 		}
 		prevHarmony = currentHarmony;
-		if (newlyArrived.length === 0) return;
-
-		const next = new Set(flashingHarmony);
-		for (const m of newlyArrived) next.add(m);
-		flashingHarmony = next;
-
-		for (const m of newlyArrived) {
-			setTimeout(() => {
-				const later = new Set(flashingHarmony);
-				later.delete(m);
-				flashingHarmony = later;
-			}, 220);
-		}
+		if (newly.length) flashes = [...flashes, ...newly];
 	});
 
 	$effect(() => {
 		const currentInput = new Set(engine.inputNotes);
-		const newlyArrived: number[] = [];
+		const newly: Flash[] = [];
 		for (const m of currentInput) {
-			if (!prevInput.has(m)) newlyArrived.push(m);
+			if (!prevInput.has(m)) newly.push({ id: nextFlashId++, midi: m, kind: 'input' });
 		}
 		prevInput = currentInput;
-		if (newlyArrived.length === 0) return;
-
-		const next = new Set(flashingInput);
-		for (const m of newlyArrived) next.add(m);
-		flashingInput = next;
-
-		for (const m of newlyArrived) {
-			setTimeout(() => {
-				const later = new Set(flashingInput);
-				later.delete(m);
-				flashingInput = later;
-			}, 220);
-		}
+		if (newly.length) flashes = [...flashes, ...newly];
 	});
+
+	function removeFlash(id: number) {
+		flashes = flashes.filter((f) => f.id !== id);
+	}
 </script>
 
 <div class="piano-wrapper">
@@ -205,8 +185,6 @@
 				class="white-key"
 				class:in-scale={inScale && !active}
 				class:pressed={pressing.has(midi)}
-				class:flash-harmony={flashingHarmony.has(midi)}
-				class:flash-input={flashingInput.has(midi)}
 				data-midi={midi}
 				style:background={color || 'var(--color-text-primary)'}
 				style:box-shadow={glow}
@@ -221,6 +199,9 @@
 				{#if inScale && !active}
 					<div class="scale-overlay"></div>
 				{/if}
+				{#each flashes.filter((f) => f.midi === midi) as f (f.id)}
+					<span class="flash flash-{f.kind}" onanimationend={() => removeFlash(f.id)}></span>
+				{/each}
 				{#if active && ui.showNoteLabels}
 					<span class="key-label font-pixel" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
@@ -236,8 +217,6 @@
 				class="black-key"
 				class:in-scale={inScale && !active}
 				class:pressed={pressing.has(midi)}
-				class:flash-harmony={flashingHarmony.has(midi)}
-				class:flash-input={flashingInput.has(midi)}
 				data-midi={midi}
 				style:left="calc({getBlackKeyPosition(midi, 1)} * (100% / {NUM_WHITE_KEYS}))"
 				style:width="calc(0.6 * (100% / {NUM_WHITE_KEYS}))"
@@ -254,6 +233,9 @@
 				{#if inScale && !active}
 					<div class="scale-overlay"></div>
 				{/if}
+				{#each flashes.filter((f) => f.midi === midi) as f (f.id)}
+					<span class="flash flash-{f.kind}" onanimationend={() => removeFlash(f.id)}></span>
+				{/each}
 				{#if active && ui.showNoteLabels}
 					<span class="key-label font-pixel" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
@@ -369,26 +351,34 @@
 		100% { transform: scaleY(1);    filter: brightness(1);   }
 	}
 
-	.white-key.flash-input,
-	.black-key.flash-input {
-		animation: cp-flash-input 220ms ease-out;
+	/* Overlay elements mounted on arrival (issue #53). animationend
+	   removes them — no JS Set + setTimeout re-render cycle. */
+	.flash {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		border-radius: inherit;
+		z-index: 3;
 	}
 
-	.white-key.flash-harmony,
-	.black-key.flash-harmony {
-		animation: cp-flash-harmony 220ms ease-out;
+	.flash.flash-input {
+		animation: cp-flash-input 220ms ease-out forwards;
+	}
+
+	.flash.flash-harmony {
+		animation: cp-flash-harmony 220ms ease-out forwards;
 	}
 
 	@keyframes cp-flash-input {
-		0%   { box-shadow: 0 0 24px #4fe8c3, 0 0 48px #4fe8c3aa, 0 0 0 2px #4fe8c3; filter: brightness(1.6); }
-		50%  { box-shadow: 0 0 14px #4fe8c3, 0 0 28px #4fe8c388; filter: brightness(1.3); }
-		100% { box-shadow: 0 0 6px #4fe8c3, 0 0 14px #4fe8c366; filter: brightness(1);   }
+		0%   { box-shadow: 0 0 24px #4fe8c3, 0 0 48px #4fe8c3aa, 0 0 0 2px #4fe8c3; background: rgba(255, 255, 255, 0.35); }
+		50%  { box-shadow: 0 0 14px #4fe8c3, 0 0 28px #4fe8c388;                    background: rgba(255, 255, 255, 0.15); }
+		100% { box-shadow: 0 0 6px  #4fe8c3, 0 0 14px #4fe8c366;                    background: transparent;               }
 	}
 
 	@keyframes cp-flash-harmony {
-		0%   { box-shadow: 0 0 24px #ff2e88, 0 0 48px #ff2e88aa, 0 0 0 2px #ff2e88; filter: brightness(1.6); }
-		50%  { box-shadow: 0 0 14px #ff2e88, 0 0 28px #ff2e8888; filter: brightness(1.3); }
-		100% { box-shadow: 0 0 6px #ff2e88, 0 0 14px #ff2e8866; filter: brightness(1);   }
+		0%   { box-shadow: 0 0 24px #ff2e88, 0 0 48px #ff2e88aa, 0 0 0 2px #ff2e88; background: rgba(255, 255, 255, 0.35); }
+		50%  { box-shadow: 0 0 14px #ff2e88, 0 0 28px #ff2e8888;                    background: rgba(255, 255, 255, 0.15); }
+		100% { box-shadow: 0 0 6px  #ff2e88, 0 0 14px #ff2e8866;                    background: transparent;               }
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -396,8 +386,7 @@
 			transition: none;
 		}
 		.white-key.pressed, .black-key.pressed,
-		.white-key.flash-input, .black-key.flash-input,
-		.white-key.flash-harmony, .black-key.flash-harmony {
+		.flash {
 			animation: none;
 		}
 	}
