@@ -18,6 +18,7 @@ import type {
 import { MAX_VOICES } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { guitar } from '$lib/stores/guitar.svelte';
+import { transport } from '$lib/stores/transport.svelte';
 
 /**
  * Dynamically imported WASM module.
@@ -636,29 +637,190 @@ export class WasmAdapter implements ContrapunkAdapter {
 		return this._detuneCents;
 	}
 
-	// -- Transport (WASM stubs — browser build has no sample-accurate
-	// clock yet; AudioContext.currentTime path is a future M2.1). --
+	// -- Transport + metronome (browser implementation, issue #55) --
+	//
+	// JS-side clock + Web Audio click. Native parity isn't sample-accurate
+	// — setInterval drift over long playback isn't corrected — but it's
+	// fine for a demo metronome and matches what users expect from the
+	// /app embed on the marketing site.
+	//
+	// Click frequencies + duration match Rust's audio_clock.rs constants
+	// so native + web sound identical.
+
+	private _transport = {
+		running: false,
+		bpm: 120,
+		beatsPerBar: 4,
+		beatUnit: 4,
+		beatInBar: 0,
+		totalBeat: 0,
+		bar: 0,
+		metronomeEnabled: false
+	};
+	private _audioCtx: AudioContext | null = null;
+	private _clockTimer: ReturnType<typeof setInterval> | null = null;
+
+	private ensureAudioContext(): AudioContext | null {
+		if (this._audioCtx) return this._audioCtx;
+		try {
+			const Ctor =
+				window.AudioContext ??
+				(window as unknown as { webkitAudioContext?: typeof AudioContext })
+					.webkitAudioContext;
+			if (!Ctor) return null;
+			this._audioCtx = new Ctor();
+			return this._audioCtx;
+		} catch {
+			return null;
+		}
+	}
+
+	private playClick(downbeat: boolean) {
+		const ctx = this.ensureAudioContext();
+		if (!ctx) return;
+		// Match Rust constants: CLICK_FREQ_DOWNBEAT=900, CLICK_FREQ_OFFBEAT=600,
+		// CLICK_SECS=0.015, CLICK_GAIN=0.30 (audio_clock.rs).
+		const freq = downbeat ? 900 : 600;
+		const dur = 0.015;
+		const now = ctx.currentTime;
+		const osc = ctx.createOscillator();
+		const gain = ctx.createGain();
+		osc.type = 'sine';
+		osc.frequency.value = freq;
+		// Fast attack + exponential decay over CLICK_SECS.
+		gain.gain.setValueAtTime(0, now);
+		gain.gain.linearRampToValueAtTime(0.3, now + 0.001);
+		gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+		osc.connect(gain).connect(ctx.destination);
+		osc.start(now);
+		osc.stop(now + dur + 0.005);
+	}
+
+	private tick() {
+		// Increment counters first so beat 0 fires at start.
+		const t = this._transport;
+		// Notify the store + render the pip / label first, then synthesize
+		// the click. Order doesn't strictly matter for ear-correctness
+		// since the click is short, but doing the UI update first means
+		// visual + audio land together on the same frame.
+		transport.applyBeatUpdate({
+			totalBeat: t.totalBeat,
+			beatInBar: t.beatInBar,
+			bar: t.bar,
+			bpm: t.bpm,
+			running: t.running
+		});
+		if (t.metronomeEnabled) {
+			this.playClick(t.beatInBar === 0);
+		}
+		// Advance.
+		t.totalBeat += 1;
+		t.beatInBar += 1;
+		if (t.beatInBar >= t.beatsPerBar) {
+			t.beatInBar = 0;
+			t.bar += 1;
+		}
+	}
+
+	private startClock() {
+		this.stopClock();
+		const intervalMs = 60_000 / this._transport.bpm;
+		this._clockTimer = setInterval(() => this.tick(), intervalMs);
+		// Fire one beat immediately so the UI shows a pip on the first
+		// beat without waiting for the interval to elapse.
+		this.tick();
+	}
+
+	private stopClock() {
+		if (this._clockTimer !== null) {
+			clearInterval(this._clockTimer);
+			this._clockTimer = null;
+		}
+	}
 
 	async getTransportState(): Promise<TransportState> {
 		return {
-			running: false,
-			bpm: 120,
-			beatsPerBar: 4,
-			beatUnit: 4,
+			running: this._transport.running,
+			bpm: this._transport.bpm,
+			beatsPerBar: this._transport.beatsPerBar,
+			beatUnit: this._transport.beatUnit,
 			sampleRate: 48_000,
 			samplePos: 0,
 			beatPosition: 0,
-			bar: 0,
-			metronomeEnabled: false
+			bar: this._transport.bar,
+			metronomeEnabled: this._transport.metronomeEnabled
 		};
 	}
 
-	async transportPlay(): Promise<void> {}
-	async transportStop(): Promise<void> {}
-	async transportReset(): Promise<void> {}
-	async setBpm(_bpm: number): Promise<void> {}
-	async setTimeSignature(_beatsPerBar: number, _beatUnit: number): Promise<void> {}
-	async setMetronomeEnabled(_enabled: boolean): Promise<void> {}
+	async transportPlay(): Promise<void> {
+		if (this._transport.running) return;
+		// User gesture is implicit — play() is called from a button click,
+		// which satisfies the browser autoplay policy.
+		this.ensureAudioContext();
+		const ctx = this._audioCtx;
+		if (ctx && ctx.state === 'suspended') {
+			try {
+				await ctx.resume();
+			} catch {
+				// suspended → resume can fail if not in a user-gesture
+			}
+		}
+		this._transport.running = true;
+		this._transport.beatInBar = 0;
+		this._transport.totalBeat = 0;
+		this._transport.bar = 0;
+		this.startClock();
+	}
+
+	async transportStop(): Promise<void> {
+		this._transport.running = false;
+		this.stopClock();
+		// Push a final state update so pips drop the active state.
+		transport.applyBeatUpdate({
+			totalBeat: this._transport.totalBeat,
+			beatInBar: this._transport.beatInBar,
+			bar: this._transport.bar,
+			bpm: this._transport.bpm,
+			running: false
+		});
+	}
+
+	async transportReset(): Promise<void> {
+		this._transport.beatInBar = 0;
+		this._transport.totalBeat = 0;
+		this._transport.bar = 0;
+		transport.applyBeatUpdate({
+			totalBeat: 0,
+			beatInBar: 0,
+			bar: 0,
+			bpm: this._transport.bpm,
+			running: this._transport.running
+		});
+	}
+
+	async setBpm(bpm: number): Promise<void> {
+		const clamped = Math.max(20, Math.min(400, bpm));
+		this._transport.bpm = clamped;
+		// If the clock is running, restart it so the new interval takes
+		// effect on the next tick.
+		if (this._transport.running) {
+			this.startClock();
+		}
+	}
+
+	async setTimeSignature(beatsPerBar: number, beatUnit: number): Promise<void> {
+		this._transport.beatsPerBar = Math.max(1, Math.min(16, beatsPerBar));
+		this._transport.beatUnit = beatUnit;
+		// Reset beatInBar so we don't desync the pip animation.
+		this._transport.beatInBar = 0;
+	}
+
+	async setMetronomeEnabled(enabled: boolean): Promise<void> {
+		this._transport.metronomeEnabled = enabled;
+		// If user enables the click without first hitting Play, we still
+		// need an AudioContext primed so the next tick can fire a click.
+		if (enabled) this.ensureAudioContext();
+	}
 
 	// -- Synth (no built-in synth in browser; stubs) --
 
