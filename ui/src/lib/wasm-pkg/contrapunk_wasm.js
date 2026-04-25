@@ -12,22 +12,6 @@ export class Engine {
         wasm.__wbg_engine_free(ptr, 0);
     }
     /**
-     * Current beat-phase position within the bar (for UI beat indicator).
-     * @returns {number}
-     */
-    beat_position() {
-        const ret = wasm.engine_beat_position(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * Current tempo in BPM.
-     * @returns {number}
-     */
-    bpm() {
-        const ret = wasm.engine_bpm(this.__wbg_ptr);
-        return ret;
-    }
-    /**
      * Clear tracked note state (call after config changes that invalidate active harmonies).
      */
     clear_notes() {
@@ -50,7 +34,7 @@ export class Engine {
             return getStringFromWasm0(r0, r1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
+            wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -68,25 +52,6 @@ export class Engine {
             if (r1) {
                 throw takeObject(r0);
             }
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Full humanize configuration as a JS object (for UI round-tripping).
-     * @returns {any}
-     */
-    get_humanize_config() {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.engine_get_humanize_config(retptr, this.__wbg_ptr);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            return takeObject(r0);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
@@ -130,48 +95,6 @@ export class Engine {
         }
     }
     /**
-     * Get all current suggestion weights as a JSON object.
-     * @returns {any}
-     */
-    get_suggestion_weights() {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.engine_get_suggestion_weights(retptr, this.__wbg_ptr);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            return takeObject(r0);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Compute ranked note suggestions based on current engine state.
-     *
-     * Returns a JSON-serialized array of `{note: u8, score: f32}` objects,
-     * limited to the top 12 suggestions. This is a visual overlay -- the
-     * suggestions are never played audibly.
-     * @returns {any}
-     */
-    get_suggestions() {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.engine_get_suggestions(retptr, this.__wbg_ptr);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            return takeObject(r0);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
      * Harmonize a single MIDI note number.
      * Returns a JS array of MIDI note numbers (u8).
      * @param {number} note
@@ -189,87 +112,11 @@ export class Engine {
                 throw takeObject(r2);
             }
             var v1 = getArrayU8FromWasm0(r0, r1).slice();
-            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            wasm.__wbindgen_export3(r0, r1 * 1, 1);
             return v1;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
-    }
-    /**
-     * Process a MIDI Note-Off with humanization applied to harmony voices.
-     *
-     * See [`humanized_note_on`] for the result shape. Note-Off timings
-     * mirror the Note-On humanization record (so a swung 8th note stays
-     * swung on release).
-     * @param {number} note
-     * @returns {any}
-     */
-    humanized_note_off(note) {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.engine_humanized_note_off(retptr, this.__wbg_ptr, note);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            return takeObject(r0);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Process a MIDI Note-On with humanization applied to harmony voices.
-     *
-     * The melody note (voice 0) is always returned with zero delay so the
-     * player hears their input in realtime. Harmony notes (voice 1+) pass
-     * through the humanizer: they get random velocity/jitter/swing, and
-     * any note with a non-zero delay is pushed into the internal delay
-     * queue to be released on a later `tick()`.
-     *
-     * Returns a JS object shaped like:
-     * ```ignore
-     * {
-     *   immediate: [{ port, bytes }, ...],   // send this frame
-     *   deferred_count: number,              // queued for later tick()s
-     *   input_note: u8,
-     * }
-     * ```
-     * @param {number} note
-     * @param {number} velocity
-     * @returns {any}
-     */
-    humanized_note_on(note, velocity) {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.engine_humanized_note_on(retptr, this.__wbg_ptr, note, velocity);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            return takeObject(r0);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Whether humanization is currently enabled (master flag).
-     * @returns {boolean}
-     */
-    is_humanize_enabled() {
-        const ret = wasm.engine_is_humanize_enabled(this.__wbg_ptr);
-        return ret !== 0;
-    }
-    /**
-     * Whether the metronome click is currently enabled.
-     * @returns {boolean}
-     */
-    is_metronome_enabled() {
-        const ret = wasm.engine_is_metronome_enabled(this.__wbg_ptr);
-        return ret !== 0;
     }
     /**
      * List all available presets (builtins + custom).
@@ -336,7 +183,7 @@ export class Engine {
                 throw takeObject(r2);
             }
             var v1 = getArrayU8FromWasm0(r0, r1).slice();
-            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            wasm.__wbindgen_export3(r0, r1 * 1, 1);
             return v1;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
@@ -360,17 +207,11 @@ export class Engine {
                 throw takeObject(r2);
             }
             var v1 = getArrayU8FromWasm0(r0, r1).slice();
-            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            wasm.__wbindgen_export3(r0, r1 * 1, 1);
             return v1;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
-    }
-    /**
-     * Reset suggestion weights to Bach chorale calibrated defaults.
-     */
-    reset_suggestion_weights() {
-        wasm.engine_reset_suggestion_weights(this.__wbg_ptr);
     }
     /**
      * Save current engine settings as a custom preset.
@@ -409,14 +250,6 @@ export class Engine {
         }
     }
     /**
-     * Set the tempo in BPM. Updates the beat clock without resetting
-     * beat position (so the metronome doesn't stutter on tempo changes).
-     * @param {number} bpm
-     */
-    set_bpm(bpm) {
-        wasm.engine_set_bpm(this.__wbg_ptr, bpm);
-    }
-    /**
      * Set the counterpoint beat-phase position within the bar
      * (`0.0 .. beats_per_bar`). Pass `None` (via JS `undefined`/`null` from
      * the optional setter) to disable beat awareness and fall back to
@@ -430,9 +263,8 @@ export class Engine {
      * Set the counterpoint species (`"Species1"` through `"Species4"`).
      *
      * Only active when the harmony mode is `StrictCounterpoint`. Species 2-4
-     * require a beat-phase clock; since the WASM build has no internal
-     * metronome, these species currently behave like Species 1 unless the
-     * host explicitly calls `set_counterpoint_beat_phase` each frame.
+     * require beat-phase input via `set_counterpoint_beat_phase`; without
+     * it they fall back to Species 1 behavior.
      * @param {string} species
      */
     set_counterpoint_species(species) {
@@ -470,50 +302,6 @@ export class Engine {
         }
     }
     /**
-     * Enable/disable duration extension on harmony Note-Offs.
-     * @param {boolean} enabled
-     */
-    set_duration_enabled(enabled) {
-        wasm.engine_set_duration_enabled(this.__wbg_ptr, enabled);
-    }
-    /**
-     * Set the max duration extension in ms (applied to Note-Off timing).
-     * @param {number} ms
-     */
-    set_duration_variation(ms) {
-        wasm.engine_set_duration_variation(this.__wbg_ptr, ms);
-    }
-    /**
-     * Bulk-update the humanize configuration from a JS object.
-     *
-     * Accepts the same snake_case shape as `get_humanize_config` returns.
-     * Fields omitted fall back to their current values.
-     * @param {any} config
-     */
-    set_humanize_config(config) {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.engine_set_humanize_config(retptr, this.__wbg_ptr, addHeapObject(config));
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            if (r1) {
-                throw takeObject(r0);
-            }
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Master toggle for all humanization effects.
-     *
-     * When `false`, Note-On/Note-Off pass through unchanged even if
-     * swing/jitter/velocity-variation sub-toggles are on.
-     * @param {boolean} enabled
-     */
-    set_humanize_enabled(enabled) {
-        wasm.engine_set_humanize_enabled(this.__wbg_ptr, enabled);
-    }
-    /**
      * Configure modal interchange (enabled flag + borrowing range 1-5).
      * @param {boolean} enabled
      * @param {number} range
@@ -530,13 +318,6 @@ export class Engine {
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
-    }
-    /**
-     * Enable/disable timing jitter on harmony notes.
-     * @param {boolean} enabled
-     */
-    set_jitter_enabled(enabled) {
-        wasm.engine_set_jitter_enabled(this.__wbg_ptr, enabled);
     }
     /**
      * Set the musical key (e.g. "C", "Db", "F#").
@@ -556,13 +337,6 @@ export class Engine {
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
-    }
-    /**
-     * Enable/disable the metronome click track.
-     * @param {boolean} enabled
-     */
-    set_metronome_enabled(enabled) {
-        wasm.engine_set_metronome_enabled(this.__wbg_ptr, enabled);
     }
     /**
      * Set the harmony mode (e.g. "PassThrough", "DiatonicThirds").
@@ -622,74 +396,6 @@ export class Engine {
         }
     }
     /**
-     * Set a single suggestion weight by term name.
-     *
-     * Valid term names: chord_tone, scale_tone, dissonance, proximity,
-     * contour, leap_recovery, repetition, next_chord_prep, leading_tone,
-     * narmour, tessitura.
-     * @param {string} term
-     * @param {number} value
-     */
-    set_suggestion_weight(term, value) {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            const ptr0 = passStringToWasm0(term, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-            const len0 = WASM_VECTOR_LEN;
-            wasm.engine_set_suggestion_weight(retptr, this.__wbg_ptr, ptr0, len0, value);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            if (r1) {
-                throw takeObject(r0);
-            }
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Set the swing amount. 0.0 = straight, 0.3 = light, 0.5 = jazz.
-     * @param {number} amount
-     */
-    set_swing(amount) {
-        wasm.engine_set_swing(this.__wbg_ptr, amount);
-    }
-    /**
-     * Enable/disable swing feel on off-beats.
-     * @param {boolean} enabled
-     */
-    set_swing_enabled(enabled) {
-        wasm.engine_set_swing_enabled(this.__wbg_ptr, enabled);
-    }
-    /**
-     * Set the time signature (e.g. 4, 4 for 4/4 time).
-     * @param {number} beats_per_bar
-     * @param {number} beat_unit
-     */
-    set_time_signature(beats_per_bar, beat_unit) {
-        wasm.engine_set_time_signature(this.__wbg_ptr, beats_per_bar, beat_unit);
-    }
-    /**
-     * Set the upper bound for per-note timing jitter (milliseconds).
-     * The lower bound tracks 1ms or `max.min(1)` whichever is smaller.
-     * @param {number} max_ms
-     */
-    set_timing_jitter(max_ms) {
-        wasm.engine_set_timing_jitter(this.__wbg_ptr, max_ms);
-    }
-    /**
-     * Enable/disable random velocity variation on harmony notes.
-     * @param {boolean} enabled
-     */
-    set_velocity_enabled(enabled) {
-        wasm.engine_set_velocity_enabled(this.__wbg_ptr, enabled);
-    }
-    /**
-     * Set the +/- range for random velocity jitter (0..127 scale).
-     * @param {number} variation
-     */
-    set_velocity_jitter(variation) {
-        wasm.engine_set_velocity_jitter(this.__wbg_ptr, variation);
-    }
-    /**
      * Set the number of output voices (1 = melody only, 2+ = melody + harmonies).
      * @param {number} count
      */
@@ -739,46 +445,6 @@ export class Engine {
             if (r1) {
                 throw takeObject(r0);
             }
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Drive the beat clock + metronome + humanize delay queue forward.
-     *
-     * Must be called on every animation frame with `performance.now()`.
-     * Returns a JSON-serializable object describing what happened this
-     * frame: beat position, any metronome click bytes, and any delayed
-     * humanized notes that are now due to be sent.
-     *
-     * The returned object shape (`TickResultJs`) is:
-     * ```ignore
-     * {
-     *   beat_position: f64,
-     *   beat_number: u8,
-     *   beat_crossed: u8 | null,
-     *   metronome_on: u8[] | null,
-     *   metronome_off: u8[] | null,
-     *   scheduled_notes: [{ port: number, bytes: u8[] }, ...],
-     *   humanize_enabled: bool,
-     *   running: bool,
-     *   bpm: f64,
-     * }
-     * ```
-     * @param {number} now_ms
-     * @returns {any}
-     */
-    tick(now_ms) {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.engine_tick(retptr, this.__wbg_ptr, now_ms);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            return takeObject(r0);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
@@ -837,7 +503,7 @@ export class WasmGuitarInput {
             return getStringFromWasm0(r0, r1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export4(deferred2_0, deferred2_1, 1);
+            wasm.__wbindgen_export3(deferred2_0, deferred2_1, 1);
         }
     }
     /**
@@ -914,7 +580,7 @@ export function midi_to_name(midi) {
         return getStringFromWasm0(r0, r1);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
+        wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
     }
 }
 
@@ -925,10 +591,6 @@ function __wbg_get_imports() {
             const ret = Error(getStringFromWasm0(arg0, arg1));
             return addHeapObject(ret);
         },
-        __wbg_Number_04624de7d0e8332d: function(arg0) {
-            const ret = Number(getObject(arg0));
-            return ret;
-        },
         __wbg_String_8f0eb39a4a4c2f66: function(arg0, arg1) {
             const ret = String(getObject(arg1));
             const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_export, wasm.__wbindgen_export2);
@@ -936,85 +598,8 @@ function __wbg_get_imports() {
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
-        __wbg___wbindgen_bigint_get_as_i64_8fcf4ce7f1ca72a2: function(arg0, arg1) {
-            const v = getObject(arg1);
-            const ret = typeof(v) === 'bigint' ? v : undefined;
-            getDataViewMemory0().setBigInt64(arg0 + 8 * 1, isLikeNone(ret) ? BigInt(0) : ret, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
-        },
-        __wbg___wbindgen_boolean_get_bbbb1c18aa2f5e25: function(arg0) {
-            const v = getObject(arg0);
-            const ret = typeof(v) === 'boolean' ? v : undefined;
-            return isLikeNone(ret) ? 0xFFFFFF : ret ? 1 : 0;
-        },
-        __wbg___wbindgen_debug_string_0bc8482c6e3508ae: function(arg0, arg1) {
-            const ret = debugString(getObject(arg1));
-            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-            const len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg___wbindgen_in_47fa6863be6f2f25: function(arg0, arg1) {
-            const ret = getObject(arg0) in getObject(arg1);
-            return ret;
-        },
-        __wbg___wbindgen_is_bigint_31b12575b56f32fc: function(arg0) {
-            const ret = typeof(getObject(arg0)) === 'bigint';
-            return ret;
-        },
-        __wbg___wbindgen_is_function_0095a73b8b156f76: function(arg0) {
-            const ret = typeof(getObject(arg0)) === 'function';
-            return ret;
-        },
-        __wbg___wbindgen_is_object_5ae8e5880f2c1fbd: function(arg0) {
-            const val = getObject(arg0);
-            const ret = typeof(val) === 'object' && val !== null;
-            return ret;
-        },
-        __wbg___wbindgen_is_string_cd444516edc5b180: function(arg0) {
-            const ret = typeof(getObject(arg0)) === 'string';
-            return ret;
-        },
-        __wbg___wbindgen_is_undefined_9e4d92534c42d778: function(arg0) {
-            const ret = getObject(arg0) === undefined;
-            return ret;
-        },
-        __wbg___wbindgen_jsval_eq_11888390b0186270: function(arg0, arg1) {
-            const ret = getObject(arg0) === getObject(arg1);
-            return ret;
-        },
-        __wbg___wbindgen_jsval_loose_eq_9dd77d8cd6671811: function(arg0, arg1) {
-            const ret = getObject(arg0) == getObject(arg1);
-            return ret;
-        },
-        __wbg___wbindgen_number_get_8ff4255516ccad3e: function(arg0, arg1) {
-            const obj = getObject(arg1);
-            const ret = typeof(obj) === 'number' ? obj : undefined;
-            getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
-        },
-        __wbg___wbindgen_string_get_72fb696202c56729: function(arg0, arg1) {
-            const obj = getObject(arg1);
-            const ret = typeof(obj) === 'string' ? obj : undefined;
-            var ptr1 = isLikeNone(ret) ? 0 : passStringToWasm0(ret, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-            var len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
         __wbg___wbindgen_throw_be289d5034ed271b: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
-        },
-        __wbg_call_389efe28435a9388: function() { return handleError(function (arg0, arg1) {
-            const ret = getObject(arg0).call(getObject(arg1));
-            return addHeapObject(ret);
-        }, arguments); },
-        __wbg_call_4708e0c13bdc8e95: function() { return handleError(function (arg0, arg1, arg2) {
-            const ret = getObject(arg0).call(getObject(arg1), getObject(arg2));
-            return addHeapObject(ret);
-        }, arguments); },
-        __wbg_crypto_86f2631e91b51511: function(arg0) {
-            const ret = getObject(arg0).crypto;
-            return addHeapObject(ret);
         },
         __wbg_error_7534b8e9a36f1ab4: function(arg0, arg1) {
             let deferred0_0;
@@ -1024,50 +609,14 @@ function __wbg_get_imports() {
                 deferred0_1 = arg1;
                 console.error(getStringFromWasm0(arg0, arg1));
             } finally {
-                wasm.__wbindgen_export4(deferred0_0, deferred0_1, 1);
+                wasm.__wbindgen_export3(deferred0_0, deferred0_1, 1);
             }
         },
-        __wbg_getRandomValues_b3f15fcbfabb0f8b: function() { return handleError(function (arg0, arg1) {
-            getObject(arg0).getRandomValues(getObject(arg1));
+        __wbg_getRandomValues_e9de607763a970bd: function() { return handleError(function (arg0, arg1) {
+            globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
         }, arguments); },
-        __wbg_get_with_ref_key_1dc361bd10053bfe: function(arg0, arg1) {
-            const ret = getObject(arg0)[getObject(arg1)];
-            return addHeapObject(ret);
-        },
-        __wbg_instanceof_ArrayBuffer_c367199e2fa2aa04: function(arg0) {
-            let result;
-            try {
-                result = getObject(arg0) instanceof ArrayBuffer;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_instanceof_Uint8Array_9b9075935c74707c: function(arg0) {
-            let result;
-            try {
-                result = getObject(arg0) instanceof Uint8Array;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_isSafeInteger_bfbc7332a9768d2a: function(arg0) {
-            const ret = Number.isSafeInteger(getObject(arg0));
-            return ret;
-        },
-        __wbg_length_32ed9a279acd054c: function(arg0) {
-            const ret = getObject(arg0).length;
-            return ret;
-        },
         __wbg_log_6b5ca2e6124b2808: function(arg0) {
             console.log(getObject(arg0));
-        },
-        __wbg_msCrypto_d562bbe83e0d4b91: function(arg0) {
-            const ret = getObject(arg0).msCrypto;
-            return addHeapObject(ret);
         },
         __wbg_new_361308b2356cecd0: function() {
             const ret = new Object();
@@ -1081,36 +630,6 @@ function __wbg_get_imports() {
             const ret = new Error();
             return addHeapObject(ret);
         },
-        __wbg_new_dd2b680c8bf6ae29: function(arg0) {
-            const ret = new Uint8Array(getObject(arg0));
-            return addHeapObject(ret);
-        },
-        __wbg_new_no_args_1c7c842f08d00ebb: function(arg0, arg1) {
-            const ret = new Function(getStringFromWasm0(arg0, arg1));
-            return addHeapObject(ret);
-        },
-        __wbg_new_with_length_a2c39cbe88fd8ff1: function(arg0) {
-            const ret = new Uint8Array(arg0 >>> 0);
-            return addHeapObject(ret);
-        },
-        __wbg_node_e1f24f89a7336c2e: function(arg0) {
-            const ret = getObject(arg0).node;
-            return addHeapObject(ret);
-        },
-        __wbg_process_3975fd6c72f520aa: function(arg0) {
-            const ret = getObject(arg0).process;
-            return addHeapObject(ret);
-        },
-        __wbg_prototypesetcall_bdcdcc5842e4d77d: function(arg0, arg1, arg2) {
-            Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), getObject(arg2));
-        },
-        __wbg_randomFillSync_f8c153b79f285817: function() { return handleError(function (arg0, arg1) {
-            getObject(arg0).randomFillSync(takeObject(arg1));
-        }, arguments); },
-        __wbg_require_b74f47fc2d022fd6: function() { return handleError(function () {
-            const ret = module.require;
-            return addHeapObject(ret);
-        }, arguments); },
         __wbg_set_3f1d0b984ed272ed: function(arg0, arg1, arg2) {
             getObject(arg0)[takeObject(arg1)] = takeObject(arg2);
         },
@@ -1124,46 +643,17 @@ function __wbg_get_imports() {
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
-        __wbg_static_accessor_GLOBAL_12837167ad935116: function() {
-            const ret = typeof global === 'undefined' ? null : global;
-            return isLikeNone(ret) ? 0 : addHeapObject(ret);
-        },
-        __wbg_static_accessor_GLOBAL_THIS_e628e89ab3b1c95f: function() {
-            const ret = typeof globalThis === 'undefined' ? null : globalThis;
-            return isLikeNone(ret) ? 0 : addHeapObject(ret);
-        },
-        __wbg_static_accessor_SELF_a621d3dfbb60d0ce: function() {
-            const ret = typeof self === 'undefined' ? null : self;
-            return isLikeNone(ret) ? 0 : addHeapObject(ret);
-        },
-        __wbg_static_accessor_WINDOW_f8727f0cf888e0bd: function() {
-            const ret = typeof window === 'undefined' ? null : window;
-            return isLikeNone(ret) ? 0 : addHeapObject(ret);
-        },
-        __wbg_subarray_a96e1fef17ed23cb: function(arg0, arg1, arg2) {
-            const ret = getObject(arg0).subarray(arg1 >>> 0, arg2 >>> 0);
-            return addHeapObject(ret);
-        },
-        __wbg_versions_4e31226f5e8dc909: function(arg0) {
-            const ret = getObject(arg0).versions;
-            return addHeapObject(ret);
-        },
         __wbindgen_cast_0000000000000001: function(arg0) {
             // Cast intrinsic for `F64 -> Externref`.
             const ret = arg0;
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Ref(Slice(U8)) -> NamedExternref("Uint8Array")`.
-            const ret = getArrayU8FromWasm0(arg0, arg1);
-            return addHeapObject(ret);
-        },
-        __wbindgen_cast_0000000000000003: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return addHeapObject(ret);
         },
-        __wbindgen_cast_0000000000000004: function(arg0) {
+        __wbindgen_cast_0000000000000003: function(arg0) {
             // Cast intrinsic for `U64 -> Externref`.
             const ret = BigInt.asUintN(64, arg0);
             return addHeapObject(ret);
@@ -1196,71 +686,6 @@ function addHeapObject(obj) {
 
     heap[idx] = obj;
     return idx;
-}
-
-function debugString(val) {
-    // primitive types
-    const type = typeof val;
-    if (type == 'number' || type == 'boolean' || val == null) {
-        return  `${val}`;
-    }
-    if (type == 'string') {
-        return `"${val}"`;
-    }
-    if (type == 'symbol') {
-        const description = val.description;
-        if (description == null) {
-            return 'Symbol';
-        } else {
-            return `Symbol(${description})`;
-        }
-    }
-    if (type == 'function') {
-        const name = val.name;
-        if (typeof name == 'string' && name.length > 0) {
-            return `Function(${name})`;
-        } else {
-            return 'Function';
-        }
-    }
-    // objects
-    if (Array.isArray(val)) {
-        const length = val.length;
-        let debug = '[';
-        if (length > 0) {
-            debug += debugString(val[0]);
-        }
-        for(let i = 1; i < length; i++) {
-            debug += ', ' + debugString(val[i]);
-        }
-        debug += ']';
-        return debug;
-    }
-    // Test for built-in
-    const builtInMatches = /\[object ([^\]]+)\]/.exec(toString.call(val));
-    let className;
-    if (builtInMatches && builtInMatches.length > 1) {
-        className = builtInMatches[1];
-    } else {
-        // Failed to match the standard '[object ClassName]'
-        return toString.call(val);
-    }
-    if (className == 'Object') {
-        // we're a user defined class or Object
-        // JSON.stringify avoids problems with cycles, and is generally much
-        // easier than looping through ownProperties of `val`.
-        try {
-            return 'Object(' + JSON.stringify(val) + ')';
-        } catch (_) {
-            return 'Object';
-        }
-    }
-    // errors
-    if (val instanceof Error) {
-        return `${val.name}: ${val.message}\n${val.stack}`;
-    }
-    // TODO we could test for more things here, like `Set`s and `Map`s.
-    return className;
 }
 
 function dropObject(idx) {
@@ -1309,7 +734,7 @@ function handleError(f, args) {
     try {
         return f.apply(this, args);
     } catch (e) {
-        wasm.__wbindgen_export3(addHeapObject(e));
+        wasm.__wbindgen_export4(addHeapObject(e));
     }
 }
 
