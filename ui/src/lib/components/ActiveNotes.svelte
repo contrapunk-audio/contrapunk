@@ -21,86 +21,100 @@
 	let hasHarmony = $derived(engine.harmonyNotes.length > 0);
 </script>
 
-<!-- Horizontal strip: header + chord + input + harmony on one row.
-     Sized to slot directly above the piano area so the active pitches
-     are right next to the keys lighting up. -->
+<!-- Three-column horizontal strip: INPUT notes left, chord name
+     prominent in the middle, HARMONY notes right. The chord is the
+     visual centerpiece — it's what the engine produces, the per-voice
+     pitches are supporting detail. -->
 <div class="strip">
-	<span class="strip-header font-ui">NOTES</span>
-
-	{#if engine.chordName}
-		<span class="chord-name font-code">{engine.chordName}</span>
-	{/if}
-
-	{#if engine.lastBorrowedFrom}
-		<span class="borrowed-from font-code">from {engine.lastBorrowedFrom}</span>
-	{/if}
-
-	<span class="divider" aria-hidden="true">·</span>
-
-	<span class="note-section">
+	<div class="side input-side">
 		<span class="section-label font-ui">INPUT</span>
 		{#if hasInput}
 			<span class="note-list input-notes font-code">{inputNames.join(' ')}</span>
 		{:else}
 			<span class="note-none font-code">—</span>
 		{/if}
-	</span>
+	</div>
 
-	<span class="divider" aria-hidden="true">·</span>
+	<div class="middle">
+		{#if engine.chordName}
+			<span class="chord-name font-code">{engine.chordName}</span>
+		{:else}
+			<span class="chord-name dim font-code">—</span>
+		{/if}
+		{#if engine.lastBorrowedFrom}
+			<span class="borrowed-from font-code">from {engine.lastBorrowedFrom}</span>
+		{/if}
+	</div>
 
-	<span class="note-section">
+	<div class="side harmony-side">
 		<span class="section-label font-ui">HARMONY</span>
 		{#if hasHarmony}
 			<span class="note-list harmony-notes font-code">{harmonyNames.join(' ')}</span>
 		{:else}
 			<span class="note-none font-code">—</span>
 		{/if}
-	</span>
+	</div>
 </div>
 
 <style>
 	.strip {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		align-items: center;
 		gap: 12px;
 		font-size: var(--font-size-xs);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
 
-	.strip-header {
-		color: var(--color-accent-gold);
-		letter-spacing: 2px;
+	.side {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		min-width: 0;
+	}
+	.input-side {
+		justify-content: flex-start;
+	}
+	.harmony-side {
+		justify-content: flex-end;
 	}
 
-	.divider {
-		color: var(--color-text-dim);
+	.middle {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
 	}
 
 	.chord-name {
 		color: var(--color-accent-cyan);
-		font-size: var(--font-size-sm);
-		text-shadow: 0 0 6px rgba(51, 221, 255, 0.5);
+		font-size: var(--font-size-lg);
+		font-weight: 600;
+		letter-spacing: 1px;
+		text-shadow: 0 0 8px rgba(51, 221, 255, 0.55), 0 0 18px rgba(51, 221, 255, 0.25);
+	}
+	.chord-name.dim {
+		color: var(--color-text-dim);
+		text-shadow: none;
 	}
 
 	.borrowed-from {
 		color: var(--color-piano-borrowed);
-	}
-
-	.note-section {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 6px;
+		font-size: var(--font-size-xs);
 	}
 
 	.section-label {
 		color: var(--color-text-dim);
 		letter-spacing: 1px;
+		flex-shrink: 0;
 	}
 
 	.note-list {
 		letter-spacing: 0.5px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.input-notes {
