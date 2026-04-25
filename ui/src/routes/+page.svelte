@@ -4,7 +4,8 @@
 	import Piano from '$lib/components/Piano.svelte';
 	import MidiDevices from '$lib/components/MidiDevices.svelte';
 	import GuitarInputPanel from '$lib/components/GuitarInputPanel.svelte';
-	import PresetManager from '$lib/components/PresetManager.svelte';
+	// PresetManager temporarily unmounted (backend + component file
+	// kept). Tracked in contrapunk#65 — will return with a redesigned UX.
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import Fretboard from '$lib/components/Fretboard.svelte';
 	import HistoryStrip from '$lib/components/HistoryStrip.svelte';
@@ -205,14 +206,14 @@
 				     out to a strip directly above the piano so it sits
 				     visually next to the keyboards it describes). -->
 				<div class="content-area two-col">
-					<!-- Left column: MIDI devices + Guitar Input + Presets -->
+					<!-- Left column: MIDI devices + Guitar Input
+					     (PresetManager temporarily unmounted — see contrapunk#65) -->
 					<div class="column column-left">
 						<MidiDevices>
 							{#if isGuitarAudioSelected}
 								<GuitarInputPanel />
 							{/if}
 						</MidiDevices>
-						<PresetManager />
 					</div>
 
 					<!-- Right column: Harmony controls (now spans the
