@@ -24,7 +24,23 @@ function loadVoiceOutputs(): VoiceOutputTarget[] | null {
 		if (!raw) return null;
 		const parsed = JSON.parse(raw);
 		if (!Array.isArray(parsed)) return null;
-		return parsed.slice(0, MAX_VOICES);
+		// Validate each entry against the current schema. Old installs
+		// may have `use_default` kinds left over — those got removed
+		// when routing collapsed to Synth | MidiPort | Off. Drop any
+		// invalid entry so the loader's `?? { kind: 'synth' }` fallback
+		// fills it in.
+		return parsed.slice(0, MAX_VOICES).map((entry: unknown) => {
+			if (!entry || typeof entry !== 'object') return { kind: 'synth' as const };
+			const kind = (entry as { kind?: unknown }).kind;
+			if (kind === 'synth' || kind === 'off') return entry as VoiceOutputTarget;
+			if (kind === 'midi_port') {
+				const port = (entry as { port?: unknown }).port;
+				if (typeof port === 'number') {
+					return { kind: 'midi_port', port } as VoiceOutputTarget;
+				}
+			}
+			return { kind: 'synth' as const };
+		});
 	} catch {
 		return null;
 	}
