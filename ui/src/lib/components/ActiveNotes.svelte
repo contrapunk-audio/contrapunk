@@ -21,102 +21,100 @@
 	let hasHarmony = $derived(engine.harmonyNotes.length > 0);
 </script>
 
-<div class="card">
-	<div class="card-header font-ui">Notes</div>
-
-	<!-- Chord name (prominent) -->
-	{#if engine.chordName}
-		<div class="chord-name font-code">{engine.chordName}</div>
-	{/if}
-
-	<!-- Interchange source -->
-	{#if engine.lastBorrowedFrom}
-		<div class="borrowed-from font-code">from {engine.lastBorrowedFrom}</div>
-	{/if}
-
-	<!-- Input notes -->
-	<div class="note-section">
+<!-- Three-column horizontal strip: INPUT notes left, chord name
+     prominent in the middle, HARMONY notes right. The chord is the
+     visual centerpiece — it's what the engine produces, the per-voice
+     pitches are supporting detail. -->
+<div class="strip">
+	<div class="side input-side">
 		<span class="section-label font-ui">INPUT</span>
 		{#if hasInput}
-			<span class="note-list input-notes font-code">
-				{inputNames.join('  ')}
-			</span>
+			<span class="note-list input-notes font-code">{inputNames.join(' ')}</span>
 		{:else}
-			<span class="note-none font-code">(none)</span>
+			<span class="note-none font-code">—</span>
 		{/if}
 	</div>
 
-	<!-- Harmony notes -->
-	<div class="note-section">
+	<div class="middle">
+		{#if engine.chordName}
+			<span class="chord-name font-code">{engine.chordName}</span>
+		{:else}
+			<span class="chord-name dim font-code">—</span>
+		{/if}
+		{#if engine.lastBorrowedFrom}
+			<span class="borrowed-from font-code">from {engine.lastBorrowedFrom}</span>
+		{/if}
+	</div>
+
+	<div class="side harmony-side">
 		<span class="section-label font-ui">HARMONY</span>
 		{#if hasHarmony}
-			<span class="note-list harmony-notes font-code">
-				{harmonyNames.join('  ')}
-			</span>
+			<span class="note-list harmony-notes font-code">{harmonyNames.join(' ')}</span>
 		{:else}
-			<span class="note-none font-code">(none)</span>
+			<span class="note-none font-code">—</span>
 		{/if}
 	</div>
 </div>
 
 <style>
-	.card {
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
-		padding: 6px;
-		margin-bottom: 4px;
-		border-radius: 0;
-	}
-
-	.card-header {
-		color: var(--color-accent-gold);
+	.strip {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		align-items: center;
+		gap: 12px;
 		font-size: var(--font-size-xs);
-		margin-bottom: 4px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
+	}
+
+	.side {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		min-width: 0;
+	}
+	.input-side {
+		justify-content: flex-start;
+	}
+	.harmony-side {
+		justify-content: flex-end;
+	}
+
+	.middle {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
 	}
 
 	.chord-name {
 		color: var(--color-accent-cyan);
-		font-size: var(--font-size-sm);
-		text-align: center;
-		padding: 2px 0;
-		margin-bottom: 4px;
-		text-shadow: 0 0 6px rgba(51, 221, 255, 0.5);
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
+		font-size: var(--font-size-lg);
+		font-weight: 600;
+		letter-spacing: 1px;
+		text-shadow: 0 0 8px rgba(51, 221, 255, 0.55), 0 0 18px rgba(51, 221, 255, 0.25);
+	}
+	.chord-name.dim {
+		color: var(--color-text-dim);
+		text-shadow: none;
 	}
 
 	.borrowed-from {
 		color: var(--color-piano-borrowed);
 		font-size: var(--font-size-xs);
-		text-align: center;
-		margin-bottom: 4px;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-	}
-
-	.note-section {
-		display: flex;
-		align-items: baseline;
-		gap: 6px;
-		padding: 2px 0;
 	}
 
 	.section-label {
 		color: var(--color-text-dim);
-		font-size: var(--font-size-xs);
-		min-width: 36px;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
+		letter-spacing: 1px;
+		flex-shrink: 0;
 	}
 
 	.note-list {
-		font-size: var(--font-size-xs);
 		letter-spacing: 0.5px;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-		word-break: break-word;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.input-notes {
@@ -129,8 +127,5 @@
 
 	.note-none {
 		color: var(--color-text-dim);
-		font-size: var(--font-size-xs);
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
 	}
 </style>

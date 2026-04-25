@@ -160,7 +160,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 	// selection in memory for UI restoration.
 	private _voiceOutputs: VoiceOutputTarget[] = Array.from(
 		{ length: MAX_VOICES },
-		() => ({ kind: 'use_default' })
+		() => ({ kind: 'synth' })
 	);
 	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void> {
 		if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;

@@ -31,6 +31,43 @@
 	// UI only shows slots that actually produce sound.
 	const slotCount = $derived(Math.max(1, Math.min(engine.voiceCount, 8)));
 
+	// Voice-count picker lives next to the OUTPUTS header (was in
+	// ControlPanel; consolidated here so the count is visible alongside
+	// the per-voice routing it controls).
+	const voiceCountOptions = [1, 2, 3, 4].map((c) => ({
+		value: String(c),
+		label: c === 1 ? '1 voice' : `${c} voices`
+	}));
+
+	function onVoiceCountChange(value: string) {
+		const n = parseInt(value, 10);
+		if (Number.isFinite(n)) {
+			engine.setVoiceCount(n);
+		}
+	}
+
+	// Toggle: when ON every voice is forced to Internal Synth, when OFF
+	// every voice reverts to UseDefault (legacy fan-out). State derived
+	// from the routing table so it stays in sync if individual slots
+	// are tweaked manually.
+	const allToSynth = $derived(
+		Array.from({ length: slotCount }, (_, i) => midi.voiceOutputs[i]).every(
+			(t) => t?.kind === 'synth'
+		)
+	);
+
+	function toggleAllToSynth() {
+		// On — every voice forced to Synth.
+		// Off — every voice cleared to Off so the per-voice slots
+		// re-appear and the user can pick MIDI destinations from a
+		// blank slate. (No "use default" anymore — three explicit
+		// destinations only.)
+		const target: 'synth' | 'off' = allToSynth ? 'off' : 'synth';
+		for (let i = 0; i < slotCount; i++) {
+			midi.setVoiceOutput(i, { kind: target });
+		}
+	}
+
 	// Derived: is Computer Keyboard selected as input?
 	let isComputerKeyboard = $derived(midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD);
 
@@ -63,9 +100,6 @@
 
 	function handleOutputChange(slotIndex: number, value: string) {
 		if (value === SYNTH_VALUE) {
-			// Per-voice synth: skip external MIDI for this voice.
-			// Keep the positional MIDI device list unchanged so other
-			// voices are not disturbed.
 			midi.setVoiceOutput(slotIndex, { kind: 'synth' });
 			return;
 		}
@@ -73,29 +107,29 @@
 			midi.setVoiceOutput(slotIndex, { kind: 'off' });
 			return;
 		}
-		// MIDI device picked. Revert this voice to default routing (so
-		// the engine's PortBased / ChannelBased logic applies), then
-		// slot the device into the positional selectedOutputs list the
-		// same way it worked before voice_outputs existed.
-		midi.setVoiceOutput(slotIndex, { kind: 'use_default' });
+		// MIDI device picked. Make sure the device is in the router's
+		// port pool (selectedOutputs) and route this voice directly to
+		// that port via MidiPort. No more positional / use_default
+		// indirection — voice_outputs is the only routing source now.
 		const deviceIdx = parseInt(value, 10);
 		if (Number.isNaN(deviceIdx)) return;
-		const newOutputs = [...midi.selectedOutputs];
-		while (newOutputs.length <= slotIndex) {
-			newOutputs.push(-1);
-		}
-		newOutputs[slotIndex] = deviceIdx;
-		midi.selectedOutputs = newOutputs.filter((v) => v >= 0);
+		const existingPort = midi.selectedOutputs.indexOf(deviceIdx);
+		const port =
+			existingPort >= 0
+				? existingPort
+				: (midi.selectedOutputs = [...midi.selectedOutputs, deviceIdx]).length - 1;
+		midi.setVoiceOutput(slotIndex, { kind: 'midi_port', port });
 	}
 
 	function getSlotValue(slotIndex: number): string {
 		const t = midi.voiceOutputs[slotIndex];
-		if (t?.kind === 'synth') return SYNTH_VALUE;
-		if (t?.kind === 'off') return OFF_VALUE;
-		// UseDefault or MidiPort → reflect the positional MIDI device
-		// selection (preserves the pre-#36 slot-to-port mapping).
-		if (slotIndex < midi.selectedOutputs.length) {
-			return String(midi.selectedOutputs[slotIndex]);
+		if (!t || t.kind === 'synth') return SYNTH_VALUE;
+		if (t.kind === 'off') return OFF_VALUE;
+		// MidiPort → resolve back to the absolute device index so the
+		// dropdown highlights the correct device.
+		if (t.kind === 'midi_port') {
+			const dev = midi.selectedOutputs[t.port];
+			if (typeof dev === 'number') return String(dev);
 		}
 		return SYNTH_VALUE;
 	}
@@ -142,22 +176,43 @@
 
 <!-- Output Device Section -->
 <div class="midi-section pixel-card">
-	<div class="section-header font-ui">OUTPUTS</div>
-
-	<div class="output-slots">
-		{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
-			<div class="output-slot">
-				<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
-				<PixelSelect
-					options={outputOptions}
-					value={getSlotValue(slotIdx)}
-					placeholder="None"
-					small={true}
-					onchange={(val) => handleOutputChange(slotIdx, val)}
-				/>
-			</div>
-		{/each}
+	<div class="output-header-row">
+		<span class="section-header font-ui">OUTPUTS</span>
+		<div class="voice-count-control" title="Number of voices the engine generates">
+			<PixelSelect
+				options={voiceCountOptions}
+				value={String(engine.voiceCount)}
+				small={true}
+				onchange={onVoiceCountChange}
+			/>
+		</div>
 	</div>
+
+	<label class="route-all-toggle font-ui" title="Route every voice to the internal synth (skip external MIDI)">
+		<input
+			type="checkbox"
+			checked={allToSynth}
+			onchange={toggleAllToSynth}
+		/>
+		<span class="route-all-label">All → Internal Synth</span>
+	</label>
+
+	{#if !allToSynth}
+		<div class="output-slots">
+			{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
+				<div class="output-slot">
+					<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
+					<PixelSelect
+						options={outputOptions}
+						value={getSlotValue(slotIdx)}
+						placeholder="None"
+						small={true}
+						onchange={(val) => handleOutputChange(slotIdx, val)}
+					/>
+				</div>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -172,6 +227,43 @@
 		margin-bottom: 4px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
+	}
+
+	/* OUTPUTS header gets the voice-count picker inline next to the
+	   label so the count is visible alongside the per-voice slots. */
+	.output-header-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 4px;
+	}
+	.output-header-row .section-header {
+		margin-bottom: 0;
+	}
+	.voice-count-control {
+		display: flex;
+		align-items: center;
+	}
+
+	.route-all-toggle {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: var(--font-size-xs);
+		padding: 3px 4px;
+		margin-bottom: 4px;
+		cursor: pointer;
+		color: var(--color-text-secondary);
+		user-select: none;
+	}
+	.route-all-toggle input[type='checkbox'] {
+		margin: 0;
+		accent-color: var(--color-accent-cyan);
+		cursor: pointer;
+	}
+	.route-all-toggle:hover .route-all-label {
+		color: var(--color-accent-cyan);
 	}
 
 	.input-row {

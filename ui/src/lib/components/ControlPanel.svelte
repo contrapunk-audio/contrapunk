@@ -34,10 +34,6 @@
 	let familyOptions = SCALE_FAMILIES.map((g) => ({ value: g.family, label: g.label }));
 	let speciesOptions = COUNTERPOINT_SPECIES.map((sp) => ({ value: sp.name, label: sp.label }));
 	let strictnessOptions = COUNTERPOINT_STRICTNESS.map((s) => ({ value: s.name, label: s.label }));
-	let voiceCountOptions = [1, 2, 3, 4].map((c) => ({
-		value: String(c),
-		label: c === 1 ? '1 voice' : `${c} voices`
-	}));
 
 	// --- Current scale family derived from the selected scale mode ---
 	let currentFamily = $derived(
@@ -193,30 +189,21 @@
 	</div>
 </div>
 
-<!-- Voice Count + Voice Position (side by side) -->
-<div class="row-2col">
-	<div class="card">
-		<div class="card-header font-ui">Voices</div>
+<!-- Voice Position (Voices count picker moved into MidiDevices's
+     OUTPUTS header — it's more discoverable next to the per-voice
+     routing it controls). -->
+<div class="card">
+	<div class="card-header font-ui">You play</div>
+	{#if engine.voiceCount > 1}
 		<PixelSelect
-			options={voiceCountOptions}
-			value={String(engine.voiceCount)}
-			placeholder="Voices"
-			onchange={onVoiceCountChange}
+			options={voicePositionOptions}
+			value={String(engine.voicePosition)}
+			placeholder="Position"
+			onchange={onVoicePositionChange}
 		/>
-	</div>
-	<div class="card">
-		<div class="card-header font-ui">You play</div>
-		{#if engine.voiceCount > 1}
-			<PixelSelect
-				options={voicePositionOptions}
-				value={String(engine.voicePosition)}
-				placeholder="Position"
-				onchange={onVoicePositionChange}
-			/>
-		{:else}
-			<span class="inline-note font-ui">Solo melody</span>
-		{/if}
-	</div>
+	{:else}
+		<span class="inline-note font-ui">Solo melody</span>
+	{/if}
 </div>
 
 <!-- Voice Leading + Interchange (side by side) -->

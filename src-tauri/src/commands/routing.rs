@@ -43,7 +43,6 @@ mod tests {
     #[test]
     fn voice_output_target_roundtrips_through_serde() {
         let cases = [
-            VoiceOutputTarget::UseDefault,
             VoiceOutputTarget::Synth,
             VoiceOutputTarget::MidiPort { port: 3 },
             VoiceOutputTarget::Off,
@@ -56,14 +55,15 @@ mod tests {
     }
 
     #[test]
+    fn voice_output_target_default_is_synth() {
+        assert_eq!(VoiceOutputTarget::default(), VoiceOutputTarget::Synth);
+    }
+
+    #[test]
     fn voice_output_target_json_shape_is_tagged() {
         // Frontend contract: `{ kind: "midi_port", port: 2 }` and similar.
         // Lock the shape so type changes break the test instead of silently
         // breaking the TS adapter.
-        assert_eq!(
-            serde_json::to_string(&VoiceOutputTarget::UseDefault).unwrap(),
-            r#"{"kind":"use_default"}"#
-        );
         assert_eq!(
             serde_json::to_string(&VoiceOutputTarget::Synth).unwrap(),
             r#"{"kind":"synth"}"#

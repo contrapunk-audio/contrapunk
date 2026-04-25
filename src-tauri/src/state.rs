@@ -26,19 +26,14 @@ pub const MAX_VOICES: usize = 8;
 /// Per-voice output destination. Each engine-emitted voice (by index
 /// 0..voice_count-1) can be routed independently.
 ///
-/// The default — `UseDefault` — preserves the legacy behavior where
-/// every voice fans out to both the internal synth AND to external
-/// MIDI ports via the global `routing_mode`. Explicitly setting a
-/// voice's target overrides that for just that voice, so e.g. voice 0
-/// can go to `MidiPort { port: 0 }` (external synth) while voices 1-3
-/// stay on `Synth` (internal synth), with no double-tracking.
+/// Three explicit destinations only — no implicit "defer to global
+/// routing_mode" fallback. Default is `Synth` so users get audio out
+/// of the box without needing to add a MIDI port first.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VoiceOutputTarget {
-    /// Defer to the global `routing_mode` (legacy behavior: synth + MIDI).
-    #[default]
-    UseDefault,
     /// Send to the internal synth only. Skip external MIDI for this voice.
+    #[default]
     Synth,
     /// Send to a specific external MIDI port only. Skip the internal synth.
     MidiPort { port: usize },

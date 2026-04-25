@@ -24,7 +24,23 @@ function loadVoiceOutputs(): VoiceOutputTarget[] | null {
 		if (!raw) return null;
 		const parsed = JSON.parse(raw);
 		if (!Array.isArray(parsed)) return null;
-		return parsed.slice(0, MAX_VOICES);
+		// Validate each entry against the current schema. Old installs
+		// may have `use_default` kinds left over — those got removed
+		// when routing collapsed to Synth | MidiPort | Off. Drop any
+		// invalid entry so the loader's `?? { kind: 'synth' }` fallback
+		// fills it in.
+		return parsed.slice(0, MAX_VOICES).map((entry: unknown) => {
+			if (!entry || typeof entry !== 'object') return { kind: 'synth' as const };
+			const kind = (entry as { kind?: unknown }).kind;
+			if (kind === 'synth' || kind === 'off') return entry as VoiceOutputTarget;
+			if (kind === 'midi_port') {
+				const port = (entry as { port?: unknown }).port;
+				if (typeof port === 'number') {
+					return { kind: 'midi_port', port } as VoiceOutputTarget;
+				}
+			}
+			return { kind: 'synth' as const };
+		});
 	} catch {
 		return null;
 	}
@@ -68,9 +84,10 @@ class MidiStore {
 	selectedOutputs = $state<number[]>([]);
 
 	// -- Per-voice output routing (issue #36 / backed by #57) --
-	// Length is always MAX_VOICES. UseDefault preserves legacy behavior.
+	// Length is always MAX_VOICES. Default is `synth` — first run plays
+	// audio without the user needing to add a MIDI port first.
 	voiceOutputs = $state<VoiceOutputTarget[]>(
-		Array.from({ length: MAX_VOICES }, () => ({ kind: 'use_default' as const }))
+		Array.from({ length: MAX_VOICES }, () => ({ kind: 'synth' as const }))
 	);
 
 	// -- Loading / error state --
@@ -237,7 +254,7 @@ class MidiStore {
 		const saved = loadVoiceOutputs();
 		if (saved && saved.length > 0) {
 			const padded: VoiceOutputTarget[] = Array.from({ length: MAX_VOICES }, (_, i) =>
-				saved[i] ?? { kind: 'use_default' }
+				saved[i] ?? { kind: 'synth' }
 			);
 			this.voiceOutputs = padded;
 			try {
