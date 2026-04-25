@@ -16,6 +16,7 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
+	import { attachKeyboardInput } from '$lib/keyboard-input';
 
 	// Virtual input sentinels (must match MidiDevices.svelte and engine.rs)
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
@@ -24,38 +25,7 @@
 	// Derived: is Guitar Audio selected as input?
 	let isGuitarAudioSelected = $derived(midi.selectedInput === VIRTUAL_GUITAR_AUDIO);
 
-	// Piano-style QWERTY mapping:
-	// Lower octave — Z row = white keys, S/D/G/H/J = black keys
-	// Upper octave — Q row = white keys, 2/3/5/6/7 = black keys
-	// Offsets are semitones from C of that octave
-	const LOWER_KEYS: Record<string, number> = {
-		'z': 0, 's': 1, 'x': 2, 'd': 3, 'c': 4,       // C C# D D# E
-		'v': 5, 'g': 6, 'b': 7, 'h': 8, 'n': 9,        // F F# G G# A
-		'j': 10, 'm': 11                                  // A# B
-	};
-	const UPPER_KEYS: Record<string, number> = {
-		'q': 0, '2': 1, 'w': 2, '3': 3, 'e': 4,         // C C# D D# E
-		'r': 5, '5': 6, 't': 7, '6': 8, 'y': 9,         // F F# G G# A
-		'7': 10, 'u': 11, 'i': 12                         // A# B C(+1)
-	};
-
-	// Octave state: lower row starts at this MIDI octave, upper row = +1
-	let baseOctave = $state(3); // C3 = MIDI 48
-	const MIN_OCTAVE = 1;
-	const MAX_OCTAVE = 7;
-
-	function keyToMidi(key: string): number | null {
-		let midi: number;
-		if (key in LOWER_KEYS) midi = (baseOctave + 1) * 12 + LOWER_KEYS[key];
-		else if (key in UPPER_KEYS) midi = (baseOctave + 2) * 12 + UPPER_KEYS[key];
-		else return null;
-		// Clamp to valid MIDI range
-		if (midi < 0 || midi > 127) return null;
-		return midi;
-	}
-
-	// Track held keys → MIDI note they triggered (for correct Note-Off after octave change)
-	const heldKeys = new Map<string, number>();
+	// QWERTY keyboard input — see $lib/keyboard-input for the keymap.
 
 	// Initialize adapter, sync engine state, and enumerate MIDI devices on mount
 	let initError = $state<string | null>(null);
@@ -83,59 +53,22 @@
 		})();
 	});
 
-	// Computer keyboard input handler
-	$effect(() => {
-		if (typeof window === 'undefined') return;
-
-		function handleKeyDown(e: KeyboardEvent) {
-			// Skip if typing in an input field
-			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-			// Skip if not in Computer Keyboard mode or not running
-			if (midi.selectedInput !== VIRTUAL_COMPUTER_KEYBOARD) return;
-			if (!engine.isRunning) return;
-
-			const key = e.key.toLowerCase();
-
-			// Octave shift with +/- (= key is + on US keyboards)
-			if (key === '=' || key === '+') {
-				if (baseOctave < MAX_OCTAVE) baseOctave++;
-				e.preventDefault();
-				return;
-			}
-			if (key === '-') {
-				if (baseOctave > MIN_OCTAVE) baseOctave--;
-				e.preventDefault();
-				return;
-			}
-
-			const midiNote = keyToMidi(key);
-			if (midiNote === null) return;
-			if (heldKeys.has(key)) return; // Ignore key repeat
-
-			heldKeys.set(key, midiNote);
-			adapter.injectNoteOn(midiNote, 100);
-			e.preventDefault();
-		}
-
-		function handleKeyUp(e: KeyboardEvent) {
-			const key = e.key.toLowerCase();
-			const midiNote = heldKeys.get(key);
-			if (midiNote === undefined) return;
-
-			heldKeys.delete(key);
-			adapter.injectNoteOff(midiNote);
-			e.preventDefault();
-		}
-
-		window.addEventListener('keydown', handleKeyDown);
-		window.addEventListener('keyup', handleKeyUp);
-
-		return () => {
-			window.removeEventListener('keydown', handleKeyDown);
-			window.removeEventListener('keyup', handleKeyUp);
-			heldKeys.clear();
-		};
-	});
+	// Computer-Keyboard virtual input — wired via the shared keymap
+	// in $lib/keyboard-input. Gated on Computer-Keyboard being the
+	// selected input AND the engine running, so other input modes
+	// (real MIDI, Guitar Audio) keep ignoring keystrokes.
+	$effect(() =>
+		attachKeyboardInput({
+			onNoteOn: (midi) => {
+				adapter.injectNoteOn(midi, 100);
+			},
+			onNoteOff: (midi) => {
+				adapter.injectNoteOff(midi);
+			},
+			enabled: () =>
+				midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD && engine.isRunning
+		})
+	);
 
 	// Music-reactive: detect when notes are actively sounding
 	let hasActiveNotes = $derived(
