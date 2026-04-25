@@ -201,8 +201,10 @@
 			</div>
 
 			{#if ui.activeTab === 'play'}
-				<!-- Middle: 3-column content area -->
-				<div class="content-area">
+				<!-- Middle: 2-column content area (Active Notes moved
+				     out to a strip directly above the piano so it sits
+				     visually next to the keyboards it describes). -->
+				<div class="content-area two-col">
 					<!-- Left column: MIDI devices + Guitar Input + Presets -->
 					<div class="column column-left">
 						<MidiDevices>
@@ -213,15 +215,18 @@
 						<PresetManager />
 					</div>
 
-					<!-- Center column: Harmony controls -->
+					<!-- Right column: Harmony controls (now spans the
+					     vacated right slot for more breathing room). -->
 					<div class="column column-center">
 						<ControlPanel />
 					</div>
+				</div>
 
-					<!-- Right column: Active Notes -->
-					<div class="column column-right">
-						<ActiveNotes />
-					</div>
+				<!-- Active-notes strip — sits between the controls and
+				     the visual instruments so users can read the active
+				     pitches inline with the keys they light up below. -->
+				<div class="active-notes-strip">
+					<ActiveNotes />
 				</div>
 
 				<!-- Bottom: History strip + Fretboard + Sacred piano keyboard -->
@@ -309,6 +314,21 @@
 		gap: 1px;
 		overflow: hidden;
 		background: var(--color-border);
+	}
+	/* When the right column is unused (Active Notes moved to a strip
+	   above the piano), give the controls extra width instead of
+	   leaving dead space. */
+	.content-area.two-col {
+		grid-template-columns: 1fr 1.6fr;
+	}
+
+	/* Active-notes strip — full-width thin row directly above the
+	   piano area. Keeps the chord readout + INPUT/HARMONY note lists
+	   close to the visual keys they correspond to. */
+	.active-notes-strip {
+		border-top: 1px solid var(--color-border);
+		background: rgba(15, 14, 26, 0.88);
+		padding: 4px 8px;
 	}
 
 	.column {

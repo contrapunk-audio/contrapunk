@@ -46,12 +46,20 @@
 		}
 	}
 
-	// Quick action: route every active voice to the internal synth so
-	// nothing fans out to external MIDI. Useful when the user wants to
-	// mute their DAW chain without unplugging the device.
-	function routeAllToSynth() {
+	// Toggle: when ON every voice is forced to Internal Synth, when OFF
+	// every voice reverts to UseDefault (legacy fan-out). State derived
+	// from the routing table so it stays in sync if individual slots
+	// are tweaked manually.
+	const allToSynth = $derived(
+		Array.from({ length: slotCount }, (_, i) => midi.voiceOutputs[i]).every(
+			(t) => t?.kind === 'synth'
+		)
+	);
+
+	function toggleAllToSynth() {
+		const target: 'synth' | 'use_default' = allToSynth ? 'use_default' : 'synth';
 		for (let i = 0; i < slotCount; i++) {
-			midi.setVoiceOutput(i, { kind: 'synth' });
+			midi.setVoiceOutput(i, { kind: target });
 		}
 	}
 
@@ -178,13 +186,14 @@
 		</div>
 	</div>
 
-	<button
-		class="route-all-btn pixel-btn font-ui"
-		onclick={routeAllToSynth}
-		title="Route every voice to the internal synth (skip external MIDI)"
-	>
-		All → Internal Synth
-	</button>
+	<label class="route-all-toggle font-ui" title="Route every voice to the internal synth (skip external MIDI)">
+		<input
+			type="checkbox"
+			checked={allToSynth}
+			onchange={toggleAllToSynth}
+		/>
+		<span class="route-all-label">All → Internal Synth</span>
+	</label>
 
 	<div class="output-slots">
 		{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
@@ -233,13 +242,24 @@
 		align-items: center;
 	}
 
-	.route-all-btn {
-		display: block;
-		width: 100%;
+	.route-all-toggle {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		font-size: var(--font-size-xs);
-		padding: 3px 8px;
+		padding: 3px 4px;
 		margin-bottom: 4px;
-		text-align: center;
+		cursor: pointer;
+		color: var(--color-text-secondary);
+		user-select: none;
+	}
+	.route-all-toggle input[type='checkbox'] {
+		margin: 0;
+		accent-color: var(--color-accent-cyan);
+		cursor: pointer;
+	}
+	.route-all-toggle:hover .route-all-label {
+		color: var(--color-accent-cyan);
 	}
 
 	.input-row {
