@@ -31,6 +31,30 @@
 	// UI only shows slots that actually produce sound.
 	const slotCount = $derived(Math.max(1, Math.min(engine.voiceCount, 8)));
 
+	// Voice-count picker lives next to the OUTPUTS header (was in
+	// ControlPanel; consolidated here so the count is visible alongside
+	// the per-voice routing it controls).
+	const voiceCountOptions = [1, 2, 3, 4].map((c) => ({
+		value: String(c),
+		label: c === 1 ? '1 voice' : `${c} voices`
+	}));
+
+	function onVoiceCountChange(value: string) {
+		const n = parseInt(value, 10);
+		if (Number.isFinite(n)) {
+			engine.setVoiceCount(n);
+		}
+	}
+
+	// Quick action: route every active voice to the internal synth so
+	// nothing fans out to external MIDI. Useful when the user wants to
+	// mute their DAW chain without unplugging the device.
+	function routeAllToSynth() {
+		for (let i = 0; i < slotCount; i++) {
+			midi.setVoiceOutput(i, { kind: 'synth' });
+		}
+	}
+
 	// Derived: is Computer Keyboard selected as input?
 	let isComputerKeyboard = $derived(midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD);
 
@@ -142,7 +166,25 @@
 
 <!-- Output Device Section -->
 <div class="midi-section pixel-card">
-	<div class="section-header font-ui">OUTPUTS</div>
+	<div class="output-header-row">
+		<span class="section-header font-ui">OUTPUTS</span>
+		<div class="voice-count-control" title="Number of voices the engine generates">
+			<PixelSelect
+				options={voiceCountOptions}
+				value={String(engine.voiceCount)}
+				small={true}
+				onchange={onVoiceCountChange}
+			/>
+		</div>
+	</div>
+
+	<button
+		class="route-all-btn pixel-btn font-ui"
+		onclick={routeAllToSynth}
+		title="Route every voice to the internal synth (skip external MIDI)"
+	>
+		All → Internal Synth
+	</button>
 
 	<div class="output-slots">
 		{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
@@ -172,6 +214,32 @@
 		margin-bottom: 4px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
+	}
+
+	/* OUTPUTS header gets the voice-count picker inline next to the
+	   label so the count is visible alongside the per-voice slots. */
+	.output-header-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 4px;
+	}
+	.output-header-row .section-header {
+		margin-bottom: 0;
+	}
+	.voice-count-control {
+		display: flex;
+		align-items: center;
+	}
+
+	.route-all-btn {
+		display: block;
+		width: 100%;
+		font-size: var(--font-size-xs);
+		padding: 3px 8px;
+		margin-bottom: 4px;
+		text-align: center;
 	}
 
 	.input-row {
