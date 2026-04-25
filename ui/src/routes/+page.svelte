@@ -43,7 +43,11 @@
 				await adapter.init();
 				await engine.syncFromBackend();
 				await engine.restoreSettings();
-				await midi.refresh();
+				// Browser path: only refreshes devices if the user previously
+				// granted Web MIDI access. First-time visitors see the
+				// "Enable MIDI" button in MidiDevices.svelte instead.
+				// Tauri / Plugin: resolves immediately and refreshes.
+				await midi.hydratePermission();
 				await synth.syncFromBackend();
 				initDone = true;
 			} catch (e) {

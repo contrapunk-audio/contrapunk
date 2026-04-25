@@ -18,6 +18,7 @@ import type {
 	EngineState,
 	GuitarConfig,
 	MidiDevice,
+	MidiPermissionState,
 	NoteState,
 	Preset,
 	ReverbState,
@@ -189,6 +190,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 		} catch (e) {
 			throw new Error(`Failed to set counterpoint strictness: ${e}`);
 		}
+	}
+
+	/** Tauri uses native OS MIDI APIs; no browser-style permission gate. */
+	readonly midiPermissionState: MidiPermissionState = 'granted';
+
+	/** No-op on Tauri — native MIDI is always available. */
+	async requestMidiPermission(): Promise<MidiPermissionState> {
+		return 'granted';
 	}
 
 	async listMidiInputs(): Promise<MidiDevice[]> {

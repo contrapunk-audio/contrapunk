@@ -10,6 +10,7 @@ import type {
 	EngineState,
 	GuitarConfig,
 	MidiDevice,
+	MidiPermissionState,
 	NoteState,
 	Preset,
 	TransportState,
@@ -43,6 +44,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;
 	private pollingHandle: number | null = null;
 	private midiAccess: MIDIAccess | null = null;
+	private _midiPermissionState: MidiPermissionState = 'idle';
 	private activeInput: MIDIInput | null = null;
 	private activeOutputs: MIDIOutput[] = [];
 	private _detuneCents = 0;
@@ -219,24 +221,48 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	/** Current MIDI permission state. */
+	get midiPermissionState(): MidiPermissionState {
+		return this._midiPermissionState;
+	}
+
 	/**
-	 * Ensure Web MIDI Access is available. Caches the MIDIAccess instance.
+	 * Return cached `MIDIAccess` without prompting the user.
+	 *
+	 * `navigator.requestMIDIAccess()` is gated behind a user gesture in
+	 * Chromium-based browsers — calling it at page load fails silently and
+	 * leaves the device list empty. The actual prompt lives in
+	 * `requestMidiPermission()`, invoked from a click handler.
 	 */
-	private async ensureMidiAccess(): Promise<MIDIAccess | null> {
-		if (this.midiAccess) return this.midiAccess;
+	private ensureMidiAccess(): MIDIAccess | null {
+		return this.midiAccess;
+	}
+
+	/**
+	 * Trigger the Web MIDI permission prompt. Must be called from inside a
+	 * user-gesture handler (click, keydown). Idempotent — safe to call after
+	 * grant or denial; reports the resulting state via the return value.
+	 */
+	async requestMidiPermission(): Promise<MidiPermissionState> {
 		if (typeof navigator === 'undefined' || !('requestMIDIAccess' in navigator)) {
-			return null;
+			this._midiPermissionState = 'unsupported';
+			return this._midiPermissionState;
+		}
+		if (this.midiAccess) {
+			this._midiPermissionState = 'granted';
+			return this._midiPermissionState;
 		}
 		try {
 			this.midiAccess = await navigator.requestMIDIAccess();
-			return this.midiAccess;
+			this._midiPermissionState = 'granted';
 		} catch {
-			return null;
+			this._midiPermissionState = 'denied';
 		}
+		return this._midiPermissionState;
 	}
 
 	async listMidiInputs(): Promise<MidiDevice[]> {
-		const access = await this.ensureMidiAccess();
+		const access = this.ensureMidiAccess();
 		if (!access) return [];
 		const devices: MidiDevice[] = [];
 		let index = 0;
@@ -247,7 +273,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async listMidiOutputs(): Promise<MidiDevice[]> {
-		const access = await this.ensureMidiAccess();
+		const access = this.ensureMidiAccess();
 		if (!access) return [];
 		const devices: MidiDevice[] = [];
 		let index = 0;
@@ -258,8 +284,16 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async refreshMidiDevices(): Promise<void> {
-		// Clear cached access so next list call re-enumerates
-		this.midiAccess = null;
+		if (this._midiPermissionState !== 'granted') return;
+		// Permission was already granted, so the browser will not re-prompt.
+		// Re-acquire so newly connected devices show up; if the user revoked
+		// permission via browser settings since the last grant, fall back.
+		try {
+			this.midiAccess = await navigator.requestMIDIAccess();
+		} catch {
+			this.midiAccess = null;
+			this._midiPermissionState = 'denied';
+		}
 	}
 
 	async startRouting(inputIdx: number, outputIndices: number[]): Promise<void> {
@@ -271,9 +305,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 			return;
 		}
 
-		const access = await this.ensureMidiAccess();
+		const access = this.ensureMidiAccess();
 		if (!access) {
-			// No Web MIDI: still allow "running" for virtual/keyboard input
+			// No Web MIDI (permission not granted, or unsupported browser):
+			// still allow "running" for virtual/keyboard input.
 			this._isRunning = true;
 			return;
 		}
@@ -348,7 +383,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	 */
 	private async startGuitarCapture(outputIndices: number[]): Promise<void> {
 		// Resolve MIDI outputs for sending harmony notes
-		const access = await this.ensureMidiAccess();
+		const access = this.ensureMidiAccess();
 		if (access) {
 			const outputs = Array.from(access.outputs.values());
 			this.activeOutputs = outputIndices
