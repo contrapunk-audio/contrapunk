@@ -195,20 +195,22 @@
 		<span class="route-all-label">All → Internal Synth</span>
 	</label>
 
-	<div class="output-slots">
-		{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
-			<div class="output-slot">
-				<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
-				<PixelSelect
-					options={outputOptions}
-					value={getSlotValue(slotIdx)}
-					placeholder="None"
-					small={true}
-					onchange={(val) => handleOutputChange(slotIdx, val)}
-				/>
-			</div>
-		{/each}
-	</div>
+	{#if !allToSynth}
+		<div class="output-slots">
+			{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
+				<div class="output-slot">
+					<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
+					<PixelSelect
+						options={outputOptions}
+						value={getSlotValue(slotIdx)}
+						placeholder="None"
+						small={true}
+						onchange={(val) => handleOutputChange(slotIdx, val)}
+					/>
+				</div>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style>
