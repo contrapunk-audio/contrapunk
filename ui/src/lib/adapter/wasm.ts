@@ -19,6 +19,7 @@ import { MAX_VOICES } from './types';
 import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
+import * as embedAudio from '$lib/embed/audio';
 
 /**
  * Dynamically imported WASM module.
@@ -478,6 +479,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[i % this.activeOutputs.length].send([0x90, sorted[i], vel]);
 				}
+				// Web Audio synth — gives the browser path audible
+				// playback even without a connected MIDI output device
+				// (the desktop Tauri side has its own Rust synth).
+				embedAudio.noteOn(sorted[i], vel);
 			}
 			return sorted;
 		} catch {
@@ -494,6 +499,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[i % this.activeOutputs.length].send([0x80, sorted[i], 0]);
 				}
+				embedAudio.noteOff(sorted[i]);
 			}
 			return sorted;
 		} catch {
