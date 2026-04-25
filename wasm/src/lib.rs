@@ -6,6 +6,9 @@
 
 use wasm_bindgen::prelude::*;
 
+use std::collections::HashSet;
+
+use contrapunk::chord::chord_display_with_analysis;
 use contrapunk::harmony::VoiceLeadingStyle;
 use contrapunk::harmony::{
     CounterpointSpecies, CounterpointStrictness, HarmonyEngine, HarmonyMode, Key, OctaveMode,
@@ -563,11 +566,32 @@ impl Engine {
             .map(|sm| scale_mode_to_string(sm).to_string())
             .unwrap_or_default();
 
+        // Detect chord from currently-sounding notes (input + harmony).
+        // The Tauri router thread runs the same call when populating
+        // its `chord_name` mutex; running it here keeps the browser /
+        // WASM consumers (Astro embed widgets in particular) feature-
+        // parity for chord readouts without going through the desktop
+        // audio path.
+        let chord_name = {
+            let all_sounding: HashSet<u8> = self
+                .last_input_notes
+                .iter()
+                .chain(self.last_harmony_notes.iter())
+                .copied()
+                .collect();
+            if all_sounding.is_empty() {
+                String::new()
+            } else {
+                let key_tonic = Some(self.inner.key().semitones_from_c());
+                chord_display_with_analysis(&all_sounding, key_tonic)
+            }
+        };
+
         let state = NoteStateJs {
             input_notes: self.last_input_notes.clone(),
             harmony_notes: self.last_harmony_notes.clone(),
-            borrowed_notes: Vec::new(), // Populated by routing layer
-            chord_name: String::new(),  // Populated by chord detection
+            borrowed_notes: Vec::new(), // Still populated by routing layer; WASM consumers don't expose it yet
+            chord_name,
             last_borrowed_from: borrowed_from,
         };
 
