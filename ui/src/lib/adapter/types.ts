@@ -29,6 +29,18 @@ export interface MidiDevice {
 	name: string;
 }
 
+/**
+ * Browser MIDI permission state.
+ *
+ * `idle`        — never requested. Triggering a request requires a user gesture.
+ * `granted`     — user accepted; device enumeration works.
+ * `denied`      — user rejected. Recoverable only via browser settings; UI
+ *                 should offer a "Try again" affordance.
+ * `unsupported` — browser does not implement Web MIDI (Firefox historically).
+ *                 Suggest the desktop app.
+ */
+export type MidiPermissionState = 'idle' | 'granted' | 'denied' | 'unsupported';
+
 /** Snapshot of the harmony engine configuration. */
 export interface EngineState {
 	key: string;
@@ -201,6 +213,20 @@ export interface ContrapunkAdapter {
 	setCounterpointStrictness(strictness: string): Promise<void>;
 
 	// -- MIDI devices --
+
+	/**
+	 * Browser-only: request Web MIDI permission via a user gesture.
+	 *
+	 * Adapters that don't gate MIDI behind a gesture (Tauri, Plugin) return
+	 * `'granted'` immediately. The browser adapter calls
+	 * `navigator.requestMIDIAccess()` and resolves with the resulting state.
+	 *
+	 * Callers should gate device enumeration on this returning `'granted'`.
+	 */
+	requestMidiPermission(): Promise<MidiPermissionState>;
+
+	/** Current MIDI permission state. `'granted'` for native paths. */
+	readonly midiPermissionState: MidiPermissionState;
 
 	/** List available MIDI input devices. */
 	listMidiInputs(): Promise<MidiDevice[]>;
