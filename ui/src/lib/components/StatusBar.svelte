@@ -2,7 +2,20 @@
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { VIEW_MODES, type ViewMode } from '$lib/stores/ui.svelte';
 	import TransportBar from './TransportBar.svelte';
+	import PixelSelect from './PixelSelect.svelte';
+
+	const VIEW_MODE_LABELS: Record<ViewMode, string> = {
+		full: 'Full',
+		performance: 'Performance',
+		fretboard: 'Fretboard',
+		piano: 'Piano'
+	};
+	const viewModeOptions = VIEW_MODES.map((m) => ({
+		value: m,
+		label: VIEW_MODE_LABELS[m]
+	}));
 
 	/**
 	 * Toggle MIDI routing on/off.
@@ -72,6 +85,17 @@
 
 	<!-- Spacer -->
 	<div class="spacer"></div>
+
+	<!-- View mode switcher (issue #44) -->
+	<div class="view-mode-picker" title="Switch view mode">
+		<span class="view-mode-label font-ui">View</span>
+		<PixelSelect
+			options={viewModeOptions}
+			value={ui.viewMode}
+			small={true}
+			onchange={(val) => ui.setViewMode(val as ViewMode)}
+		/>
+	</div>
 
 	<!-- Settings -->
 	<button
@@ -168,6 +192,16 @@
 
 	.spacer {
 		flex: 1;
+	}
+
+	.view-mode-picker {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.view-mode-label {
+		color: var(--color-text-dim);
+		font-size: var(--font-size-xs);
 	}
 
 	.settings-btn {

@@ -12,11 +12,31 @@ import { platformName } from '$lib/adapter';
 const SCALE_KEY = 'contrapunk-ui-scale';
 const FONT_SCALE_KEY = 'contrapunk-font-scale';
 const NOTE_LABELS_KEY = 'contrapunk-show-note-labels';
+const VIEW_MODE_KEY = 'contrapunk-view-mode';
 
 const MIN_SCALE = 0.75;
 const MAX_SCALE = 2.0;
 const MIN_FONT_SCALE = 0.75;
 const MAX_FONT_SCALE = 1.5;
+
+/** View mode determines which surfaces render — controls how chrome
+ *  the user sees vs. just the playable instruments.
+ *
+ *  - `full` — everything: status bar, tabs, panels, fretboard + piano
+ *  - `performance` — just status bar + history strip + fretboard + piano
+ *    (no setup chrome, ideal for jamming)
+ *  - `fretboard` — only the fretboard (centered, fills viewport)
+ *  - `piano` — only the piano (centered, fills viewport)
+ *
+ *  Pass via `?mode=fretboard` query param, or set live from the
+ *  StatusBar dropdown. URL beats localStorage on first paint.
+ */
+export type ViewMode = 'full' | 'performance' | 'fretboard' | 'piano';
+export const VIEW_MODES: ViewMode[] = ['full', 'performance', 'fretboard', 'piano'];
+
+function isViewMode(s: unknown): s is ViewMode {
+	return typeof s === 'string' && (VIEW_MODES as string[]).includes(s);
+}
 
 // === UI Store (Svelte 5 runes) ===
 
@@ -49,6 +69,10 @@ class UiStore {
 	fontScale = $state(1.0);
 	/** Whether to show "C4", "D#5" etc. labels on active piano keys + fretboard notes. */
 	showNoteLabels = $state(true);
+
+	/** Which surfaces are rendered. Drives the layout in +page.svelte.
+	 *  See ViewMode for semantics. */
+	viewMode = $state<ViewMode>('full');
 
 	/**
 	 * Toggle animations on/off and apply the reduced-motion class
@@ -171,6 +195,58 @@ class UiStore {
 		this.showNoteLabels = on;
 		try {
 			localStorage.setItem(NOTE_LABELS_KEY, on ? 'on' : 'off');
+		} catch {
+			/* localStorage unavailable */
+		}
+	}
+
+	// === View mode ===
+
+	/** Switch view mode. Persists to localStorage and reflects the
+	 *  choice into the URL `?mode=` query param so a copy-pasted
+	 *  link reproduces the current view. */
+	setViewMode(mode: ViewMode) {
+		this.viewMode = mode;
+		try {
+			localStorage.setItem(VIEW_MODE_KEY, mode);
+		} catch {
+			/* localStorage unavailable */
+		}
+		if (typeof window !== 'undefined' && typeof history !== 'undefined') {
+			try {
+				const url = new URL(window.location.href);
+				if (mode === 'full') {
+					url.searchParams.delete('mode');
+				} else {
+					url.searchParams.set('mode', mode);
+				}
+				history.replaceState(null, '', url.toString());
+			} catch {
+				/* URL APIs unavailable (e.g. SSR) */
+			}
+		}
+	}
+
+	/** Resolve the active view mode at app start. Order of precedence:
+	 *  1. `?mode=` URL query param (so embed callers can pin a mode)
+	 *  2. localStorage (so the user's last choice persists)
+	 *  3. Default `full`
+	 *  Call this once early in app init. */
+	restoreViewMode() {
+		if (typeof window === 'undefined') return;
+		try {
+			const params = new URLSearchParams(window.location.search);
+			const fromUrl = params.get('mode');
+			if (isViewMode(fromUrl)) {
+				this.viewMode = fromUrl;
+				return;
+			}
+		} catch {
+			/* URL APIs unavailable */
+		}
+		try {
+			const saved = localStorage.getItem(VIEW_MODE_KEY);
+			if (isViewMode(saved)) this.viewMode = saved;
 		} catch {
 			/* localStorage unavailable */
 		}

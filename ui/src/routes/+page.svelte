@@ -68,6 +68,7 @@
 		(async () => {
 			try {
 				ui.restoreAppearance();
+				ui.restoreViewMode();
 				await adapter.init();
 				await engine.syncFromBackend();
 				await engine.restoreSettings();
@@ -180,58 +181,77 @@
 	<SettingsModal />
 
 	{#if initDone}
-		<!-- Tab switcher -->
-		<div class="tab-strip">
-			<button
-				class="tab-btn font-ui"
-				class:active={ui.activeTab === 'play'}
-				onclick={() => (ui.activeTab = 'play')}
-			>
-				Play
-			</button>
-			<button
-				class="tab-btn font-ui"
-				class:active={ui.activeTab === 'chain'}
-				onclick={() => (ui.activeTab = 'chain')}
-			>
-				Chain
-			</button>
-		</div>
-
-		{#if ui.activeTab === 'play'}
-			<!-- Middle: 3-column content area -->
-			<div class="content-area">
-				<!-- Left column: MIDI devices + Guitar Input + Presets -->
-				<div class="column column-left">
-					<MidiDevices>
-						{#if isGuitarAudioSelected}
-							<GuitarInputPanel />
-						{/if}
-					</MidiDevices>
-					<PresetManager />
-				</div>
-
-				<!-- Center column: Harmony controls -->
-				<div class="column column-center">
-					<ControlPanel />
-				</div>
-
-				<!-- Right column: Active Notes -->
-				<div class="column column-right">
-					<ActiveNotes />
-				</div>
+		{#if ui.viewMode === 'full'}
+			<!-- Tab switcher -->
+			<div class="tab-strip">
+				<button
+					class="tab-btn font-ui"
+					class:active={ui.activeTab === 'play'}
+					onclick={() => (ui.activeTab = 'play')}
+				>
+					Play
+				</button>
+				<button
+					class="tab-btn font-ui"
+					class:active={ui.activeTab === 'chain'}
+					onclick={() => (ui.activeTab = 'chain')}
+				>
+					Chain
+				</button>
 			</div>
 
-			<!-- Bottom: History strip + Fretboard + Sacred piano keyboard -->
-			<div class="piano-area">
+			{#if ui.activeTab === 'play'}
+				<!-- Middle: 3-column content area -->
+				<div class="content-area">
+					<!-- Left column: MIDI devices + Guitar Input + Presets -->
+					<div class="column column-left">
+						<MidiDevices>
+							{#if isGuitarAudioSelected}
+								<GuitarInputPanel />
+							{/if}
+						</MidiDevices>
+						<PresetManager />
+					</div>
+
+					<!-- Center column: Harmony controls -->
+					<div class="column column-center">
+						<ControlPanel />
+					</div>
+
+					<!-- Right column: Active Notes -->
+					<div class="column column-right">
+						<ActiveNotes />
+					</div>
+				</div>
+
+				<!-- Bottom: History strip + Fretboard + Sacred piano keyboard -->
+				<div class="piano-area">
+					<HistoryStrip />
+					<Fretboard />
+					<Piano />
+				</div>
+			{:else}
+				<!-- Chain tab: audio signal flow + synth params -->
+				<div class="chain-area">
+					<ChainPanel />
+				</div>
+			{/if}
+		{:else if ui.viewMode === 'performance'}
+			<!-- Performance: history + both instruments, no setup chrome -->
+			<div class="solo-area piano-area">
 				<HistoryStrip />
 				<Fretboard />
 				<Piano />
 			</div>
-		{:else}
-			<!-- Chain tab: audio signal flow + synth params -->
-			<div class="chain-area">
-				<ChainPanel />
+		{:else if ui.viewMode === 'fretboard'}
+			<!-- Fretboard-only: centered, fills available space -->
+			<div class="solo-area solo-fretboard">
+				<Fretboard />
+			</div>
+		{:else if ui.viewMode === 'piano'}
+			<!-- Piano-only: centered, fills available space -->
+			<div class="solo-area solo-piano">
+				<Piano />
 			</div>
 		{/if}
 	{:else if !initError}
@@ -315,6 +335,29 @@
 	.piano-area {
 		border-top: 1px solid var(--color-border);
 		background: rgba(10, 10, 26, 0.88);
+	}
+
+	/* === Solo view modes (issue #44) ===
+	   Each fills the remaining vertical space below the StatusBar so
+	   single-instrument layouts feel deliberate, not cramped. */
+	.solo-area {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: stretch;
+		padding: 24px clamp(16px, 4vw, 64px);
+		background: rgba(10, 10, 26, 0.88);
+		border-top: 1px solid var(--color-border);
+		overflow: hidden;
+	}
+	.solo-fretboard,
+	.solo-piano {
+		gap: 16px;
+	}
+	/* Performance mode keeps the same look as the bottom strip in full
+	   mode but takes the whole content area. */
+	.solo-area.piano-area {
+		padding: 0;
 	}
 
 	/* === Music-reactive vignette === */
