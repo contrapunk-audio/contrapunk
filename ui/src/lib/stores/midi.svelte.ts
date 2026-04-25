@@ -68,9 +68,10 @@ class MidiStore {
 	selectedOutputs = $state<number[]>([]);
 
 	// -- Per-voice output routing (issue #36 / backed by #57) --
-	// Length is always MAX_VOICES. UseDefault preserves legacy behavior.
+	// Length is always MAX_VOICES. Default is `synth` — first run plays
+	// audio without the user needing to add a MIDI port first.
 	voiceOutputs = $state<VoiceOutputTarget[]>(
-		Array.from({ length: MAX_VOICES }, () => ({ kind: 'use_default' as const }))
+		Array.from({ length: MAX_VOICES }, () => ({ kind: 'synth' as const }))
 	);
 
 	// -- Loading / error state --
@@ -237,7 +238,7 @@ class MidiStore {
 		const saved = loadVoiceOutputs();
 		if (saved && saved.length > 0) {
 			const padded: VoiceOutputTarget[] = Array.from({ length: MAX_VOICES }, (_, i) =>
-				saved[i] ?? { kind: 'use_default' }
+				saved[i] ?? { kind: 'synth' }
 			);
 			this.voiceOutputs = padded;
 			try {

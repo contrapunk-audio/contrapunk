@@ -111,9 +111,10 @@ pub fn start_routing(
         return Err("Routing is already active".to_string());
     }
 
-    if output_indices.is_empty() {
-        return Err("At least one output port required".to_string());
-    }
+    // Empty output_indices is fine — every voice can route to the
+    // internal synth via voice_outputs. Pre-#36 the engine required
+    // at least one external MIDI port; that constraint is gone now
+    // that per-voice routing is the source of truth.
 
     // Capture engine config for the router thread
     let engine_config = {
@@ -661,10 +662,8 @@ fn handle_note_on(
         |i: usize| -> VoiceOutputTarget { voice_targets.get(i).copied().unwrap_or_default() };
 
     // Fan each voice into the built-in synth, gated by voice_outputs.
-    // UseDefault preserves legacy behavior (every voice goes to synth).
     for (i, &n) in notes.iter().enumerate() {
-        let t = target_for(i);
-        if matches!(t, VoiceOutputTarget::Synth | VoiceOutputTarget::UseDefault) {
+        if matches!(target_for(i), VoiceOutputTarget::Synth) {
             let _ = synth_tx.send(SynthEvent::NoteOn {
                 note: u8::from(n),
                 velocity: u8::from(velocity),
@@ -704,51 +703,17 @@ fn handle_note_on(
         }
     }
 
-    // Send notes to outputs, per-voice:
-    //   Synth | Off       -> no MIDI (handled above or silent)
-    //   MidiPort { port } -> send directly to that port
-    //   UseDefault        -> fall back to global routing_mode behavior
-    let port_map = engine.last_port_map();
+    // Send notes to external MIDI outputs, per-voice. Synth and Off
+    // skip MIDI entirely; only MidiPort dispatches.
     for (i, &n) in notes.iter().enumerate() {
-        match target_for(i) {
-            VoiceOutputTarget::Synth | VoiceOutputTarget::Off => {}
-            VoiceOutputTarget::MidiPort { port } => {
-                if port >= num_outputs {
-                    continue;
-                }
-                let msg = MidiMessage::NoteOn(channel, n, velocity);
-                let mut buf = vec![0u8; msg.bytes_size()];
-                let _ = msg.copy_to_slice(&mut buf);
-                let _ = output.send_to_port(port, &buf);
+        if let VoiceOutputTarget::MidiPort { port } = target_for(i) {
+            if port >= num_outputs {
+                continue;
             }
-            VoiceOutputTarget::UseDefault => match routing_mode {
-                contrapunk::harmony::RoutingMode::ChannelBased => {
-                    // MPE: all voices on port 0, each on its own MIDI channel.
-                    let voice_channel = match i + 1 {
-                        1 => Channel::Ch2,
-                        2 => Channel::Ch3,
-                        3 => Channel::Ch4,
-                        4 => Channel::Ch5,
-                        5 => Channel::Ch6,
-                        6 => Channel::Ch7,
-                        _ => Channel::Ch8,
-                    };
-                    let msg = MidiMessage::NoteOn(voice_channel, n, velocity);
-                    let mut buf = vec![0u8; msg.bytes_size()];
-                    let _ = msg.copy_to_slice(&mut buf);
-                    let _ = output.send_to_first(&buf);
-                }
-                contrapunk::harmony::RoutingMode::PortBased => {
-                    let port = if i < port_map.len() { port_map[i] } else { i };
-                    if port >= num_outputs {
-                        continue;
-                    }
-                    let msg = MidiMessage::NoteOn(channel, n, velocity);
-                    let mut buf = vec![0u8; msg.bytes_size()];
-                    let _ = msg.copy_to_slice(&mut buf);
-                    let _ = output.send_to_port(port, &buf);
-                }
-            },
+            let msg = MidiMessage::NoteOn(channel, n, velocity);
+            let mut buf = vec![0u8; msg.bytes_size()];
+            let _ = msg.copy_to_slice(&mut buf);
+            let _ = output.send_to_port(port, &buf);
         }
     }
 }
@@ -779,12 +744,9 @@ fn handle_note_off(
     let target_for =
         |i: usize| -> VoiceOutputTarget { voice_targets.get(i).copied().unwrap_or_default() };
 
-    // Fan releases into the built-in synth only for voices whose target
-    // includes it. Note-offs must match the note-ons; see handle_note_on
-    // for the same gate.
+    // Fan releases into the built-in synth only for voices routed there.
     for (i, &n) in notes.iter().enumerate() {
-        let t = target_for(i);
-        if matches!(t, VoiceOutputTarget::Synth | VoiceOutputTarget::UseDefault) {
+        if matches!(target_for(i), VoiceOutputTarget::Synth) {
             let _ = synth_tx.send(SynthEvent::NoteOff { note: u8::from(n) });
         }
     }
@@ -802,47 +764,16 @@ fn handle_note_off(
         }
     }
 
-    // Send note-offs per voice, mirroring handle_note_on's dispatch.
-    let port_map = engine.last_port_map();
+    // External MIDI note-offs, per-voice. Synth + Off skip MIDI.
     for (i, &n) in notes.iter().enumerate() {
-        match target_for(i) {
-            VoiceOutputTarget::Synth | VoiceOutputTarget::Off => {}
-            VoiceOutputTarget::MidiPort { port } => {
-                if port >= num_outputs {
-                    continue;
-                }
-                let msg = MidiMessage::NoteOff(channel, n, velocity);
-                let mut buf = vec![0u8; msg.bytes_size()];
-                let _ = msg.copy_to_slice(&mut buf);
-                let _ = output.send_to_port(port, &buf);
+        if let VoiceOutputTarget::MidiPort { port } = target_for(i) {
+            if port >= num_outputs {
+                continue;
             }
-            VoiceOutputTarget::UseDefault => match routing_mode {
-                contrapunk::harmony::RoutingMode::ChannelBased => {
-                    let voice_channel = match i + 1 {
-                        1 => Channel::Ch2,
-                        2 => Channel::Ch3,
-                        3 => Channel::Ch4,
-                        4 => Channel::Ch5,
-                        5 => Channel::Ch6,
-                        6 => Channel::Ch7,
-                        _ => Channel::Ch8,
-                    };
-                    let msg = MidiMessage::NoteOff(voice_channel, n, velocity);
-                    let mut buf = vec![0u8; msg.bytes_size()];
-                    let _ = msg.copy_to_slice(&mut buf);
-                    let _ = output.send_to_first(&buf);
-                }
-                contrapunk::harmony::RoutingMode::PortBased => {
-                    let port = if i < port_map.len() { port_map[i] } else { i };
-                    if port >= num_outputs {
-                        continue;
-                    }
-                    let msg = MidiMessage::NoteOff(channel, n, velocity);
-                    let mut buf = vec![0u8; msg.bytes_size()];
-                    let _ = msg.copy_to_slice(&mut buf);
-                    let _ = output.send_to_port(port, &buf);
-                }
-            },
+            let msg = MidiMessage::NoteOff(channel, n, velocity);
+            let mut buf = vec![0u8; msg.bytes_size()];
+            let _ = msg.copy_to_slice(&mut buf);
+            let _ = output.send_to_port(port, &buf);
         }
     }
 }

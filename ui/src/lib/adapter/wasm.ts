@@ -454,7 +454,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	// gains a synth + MIDI dispatcher of its own.
 	private _voiceOutputs: VoiceOutputTarget[] = Array.from(
 		{ length: MAX_VOICES },
-		() => ({ kind: 'use_default' })
+		() => ({ kind: 'synth' })
 	);
 
 	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void> {

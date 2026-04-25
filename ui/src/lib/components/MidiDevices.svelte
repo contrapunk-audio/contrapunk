@@ -57,7 +57,12 @@
 	);
 
 	function toggleAllToSynth() {
-		const target: 'synth' | 'use_default' = allToSynth ? 'use_default' : 'synth';
+		// On — every voice forced to Synth.
+		// Off — every voice cleared to Off so the per-voice slots
+		// re-appear and the user can pick MIDI destinations from a
+		// blank slate. (No "use default" anymore — three explicit
+		// destinations only.)
+		const target: 'synth' | 'off' = allToSynth ? 'off' : 'synth';
 		for (let i = 0; i < slotCount; i++) {
 			midi.setVoiceOutput(i, { kind: target });
 		}
@@ -95,9 +100,6 @@
 
 	function handleOutputChange(slotIndex: number, value: string) {
 		if (value === SYNTH_VALUE) {
-			// Per-voice synth: skip external MIDI for this voice.
-			// Keep the positional MIDI device list unchanged so other
-			// voices are not disturbed.
 			midi.setVoiceOutput(slotIndex, { kind: 'synth' });
 			return;
 		}
@@ -105,29 +107,29 @@
 			midi.setVoiceOutput(slotIndex, { kind: 'off' });
 			return;
 		}
-		// MIDI device picked. Revert this voice to default routing (so
-		// the engine's PortBased / ChannelBased logic applies), then
-		// slot the device into the positional selectedOutputs list the
-		// same way it worked before voice_outputs existed.
-		midi.setVoiceOutput(slotIndex, { kind: 'use_default' });
+		// MIDI device picked. Make sure the device is in the router's
+		// port pool (selectedOutputs) and route this voice directly to
+		// that port via MidiPort. No more positional / use_default
+		// indirection — voice_outputs is the only routing source now.
 		const deviceIdx = parseInt(value, 10);
 		if (Number.isNaN(deviceIdx)) return;
-		const newOutputs = [...midi.selectedOutputs];
-		while (newOutputs.length <= slotIndex) {
-			newOutputs.push(-1);
-		}
-		newOutputs[slotIndex] = deviceIdx;
-		midi.selectedOutputs = newOutputs.filter((v) => v >= 0);
+		const existingPort = midi.selectedOutputs.indexOf(deviceIdx);
+		const port =
+			existingPort >= 0
+				? existingPort
+				: (midi.selectedOutputs = [...midi.selectedOutputs, deviceIdx]).length - 1;
+		midi.setVoiceOutput(slotIndex, { kind: 'midi_port', port });
 	}
 
 	function getSlotValue(slotIndex: number): string {
 		const t = midi.voiceOutputs[slotIndex];
-		if (t?.kind === 'synth') return SYNTH_VALUE;
-		if (t?.kind === 'off') return OFF_VALUE;
-		// UseDefault or MidiPort → reflect the positional MIDI device
-		// selection (preserves the pre-#36 slot-to-port mapping).
-		if (slotIndex < midi.selectedOutputs.length) {
-			return String(midi.selectedOutputs[slotIndex]);
+		if (!t || t.kind === 'synth') return SYNTH_VALUE;
+		if (t.kind === 'off') return OFF_VALUE;
+		// MidiPort → resolve back to the absolute device index so the
+		// dropdown highlights the correct device.
+		if (t.kind === 'midi_port') {
+			const dev = midi.selectedOutputs[t.port];
+			if (typeof dev === 'number') return String(dev);
 		}
 		return SYNTH_VALUE;
 	}

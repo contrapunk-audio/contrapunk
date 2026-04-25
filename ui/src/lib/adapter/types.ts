@@ -15,13 +15,11 @@ export const MAX_VOICES = 8;
  *  `src-tauri/src/state.rs` and the `voice_output_target_json_shape_is_tagged`
  *  test in `src-tauri/src/commands/routing.rs`.
  *
- *    - `use_default` — defer to global routing_mode (legacy behavior)
- *    - `synth`       — internal synth only, skip MIDI
- *    - `midi_port`   — specific MIDI port only, skip synth
- *    - `off`         — voice is silent
+ *    - `synth`     — internal synth only, skip external MIDI (DEFAULT)
+ *    - `midi_port` — specific MIDI port only, skip the internal synth
+ *    - `off`       — voice is silent
  */
 export type VoiceOutputTarget =
-	| { kind: 'use_default' }
 	| { kind: 'synth' }
 	| { kind: 'midi_port'; port: number }
 	| { kind: 'off' };
