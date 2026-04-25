@@ -12,6 +12,7 @@ import type {
 	EngineState,
 	GuitarConfig,
 	MidiDevice,
+	MidiPermissionState,
 	NoteState,
 	Preset,
 	TransportState,
@@ -139,6 +140,14 @@ export class PluginAdapter implements ContrapunkAdapter {
 	}
 
 	// -- MIDI devices (DAW handles routing in plugin mode) --
+
+	/** DAW manages MIDI for the plugin; no browser permission needed. */
+	readonly midiPermissionState: MidiPermissionState = 'granted';
+
+	/** No-op in plugin mode — host owns MIDI routing. */
+	async requestMidiPermission(): Promise<MidiPermissionState> {
+		return 'granted';
+	}
 
 	async listMidiInputs(): Promise<MidiDevice[]> {
 		return [];

@@ -2,10 +2,28 @@
 	import { onMount } from 'svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { engine } from '$lib/stores/engine.svelte';
+	import { platformName } from '$lib/adapter';
 	import PixelSelect from './PixelSelect.svelte';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children?: Snippet } = $props();
+
+	// Browser-only permission state. Tauri / Plugin paths report `'granted'`
+	// from the adapter so this whole block disappears in those builds.
+	let enabling = $state(false);
+	const showPermissionCard = $derived(
+		platformName === 'browser' && midi.permissionState !== 'granted'
+	);
+
+	async function onEnableMidi() {
+		if (enabling) return;
+		enabling = true;
+		try {
+			await midi.requestPermission();
+		} finally {
+			enabling = false;
+		}
+	}
 
 	// Virtual input sentinel values — must match src-tauri/src/commands/engine.rs
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
@@ -139,6 +157,54 @@
 		return `Voice ${index + 1}`;
 	}
 </script>
+
+{#if showPermissionCard}
+	<!-- Web MIDI permission card. Browsers gate
+	     `navigator.requestMIDIAccess()` behind a user gesture, so on first
+	     visit (and any time permission is denied or unsupported) the user
+	     needs an explicit affordance to trigger the prompt. -->
+	<div class="midi-section pixel-card midi-permission-card">
+		<div class="section-header font-ui">MIDI</div>
+
+		{#if midi.permissionState === 'idle'}
+			<p class="permission-text font-ui">
+				Connect external MIDI keyboards, controllers, and synths.
+			</p>
+			<button
+				class="permission-btn pixel-btn font-ui"
+				onclick={onEnableMidi}
+				disabled={enabling}
+			>
+				{enabling ? 'REQUESTING…' : 'ENABLE MIDI'}
+			</button>
+		{:else if midi.permissionState === 'denied'}
+			<p class="permission-text error font-ui">
+				MIDI permission denied. Open your browser's site settings to allow it,
+				then try again.
+			</p>
+			<button
+				class="permission-btn pixel-btn font-ui"
+				onclick={onEnableMidi}
+				disabled={enabling}
+			>
+				{enabling ? 'TRYING…' : 'TRY AGAIN'}
+			</button>
+		{:else if midi.permissionState === 'unsupported'}
+			<p class="permission-text font-ui">
+				Your browser doesn't support Web MIDI. Use Chrome, Edge, or Opera —
+				or run Contrapunk natively on the desktop:
+			</p>
+			<a
+				class="permission-btn pixel-btn font-ui"
+				href="https://contrapunk.com"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				DOWNLOAD DESKTOP APP →
+			</a>
+		{/if}
+	</div>
+{/if}
 
 <!-- Input Device Section -->
 <div class="midi-section pixel-card">
@@ -317,5 +383,39 @@
 		min-width: 56px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
+	}
+
+	.midi-permission-card {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.permission-text {
+		color: var(--color-text-secondary);
+		font-size: var(--font-size-xs);
+		line-height: 1.5;
+		margin: 0;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	.permission-text.error {
+		color: #ff4466;
+	}
+
+	.permission-btn {
+		display: inline-block;
+		text-align: center;
+		padding: 6px 10px;
+		font-size: var(--font-size-xs);
+		text-decoration: none;
+		color: var(--color-accent-cyan);
+		cursor: pointer;
+	}
+
+	.permission-btn[disabled] {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 </style>

@@ -60,6 +60,7 @@ export type {
 	EngineState,
 	GuitarConfig,
 	MidiDevice,
+	MidiPermissionState,
 	NoteState,
 	Preset,
 	SynthState,

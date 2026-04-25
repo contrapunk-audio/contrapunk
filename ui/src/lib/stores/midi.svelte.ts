@@ -6,12 +6,13 @@
  * localStorage so they survive page reloads.
  */
 
-import { adapter } from '$lib/adapter';
-import type { MidiDevice, VoiceOutputTarget } from '$lib/adapter';
+import { adapter, platformName } from '$lib/adapter';
+import type { MidiDevice, MidiPermissionState, VoiceOutputTarget } from '$lib/adapter';
 import { MAX_VOICES } from '$lib/adapter/types';
 
 const MIDI_SETTINGS_KEY = 'contrapunk-midi';
 const VOICE_OUTPUTS_KEY = 'contrapunk-voice-outputs';
+const MIDI_PERMISSION_KEY = 'contrapunk-midi-permission';
 
 interface MidiSettings {
 	inputName: string | null;
@@ -72,7 +73,36 @@ function saveMidiSettings(settings: MidiSettings) {
 	}
 }
 
+function loadPermissionState(): MidiPermissionState | null {
+	try {
+		const raw = localStorage.getItem(MIDI_PERMISSION_KEY);
+		if (raw === 'granted' || raw === 'denied' || raw === 'idle' || raw === 'unsupported') {
+			return raw;
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+function savePermissionState(state: MidiPermissionState) {
+	try {
+		localStorage.setItem(MIDI_PERMISSION_KEY, state);
+	} catch {
+		// localStorage unavailable
+	}
+}
+
 // === MIDI Store (Svelte 5 runes) ===
+
+/** Initial permission state for store construction. Native paths
+ *  (Tauri / Plugin) report `'granted'` from the adapter and don't need a
+ *  user gesture; the browser path hydrates from localStorage so a returning
+ *  user with prior consent skips the prompt UI. */
+function initialPermissionState(): MidiPermissionState {
+	if (platformName !== 'browser') return 'granted';
+	return loadPermissionState() ?? 'idle';
+}
 
 class MidiStore {
 	// -- Available devices --
@@ -82,6 +112,10 @@ class MidiStore {
 	// -- Selection state --
 	selectedInput = $state<number | null>(null);
 	selectedOutputs = $state<number[]>([]);
+
+	/** Web MIDI permission state. Native paths report `'granted'`; the
+	 *  browser path drives the "Enable MIDI" UI. */
+	permissionState = $state<MidiPermissionState>(initialPermissionState());
 
 	// -- Per-voice output routing (issue #36 / backed by #57) --
 	// Length is always MAX_VOICES. Default is `synth` — first run plays
@@ -95,10 +129,56 @@ class MidiStore {
 	error = $state<string | null>(null);
 
 	/**
+	 * Trigger the Web MIDI permission prompt. Browser-only; safe to call
+	 * on Tauri / Plugin (resolves immediately to `'granted'`).
+	 *
+	 * Must be invoked from inside a user gesture (click, keydown). On grant,
+	 * automatically populates the device list. Persists the resulting state
+	 * to localStorage so subsequent visits skip the prompt UI.
+	 */
+	async requestPermission(): Promise<MidiPermissionState> {
+		const next = await adapter.requestMidiPermission();
+		this.permissionState = next;
+		if (platformName === 'browser') savePermissionState(next);
+		if (next === 'granted') {
+			await this.refresh();
+		}
+		return next;
+	}
+
+	/**
+	 * Re-acquire MIDI access on app startup if the user previously granted it.
+	 *
+	 * Browser permission persists across reloads, so calling
+	 * `navigator.requestMIDIAccess()` again resolves silently without a
+	 * prompt — but we still need to actually call it so the WasmAdapter
+	 * caches a fresh `MIDIAccess` instance for this page lifetime.
+	 *
+	 * If the user revoked permission via browser settings since the last
+	 * grant, falls back to `'denied'` and the UI re-renders the button.
+	 */
+	async hydratePermission(): Promise<void> {
+		if (this.permissionState !== 'granted') return;
+		const next = await adapter.requestMidiPermission();
+		this.permissionState = next;
+		if (platformName === 'browser') savePermissionState(next);
+		if (next === 'granted') {
+			await this.refresh();
+		}
+	}
+
+	/**
 	 * Refresh the list of available MIDI devices from the backend.
 	 * After refreshing, restores previously selected devices by name.
+	 *
+	 * No-op when permission has not been granted on the browser path —
+	 * `navigator.requestMIDIAccess()` requires a user gesture, so a refresh
+	 * triggered at page load would silently leave the device list empty
+	 * and confuse the user. The "Enable MIDI" button in MidiDevices.svelte
+	 * provides the gesture and calls `requestPermission()` instead.
 	 */
 	async refresh() {
+		if (this.permissionState !== 'granted') return;
 		this.isLoading = true;
 		this.error = null;
 
