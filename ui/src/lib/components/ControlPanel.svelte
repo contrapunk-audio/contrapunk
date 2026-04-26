@@ -128,100 +128,115 @@
 	</div>
 </div>
 
-<!-- Counterpoint Species + Strictness (only when mode = StrictCounterpoint) -->
+<!-- Counterpoint Species + Strictness (only when mode = StrictCounterpoint).
+     Single card, two cells — same chrome cost as one regular card. -->
 {#if engine.mode === 'StrictCounterpoint'}
-	<div class="row-2col">
-		<div class="card">
-			<div class="card-header font-ui">Species</div>
-			<PixelSelect
-				options={speciesOptions}
-				value={engine.counterpointSpecies}
-				placeholder="Species"
-				onchange={onSpeciesChange}
-			/>
-		</div>
-		<div class="card">
-			<div class="card-header font-ui">Strictness</div>
-			<PixelSelect
-				options={strictnessOptions}
-				value={engine.counterpointStrictness}
-				placeholder="Strictness"
-				onchange={onStrictnessChange}
-			/>
+	<div class="card">
+		<div class="row-2col-cells">
+			<div class="cell">
+				<span class="cell-label font-ui">Species</span>
+				<PixelSelect
+					options={speciesOptions}
+					value={engine.counterpointSpecies}
+					placeholder="Species"
+					small={true}
+					onchange={onSpeciesChange}
+				/>
+			</div>
+			<div class="cell">
+				<span class="cell-label font-ui">Strictness</span>
+				<PixelSelect
+					options={strictnessOptions}
+					value={engine.counterpointStrictness}
+					placeholder="Strictness"
+					small={true}
+					onchange={onStrictnessChange}
+				/>
+			</div>
 		</div>
 	</div>
 {/if}
 
-<!-- Scale Family + Scale Mode in family (side by side) -->
-<div class="row-2col">
-	<div class="card">
-		<div class="card-header font-ui">Family</div>
-		<PixelSelect
-			options={familyOptions}
-			value={currentFamily}
-			placeholder="Family"
-			onchange={onFamilyChange}
-		/>
-	</div>
-	<div class="card">
-		<div class="card-header font-ui">Scale</div>
-		<PixelSelect
-			options={scaleInFamilyOptions}
-			value={engine.scaleMode}
-			placeholder="Scale"
-			onchange={onScaleModeChange}
-		/>
+<!-- Scale Family + Scale Mode — single card, two cells. -->
+<div class="card">
+	<div class="row-2col-cells">
+		<div class="cell">
+			<span class="cell-label font-ui">Family</span>
+			<PixelSelect
+				options={familyOptions}
+				value={currentFamily}
+				placeholder="Family"
+				small={true}
+				onchange={onFamilyChange}
+			/>
+		</div>
+		<div class="cell">
+			<span class="cell-label font-ui">Scale</span>
+			<PixelSelect
+				options={scaleInFamilyOptions}
+				value={engine.scaleMode}
+				placeholder="Scale"
+				small={true}
+				onchange={onScaleModeChange}
+			/>
+		</div>
 	</div>
 </div>
 
-<!-- Voice Leading + Interchange (side by side) -->
-<div class="row-2col">
-	<div class="card">
-		<div class="card-header font-ui">
-			<span>Voice Leading</span>
-			<button
-				class="pixel-btn toggle-btn"
-				class:toggle-on={engine.voiceLeadingEnabled}
-				onclick={() => engine.setVoiceLeading(!engine.voiceLeadingEnabled)}
-			>
-				{engine.voiceLeadingEnabled ? 'ON' : 'OFF'}
-			</button>
-		</div>
-		{#if engine.voiceLeadingEnabled}
-			<PixelSelect
-				options={vlStyleOptions}
-				value={engine.voiceLeadingStyle}
-				placeholder="Style"
-				onchange={onVlStyleChange}
-			/>
-		{/if}
-	</div>
-	<div class="card">
-		<div class="card-header font-ui">
-			<span>Interchange</span>
-			<button
-				class="pixel-btn toggle-btn"
-				class:toggle-on={engine.interchangeEnabled}
-				onclick={() => engine.setInterchange(!engine.interchangeEnabled)}
-			>
-				{engine.interchangeEnabled ? 'ON' : 'OFF'}
-			</button>
-		</div>
-		{#if engine.interchangeEnabled}
-			<div class="range-row">
-				<span class="range-label font-ui">Rng</span>
-				<input
-					type="range"
-					min="1"
-					max="5"
-					step="1"
-					value={engine.interchangeRange}
-					oninput={(e) => engine.setInterchange(true, parseInt((e.target as HTMLInputElement).value, 10))}
-					class="pixel-range"
-				/>
-				<span class="range-label font-code">{engine.interchangeRange}</span>
+<!-- Voice Leading + Interchange — single card, two cells. Toggle pip
+     replaces the per-cell card-header so the chrome cost is the same
+     as one regular card. Conditional content (style picker / range
+     slider) shows only when the side is enabled. -->
+<div class="card">
+	<div class="row-2col-cells">
+		<div class="cell">
+			<div class="cell-label-row">
+				<span class="cell-label font-ui">Voice Leading</span>
+				<button
+					class="pixel-btn toggle-btn"
+					class:toggle-on={engine.voiceLeadingEnabled}
+					onclick={() => engine.setVoiceLeading(!engine.voiceLeadingEnabled)}
+				>
+					{engine.voiceLeadingEnabled ? 'ON' : 'OFF'}
+				</button>
 			</div>
-		{/if}
+			{#if engine.voiceLeadingEnabled}
+				<PixelSelect
+					options={vlStyleOptions}
+					value={engine.voiceLeadingStyle}
+					placeholder="Style"
+					small={true}
+					onchange={onVlStyleChange}
+				/>
+			{/if}
+		</div>
+		<div class="cell">
+			<div class="cell-label-row">
+				<span class="cell-label font-ui">Interchange</span>
+				<button
+					class="pixel-btn toggle-btn"
+					class:toggle-on={engine.interchangeEnabled}
+					onclick={() => engine.setInterchange(!engine.interchangeEnabled)}
+				>
+					{engine.interchangeEnabled ? 'ON' : 'OFF'}
+				</button>
+			</div>
+			{#if engine.interchangeEnabled}
+				<div class="range-row">
+					<span class="range-label font-ui">Rng</span>
+					<input
+						type="range"
+						min="1"
+						max="5"
+						step="1"
+						value={engine.interchangeRange}
+						oninput={(e) => engine.setInterchange(true, parseInt((e.target as HTMLInputElement).value, 10))}
+						class="pixel-range"
+					/>
+					<span class="range-label font-code">{engine.interchangeRange}</span>
+				</div>
+			{/if}
+		</div>
 	</div>
 </div>
 
@@ -251,32 +266,9 @@
 	.card {
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
-		padding: 6px;
-		margin-bottom: 4px;
+		padding: 4px 6px;
+		margin-bottom: 2px;
 		border-radius: 0;
-	}
-
-	.card-header {
-		color: var(--color-accent-gold);
-		font-size: var(--font-size-xs);
-		margin-bottom: 4px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 4px;
-		-webkit-font-smoothing: none;
-		text-rendering: optimizeSpeed;
-	}
-
-	.row-2col {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 4px;
-		align-items: stretch;
-	}
-
-	.row-2col > .card {
-		margin-bottom: 4px;
 	}
 
 	/* Compact 3-column strip used by the Key/Mode/Octave card. Each
@@ -287,6 +279,15 @@
 		grid-template-columns: 1fr 1fr 1fr;
 		gap: 6px;
 		align-items: end;
+	}
+
+	/* 2-cell variant — same idea as row-3col, used by Family+Scale,
+	   Species+Strictness, Voice Leading+Interchange. */
+	.row-2col-cells {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px;
+		align-items: start;
 	}
 
 	.cell {

@@ -64,28 +64,6 @@
 		}
 	}
 
-	// Toggle: when ON every voice is forced to Internal Synth, when OFF
-	// every voice reverts to UseDefault (legacy fan-out). State derived
-	// from the routing table so it stays in sync if individual slots
-	// are tweaked manually.
-	const allToSynth = $derived(
-		Array.from({ length: slotCount }, (_, i) => midi.voiceOutputs[i]).every(
-			(t) => t?.kind === 'synth'
-		)
-	);
-
-	function toggleAllToSynth() {
-		// On — every voice forced to Synth.
-		// Off — every voice cleared to Off so the per-voice slots
-		// re-appear and the user can pick MIDI destinations from a
-		// blank slate. (No "use default" anymore — three explicit
-		// destinations only.)
-		const target: 'synth' | 'off' = allToSynth ? 'off' : 'synth';
-		for (let i = 0; i < slotCount; i++) {
-			midi.setVoiceOutput(i, { kind: target });
-		}
-	}
-
 	// Derived: is Computer Keyboard selected as input?
 	let isComputerKeyboard = $derived(midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD);
 
@@ -296,44 +274,33 @@
 		</div>
 	</div>
 
-	<label class="route-all-toggle font-ui" title="Route every voice to the internal synth (skip external MIDI)">
-		<input
-			type="checkbox"
-			checked={allToSynth}
-			onchange={toggleAllToSynth}
-		/>
-		<span class="route-all-label">All → Internal Synth</span>
-	</label>
-
-	{#if !allToSynth}
-		<div class="output-slots">
-			{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
-				<div class="output-slot" class:slot-off={!slotIsActive(slotIdx)}>
-					<span
-						class="slot-status"
-						aria-hidden="true"
-						title={slotIsActive(slotIdx) ? 'Will produce audio' : 'Silent'}
-					>
-						{slotIsActive(slotIdx) ? '●' : '○'}
-					</span>
-					<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
-					<PixelSelect
-						options={outputOptions}
-						value={getSlotValue(slotIdx)}
-						placeholder="None"
-						small={true}
-						onchange={(val) => handleOutputChange(slotIdx, val)}
-					/>
-				</div>
-			{/each}
-		</div>
-	{/if}
+	<div class="output-slots">
+		{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
+			<div class="output-slot" class:slot-off={!slotIsActive(slotIdx)}>
+				<span
+					class="slot-status"
+					aria-hidden="true"
+					title={slotIsActive(slotIdx) ? 'Will produce audio' : 'Silent'}
+				>
+					{slotIsActive(slotIdx) ? '●' : '○'}
+				</span>
+				<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
+				<PixelSelect
+					options={outputOptions}
+					value={getSlotValue(slotIdx)}
+					placeholder="None"
+					small={true}
+					onchange={(val) => handleOutputChange(slotIdx, val)}
+				/>
+			</div>
+		{/each}
+	</div>
 </div>
 
 <style>
 	.midi-section {
-		padding: 6px;
-		margin-bottom: 4px;
+		padding: 4px 6px;
+		margin-bottom: 2px;
 	}
 
 	.section-header {
@@ -359,26 +326,6 @@
 	.voice-count-control {
 		display: flex;
 		align-items: center;
-	}
-
-	.route-all-toggle {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--font-size-xs);
-		padding: 3px 4px;
-		margin-bottom: 4px;
-		cursor: pointer;
-		color: var(--color-text-secondary);
-		user-select: none;
-	}
-	.route-all-toggle input[type='checkbox'] {
-		margin: 0;
-		accent-color: var(--color-accent-cyan);
-		cursor: pointer;
-	}
-	.route-all-toggle:hover .route-all-label {
-		color: var(--color-accent-cyan);
 	}
 
 	.input-row {
