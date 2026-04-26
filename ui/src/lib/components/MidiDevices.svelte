@@ -156,6 +156,32 @@
 		if (index === 0) return 'Voice 1 (melody)';
 		return `Voice ${index + 1}`;
 	}
+
+	// Whether a voice slot is actually producing sound (vs `off`). Drives
+	// the status dot + dimming on the slot row.
+	function slotIsActive(index: number): boolean {
+		const t = midi.voiceOutputs[index];
+		return !!t && t.kind !== 'off';
+	}
+
+	// "You play" — voice the user's input occupies in the harmony. Lives
+	// next to INPUT because it answers "where in the chord is what I'm
+	// playing", which is a property of the input source, not a harmony
+	// setting. Hidden when voiceCount === 1 (only choice = melody).
+	function voiceLabel(index: number, count: number): string {
+		const names = ['Soprano', 'Alto', 'Tenor', 'Bass'];
+		if (count <= 4) return `${names[index] || 'Voice'} (${index + 1})`;
+		return `Voice (${index + 1})`;
+	}
+	const voicePositionOptions = $derived(
+		Array.from({ length: engine.voiceCount }, (_, i) => ({
+			value: String(i),
+			label: voiceLabel(i, engine.voiceCount)
+		}))
+	);
+	function onVoicePositionChange(val: string) {
+		engine.setVoicePosition(parseInt(val, 10));
+	}
 </script>
 
 {#if showPermissionCard}
@@ -235,6 +261,22 @@
 	{#if midi.error}
 		<div class="error-text font-ui">{midi.error}</div>
 	{/if}
+
+	{#if engine.voiceCount > 1}
+		<!-- "You play" — which voice the input note becomes in the harmony.
+		     Lives next to the INPUT picker because it's a property of the
+		     input, not a harmony setting. -->
+		<div class="you-play-row">
+			<span class="you-play-label font-ui">You play</span>
+			<PixelSelect
+				options={voicePositionOptions}
+				value={String(engine.voicePosition)}
+				placeholder="Voice"
+				small={true}
+				onchange={onVoicePositionChange}
+			/>
+		</div>
+	{/if}
 </div>
 
 <!-- Slot for Guitar Input panel (rendered between INPUT and OUTPUTS) -->
@@ -266,7 +308,14 @@
 	{#if !allToSynth}
 		<div class="output-slots">
 			{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
-				<div class="output-slot">
+				<div class="output-slot" class:slot-off={!slotIsActive(slotIdx)}>
+					<span
+						class="slot-status"
+						aria-hidden="true"
+						title={slotIsActive(slotIdx) ? 'Will produce audio' : 'Silent'}
+					>
+						{slotIsActive(slotIdx) ? '●' : '○'}
+					</span>
 					<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
 					<PixelSelect
 						options={outputOptions}
@@ -376,11 +425,49 @@
 		gap: 4px;
 	}
 
+	/* Active slots get a glowing accent dot; off slots get a hollow ring
+	   and the whole row dims so the user can scan-eye which voices will
+	   actually produce sound. */
+	.slot-status {
+		font-size: var(--font-size-xs);
+		line-height: 1;
+		width: 10px;
+		text-align: center;
+		color: var(--color-accent-cyan);
+		text-shadow: 0 0 4px var(--color-accent-cyan);
+	}
+	.output-slot.slot-off .slot-status {
+		color: var(--color-text-dim);
+		text-shadow: none;
+	}
+	.output-slot.slot-off {
+		opacity: 0.55;
+	}
+	.output-slot.slot-off .slot-label {
+		color: var(--color-text-dim);
+	}
+
 	.slot-label {
 		color: var(--color-text-secondary);
 		font-size: var(--font-size-xs);
 		white-space: nowrap;
 		min-width: 56px;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	/* "You play" sits inline with the INPUT card. Same horizontal layout
+	   as a slot row so it visually rhymes with the OUTPUTS slots below. */
+	.you-play-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+	}
+	.you-play-label {
+		color: var(--color-accent-gold);
+		font-size: var(--font-size-xs);
+		white-space: nowrap;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
