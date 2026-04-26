@@ -1,0 +1,56 @@
+name: Website Compat
+
+# Build the contrapunk-audio/website with this PR's contrapunk code.
+# Catches breakage in the canonical embed surface, keyboard-input, or
+# wasm-pkg before it ships.
+#
+# Only runs when the canonical files change — most contrapunk PRs do
+# not touch the website-shared bits and skip this job entirely.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ui/src/lib/embed/**'
+      - 'ui/src/lib/keyboard-input.ts'
+      - 'ui/src/lib/wasm-pkg/**'
+      - '.github/workflows/website-compat.yml'
+
+jobs:
+  website-build:
+    name: Website builds with this PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout contrapunk PR
+        uses: actions/checkout@v6
+        with:
+          path: contrapunk
+
+      - name: Checkout website main
+        uses: actions/checkout@v6
+        with:
+          repository: contrapunk-audio/website
+          ref: main
+          path: website
+          # Skip submodule init — we override `vendor/contrapunk` with
+          # this PR's contrapunk checkout below.
+          submodules: false
+
+      - name: Inject this PR's contrapunk into the website's submodule path
+        run: |
+          rm -rf website/vendor/contrapunk
+          cp -r contrapunk website/vendor/contrapunk
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install website deps
+        working-directory: website
+        run: npm ci
+
+      - name: Build website
+        working-directory: website
+        run: npm run build
