@@ -1,21 +1,8 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
-	import { ui } from '$lib/stores/ui.svelte';
-	import { VIEW_MODES, type ViewMode } from '$lib/stores/ui.svelte';
+	import { ui, PANELS } from '$lib/stores/ui.svelte';
 	import TransportBar from './TransportBar.svelte';
-	import PixelSelect from './PixelSelect.svelte';
-
-	const VIEW_MODE_LABELS: Record<ViewMode, string> = {
-		full: 'Full',
-		performance: 'Performance',
-		fretboard: 'Fretboard',
-		piano: 'Piano'
-	};
-	const viewModeOptions = VIEW_MODES.map((m) => ({
-		value: m,
-		label: VIEW_MODE_LABELS[m]
-	}));
 
 	/**
 	 * Toggle MIDI routing on/off.
@@ -86,15 +73,22 @@
 	<!-- Spacer -->
 	<div class="spacer"></div>
 
-	<!-- View mode switcher (issue #44) -->
-	<div class="view-mode-picker" title="Switch view mode">
-		<span class="view-mode-label font-ui">View</span>
-		<PixelSelect
-			options={viewModeOptions}
-			value={ui.viewMode}
-			small={true}
-			onchange={(val) => ui.setViewMode(val as ViewMode)}
-		/>
+	<!-- Panel pip row — one click toggles a single panel's visibility.
+	     Replaces the old fixed view-mode packs (full / performance /
+	     fretboard / piano) with per-element control. -->
+	<div class="panel-pips" role="group" aria-label="Toggle visible panels">
+		{#each PANELS as p}
+			<button
+				type="button"
+				class="panel-pip pixel-btn font-ui"
+				class:on={ui.panels[p.id]}
+				onclick={() => ui.togglePanel(p.id)}
+				title={ui.panels[p.id] ? `Hide ${p.label}` : `Show ${p.label}`}
+				aria-pressed={ui.panels[p.id]}
+			>
+				{p.label}
+			</button>
+		{/each}
 	</div>
 
 	<!-- Settings -->
@@ -194,14 +188,32 @@
 		flex: 1;
 	}
 
-	.view-mode-picker {
+	.panel-pips {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 2px;
 	}
-	.view-mode-label {
-		color: var(--color-text-dim);
+	.panel-pip {
+		padding: 3px 6px;
 		font-size: var(--font-size-xs);
+		background: transparent;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-dim);
+		cursor: pointer;
+		min-width: 0;
+		opacity: 0.6;
+	}
+	.panel-pip:hover {
+		border-color: var(--color-accent-cyan);
+		color: var(--color-accent-cyan);
+		opacity: 0.9;
+	}
+	.panel-pip.on {
+		background: var(--color-accent-teal);
+		border-color: var(--color-accent-cyan);
+		color: #ffffff;
+		box-shadow: var(--glow-teal);
+		opacity: 1;
 	}
 
 	.settings-btn {
