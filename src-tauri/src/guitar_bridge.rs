@@ -35,6 +35,7 @@ impl GuitarBridge {
         device_name: &str,
         channel: usize,
         config: GuitarInputConfig,
+        shared_config: Arc<Mutex<Option<GuitarInputConfig>>>,
         tx: mpsc::Sender<Vec<u8>>,
         signal_tx: Option<mpsc::Sender<GuitarSignalInfo>>,
     ) -> Result<Self, String> {
@@ -81,7 +82,6 @@ impl GuitarBridge {
 
         let sample_rate = supported_config.sample_rate() as usize;
         let channels = supported_config.channels() as usize;
-        let pb_range = config.pitch_bend_range;
 
         let mut actual_config = config;
         actual_config.sample_rate = sample_rate;
@@ -109,8 +109,24 @@ impl GuitarBridge {
                         .collect();
 
                     // Process through DSP pipeline
-                    let events = {
+                    let (events, pb_range) = {
                         let mut pipe = pipeline.lock().unwrap();
+
+                        // Sync config from shared state every block so the
+                        // debug window's edits take effect live (without a
+                        // routing restart). Preserve `sample_rate` because
+                        // it's tied to the cpal stream config and can't
+                        // change without rebuilding the stream.
+                        if let Ok(guard) = shared_config.lock() {
+                            if let Some(ref new_config) = *guard {
+                                let cfg = pipe.config_mut();
+                                let preserved_sr = cfg.sample_rate;
+                                *cfg = new_config.clone();
+                                cfg.sample_rate = preserved_sr;
+                            }
+                        }
+
+                        let pb_range = pipe.config_mut().pitch_bend_range;
                         let evts = pipe.process_block(&mono);
 
                         // Send signal info for UI feedback
@@ -124,7 +140,7 @@ impl GuitarBridge {
                             let _ = sig_tx.send(info);
                         }
 
-                        evts
+                        (evts, pb_range)
                     };
 
                     // Convert events to MIDI bytes and send

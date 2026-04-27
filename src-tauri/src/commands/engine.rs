@@ -142,6 +142,9 @@ pub fn start_routing(
             .clone()
             .unwrap_or_default()
     };
+    // Clone the Arc so the audio thread can re-read the live config every
+    // block — lets the debug window's edits take effect without a restart.
+    let guitar_config_shared = Arc::clone(&state.guitar_config);
 
     // Shared state for note updates
     let input_notes = Arc::new(Mutex::new(HashSet::<u8>::new()));
@@ -216,6 +219,7 @@ pub fn start_routing(
             guitar_device,
             guitar_channel,
             guitar_config,
+            guitar_config_shared,
             tx,
             rx,
             in_notes,
@@ -288,6 +292,7 @@ fn run_tauri_router(
     guitar_device: String,
     guitar_channel: usize,
     guitar_config: GuitarInputConfig,
+    guitar_config_shared: Arc<Mutex<Option<GuitarInputConfig>>>,
     tx: mpsc::Sender<Vec<u8>>,
     rx: mpsc::Receiver<Vec<u8>>,
     input_notes: Arc<Mutex<HashSet<u8>>>,
@@ -317,6 +322,7 @@ fn run_tauri_router(
             &guitar_device,
             guitar_channel,
             guitar_config,
+            guitar_config_shared,
             tx,
             Some(signal_tx),
         )
