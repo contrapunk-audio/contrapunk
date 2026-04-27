@@ -7,6 +7,9 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
 COPY wasm/ wasm/
+# Workspace-internal crates the root crate (and so the wasm crate) depend on.
+# These must be present in full because the wasm build pulls in their source.
+COPY crates/ crates/
 # Copy workspace member manifests so `cargo metadata` resolves (sources not needed for WASM build)
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
 COPY plugin/Cargo.toml plugin/Cargo.toml
