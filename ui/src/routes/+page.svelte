@@ -39,7 +39,7 @@
 		(async () => {
 			try {
 				ui.restoreAppearance();
-				ui.restoreViewMode();
+				ui.restorePanels();
 				await adapter.init();
 				await engine.syncFromBackend();
 				await engine.restoreSettings();
@@ -119,82 +119,70 @@
 	<SettingsModal />
 
 	{#if initDone}
-		{#if ui.viewMode === 'full'}
-			<!-- Tab switcher -->
-			<div class="tab-strip">
-				<button
-					class="tab-btn font-ui"
-					class:active={ui.activeTab === 'play'}
-					onclick={() => (ui.activeTab = 'play')}
-				>
-					Play
-				</button>
-				<button
-					class="tab-btn font-ui"
-					class:active={ui.activeTab === 'chain'}
-					onclick={() => (ui.activeTab = 'chain')}
-				>
-					Chain
-				</button>
-			</div>
+		<!-- Tab switcher (orthogonal to panel visibility — tabs decide
+		     content type, panels decide which Play surfaces render). -->
+		<div class="tab-strip">
+			<button
+				class="tab-btn font-ui"
+				class:active={ui.activeTab === 'play'}
+				onclick={() => (ui.activeTab = 'play')}
+			>
+				Play
+			</button>
+			<button
+				class="tab-btn font-ui"
+				class:active={ui.activeTab === 'chain'}
+				onclick={() => (ui.activeTab = 'chain')}
+			>
+				Chain
+			</button>
+		</div>
 
-			{#if ui.activeTab === 'play'}
-				<!-- Middle: 2-column content area (Active Notes moved
-				     out to a strip directly above the piano so it sits
-				     visually next to the keyboards it describes). -->
-				<div class="content-area two-col">
-					<!-- Left column: MIDI devices + Guitar Input
-					     (PresetManager temporarily unmounted — see contrapunk#65) -->
-					<div class="column column-left">
-						<MidiDevices>
-							{#if isGuitarAudioSelected}
-								<GuitarInputPanel />
-							{/if}
-						</MidiDevices>
-					</div>
-
-					<!-- Right column: Harmony controls (now spans the
-					     vacated right slot for more breathing room). -->
-					<div class="column column-center">
-						<ControlPanel />
-					</div>
+		{#if ui.activeTab === 'play'}
+			{#if ui.panels.midi || ui.panels.controls}
+				<!-- Setup row: MIDI devices + Harmony controls. Each
+				     column is a togglable panel; the row collapses to
+				     a single column when only one is visible, and
+				     disappears entirely when both are off. -->
+				<div
+					class="content-area"
+					class:two-col={ui.panels.midi && ui.panels.controls}
+					class:one-col={(ui.panels.midi ? 1 : 0) + (ui.panels.controls ? 1 : 0) === 1}
+				>
+					{#if ui.panels.midi}
+						<div class="column column-left">
+							<MidiDevices>
+								{#if isGuitarAudioSelected}
+									<GuitarInputPanel />
+								{/if}
+							</MidiDevices>
+						</div>
+					{/if}
+					{#if ui.panels.controls}
+						<div class="column column-center">
+							<ControlPanel />
+						</div>
+					{/if}
 				</div>
+			{/if}
 
-				<!-- Active-notes strip — sits between the controls and
-				     the visual instruments so users can read the active
-				     pitches inline with the keys they light up below. -->
+			{#if ui.panels.activeNotes}
 				<div class="active-notes-strip">
 					<ActiveNotes />
 				</div>
+			{/if}
 
-				<!-- Bottom: History strip + Fretboard + Sacred piano keyboard -->
+			{#if ui.panels.history || ui.panels.fretboard || ui.panels.piano}
 				<div class="piano-area">
-					<HistoryStrip />
-					<Fretboard />
-					<Piano />
-				</div>
-			{:else}
-				<!-- Chain tab: audio signal flow + synth params -->
-				<div class="chain-area">
-					<ChainPanel />
+					{#if ui.panels.history}<HistoryStrip />{/if}
+					{#if ui.panels.fretboard}<Fretboard />{/if}
+					{#if ui.panels.piano}<Piano />{/if}
 				</div>
 			{/if}
-		{:else if ui.viewMode === 'performance'}
-			<!-- Performance: history + both instruments, no setup chrome -->
-			<div class="solo-area piano-area">
-				<HistoryStrip />
-				<Fretboard />
-				<Piano />
-			</div>
-		{:else if ui.viewMode === 'fretboard'}
-			<!-- Fretboard-only: centered, fills available space -->
-			<div class="solo-area solo-fretboard">
-				<Fretboard />
-			</div>
-		{:else if ui.viewMode === 'piano'}
-			<!-- Piano-only: centered, fills available space -->
-			<div class="solo-area solo-piano">
-				<Piano />
+		{:else}
+			<!-- Chain tab: audio signal flow + synth params -->
+			<div class="chain-area">
+				<ChainPanel />
 			</div>
 		{/if}
 	{:else if !initError}
@@ -248,16 +236,15 @@
 
 	.content-area {
 		display: grid;
-		grid-template-columns: 1fr 1.4fr 1fr;
 		gap: 1px;
 		overflow: hidden;
 		background: var(--color-border);
 	}
-	/* When the right column is unused (Active Notes moved to a strip
-	   above the piano), give the controls extra width instead of
-	   leaving dead space. */
 	.content-area.two-col {
 		grid-template-columns: 1fr 1.6fr;
+	}
+	.content-area.one-col {
+		grid-template-columns: 1fr;
 	}
 
 	/* Active-notes strip — full-width thin row directly above the
@@ -293,29 +280,6 @@
 	.piano-area {
 		border-top: 1px solid var(--color-border);
 		background: rgba(10, 10, 26, 0.88);
-	}
-
-	/* === Solo view modes (issue #44) ===
-	   Each fills the remaining vertical space below the StatusBar so
-	   single-instrument layouts feel deliberate, not cramped. */
-	.solo-area {
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		align-items: stretch;
-		padding: 24px clamp(16px, 4vw, 64px);
-		background: rgba(10, 10, 26, 0.88);
-		border-top: 1px solid var(--color-border);
-		overflow: hidden;
-	}
-	.solo-fretboard,
-	.solo-piano {
-		gap: 16px;
-	}
-	/* Performance mode keeps the same look as the bottom strip in full
-	   mode but takes the whole content area. */
-	.solo-area.piano-area {
-		padding: 0;
 	}
 
 	/* === Music-reactive vignette === */

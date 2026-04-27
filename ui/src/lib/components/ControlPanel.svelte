@@ -19,13 +19,6 @@
 	} from '$lib/stores/engine.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 
-	// --- Voice labels (fixed to 4 voices: Soprano/Alto/Tenor/Bass) ---
-	function voiceLabel(index: number, count: number): string {
-		const names = ['Soprano', 'Alto', 'Tenor', 'Bass'];
-		if (count <= 4) return `${names[index] || 'Voice'} (${index + 1})`;
-		return `Voice (${index + 1})`;
-	}
-
 	// --- Dropdown option lists ---
 	let keyOptions = ALL_KEYS.map((k) => ({ value: k, label: KEY_DISPLAY[k] }));
 	let modeOptions = ALL_MODES.map((m) => ({ value: m.name, label: m.label }));
@@ -46,14 +39,6 @@
 		(SCALE_FAMILIES.find((g) => g.family === currentFamily)?.modes ?? []).map((m) => ({
 			value: m.name,
 			label: m.label
-		}))
-	);
-
-	// --- Voice-position options ---
-	let voicePositionOptions = $derived(
-		Array.from({ length: engine.voiceCount }, (_, i) => ({
-			value: String(i),
-			label: voiceLabel(i, engine.voiceCount)
 		}))
 	);
 
@@ -83,10 +68,6 @@
 		engine.setVoiceLeading(true, name as VoiceLeadingStyleName);
 	}
 
-	function onVoicePositionChange(val: string) {
-		engine.setVoicePosition(parseInt(val, 10));
-	}
-
 	function onSpeciesChange(name: string) {
 		engine.setCounterpointSpecies(name as CounterpointSpeciesName);
 	}
@@ -105,173 +86,174 @@
 	}
 </script>
 
-<!-- Key dropdown + auto toggle -->
+<!-- Key + Mode + Octave — three pickers in one strip. The Auto-key
+     toggle is inline under Key so the chrome cost is one card header
+     instead of three. -->
 <div class="card">
-	<div class="card-header font-ui">
-		<span>Key</span>
-		<button
-			class="pixel-btn auto-key-btn"
-			class:toggle-on={engine.autoKey}
-			onclick={() => engine.setAutoKey(!engine.autoKey)}
-			title="Auto-detect key from played notes"
-		>
-			{engine.autoKey ? 'AUTO' : 'MANUAL'}
-		</button>
-	</div>
-	<PixelSelect options={keyOptions} value={engine.key} placeholder="Key" onchange={onKeyChange} />
-</div>
-
-<!-- Mode + Octave (side by side) -->
-<div class="row-2col">
-	<div class="card">
-		<div class="card-header font-ui">Mode</div>
-		<PixelSelect
-			options={modeOptions}
-			value={engine.mode}
-			placeholder="Mode"
-			onchange={onModeChange}
-		/>
-	</div>
-	<div class="card">
-		<div class="card-header font-ui">Octave</div>
-		<PixelSelect
-			options={octaveOptions}
-			value={engine.octaveMode}
-			placeholder="Octave"
-			onchange={onOctaveChange}
-		/>
-	</div>
-</div>
-
-<!-- Counterpoint Species + Strictness (only when mode = StrictCounterpoint) -->
-{#if engine.mode === 'StrictCounterpoint'}
-	<div class="row-2col">
-		<div class="card">
-			<div class="card-header font-ui">Species</div>
+	<div class="row-3col">
+		<div class="cell">
+			<div class="cell-label-row">
+				<span class="cell-label font-ui">Key</span>
+				<button
+					class="pixel-btn auto-key-btn"
+					class:toggle-on={engine.autoKey}
+					onclick={() => engine.setAutoKey(!engine.autoKey)}
+					title="Auto-detect key from played notes"
+				>
+					{engine.autoKey ? 'AUTO' : 'MAN'}
+				</button>
+			</div>
+			<PixelSelect options={keyOptions} value={engine.key} placeholder="Key" small={true} onchange={onKeyChange} />
+		</div>
+		<div class="cell">
+			<span class="cell-label font-ui">Mode</span>
 			<PixelSelect
-				options={speciesOptions}
-				value={engine.counterpointSpecies}
-				placeholder="Species"
-				onchange={onSpeciesChange}
+				options={modeOptions}
+				value={engine.mode}
+				placeholder="Mode"
+				small={true}
+				onchange={onModeChange}
 			/>
 		</div>
-		<div class="card">
-			<div class="card-header font-ui">Strictness</div>
+		<div class="cell">
+			<span class="cell-label font-ui">Octave</span>
 			<PixelSelect
-				options={strictnessOptions}
-				value={engine.counterpointStrictness}
-				placeholder="Strictness"
-				onchange={onStrictnessChange}
+				options={octaveOptions}
+				value={engine.octaveMode}
+				placeholder="Octave"
+				small={true}
+				onchange={onOctaveChange}
 			/>
+		</div>
+	</div>
+</div>
+
+<!-- Counterpoint Species + Strictness (only when mode = StrictCounterpoint).
+     Single card, two cells — same chrome cost as one regular card. -->
+{#if engine.mode === 'StrictCounterpoint'}
+	<div class="card">
+		<div class="row-2col-cells">
+			<div class="cell">
+				<span class="cell-label font-ui">Species</span>
+				<PixelSelect
+					options={speciesOptions}
+					value={engine.counterpointSpecies}
+					placeholder="Species"
+					small={true}
+					onchange={onSpeciesChange}
+				/>
+			</div>
+			<div class="cell">
+				<span class="cell-label font-ui">Strictness</span>
+				<PixelSelect
+					options={strictnessOptions}
+					value={engine.counterpointStrictness}
+					placeholder="Strictness"
+					small={true}
+					onchange={onStrictnessChange}
+				/>
+			</div>
 		</div>
 	</div>
 {/if}
 
-<!-- Scale Family + Scale Mode in family (side by side) -->
-<div class="row-2col">
-	<div class="card">
-		<div class="card-header font-ui">Family</div>
-		<PixelSelect
-			options={familyOptions}
-			value={currentFamily}
-			placeholder="Family"
-			onchange={onFamilyChange}
-		/>
-	</div>
-	<div class="card">
-		<div class="card-header font-ui">Scale</div>
-		<PixelSelect
-			options={scaleInFamilyOptions}
-			value={engine.scaleMode}
-			placeholder="Scale"
-			onchange={onScaleModeChange}
-		/>
-	</div>
-</div>
-
-<!-- Voice Position (Voices count picker moved into MidiDevices's
-     OUTPUTS header — it's more discoverable next to the per-voice
-     routing it controls). -->
+<!-- Scale Family + Scale Mode — single card, two cells. -->
 <div class="card">
-	<div class="card-header font-ui">You play</div>
-	{#if engine.voiceCount > 1}
-		<PixelSelect
-			options={voicePositionOptions}
-			value={String(engine.voicePosition)}
-			placeholder="Position"
-			onchange={onVoicePositionChange}
-		/>
-	{:else}
-		<span class="inline-note font-ui">Solo melody</span>
-	{/if}
-</div>
-
-<!-- Voice Leading + Interchange (side by side) -->
-<div class="row-2col">
-	<div class="card">
-		<div class="card-header font-ui">
-			<span>Voice Leading</span>
-			<button
-				class="pixel-btn toggle-btn"
-				class:toggle-on={engine.voiceLeadingEnabled}
-				onclick={() => engine.setVoiceLeading(!engine.voiceLeadingEnabled)}
-			>
-				{engine.voiceLeadingEnabled ? 'ON' : 'OFF'}
-			</button>
-		</div>
-		{#if engine.voiceLeadingEnabled}
+	<div class="row-2col-cells">
+		<div class="cell">
+			<span class="cell-label font-ui">Family</span>
 			<PixelSelect
-				options={vlStyleOptions}
-				value={engine.voiceLeadingStyle}
-				placeholder="Style"
-				onchange={onVlStyleChange}
+				options={familyOptions}
+				value={currentFamily}
+				placeholder="Family"
+				small={true}
+				onchange={onFamilyChange}
 			/>
-		{/if}
-	</div>
-	<div class="card">
-		<div class="card-header font-ui">
-			<span>Interchange</span>
-			<button
-				class="pixel-btn toggle-btn"
-				class:toggle-on={engine.interchangeEnabled}
-				onclick={() => engine.setInterchange(!engine.interchangeEnabled)}
-			>
-				{engine.interchangeEnabled ? 'ON' : 'OFF'}
-			</button>
 		</div>
-		{#if engine.interchangeEnabled}
-			<div class="range-row">
-				<span class="range-label font-ui">Rng</span>
-				<input
-					type="range"
-					min="1"
-					max="5"
-					step="1"
-					value={engine.interchangeRange}
-					oninput={(e) => engine.setInterchange(true, parseInt((e.target as HTMLInputElement).value, 10))}
-					class="pixel-range"
-				/>
-				<span class="range-label font-code">{engine.interchangeRange}</span>
-			</div>
-		{/if}
+		<div class="cell">
+			<span class="cell-label font-ui">Scale</span>
+			<PixelSelect
+				options={scaleInFamilyOptions}
+				value={engine.scaleMode}
+				placeholder="Scale"
+				small={true}
+				onchange={onScaleModeChange}
+			/>
+		</div>
 	</div>
 </div>
 
-<!-- Detune (full width) -->
+<!-- Voice Leading + Interchange — single card, two cells. Toggle pip
+     replaces the per-cell card-header so the chrome cost is the same
+     as one regular card. Conditional content (style picker / range
+     slider) shows only when the side is enabled. -->
 <div class="card">
-	<div class="card-header font-ui">Detune</div>
-	<div class="range-row">
-		<span class="range-label font-code">{engine.detuneCents > 0 ? '+' : ''}{engine.detuneCents}¢</span>
-		<input
-			type="range"
-			min="-100"
-			max="100"
-			step="1"
-			value={engine.detuneCents}
-			oninput={(e) => engine.setDetune(parseInt((e.target as HTMLInputElement).value, 10))}
-			class="pixel-range"
-		/>
+	<div class="row-2col-cells">
+		<div class="cell">
+			<div class="cell-label-row">
+				<span class="cell-label font-ui">Voice Leading</span>
+				<button
+					class="pixel-btn toggle-btn"
+					class:toggle-on={engine.voiceLeadingEnabled}
+					onclick={() => engine.setVoiceLeading(!engine.voiceLeadingEnabled)}
+				>
+					{engine.voiceLeadingEnabled ? 'ON' : 'OFF'}
+				</button>
+			</div>
+			{#if engine.voiceLeadingEnabled}
+				<PixelSelect
+					options={vlStyleOptions}
+					value={engine.voiceLeadingStyle}
+					placeholder="Style"
+					small={true}
+					onchange={onVlStyleChange}
+				/>
+			{/if}
+		</div>
+		<div class="cell">
+			<div class="cell-label-row">
+				<span class="cell-label font-ui">Interchange</span>
+				<button
+					class="pixel-btn toggle-btn"
+					class:toggle-on={engine.interchangeEnabled}
+					onclick={() => engine.setInterchange(!engine.interchangeEnabled)}
+				>
+					{engine.interchangeEnabled ? 'ON' : 'OFF'}
+				</button>
+			</div>
+			{#if engine.interchangeEnabled}
+				<div class="range-row">
+					<span class="range-label font-ui">Rng</span>
+					<input
+						type="range"
+						min="1"
+						max="5"
+						step="1"
+						value={engine.interchangeRange}
+						oninput={(e) => engine.setInterchange(true, parseInt((e.target as HTMLInputElement).value, 10))}
+						class="pixel-range"
+					/>
+					<span class="range-label font-code">{engine.interchangeRange}</span>
+				</div>
+			{/if}
+		</div>
 	</div>
+</div>
+
+<!-- Detune — compact strip: label + slider + readout + presets in one
+     row, no card-header chrome. -->
+<div class="card detune-strip">
+	<span class="cell-label font-ui">Detune</span>
+	<input
+		type="range"
+		min="-100"
+		max="100"
+		step="1"
+		value={engine.detuneCents}
+		oninput={(e) => engine.setDetune(parseInt((e.target as HTMLInputElement).value, 10))}
+		class="pixel-range"
+	/>
+	<span class="range-label font-code detune-readout">{engine.detuneCents > 0 ? '+' : ''}{engine.detuneCents}¢</span>
 	<div class="detune-presets">
 		<button class="pixel-btn" class:active={engine.detuneCents === 0} onclick={() => engine.setDetune(0)}>0</button>
 		<button class="pixel-btn" class:active={engine.detuneCents === 33} onclick={() => engine.setDetune(33)}>+33</button>
@@ -284,32 +266,66 @@
 	.card {
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
-		padding: 6px;
-		margin-bottom: 4px;
+		padding: 4px 6px;
+		margin-bottom: 2px;
 		border-radius: 0;
 	}
 
-	.card-header {
+	/* Compact 3-column strip used by the Key/Mode/Octave card. Each
+	   cell carries its own tiny label so the parent card doesn't need
+	   a header. */
+	.row-3col {
+		display: grid;
+		grid-template-columns: 1fr 1fr 1fr;
+		gap: 6px;
+		align-items: end;
+	}
+
+	/* 2-cell variant — same idea as row-3col, used by Family+Scale,
+	   Species+Strictness, Voice Leading+Interchange. */
+	.row-2col-cells {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px;
+		align-items: start;
+	}
+
+	.cell {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.cell-label {
 		color: var(--color-accent-gold);
 		font-size: var(--font-size-xs);
-		margin-bottom: 4px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 4px;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
 
-	.row-2col {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
+	.cell-label-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 		gap: 4px;
-		align-items: stretch;
+		min-height: 14px;
 	}
 
-	.row-2col > .card {
-		margin-bottom: 4px;
+	/* Detune is one horizontal strip — no header, no preset row below.
+	   Slider takes the available space; readout + presets sit inline. */
+	.detune-strip {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.detune-strip .pixel-range {
+		flex: 1;
+		min-width: 60px;
+	}
+	.detune-readout {
+		min-width: 36px;
+		text-align: right;
 	}
 
 	.auto-key-btn {
@@ -323,25 +339,6 @@
 		border-color: var(--color-accent-cyan);
 		box-shadow: var(--glow-teal);
 		color: #ffffff;
-	}
-
-	.key-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 2px;
-	}
-
-	.count-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 2px;
-	}
-
-	.inline-note {
-		display: block;
-		color: var(--color-text-dim);
-		font-size: var(--font-size-xs);
-		padding: 4px 0;
 	}
 
 	.toggle-btn {
@@ -408,5 +405,13 @@
 		grid-template-columns: repeat(4, 1fr);
 		gap: 2px;
 		margin-top: 4px;
+	}
+
+	/* Inside the inline detune strip the presets sit alongside the
+	   slider, not below it — drop the top margin and let them size
+	   to content. */
+	.detune-strip .detune-presets {
+		grid-template-columns: repeat(4, auto);
+		margin-top: 0;
 	}
 </style>

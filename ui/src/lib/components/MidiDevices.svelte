@@ -64,28 +64,6 @@
 		}
 	}
 
-	// Toggle: when ON every voice is forced to Internal Synth, when OFF
-	// every voice reverts to UseDefault (legacy fan-out). State derived
-	// from the routing table so it stays in sync if individual slots
-	// are tweaked manually.
-	const allToSynth = $derived(
-		Array.from({ length: slotCount }, (_, i) => midi.voiceOutputs[i]).every(
-			(t) => t?.kind === 'synth'
-		)
-	);
-
-	function toggleAllToSynth() {
-		// On — every voice forced to Synth.
-		// Off — every voice cleared to Off so the per-voice slots
-		// re-appear and the user can pick MIDI destinations from a
-		// blank slate. (No "use default" anymore — three explicit
-		// destinations only.)
-		const target: 'synth' | 'off' = allToSynth ? 'off' : 'synth';
-		for (let i = 0; i < slotCount; i++) {
-			midi.setVoiceOutput(i, { kind: target });
-		}
-	}
-
 	// Derived: is Computer Keyboard selected as input?
 	let isComputerKeyboard = $derived(midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD);
 
@@ -155,6 +133,32 @@
 	function slotLabel(index: number): string {
 		if (index === 0) return 'Voice 1 (melody)';
 		return `Voice ${index + 1}`;
+	}
+
+	// Whether a voice slot is actually producing sound (vs `off`). Drives
+	// the status dot + dimming on the slot row.
+	function slotIsActive(index: number): boolean {
+		const t = midi.voiceOutputs[index];
+		return !!t && t.kind !== 'off';
+	}
+
+	// "You play" — voice the user's input occupies in the harmony. Lives
+	// next to INPUT because it answers "where in the chord is what I'm
+	// playing", which is a property of the input source, not a harmony
+	// setting. Hidden when voiceCount === 1 (only choice = melody).
+	function voiceLabel(index: number, count: number): string {
+		const names = ['Soprano', 'Alto', 'Tenor', 'Bass'];
+		if (count <= 4) return `${names[index] || 'Voice'} (${index + 1})`;
+		return `Voice (${index + 1})`;
+	}
+	const voicePositionOptions = $derived(
+		Array.from({ length: engine.voiceCount }, (_, i) => ({
+			value: String(i),
+			label: voiceLabel(i, engine.voiceCount)
+		}))
+	);
+	function onVoicePositionChange(val: string) {
+		engine.setVoicePosition(parseInt(val, 10));
 	}
 </script>
 
@@ -235,6 +239,22 @@
 	{#if midi.error}
 		<div class="error-text font-ui">{midi.error}</div>
 	{/if}
+
+	{#if engine.voiceCount > 1}
+		<!-- "You play" — which voice the input note becomes in the harmony.
+		     Lives next to the INPUT picker because it's a property of the
+		     input, not a harmony setting. -->
+		<div class="you-play-row">
+			<span class="you-play-label font-ui">You play</span>
+			<PixelSelect
+				options={voicePositionOptions}
+				value={String(engine.voicePosition)}
+				placeholder="Voice"
+				small={true}
+				onchange={onVoicePositionChange}
+			/>
+		</div>
+	{/if}
 </div>
 
 <!-- Slot for Guitar Input panel (rendered between INPUT and OUTPUTS) -->
@@ -254,37 +274,33 @@
 		</div>
 	</div>
 
-	<label class="route-all-toggle font-ui" title="Route every voice to the internal synth (skip external MIDI)">
-		<input
-			type="checkbox"
-			checked={allToSynth}
-			onchange={toggleAllToSynth}
-		/>
-		<span class="route-all-label">All → Internal Synth</span>
-	</label>
-
-	{#if !allToSynth}
-		<div class="output-slots">
-			{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
-				<div class="output-slot">
-					<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
-					<PixelSelect
-						options={outputOptions}
-						value={getSlotValue(slotIdx)}
-						placeholder="None"
-						small={true}
-						onchange={(val) => handleOutputChange(slotIdx, val)}
-					/>
-				</div>
-			{/each}
-		</div>
-	{/if}
+	<div class="output-slots">
+		{#each Array.from({ length: slotCount }, (_, i) => i) as slotIdx}
+			<div class="output-slot" class:slot-off={!slotIsActive(slotIdx)}>
+				<span
+					class="slot-status"
+					aria-hidden="true"
+					title={slotIsActive(slotIdx) ? 'Will produce audio' : 'Silent'}
+				>
+					{slotIsActive(slotIdx) ? '●' : '○'}
+				</span>
+				<span class="slot-label font-ui">{slotLabel(slotIdx)}</span>
+				<PixelSelect
+					options={outputOptions}
+					value={getSlotValue(slotIdx)}
+					placeholder="None"
+					small={true}
+					onchange={(val) => handleOutputChange(slotIdx, val)}
+				/>
+			</div>
+		{/each}
+	</div>
 </div>
 
 <style>
 	.midi-section {
-		padding: 6px;
-		margin-bottom: 4px;
+		padding: 4px 6px;
+		margin-bottom: 2px;
 	}
 
 	.section-header {
@@ -310,26 +326,6 @@
 	.voice-count-control {
 		display: flex;
 		align-items: center;
-	}
-
-	.route-all-toggle {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--font-size-xs);
-		padding: 3px 4px;
-		margin-bottom: 4px;
-		cursor: pointer;
-		color: var(--color-text-secondary);
-		user-select: none;
-	}
-	.route-all-toggle input[type='checkbox'] {
-		margin: 0;
-		accent-color: var(--color-accent-cyan);
-		cursor: pointer;
-	}
-	.route-all-toggle:hover .route-all-label {
-		color: var(--color-accent-cyan);
 	}
 
 	.input-row {
@@ -376,11 +372,49 @@
 		gap: 4px;
 	}
 
+	/* Active slots get a glowing accent dot; off slots get a hollow ring
+	   and the whole row dims so the user can scan-eye which voices will
+	   actually produce sound. */
+	.slot-status {
+		font-size: var(--font-size-xs);
+		line-height: 1;
+		width: 10px;
+		text-align: center;
+		color: var(--color-accent-cyan);
+		text-shadow: 0 0 4px var(--color-accent-cyan);
+	}
+	.output-slot.slot-off .slot-status {
+		color: var(--color-text-dim);
+		text-shadow: none;
+	}
+	.output-slot.slot-off {
+		opacity: 0.55;
+	}
+	.output-slot.slot-off .slot-label {
+		color: var(--color-text-dim);
+	}
+
 	.slot-label {
 		color: var(--color-text-secondary);
 		font-size: var(--font-size-xs);
 		white-space: nowrap;
 		min-width: 56px;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	/* "You play" sits inline with the INPUT card. Same horizontal layout
+	   as a slot row so it visually rhymes with the OUTPUTS slots below. */
+	.you-play-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+	}
+	.you-play-label {
+		color: var(--color-accent-gold);
+		font-size: var(--font-size-xs);
+		white-space: nowrap;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 	}
