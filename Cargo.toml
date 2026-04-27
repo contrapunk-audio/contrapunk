@@ -1,5 +1,12 @@
 [workspace]
-members = [".", "src-tauri", "wasm", "plugin", "xtask"]
+members = [
+    ".",
+    "src-tauri",
+    "wasm",
+    "plugin",
+    "xtask",
+    "crates/contrapunk-transport",
+]
 resolver = "2"
 
 [package]
@@ -18,6 +25,7 @@ name = "contrapunk"
 path = "src/main.rs"
 
 [dependencies]
+contrapunk-transport = { path = "crates/contrapunk-transport" }
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.10"

@@ -54,7 +54,9 @@ pub mod harmony;
 pub mod midi;
 pub mod preset;
 pub mod synth;
-pub mod transport;
+/// Sample-accurate transport / clock — extracted to its own crate.
+/// Re-exported here so `contrapunk::transport::*` paths keep working.
+pub use contrapunk_transport as transport;
 
 // =============================================================================
 // Native-only modules (require midir, networking, etc.)
