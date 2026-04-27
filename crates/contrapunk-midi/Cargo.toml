@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
-web-midi = ["wasm-bindgen", "js-sys", "web-sys"]
+web-midi = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys"]
 
 [dependencies]
 anyhow = "1.0"
@@ -21,6 +21,10 @@ midir = "0.11"
 
 [dependencies.wasm-bindgen]
 version = "0.2"
+optional = true
+
+[dependencies.wasm-bindgen-futures]
+version = "0.4"
 optional = true
 
 [dependencies.js-sys]
@@ -36,6 +40,8 @@ features = [
     "MidiOutput",
     "MidiPort",
     "MidiMessageEvent",
+    "MidiInputMap",
+    "MidiOutputMap",
     "Navigator",
     "Window",
 ]
