@@ -6,6 +6,7 @@ members = [
     "plugin",
     "xtask",
     "crates/contrapunk-transport",
+    "crates/contrapunk-midi",
 ]
 resolver = "2"
 
@@ -26,6 +27,7 @@ path = "src/main.rs"
 
 [dependencies]
 contrapunk-transport = { path = "crates/contrapunk-transport" }
+contrapunk-midi = { path = "crates/contrapunk-midi" }
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.10"
@@ -35,7 +37,14 @@ serde_json = "1.0"
 pitch-detection = "0.3"
 [features]
 default = []
-web-midi = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "getrandom"]
+web-midi = [
+    "wasm-bindgen",
+    "wasm-bindgen-futures",
+    "js-sys",
+    "web-sys",
+    "getrandom",
+    "contrapunk-midi/web-midi",
+]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 midir = "0.11"

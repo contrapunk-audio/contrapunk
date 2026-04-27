@@ -51,7 +51,9 @@ pub mod chain;
 pub mod chord;
 pub mod fx;
 pub mod harmony;
-pub mod midi;
+/// MIDI port enumeration + multi-port output routing — extracted to
+/// its own crate. Re-exported so `contrapunk::midi::*` paths keep working.
+pub use contrapunk_midi as midi;
 pub mod preset;
 pub mod synth;
 /// Sample-accurate transport / clock — extracted to its own crate.
