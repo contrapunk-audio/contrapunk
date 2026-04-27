@@ -1,0 +1,15 @@
+[package]
+name = "contrapunk-preset"
+version = "1.1.0"
+edition = "2021"
+description = "Preset save/load + built-in style presets"
+authors = ["Contrapunk Team"]
+
+[lib]
+name = "contrapunk_preset"
+path = "src/lib.rs"
+
+[dependencies]
+contrapunk-harmony = { path = "../contrapunk-harmony" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

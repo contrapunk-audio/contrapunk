@@ -1,5 +1,5 @@
 use super::StylePreset;
-use crate::harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
+use contrapunk_harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
 
 /// Returns all built-in presets with character personas.
 pub fn all() -> Vec<StylePreset> {

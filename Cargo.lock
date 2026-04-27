@@ -608,6 +608,7 @@ dependencies = [
  "contrapunk-chord",
  "contrapunk-harmony",
  "contrapunk-midi",
+ "contrapunk-preset",
  "contrapunk-transport",
  "cpal",
  "getrandom 0.2.17",
@@ -663,6 +664,15 @@ dependencies = [
  "midir",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "contrapunk-preset"
+version = "1.1.0"
+dependencies = [
+ "contrapunk-harmony",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

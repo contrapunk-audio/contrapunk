@@ -57,7 +57,8 @@ pub use contrapunk_harmony as harmony;
 /// MIDI port enumeration + multi-port output routing — extracted to
 /// its own crate. Re-exported so `contrapunk::midi::*` paths keep working.
 pub use contrapunk_midi as midi;
-pub mod preset;
+/// Preset save/load — extracted to its own crate.
+pub use contrapunk_preset as preset;
 pub mod synth;
 /// Sample-accurate transport / clock — extracted to its own crate.
 /// Re-exported here so `contrapunk::transport::*` paths keep working.

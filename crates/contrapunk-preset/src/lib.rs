@@ -1,7 +1,7 @@
 pub mod builtins;
 pub mod storage;
 
-use crate::harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
+use contrapunk_harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
 use serde::{Deserialize, Serialize};
 
 /// A complete musical style preset bundling harmony, voice leading,
