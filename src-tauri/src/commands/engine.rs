@@ -116,23 +116,11 @@ pub fn start_routing(
     // at least one external MIDI port; that constraint is gone now
     // that per-voice routing is the source of truth.
 
-    // Capture engine config for the router thread
-    let engine_config = {
-        let engine = state.engine.lock().map_err(|e| e.to_string())?;
-        (
-            engine.key(),
-            engine.mode(),
-            engine.octave_mode(),
-            engine.voice_leading_enabled(),
-            engine.voice_leading_style(),
-            engine.scale_mode(),
-            engine.interchange_enabled(),
-            engine.borrowing_range(),
-            engine.voice_position(),
-            engine.counterpoint_species(),
-            engine.counterpoint_strictness(),
-        )
-    };
+    // Share the engine across the router thread and command handlers.
+    // Without this clone, the router would run on its own private engine
+    // instance and would never see param changes (set_key, set_auto_key,
+    // ...) made via Tauri commands during a routing session.
+    let engine = Arc::clone(&state.engine);
 
     let routing_mode = { *state.routing_mode.lock().map_err(|e| e.to_string())? };
 
@@ -222,7 +210,7 @@ pub fn start_routing(
         if let Err(e) = run_tauri_router(
             input_idx,
             &output_indices_clone,
-            engine_config,
+            engine,
             routing_mode,
             is_guitar,
             guitar_device,
@@ -290,25 +278,11 @@ pub fn stop_routing(state: State<AppState>) -> Result<(), String> {
 // Router thread implementation
 // ============================================================================
 
-type EngineConfig = (
-    contrapunk::harmony::Key,
-    contrapunk::harmony::HarmonyMode,
-    contrapunk::harmony::OctaveMode,
-    bool, // voice_leading_enabled
-    contrapunk::harmony::VoiceLeadingStyle,
-    contrapunk::harmony::ScaleMode,
-    bool,  // interchange_enabled
-    u8,    // borrowing_range
-    usize, // voice_position
-    contrapunk::harmony::CounterpointSpecies,
-    contrapunk::harmony::CounterpointStrictness,
-);
-
 #[allow(clippy::too_many_arguments)]
 fn run_tauri_router(
     input_port: usize,
     output_ports: &[usize],
-    config: EngineConfig,
+    engine: Arc<Mutex<HarmonyEngine>>,
     routing_mode: contrapunk::harmony::RoutingMode,
     is_guitar: bool,
     guitar_device: String,
@@ -327,20 +301,6 @@ fn run_tauri_router(
     synth_tx: mpsc::Sender<SynthEvent>,
     voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
 ) -> anyhow::Result<()> {
-    let (
-        key,
-        mode,
-        octave_mode,
-        vl_enabled,
-        vl_style,
-        scale_mode,
-        ic_enabled,
-        br_range,
-        vp,
-        cp_species,
-        cp_strictness,
-    ) = config;
-
     // Connect to either Guitar Audio bridge, physical MIDI input, or
     // nothing at all (Computer Keyboard virtual input — notes are pushed
     // by inject_note_on/off commands via the shared router_tx).
@@ -383,18 +343,15 @@ fn run_tauri_router(
     let mut output_router = OutputRouter::new(output_ports)?;
     let num_outputs = output_router.connection_count();
 
-    // Create harmony engine
-    let mut engine = HarmonyEngine::new(key, mode);
-    engine.set_voice_count(num_outputs);
-    engine.set_octave_mode(octave_mode);
-    engine.set_voice_leading_enabled(vl_enabled);
-    engine.set_voice_leading_style(vl_style);
-    engine.set_scale_mode(scale_mode);
-    engine.set_interchange_enabled(ic_enabled);
-    engine.set_borrowing_range(br_range);
-    engine.set_voice_position(vp);
-    engine.set_counterpoint_species(cp_species);
-    engine.set_counterpoint_strictness(cp_strictness);
+    // Sync voice_count to the number of routable outputs at the start of
+    // the session. All other engine parameters (key, mode, scale, voice
+    // leading, etc.) are user-driven and already live on `engine`; we
+    // share that instance with the Tauri command handlers so changes
+    // made during the session take effect on this routing pass.
+    {
+        let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
+        eng.set_voice_count(num_outputs);
+    }
 
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();
@@ -453,7 +410,7 @@ fn run_tauri_router(
             Ok(message) => {
                 process_midi_message(
                     &message,
-                    &mut engine,
+                    &engine,
                     &mut output_router,
                     &input_notes,
                     &harmony_notes,
@@ -478,6 +435,15 @@ fn run_tauri_router(
             // thread. A poisoned lock means a thread panicked while holding
             // it — the data is likely still usable, and silently crashing
             // the emit loop leaves the UI stuck with no user-visible error.
+            let (last_borrowed_from, current_key) = {
+                let eng = engine.lock().unwrap_or_else(|e| e.into_inner());
+                (
+                    eng.last_borrowed_from()
+                        .map(|m| format!("{}", m))
+                        .unwrap_or_default(),
+                    format!("{}", eng.key()),
+                )
+            };
             let payload = {
                 let in_notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());
                 let harm_notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
@@ -494,11 +460,8 @@ fn run_tauri_router(
                     harmony_notes: harm_vec,
                     borrowed_notes: borr_vec,
                     chord_name: ch_name.clone(),
-                    last_borrowed_from: engine
-                        .last_borrowed_from()
-                        .map(|m| format!("{}", m))
-                        .unwrap_or_default(),
-                    current_key: format!("{}", engine.key()),
+                    last_borrowed_from,
+                    current_key,
                 }
             };
             let _ = app_handle.emit("note-update", payload);
@@ -559,7 +522,7 @@ fn run_tauri_router(
 #[allow(clippy::too_many_arguments)]
 fn process_midi_message(
     bytes: &[u8],
-    engine: &mut HarmonyEngine,
+    engine: &Arc<Mutex<HarmonyEngine>>,
     output: &mut OutputRouter,
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
@@ -577,6 +540,12 @@ fn process_midi_message(
         }
     };
 
+    // Lock the shared engine for the duration of one MIDI message. Held
+    // briefly enough that Tauri command handlers (set_key etc.) waiting
+    // on the same Mutex pick it up between messages.
+    let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
+    let eng: &mut HarmonyEngine = &mut eng;
+
     match msg {
         MidiMessage::NoteOn(channel, note, velocity) => {
             if velocity == Velocity::MIN {
@@ -584,7 +553,7 @@ fn process_midi_message(
                     channel,
                     note,
                     velocity,
-                    engine,
+                    eng,
                     output,
                     input_notes,
                     harmony_notes,
@@ -599,7 +568,7 @@ fn process_midi_message(
                     channel,
                     note,
                     velocity,
-                    engine,
+                    eng,
                     output,
                     input_notes,
                     harmony_notes,
@@ -616,7 +585,7 @@ fn process_midi_message(
                 channel,
                 note,
                 velocity,
-                engine,
+                eng,
                 output,
                 input_notes,
                 harmony_notes,
@@ -649,7 +618,34 @@ fn handle_note_on(
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
 ) {
     let notes = engine.harmonize_note_on(note);
+    // Drain any harmonies the engine flagged for explicit release —
+    // populated when an auto-key change wiped `active_notes` mid-flight.
+    // These would otherwise stay sounding under the old key.
+    let stale_releases = engine.take_pending_releases();
     let num_outputs = output.connection_count();
+
+    // Send Note-Offs for stale harmonies before emitting the new ones.
+    // Sending to every external port is over-broad (each note went out
+    // on a single port), but extra Note-Offs to ports that didn't see
+    // the matching Note-On are harmless and we don't track per-note
+    // routing on the router side.
+    if !stale_releases.is_empty() {
+        for &n in &stale_releases {
+            let _ = synth_tx.send(SynthEvent::NoteOff { note: u8::from(n) });
+            let msg = MidiMessage::NoteOff(channel, n, velocity);
+            let mut buf = vec![0u8; msg.bytes_size()];
+            let _ = msg.copy_to_slice(&mut buf);
+            for port in 0..num_outputs {
+                let _ = output.send_to_port(port, &buf);
+            }
+        }
+        let mut harm = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
+        let mut borr = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
+        for &n in &stale_releases {
+            harm.remove(&u8::from(n));
+            borr.remove(&u8::from(n));
+        }
+    }
 
     // Snapshot voice routing once per note event — clone is cheap
     // (8-element Vec of Copy enums) and avoids lock contention during

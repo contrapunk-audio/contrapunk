@@ -271,6 +271,13 @@ pub struct HarmonyEngine {
     counterpoint_strictness: CounterpointStrictness,
     saved_scale_mode: Option<ScaleMode>,
     harmonic_context: Option<HarmonicContext>,
+    /// Harmony notes that need an explicit Note-Off after an auto-key
+    /// triggered `set_key`. The key change wipes `active_notes`, which
+    /// means the normal Note-Off path (`harmonize_note_off`) won't know
+    /// about the harmonies that were sounding under the previous key —
+    /// they would otherwise stay stuck. Drained by the router each
+    /// `harmonize_note_on` cycle via `take_pending_releases`.
+    pending_releases: Vec<Note>,
 }
 
 impl HarmonyEngine {
@@ -315,6 +322,7 @@ impl HarmonyEngine {
             counterpoint_species: CounterpointSpecies::default(),
             counterpoint_strictness: CounterpointStrictness::default(),
             saved_scale_mode: None,
+            pending_releases: Vec::new(),
             harmonic_context: None,
         }
     }
@@ -462,8 +470,13 @@ impl HarmonyEngine {
         self.auto_key = enabled;
         if enabled {
             self.key_detector.set_scale_mode(self.scale_mode);
+            println!(
+                "[AUTOKEY] enabled (scale_mode={:?}, key={:?})",
+                self.scale_mode, self.key
+            );
         } else {
             self.key_detector.reset();
+            println!("[AUTOKEY] disabled");
         }
     }
 
@@ -1063,6 +1076,21 @@ impl HarmonyEngine {
             let midi = u8::from(note);
             if let Some(detected) = self.key_detector.feed(midi) {
                 if detected != self.key {
+                    // Capture all currently-sounding harmonies for explicit
+                    // release before set_key wipes `active_notes`. Without
+                    // this the old-key harmonies stay stuck — note-off for
+                    // the user's input note only releases harmonies the
+                    // engine is now tracking under the new key.
+                    for harmonies in self.active_notes.values() {
+                        self.pending_releases.extend(harmonies.iter().copied());
+                    }
+                    println!(
+                        "[AUTOKEY] key change: {:?} -> {:?} (note={}, releasing {} stale)",
+                        self.key,
+                        detected,
+                        midi,
+                        self.pending_releases.len()
+                    );
                     self.set_key(detected);
                 }
             }
@@ -1095,6 +1123,16 @@ impl HarmonyEngine {
     ///
     /// Vec of notes to release: original note first, tracked harmony notes after.
     /// If no harmony was tracked, returns just the original note.
+    /// Returns and clears the queue of harmony notes that need an
+    /// explicit Note-Off after an auto-key triggered key change.
+    ///
+    /// The router calls this after each `harmonize_note_on` so the old
+    /// key's stale harmonies get released before the new key's harmonies
+    /// take over. Returns an empty Vec when no key change happened.
+    pub fn take_pending_releases(&mut self) -> Vec<Note> {
+        std::mem::take(&mut self.pending_releases)
+    }
+
     pub fn harmonize_note_off(&mut self, note: Note) -> Vec<Note> {
         let midi = u8::from(note);
         // Restore the port map that was stored during Note-On
@@ -2050,5 +2088,86 @@ mod tests {
             "Species 1 and Species 2 produced identical output across the \
              full melody — species dispatch is not wired end-to-end."
         );
+    }
+
+    // --- Auto-key stuck-note release wiring ---
+
+    #[test]
+    fn auto_key_off_never_populates_pending_releases() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
+        // auto_key is false by default; play a phrase that would otherwise
+        // shift a key detector strongly.
+        let _ = engine.harmonize_note_on(Note::C4);
+        let _ = engine.harmonize_note_on(Note::E4);
+        let _ = engine.harmonize_note_on(Note::G4);
+        assert!(engine.take_pending_releases().is_empty());
+    }
+
+    #[test]
+    fn auto_key_change_queues_old_harmonies_for_release() {
+        // Stage 1: lock the detector on C major while holding harmony notes
+        // for several inputs. After enabling auto-key those harmonies are
+        // tracked under `active_notes`.
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
+        engine.set_auto_key(true);
+        for &n in &[Note::C4, Note::D4, Note::E4, Note::F4, Note::G4] {
+            let _ = engine.harmonize_note_on(n);
+        }
+        assert!(engine.take_pending_releases().is_empty());
+
+        // Stage 2: feed sustained G-major content (full scale, repeated) so
+        // the histogram clearly tilts toward G past the confidence margin.
+        // The old C-major harmonies must be queued for release before
+        // `set_key` wipes `active_notes`.
+        let g_major_scale = [
+            Note::G4,
+            Note::A4,
+            Note::B4,
+            Note::C5,
+            Note::D5,
+            Note::E5,
+            Note::FSharp5,
+        ];
+        for _ in 0..3 {
+            for &n in &g_major_scale {
+                let _ = engine.harmonize_note_on(n);
+            }
+        }
+        let stale = engine.take_pending_releases();
+        assert!(
+            !stale.is_empty(),
+            "auto-key change should queue stale harmonies for release"
+        );
+        assert_eq!(
+            engine.key(),
+            Key::G,
+            "detector should have committed to G after sustained content"
+        );
+    }
+
+    #[test]
+    fn take_pending_releases_drains_the_queue() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
+        engine.set_auto_key(true);
+        for &n in &[Note::C4, Note::D4, Note::E4, Note::F4, Note::G4] {
+            let _ = engine.harmonize_note_on(n);
+        }
+        let g_major_scale = [
+            Note::G4,
+            Note::A4,
+            Note::B4,
+            Note::C5,
+            Note::D5,
+            Note::E5,
+            Note::FSharp5,
+        ];
+        for _ in 0..3 {
+            for &n in &g_major_scale {
+                let _ = engine.harmonize_note_on(n);
+            }
+        }
+        let _ = engine.take_pending_releases();
+        // Second call must be empty — the queue is drained, not cloned.
+        assert!(engine.take_pending_releases().is_empty());
     }
 }
