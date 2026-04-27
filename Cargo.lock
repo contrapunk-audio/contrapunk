@@ -604,6 +604,7 @@ dependencies = [
  "clack-extensions",
  "clack-host",
  "clap",
+ "contrapunk-chord",
  "contrapunk-midi",
  "contrapunk-transport",
  "cpal",
@@ -625,6 +626,10 @@ dependencies = [
  "web-sys",
  "wmidi",
 ]
+
+[[package]]
+name = "contrapunk-chord"
+version = "1.1.0"
 
 [[package]]
 name = "contrapunk-midi"

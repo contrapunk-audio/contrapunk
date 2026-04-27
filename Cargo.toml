@@ -7,6 +7,7 @@ members = [
     "xtask",
     "crates/contrapunk-transport",
     "crates/contrapunk-midi",
+    "crates/contrapunk-chord",
 ]
 resolver = "2"
 
@@ -28,6 +29,7 @@ path = "src/main.rs"
 [dependencies]
 contrapunk-transport = { path = "crates/contrapunk-transport" }
 contrapunk-midi = { path = "crates/contrapunk-midi" }
+contrapunk-chord = { path = "crates/contrapunk-chord" }
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.10"

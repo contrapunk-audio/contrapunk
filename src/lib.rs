@@ -48,7 +48,8 @@
 
 pub mod audio;
 pub mod chain;
-pub mod chord;
+/// Chord recognition — extracted to its own crate.
+pub use contrapunk_chord as chord;
 pub mod fx;
 pub mod harmony;
 /// MIDI port enumeration + multi-port output routing — extracted to
