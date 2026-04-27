@@ -605,6 +605,7 @@ dependencies = [
  "clack-host",
  "clap",
  "contrapunk-chord",
+ "contrapunk-harmony",
  "contrapunk-midi",
  "contrapunk-transport",
  "cpal",
@@ -630,6 +631,15 @@ dependencies = [
 [[package]]
 name = "contrapunk-chord"
 version = "1.1.0"
+
+[[package]]
+name = "contrapunk-harmony"
+version = "1.1.0"
+dependencies = [
+ "rand 0.10.1",
+ "serde",
+ "wmidi",
+]
 
 [[package]]
 name = "contrapunk-midi"

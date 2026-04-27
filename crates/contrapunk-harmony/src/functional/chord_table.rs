@@ -6,7 +6,7 @@
 //! Only valid for 7-note scales. 8-note scales (Barry Harris) are
 //! not supported by FunctionalHarmony/BachChorale modes.
 
-use crate::harmony::config::ScaleMode;
+use crate::config::ScaleMode;
 
 /// Role a pitch class plays within a chord.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

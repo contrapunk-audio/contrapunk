@@ -63,7 +63,7 @@
 use rand::RngExt;
 use wmidi::Note;
 
-use crate::harmony::Scale;
+use crate::Scale;
 
 /// Mode 1: Pass-through (no harmony).
 ///

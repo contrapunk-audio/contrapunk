@@ -6,7 +6,7 @@
 
 use wmidi::Note;
 
-use crate::harmony::scale::Scale;
+use crate::scale::Scale;
 
 /// Phase of the suspension cycle.
 #[derive(Debug, Clone, PartialEq)]

@@ -13,7 +13,7 @@
 //!
 //! Total size: 392 * 7 * 4 bytes = ~11 KB. Fits in L1 cache.
 
-use crate::harmony::config::ScaleMode;
+use crate::config::ScaleMode;
 
 const DEGREE_COUNT: usize = 7;
 const BEAT_COUNT: usize = 4;

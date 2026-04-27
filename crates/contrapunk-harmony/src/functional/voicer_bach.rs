@@ -383,7 +383,7 @@ fn relaxed_search(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harmony::config::ScaleMode;
+    use crate::config::ScaleMode;
 
     fn c_major_table() -> ChordTable {
         ChordTable::build(0, ScaleMode::Ionian)

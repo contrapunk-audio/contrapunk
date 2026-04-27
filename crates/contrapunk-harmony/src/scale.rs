@@ -1,6 +1,6 @@
 use wmidi::Note;
 
-use crate::harmony::config::ScaleMode;
+use crate::config::ScaleMode;
 
 /// Consonant chromatic intervals (in semitones) for out-of-key notes.
 /// These sound good regardless of key context.

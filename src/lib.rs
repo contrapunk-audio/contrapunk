@@ -51,7 +51,8 @@ pub mod chain;
 /// Chord recognition — extracted to its own crate.
 pub use contrapunk_chord as chord;
 pub mod fx;
-pub mod harmony;
+/// Harmony engine — extracted to its own crate.
+pub use contrapunk_harmony as harmony;
 /// MIDI port enumeration + multi-port output routing — extracted to
 /// its own crate. Re-exported so `contrapunk::midi::*` paths keep working.
 pub use contrapunk_midi as midi;

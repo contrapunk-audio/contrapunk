@@ -30,15 +30,15 @@
 use std::collections::HashMap;
 use wmidi::Note;
 
-use crate::harmony::config::{BeatPhase, HarmonyMode, Key, OctaveMode, ScaleMode};
-use crate::harmony::functional;
-use crate::harmony::functional::context::HarmonicContext;
-use crate::harmony::modes;
-use crate::harmony::scale::Scale;
-use crate::harmony::stateful::{
+use crate::config::{BeatPhase, HarmonyMode, Key, OctaveMode, ScaleMode};
+use crate::functional;
+use crate::functional::context::HarmonicContext;
+use crate::modes;
+use crate::scale::Scale;
+use crate::stateful::{
     ContraryMotionState, CounterpointSpecies, CounterpointState, CounterpointStrictness,
 };
-use crate::harmony::voice_leading::{
+use crate::voice_leading::{
     revoice_chord, StyleRules, SuspensionState, VoiceAnchor, VoiceLeadingStyle, VoiceRegister,
 };
 
@@ -1728,7 +1728,7 @@ mod tests {
 
     #[test]
     fn test_vl_resets_on_style_change() {
-        use crate::harmony::voice_leading::VoiceLeadingStyle;
+        use crate::voice_leading::VoiceLeadingStyle;
 
         let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
         engine.set_voice_leading_enabled(true);
@@ -1742,7 +1742,7 @@ mod tests {
 
     #[test]
     fn test_vl_style_getter_setter() {
-        use crate::harmony::voice_leading::VoiceLeadingStyle;
+        use crate::voice_leading::VoiceLeadingStyle;
 
         let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
         assert_eq!(engine.voice_leading_style(), VoiceLeadingStyle::Free);

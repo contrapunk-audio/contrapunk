@@ -6,7 +6,7 @@
 //! WASM-safe: uses note count for harmonic rhythm, not `std::time::Instant`.
 
 use super::chord_table::ChordTable;
-use crate::harmony::config::ScaleMode;
+use crate::config::ScaleMode;
 
 /// Cadence detection state machine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

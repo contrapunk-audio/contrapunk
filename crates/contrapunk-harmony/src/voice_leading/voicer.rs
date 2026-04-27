@@ -586,7 +586,7 @@ fn cartesian_product(sets: &[Vec<u8>]) -> Vec<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harmony::voice_leading::styles::{StyleRules, VoiceLeadingStyle};
+    use crate::voice_leading::styles::{StyleRules, VoiceLeadingStyle};
 
     fn default_registers_3() -> Vec<VoiceRegister> {
         vec![

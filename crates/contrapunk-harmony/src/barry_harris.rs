@@ -7,8 +7,8 @@
 
 use wmidi::Note;
 
-use crate::harmony::config::{BeatPhase, ScaleMode};
-use crate::harmony::scale::Scale;
+use crate::config::{BeatPhase, ScaleMode};
+use crate::scale::Scale;
 
 /// Chord-tone vs passing-tone classification.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,7 +51,7 @@ pub fn validate_scale(scale_mode: ScaleMode) -> BhScaleGuard {
 
 /// Infers the best BH scale from the current scale mode's tonality.
 fn infer_bh_scale(current: ScaleMode) -> ScaleMode {
-    use crate::harmony::config::ScaleFamily;
+    use crate::config::ScaleFamily;
     match current.family() {
         ScaleFamily::Diatonic => match current {
             ScaleMode::Aeolian | ScaleMode::Dorian | ScaleMode::Phrygian | ScaleMode::Locrian => {

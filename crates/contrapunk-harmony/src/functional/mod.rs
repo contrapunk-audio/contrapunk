@@ -31,7 +31,7 @@ use wmidi::Note;
 use self::context::HarmonicContext;
 use self::scorer::ScoringWeights;
 
-use crate::harmony::config::ScaleMode;
+use crate::config::ScaleMode;
 
 /// Process a note through FunctionalHarmony mode.
 ///
@@ -201,7 +201,7 @@ fn place_near(pc: u8, reference: u8, existing: &[Note]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harmony::config::ScaleMode;
+    use crate::config::ScaleMode;
 
     #[test]
     fn test_functional_harmony_basic() {

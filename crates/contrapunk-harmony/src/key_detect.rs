@@ -1,4 +1,4 @@
-use crate::harmony::config::{Key, ScaleMode};
+use crate::config::{Key, ScaleMode};
 
 /// Minimum notes before the detector will produce a result.
 const MIN_NOTES: usize = 4;

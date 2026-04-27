@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 use wmidi::Note;
 
-use crate::harmony::Scale;
+use crate::Scale;
 
 /// Counterpoint species selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]

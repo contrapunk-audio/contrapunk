@@ -10,7 +10,7 @@ use super::chord_table::{ChordRole, ChordTable, HarmonicFunction};
 use super::context::{CadencePhase, HarmonicContext};
 use super::markov;
 
-use crate::harmony::config::ScaleMode;
+use crate::config::ScaleMode;
 
 /// Scoring weights for the 6-term composite function.
 /// Sum should be 1.0.
@@ -257,7 +257,7 @@ fn min_pc_distance(a: u8, b: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harmony::config::ScaleMode;
+    use crate::config::ScaleMode;
 
     fn make_ctx() -> HarmonicContext {
         HarmonicContext::new(0, ScaleMode::Ionian)
