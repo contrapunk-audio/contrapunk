@@ -1,5 +1,17 @@
 [workspace]
-members = [".", "src-tauri", "wasm", "plugin", "xtask"]
+members = [
+    ".",
+    "src-tauri",
+    "wasm",
+    "plugin",
+    "xtask",
+    "crates/contrapunk-transport",
+    "crates/contrapunk-midi",
+    "crates/contrapunk-chord",
+    "crates/contrapunk-harmony",
+    "crates/contrapunk-audio",
+    "crates/contrapunk-preset",
+]
 resolver = "2"
 
 [package]
@@ -18,6 +30,12 @@ name = "contrapunk"
 path = "src/main.rs"
 
 [dependencies]
+contrapunk-transport = { path = "crates/contrapunk-transport" }
+contrapunk-midi = { path = "crates/contrapunk-midi" }
+contrapunk-chord = { path = "crates/contrapunk-chord" }
+contrapunk-harmony = { path = "crates/contrapunk-harmony" }
+contrapunk-audio = { path = "crates/contrapunk-audio" }
+contrapunk-preset = { path = "crates/contrapunk-preset" }
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.10"
@@ -27,7 +45,14 @@ serde_json = "1.0"
 pitch-detection = "0.3"
 [features]
 default = []
-web-midi = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "getrandom"]
+web-midi = [
+    "wasm-bindgen",
+    "wasm-bindgen-futures",
+    "js-sys",
+    "web-sys",
+    "getrandom",
+    "contrapunk-midi/web-midi",
+]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 midir = "0.11"

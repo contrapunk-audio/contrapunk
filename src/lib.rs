@@ -46,15 +46,23 @@
 // Core modules -- always available on all platforms
 // =============================================================================
 
-pub mod audio;
+/// Audio capture, DSP, pitch detection, guitar pipeline — extracted to its own crate.
+pub use contrapunk_audio as audio;
 pub mod chain;
-pub mod chord;
+/// Chord recognition — extracted to its own crate.
+pub use contrapunk_chord as chord;
 pub mod fx;
-pub mod harmony;
-pub mod midi;
-pub mod preset;
+/// Harmony engine — extracted to its own crate.
+pub use contrapunk_harmony as harmony;
+/// MIDI port enumeration + multi-port output routing — extracted to
+/// its own crate. Re-exported so `contrapunk::midi::*` paths keep working.
+pub use contrapunk_midi as midi;
+/// Preset save/load — extracted to its own crate.
+pub use contrapunk_preset as preset;
 pub mod synth;
-pub mod transport;
+/// Sample-accurate transport / clock — extracted to its own crate.
+/// Re-exported here so `contrapunk::transport::*` paths keep working.
+pub use contrapunk_transport as transport;
 
 // =============================================================================
 // Native-only modules (require midir, networking, etc.)

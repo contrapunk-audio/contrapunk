@@ -74,8 +74,13 @@ pub struct AppState {
     /// Currently detected chord name
     pub chord_name: Mutex<String>,
 
-    /// Guitar input DSP configuration (None = use defaults)
-    pub guitar_config: Mutex<Option<GuitarInputConfig>>,
+    /// Guitar input DSP configuration (None = use defaults).
+    ///
+    /// Wrapped in `Arc<Mutex<...>>` so the `GuitarBridge` audio thread
+    /// can hold a clone and re-read the config every block — without
+    /// this, edits made via the debug window would only take effect on
+    /// the next routing restart. Same pattern as `engine` (#80).
+    pub guitar_config: Arc<Mutex<Option<GuitarInputConfig>>>,
 
     /// Guitar audio device name (empty = default input device)
     pub guitar_device: Mutex<String>,
@@ -164,7 +169,7 @@ impl Default for AppState {
             harmony_notes: Mutex::new(HashSet::new()),
             borrowed_notes: Mutex::new(HashSet::new()),
             chord_name: Mutex::new(String::new()),
-            guitar_config: Mutex::new(None),
+            guitar_config: Arc::new(Mutex::new(None)),
             guitar_device: Mutex::new(String::new()),
             guitar_channel: Mutex::new(0),
             routing_mode: Mutex::new(RoutingMode::default()),

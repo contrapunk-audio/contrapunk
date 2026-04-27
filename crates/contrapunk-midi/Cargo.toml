@@ -1,0 +1,48 @@
+[package]
+name = "contrapunk-midi"
+version = "1.1.0"
+edition = "2021"
+description = "MIDI port enumeration + multi-port output routing"
+authors = ["Contrapunk Team"]
+
+[lib]
+name = "contrapunk_midi"
+path = "src/lib.rs"
+
+[features]
+default = []
+web-midi = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys"]
+
+[dependencies]
+anyhow = "1.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+midir = "0.11"
+
+[dependencies.wasm-bindgen]
+version = "0.2"
+optional = true
+
+[dependencies.wasm-bindgen-futures]
+version = "0.4"
+optional = true
+
+[dependencies.js-sys]
+version = "0.3"
+optional = true
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "MidiAccess",
+    "MidiOptions",
+    "MidiInput",
+    "MidiOutput",
+    "MidiPort",
+    "MidiMessageEvent",
+    "MidiInputMap",
+    "MidiOutputMap",
+    "Navigator",
+    "Window",
+]
+optional = true

@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities for Contrapunk",
-  "windows": ["main"],
+  "windows": ["main", "debug-pipeline"],
   "permissions": [
     "core:default",
     "core:event:default"

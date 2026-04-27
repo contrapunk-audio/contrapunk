@@ -604,6 +604,12 @@ dependencies = [
  "clack-extensions",
  "clack-host",
  "clap",
+ "contrapunk-audio",
+ "contrapunk-chord",
+ "contrapunk-harmony",
+ "contrapunk-midi",
+ "contrapunk-preset",
+ "contrapunk-transport",
  "cpal",
  "getrandom 0.2.17",
  "js-sys",
@@ -625,6 +631,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "contrapunk-audio"
+version = "1.1.0"
+dependencies = [
+ "pitch-detection",
+ "ringbuf",
+ "serde",
+ "serde_json",
+ "wmidi",
+]
+
+[[package]]
+name = "contrapunk-chord"
+version = "1.1.0"
+
+[[package]]
+name = "contrapunk-harmony"
+version = "1.1.0"
+dependencies = [
+ "rand 0.10.1",
+ "serde",
+ "serde_json",
+ "wmidi",
+]
+
+[[package]]
+name = "contrapunk-midi"
+version = "1.1.0"
+dependencies = [
+ "anyhow",
+ "js-sys",
+ "midir",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "contrapunk-preset"
+version = "1.1.0"
+dependencies = [
+ "contrapunk-harmony",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "contrapunk-tauri"
 version = "1.1.0"
 dependencies = [
@@ -639,6 +691,10 @@ dependencies = [
  "tauri-build",
  "wmidi",
 ]
+
+[[package]]
+name = "contrapunk-transport"
+version = "1.1.0"
 
 [[package]]
 name = "contrapunk-wasm"

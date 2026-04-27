@@ -269,6 +269,21 @@
 		>
 			{guitar.calibrating ? 'CALIBRATING...' : guitar.calibrated ? 'CALIBRATED' : 'TUNE + CALIBRATE'}
 		</button>
+
+		<!-- Open the guitar pipeline debug window (Tauri only — no-op in browser) -->
+		<button
+			class="calibrate-btn pixel-btn"
+			onclick={async () => {
+				try {
+					const { invoke } = await import('@tauri-apps/api/core');
+					await invoke('open_debug_pipeline_window');
+				} catch (e) {
+					console.warn('[guitar] debug window unavailable (browser?):', e);
+				}
+			}}
+		>
+			DEBUG PIPELINE
+		</button>
 		{#if guitar.calibrationStatus}
 			<div class="calibration-status font-ui" class:calibrated={guitar.calibrated}>
 				{guitar.calibrationStatus}
