@@ -46,7 +46,8 @@
 // Core modules -- always available on all platforms
 // =============================================================================
 
-pub mod audio;
+/// Audio capture, DSP, pitch detection, guitar pipeline — extracted to its own crate.
+pub use contrapunk_audio as audio;
 pub mod chain;
 /// Chord recognition — extracted to its own crate.
 pub use contrapunk_chord as chord;

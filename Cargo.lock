@@ -604,6 +604,7 @@ dependencies = [
  "clack-extensions",
  "clack-host",
  "clap",
+ "contrapunk-audio",
  "contrapunk-chord",
  "contrapunk-harmony",
  "contrapunk-midi",
@@ -629,6 +630,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "contrapunk-audio"
+version = "1.1.0"
+dependencies = [
+ "pitch-detection",
+ "ringbuf",
+ "serde",
+ "serde_json",
+ "wmidi",
+]
+
+[[package]]
 name = "contrapunk-chord"
 version = "1.1.0"
 
@@ -638,6 +650,7 @@ version = "1.1.0"
 dependencies = [
  "rand 0.10.1",
  "serde",
+ "serde_json",
  "wmidi",
 ]
 

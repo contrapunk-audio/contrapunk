@@ -17,6 +17,7 @@ pub mod config;
 pub mod detectors;
 pub mod guitar;
 pub mod guitar_input;
+pub mod guitar_pipeline;
 pub mod inference;
 pub mod onset;
 pub mod pitch;

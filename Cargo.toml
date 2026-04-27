@@ -9,6 +9,7 @@ members = [
     "crates/contrapunk-midi",
     "crates/contrapunk-chord",
     "crates/contrapunk-harmony",
+    "crates/contrapunk-audio",
 ]
 resolver = "2"
 
@@ -32,6 +33,7 @@ contrapunk-transport = { path = "crates/contrapunk-transport" }
 contrapunk-midi = { path = "crates/contrapunk-midi" }
 contrapunk-chord = { path = "crates/contrapunk-chord" }
 contrapunk-harmony = { path = "crates/contrapunk-harmony" }
+contrapunk-audio = { path = "crates/contrapunk-audio" }
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.10"
