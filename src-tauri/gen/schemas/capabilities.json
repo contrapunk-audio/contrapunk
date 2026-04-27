@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capabilities for Contrapunk","local":true,"windows":["main"],"permissions":["core:default","core:event:default"]}}
+{"default":{"identifier":"default","description":"Default capabilities for Contrapunk","local":true,"windows":["main","debug-pipeline"],"permissions":["core:default","core:event:default"]}}

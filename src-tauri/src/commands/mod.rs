@@ -4,6 +4,7 @@
 //! in the Tauri builder.
 
 pub mod chain;
+pub mod debug;
 pub mod engine;
 pub mod fx;
 pub mod guitar;

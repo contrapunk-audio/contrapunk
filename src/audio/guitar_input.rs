@@ -23,7 +23,7 @@ use super::pitch::freq_to_midi;
 // ── Configuration ──────────────────────────────────────────────────
 
 /// User-adjustable parameters for the guitar input pipeline.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GuitarInputConfig {
     /// Analysis window in samples (256-2048).
     pub buffer_size: usize,

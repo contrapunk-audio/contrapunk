@@ -90,7 +90,11 @@ fn main() {
             // Guitar audio input
             commands::guitar::set_guitar_device,
             commands::guitar::set_guitar_config,
+            commands::guitar::get_full_guitar_config,
+            commands::guitar::set_full_guitar_config,
             commands::guitar::list_audio_devices,
+            // Debug window
+            commands::debug::open_debug_pipeline_window,
             // Presets
             commands::presets::list_presets,
             commands::presets::load_preset,

@@ -16,6 +16,36 @@ use contrapunk::audio::guitar_input::GuitarInputConfig;
 
 use crate::state::AppState;
 
+/// Returns the current guitar DSP pipeline configuration, or the engine
+/// defaults if the user has not configured one yet. Used by the debug
+/// window to populate its controls.
+#[tauri::command]
+pub fn get_full_guitar_config(state: State<AppState>) -> Result<GuitarInputConfig, String> {
+    let guard = state.guitar_config.lock().map_err(|e| e.to_string())?;
+    Ok(guard.clone().unwrap_or_default())
+}
+
+/// Replace the entire guitar DSP pipeline configuration.
+///
+/// Unlike `set_guitar_config` (which is destructive in a different way
+/// — it rebuilds from a fixed subset of fields and resets everything
+/// else), this command takes the full struct and stores it as-is. Used
+/// by the debug window to write back partial edits without losing
+/// fields the legacy command doesn't expose.
+///
+/// **Note:** the routing thread reads `state.guitar_config` once at
+/// routing start. Changes made via this command do *not* take effect
+/// mid-session — the user must stop and restart routing for the new
+/// config to be picked up.
+#[tauri::command]
+pub fn set_full_guitar_config(
+    config: GuitarInputConfig,
+    state: State<AppState>,
+) -> Result<(), String> {
+    *state.guitar_config.lock().map_err(|e| e.to_string())? = Some(config);
+    Ok(())
+}
+
 /// Set the guitar audio input device and channel.
 ///
 /// Called from the UI when the user selects an audio device and
