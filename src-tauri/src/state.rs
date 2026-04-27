@@ -154,7 +154,10 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            engine: Arc::new(Mutex::new(HarmonyEngine::new(Key::C, HarmonyMode::PassThrough))),
+            engine: Arc::new(Mutex::new(HarmonyEngine::new(
+                Key::C,
+                HarmonyMode::PassThrough,
+            ))),
             preset_manager: Mutex::new(PresetManager::new()),
             is_running: AtomicBool::new(false),
             input_notes: Mutex::new(HashSet::new()),
