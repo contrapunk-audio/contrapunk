@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
+	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 	type GuitarConfig = {
 		buffer_size: number;
@@ -26,11 +27,29 @@
 		brightness_enabled: boolean;
 	};
 
+	type GuitarSignal = {
+		rms: number;
+		frequency: number | null;
+		clarity: number;
+		note_state: number; // 0=Idle 1=Attack 2=Sustain 3=Decay
+		note_name: string;
+		midi_note: number;
+	};
+
+	const STATE_LABELS = ['Idle', 'Attack', 'Sustain', 'Decay'];
+
 	let config = $state<GuitarConfig | null>(null);
 	let error = $state<string>('');
 	let dirty = $state(false);
 	let saving = $state(false);
 	let lastSaved = $state<string>('');
+
+	// Live signal state — populated by `guitar-signal` events emitted by the
+	// router thread when the active input is Guitar Audio.
+	let signal = $state<GuitarSignal | null>(null);
+	let signalLastTs = $state<number>(0);
+	let signalSubscribed = $state(false);
+	let unlistenSignal: UnlistenFn | null = null;
 
 	async function fetchConfig() {
 		try {
@@ -71,7 +90,44 @@
 		}, 250);
 	}
 
-	onMount(fetchConfig);
+	async function subscribeSignal() {
+		try {
+			unlistenSignal = await listen<GuitarSignal>('guitar-signal', (event) => {
+				signal = event.payload;
+				signalLastTs = Date.now();
+			});
+			signalSubscribed = true;
+		} catch (e) {
+			console.warn('[debug] guitar-signal subscribe failed:', e);
+		}
+	}
+
+	// Stale check — if no event for 500ms, the router probably stopped or
+	// isn't in Guitar Audio mode. Surface that explicitly. `_staleTick`
+	// is read inside the derived so the derivation re-runs every 250ms
+	// even when no signal events arrive.
+	let staleTimer: ReturnType<typeof setInterval> | null = null;
+	let _staleTick = $state(0);
+	let signalStale = $derived(
+		_staleTick >= 0 && signalSubscribed && signalLastTs > 0 && Date.now() - signalLastTs > 500
+	);
+	function startStaleTicker() {
+		staleTimer = setInterval(() => {
+			_staleTick++;
+		}, 250);
+	}
+
+	onMount(() => {
+		fetchConfig();
+		subscribeSignal();
+		startStaleTicker();
+	});
+
+	onDestroy(() => {
+		if (unlistenSignal) unlistenSignal();
+		if (staleTimer) clearInterval(staleTimer);
+		if (saveTimer) clearTimeout(saveTimer);
+	});
 </script>
 
 <svelte:head>
@@ -97,6 +153,55 @@
 	{#if error}
 		<div class="error">{error}</div>
 	{/if}
+
+	<section class="live-signal" class:stale={signalStale} class:offline={!signalSubscribed}>
+		<h2>
+			Live signal
+			<span class="signal-status">
+				{#if !signalSubscribed}— subscribing…
+				{:else if signalLastTs === 0}— waiting for events (start routing in Guitar Audio mode)
+				{:else if signalStale}— stale
+				{:else}— live
+				{/if}
+			</span>
+		</h2>
+		{#if signal !== null}
+			<div class="signal-grid">
+				<div class="metric">
+					<span class="metric-label">Note</span>
+					<span class="metric-value note">{signal.note_name || '—'}</span>
+					<span class="metric-sub">midi {signal.midi_note}</span>
+				</div>
+				<div class="metric">
+					<span class="metric-label">Frequency</span>
+					<span class="metric-value">{signal.frequency != null ? signal.frequency.toFixed(1) : '—'}</span>
+					<span class="metric-sub">Hz</span>
+				</div>
+				<div class="metric">
+					<span class="metric-label">Clarity</span>
+					<span class="metric-value">{(signal.clarity * 100).toFixed(0)}%</span>
+					<span class="metric-sub">pitch detector confidence</span>
+				</div>
+				<div class="metric">
+					<span class="metric-label">RMS</span>
+					<span class="metric-value">{signal.rms.toFixed(4)}</span>
+					<span class="metric-sub">audio level</span>
+				</div>
+				<div class="metric">
+					<span class="metric-label">State</span>
+					<span class="metric-value state-{signal.note_state}">{STATE_LABELS[signal.note_state] ?? signal.note_state}</span>
+					<span class="metric-sub">state machine</span>
+				</div>
+				<div class="metric rms-bar-cell">
+					<span class="metric-label">RMS bar</span>
+					<div class="rms-bar"><div class="rms-bar-fill" style="width: {Math.min(100, signal.rms * 1000)}%"></div></div>
+					<span class="metric-sub">×1000 for visibility</span>
+				</div>
+			</div>
+		{:else}
+			<p class="muted">No signal yet.</p>
+		{/if}
+	</section>
 
 	{#if config === null}
 		<p>Loading…</p>
@@ -515,6 +620,100 @@
 	.restart-needed {
 		border-color: #e8c787;
 		background: #fff8e8;
+	}
+
+	.live-signal {
+		border-color: #2a2a2a;
+		background: #1c1f24;
+		color: #e6e7ea;
+	}
+
+	.live-signal.stale,
+	.live-signal.offline {
+		opacity: 0.65;
+	}
+
+	.live-signal h2 {
+		color: #aaa;
+	}
+
+	.signal-status {
+		font-size: 11px;
+		color: #ddd;
+		text-transform: none;
+		letter-spacing: 0;
+		font-weight: normal;
+		margin-left: 6px;
+	}
+
+	.live-signal .muted {
+		color: #777;
+		font-size: 12px;
+		margin: 0;
+	}
+
+	.signal-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		gap: 10px;
+		margin-top: 8px;
+	}
+
+	.metric {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 8px 10px;
+		background: #14171b;
+		border-radius: 4px;
+	}
+
+	.metric-label {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: #888;
+	}
+
+	.metric-value {
+		font-family: ui-monospace, monospace;
+		font-size: 18px;
+		color: #e6e7ea;
+		line-height: 1.1;
+	}
+
+	.metric-value.note {
+		color: #6ad36a;
+	}
+
+	.metric-value.state-0 { color: #888; }
+	.metric-value.state-1 { color: #ff9b30; }
+	.metric-value.state-2 { color: #6ad36a; }
+	.metric-value.state-3 { color: #db5757; }
+
+	.metric-sub {
+		font-family: system-ui, sans-serif;
+		font-size: 10px;
+		color: #777;
+	}
+
+	.rms-bar-cell {
+		flex-direction: column;
+	}
+
+	.rms-bar {
+		width: 100%;
+		height: 14px;
+		background: #14171b;
+		border: 1px solid #333;
+		border-radius: 3px;
+		overflow: hidden;
+	}
+
+	.rms-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #6ad36a 0%, #f0ad4e 70%, #db5757 100%);
+		transition: width 80ms linear;
 	}
 
 	.json-dump summary {
