@@ -47,8 +47,14 @@ pub enum VoiceOutputTarget {
 /// and real-time note state in thread-safe containers for access from
 /// both the main thread (command handlers) and the router thread.
 pub struct AppState {
-    /// Core harmony engine (key, mode, scale, voice leading, etc.)
-    pub engine: Mutex<HarmonyEngine>,
+    /// Core harmony engine (key, mode, scale, voice leading, etc.).
+    ///
+    /// Wrapped in `Arc<Mutex<...>>` so the router thread (spawned by
+    /// `start_routing`) and the Tauri command handlers operate on the
+    /// same instance — without this sharing, mid-session parameter
+    /// changes (set_key, set_auto_key, etc.) would not reach the live
+    /// MIDI processing path.
+    pub engine: Arc<Mutex<HarmonyEngine>>,
 
     /// Preset manager for built-in and custom presets
     pub preset_manager: Mutex<PresetManager>,
@@ -148,7 +154,10 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            engine: Mutex::new(HarmonyEngine::new(Key::C, HarmonyMode::PassThrough)),
+            engine: Arc::new(Mutex::new(HarmonyEngine::new(
+                Key::C,
+                HarmonyMode::PassThrough,
+            ))),
             preset_manager: Mutex::new(PresetManager::new()),
             is_running: AtomicBool::new(false),
             input_notes: Mutex::new(HashSet::new()),

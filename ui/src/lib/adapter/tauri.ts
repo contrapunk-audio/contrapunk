@@ -32,7 +32,7 @@ import type {
  */
 function mapEngineState(raw: Record<string, unknown>, isRunning: boolean): EngineState {
 	return {
-		key: raw.key as string,
+		key: normalizeKey(raw.key as string),
 		mode: raw.mode as string,
 		modeNumber: raw.mode_number as number,
 		scaleMode: raw.scale_mode as string,
@@ -51,6 +51,23 @@ function mapEngineState(raw: Record<string, unknown>, isRunning: boolean): Engin
 }
 
 /**
+ * The Rust `Key` enum prints accidentals as flats (Db, Eb, Gb, Ab, Bb)
+ * but the UI's `KeyName` type uses sharps. Normalize so auto-key
+ * detector results map cleanly back to KeyName.
+ */
+const FLAT_TO_SHARP: Record<string, string> = {
+	Db: 'C#',
+	Eb: 'D#',
+	Gb: 'F#',
+	Ab: 'G#',
+	Bb: 'A#'
+};
+
+function normalizeKey(key: string): string {
+	return FLAT_TO_SHARP[key] ?? key;
+}
+
+/**
  * Maps the Tauri backend's snake_case NoteUpdatePayload to our camelCase NoteState.
  */
 function mapNoteState(raw: Record<string, unknown>): NoteState {
@@ -60,7 +77,7 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 		borrowedNotes: raw.borrowed_notes as number[],
 		chordName: raw.chord_name as string,
 		lastBorrowedFrom: raw.last_borrowed_from as string,
-		currentKey: (raw.current_key as string) ?? 'C'
+		currentKey: normalizeKey((raw.current_key as string) ?? 'C')
 	};
 }
 
