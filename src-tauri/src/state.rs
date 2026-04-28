@@ -23,6 +23,65 @@ use contrapunk::transport::Transport;
 /// itself accepts any voice_count up to this value.
 pub const MAX_VOICES: usize = 8;
 
+/// Beat-aligned chord trigger pattern config. Mirrors the frontend
+/// pattern store. Pushed via `set_pattern_config` when the user edits.
+/// Read by the router thread per loop iteration to decide whether to
+/// fire harmony NoteOn on cell boundaries.
+#[derive(Clone, Debug)]
+pub struct PatternConfig {
+    pub cells: Vec<bool>,
+    pub subdivision: u8,
+    pub length: u8,
+    pub beats_per_bar: u8,
+    pub input_mode: PatternInputMode,
+}
+
+impl Default for PatternConfig {
+    fn default() -> Self {
+        // 4 subdivision × 4 beats × 1 bar = 16 cells, all on.
+        Self {
+            cells: vec![true; 16],
+            subdivision: 4,
+            length: 1,
+            beats_per_bar: 4,
+            input_mode: PatternInputMode::Live,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum PatternInputMode {
+    /// Input plays freely; harmony fires only on pattern-active beats.
+    #[default]
+    Live,
+    /// Input + harmony snap to next pattern beat.
+    Quantized,
+    /// Input continuous; harmony NoteOff on pattern-off cells.
+    Gated,
+}
+
+impl PatternConfig {
+    pub fn cell_count(&self) -> usize {
+        self.subdivision.max(1) as usize
+            * self.beats_per_bar.max(1) as usize
+            * self.length.max(1) as usize
+    }
+
+    pub fn cell_index_at(&self, total_beats: f64) -> usize {
+        let beats_per_loop = (self.beats_per_bar.max(1) as f64) * (self.length.max(1) as f64);
+        if beats_per_loop <= 0.0 {
+            return 0;
+        }
+        let position_in_loop = ((total_beats % beats_per_loop) + beats_per_loop) % beats_per_loop;
+        let idx = (position_in_loop * self.subdivision.max(1) as f64).floor() as usize;
+        let total = self.cell_count();
+        if total == 0 {
+            return 0;
+        }
+        idx % total
+    }
+}
+
 /// Per-voice output destination. Each engine-emitted voice (by index
 /// 0..voice_count-1) can be routed independently.
 ///
@@ -154,6 +213,17 @@ pub struct AppState {
     /// nowhere. Default all `UseDefault` preserves the legacy fan-out
     /// behavior for existing users until the UI sets explicit values.
     pub voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
+
+    /// Master enable for the beat-aligned pattern feature. When false
+    /// (default), the pattern panel + cells are inert and harmony
+    /// dispatch follows today's real-time path. Toggled via
+    /// `set_pattern_enabled`.
+    pub pattern_enabled: Arc<AtomicBool>,
+
+    /// Beat-aligned chord trigger pattern config. Pushed by the frontend
+    /// `pattern` store via `set_pattern_config` whenever the user edits.
+    /// Read by the router thread per loop iteration.
+    pub pattern_config: Arc<Mutex<PatternConfig>>,
 }
 
 impl Default for AppState {
@@ -191,6 +261,8 @@ impl Default for AppState {
             delay_params: Arc::new(DelayParams::default()),
             chain_commander: Mutex::new(None),
             voice_outputs: Arc::new(Mutex::new(vec![VoiceOutputTarget::default(); MAX_VOICES])),
+            pattern_enabled: Arc::new(AtomicBool::new(false)),
+            pattern_config: Arc::new(Mutex::new(PatternConfig::default())),
         }
     }
 }
