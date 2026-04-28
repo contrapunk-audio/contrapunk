@@ -39,6 +39,7 @@
 	const ARC_RANGE = 270; // sweep
 
 	let dragging = $state(false);
+	let hovering = $state(false);
 	let startY = 0;
 	let startValue = 0;
 
@@ -120,12 +121,15 @@
 	<div
 		class="knob-dial"
 		class:dragging
+		class:hovering
 		style:width="{size}px"
 		style:height="{size}px"
 		onpointerdown={onPointerDown}
 		onpointermove={onPointerMove}
 		onpointerup={onPointerUp}
 		onpointercancel={onPointerUp}
+		onpointerenter={() => (hovering = true)}
+		onpointerleave={() => (hovering = false)}
 		onwheel={onWheel}
 		ondblclick={onDoubleClick}
 		role="slider"
@@ -135,6 +139,11 @@
 		aria-valuenow={value}
 		aria-label={label}
 	>
+		{#if (hovering || dragging) && label}
+			<div class="knob-tooltip font-ui">
+				{label}<span class="tooltip-sep">:</span><span class="tooltip-val">{displayValue(value)}</span>
+			</div>
+		{/if}
 		<svg viewBox="0 0 100 100" style:display="block">
 			<!-- Track ring -->
 			<circle cx="50" cy="50" r="38" fill="none" stroke="#2a2848" stroke-width="6" />
@@ -217,5 +226,33 @@
 		color: var(--color-text-secondary);
 		letter-spacing: 1px;
 		text-transform: uppercase;
+	}
+
+	/* Serum-style hover tooltip — dark bubble above the knob with
+	   "Label : Value" while hovering or dragging. Positioned above
+	   the dial so the cursor doesn't occlude it on drag. */
+	.knob-tooltip {
+		position: absolute;
+		bottom: 100%;
+		left: 50%;
+		transform: translate(-50%, -4px);
+		padding: 3px 8px;
+		font-size: var(--font-size-xs);
+		background: rgba(15, 14, 26, 0.95);
+		border: 1px solid var(--color-accent-cyan);
+		color: var(--color-text);
+		white-space: nowrap;
+		pointer-events: none;
+		z-index: 10;
+		box-shadow: 0 0 8px rgba(77, 221, 221, 0.3);
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+	.tooltip-sep {
+		color: var(--color-text-dim);
+		margin: 0 4px;
+	}
+	.tooltip-val {
+		color: var(--color-accent-cyan);
 	}
 </style>
