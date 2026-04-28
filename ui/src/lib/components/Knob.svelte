@@ -20,7 +20,7 @@
 		label = '',
 		format,
 		size = 72,
-		accent = 'var(--color-accent-amber)',
+		accent = 'var(--color-accent-cyan)',
 		onchange
 	}: {
 		value: number;
@@ -184,12 +184,12 @@
 	.knob-dial {
 		position: relative;
 		cursor: ns-resize;
-		filter: drop-shadow(0 0 6px rgba(255, 170, 51, 0.2));
+		filter: drop-shadow(0 0 6px rgba(77, 221, 221, 0.2));
 		transition: filter 120ms;
 	}
 	.knob-dial:hover,
 	.knob-dial.dragging {
-		filter: drop-shadow(0 0 10px rgba(255, 170, 51, 0.5));
+		filter: drop-shadow(0 0 10px rgba(77, 221, 221, 0.5));
 	}
 	.knob-dial:focus {
 		outline: none;
@@ -201,14 +201,15 @@
 		left: 50%;
 		transform: translate(-50%, -50%);
 		font-size: var(--font-size-xs);
-		color: var(--color-accent-gold);
+		color: var(--color-accent-cyan);
 		pointer-events: none;
 		text-align: center;
 		line-height: 1;
 		white-space: nowrap;
 	}
 	.knob-value.dragging {
-		color: var(--color-accent-magenta);
+		color: #fff;
+		text-shadow: 0 0 4px var(--color-accent-cyan);
 	}
 
 	.knob-label {
