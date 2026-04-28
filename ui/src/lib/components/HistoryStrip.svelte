@@ -15,6 +15,7 @@
 	import { ui } from '$lib/stores/ui.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
 	import { pattern } from '$lib/stores/pattern.svelte';
+	import BeatGrid from './BeatGrid.svelte';
 	import { Renderer, Stave, StaveNote, Formatter, Accidental, Voice } from 'vexflow';
 
 	// How many chord moments to keep on-screen. At 1040px staff width with
@@ -256,19 +257,20 @@
 			Bar <span class="bar-num">{Math.floor(transport.totalBeat / Math.max(1, transport.beatsPerBar)) + 1}</span>.<span
 				class="beat-num">{(transport.beatInBar | 0) + 1}</span>
 		</span>
-		<div class="beat-pips" aria-hidden="true">
-			{#each Array.from({ length: transport.beatsPerBar }, (_, i) => i) as i (i)}
-				<span class="beat-pip" class:active={transport.running && transport.beatInBar === i}
-					class:downbeat={i === 0}></span>
-			{/each}
-		</div>
+		<BeatGrid
+			count={transport.beatsPerBar}
+			currentIndex={transport.running ? transport.beatInBar : null}
+			variant="pip"
+			ariaLabel="Beat indicator"
+		/>
 		{#if pattern.cells.length > 0}
-			<div class="pattern-mini" aria-label="Pattern cells, currently-playing cell highlighted">
-				{#each pattern.cells as on, i (i)}
-					{@const playing = transport.running && pattern.cellIndexAt(transport.totalBeat) === i}
-					<span class="pattern-cell" class:on class:playing></span>
-				{/each}
-			</div>
+			<BeatGrid
+				count={pattern.cells.length}
+				cellOn={(i) => !!pattern.cells[i]}
+				currentIndex={transport.running ? pattern.cellIndexAt(transport.totalBeat) : null}
+				variant="mini"
+				ariaLabel="Pattern preview"
+			/>
 		{/if}
 	</div>
 	<!-- Fixed-aspect SVG host sized to match the Fretboard (1040 × 150).

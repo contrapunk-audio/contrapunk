@@ -22,6 +22,7 @@
 	} from '$lib/stores/pattern.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
 	import PixelSelect from './PixelSelect.svelte';
+	import BeatGrid from './BeatGrid.svelte';
 
 	// Pattern feature is enabled while this panel is mounted (the user
 	// has the panel pip on). Dispatch master enable on mount, disable on
@@ -131,21 +132,16 @@
 		</button>
 	</div>
 
-	<div class="cell-grid">
-		{#each pattern.cells as cell, i (i)}
-			<button
-				type="button"
-				class="cell"
-				class:on={cell}
-				class:playing={i === currentCell}
-				class:beat-divider={isBeatDivider(i)}
-				class:bar-divider={isBarDivider(i)}
-				onclick={() => pattern.toggleCell(i)}
-				aria-pressed={cell}
-				aria-label={`Cell ${i + 1}`}
-			></button>
-		{/each}
-	</div>
+	<BeatGrid
+		count={pattern.cells.length}
+		cellOn={(i) => !!pattern.cells[i]}
+		currentIndex={currentCell}
+		onClick={(i) => pattern.toggleCell(i)}
+		isBeatDivider={isBeatDivider}
+		isBarDivider={isBarDivider}
+		variant="cell"
+		ariaLabel="Pattern cells"
+	/>
 </div>
 
 <style>
