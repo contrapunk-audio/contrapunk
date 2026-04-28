@@ -80,6 +80,24 @@ These six decisions are the load-bearing constraints that the design doc must re
 
 ---
 
+## Revisions
+
+### 2026-04-28 — Decision #4 superseded by DESIGN.md
+
+Decision #4 ("engine crate + two shells: Svelte UI in contrapunk first, vizia standalone shell") is **revised** by `.planning/research/elixir/DESIGN.md`. The new direction:
+
+- **Standalone Tauri + Svelte app is the first deliverable**, not contrapunk integration.
+- **Svelte UI everywhere** — vizia dropped. Standalone, future contrapunk integration, and any future plugin shells all consume the same `@elixir/ui` workspace package of Svelte components.
+- Plugin formats (CLAP / VST3 / AU) are **deferred** to a later phase with its own design pass for webview-in-plugin tradeoffs.
+- Contrapunk integration is now Phase 11 in the implementation roadmap (was the first deliverable).
+- Engine crate (`crates/elixir-engine`) is unchanged — pure DSP/state, no UI, no shell deps.
+
+Rationale: reuses contrapunk's existing Tauri + SvelteKit + cpal + midir stack, minimizes new toolkits to learn solo, and produces one composable component library that serves all UI surfaces.
+
+The other five decisions (license, doc shape, ambition axes, file-format compat policy, anti-aliasing strategy) are **unchanged**.
+
+---
+
 ## Open questions (tracked elsewhere, not blocking design doc)
 
 - Exact license: MIT vs Apache-2.0 vs dual MIT/Apache — decide in doc preamble.
@@ -89,8 +107,9 @@ These six decisions are the load-bearing constraints that the design doc must re
 
 ## Pointers
 
+- **Technical design + implementation roadmap: `.planning/research/elixir/DESIGN.md`**
 - Serum features: `.planning/research/elixir/serum-features.md`
 - OSS prior art + stack rationale: `.planning/research/elixir/oss-prior-art.md`
-- Contrapunk integration surface: see `src/chain/block.rs` (`AudioBlock` trait, lines 35–67), `src/synth/voice.rs` (existing synth as reference pattern), `src/harmony/engine.rs` (harmony source), `src-tauri/src/commands/` (Tauri command surface).
+- Contrapunk integration surface: existing crates under `crates/contrapunk-*` (audio, midi, harmony, transport, chord), `src-tauri/`, `ui/`. (Earlier references to `src/chain/block.rs`, `src/synth/voice.rs`, `src/harmony/engine.rs` reflect a prior, monolithic layout — the current workspace is split into per-domain crates; revisit during Phase 11 integration.)
 - Pre-implementation reading list: `.planning/todos/pending/elixir-prereqs.md`
 - Preset RE gate: `.planning/seeds/elixir-serum-preset-re-gate.md`
