@@ -73,9 +73,36 @@
 	<!-- Spacer -->
 	<div class="spacer"></div>
 
+	<!-- View-mode pill — Performance (8-knob simplified view) vs Advanced
+	     (today's full UI). Persists to localStorage; orthogonal to panel
+	     pips below (panel pips only apply within Advanced view). -->
+	<div class="view-mode-pill" role="group" aria-label="Layout mode">
+		<button
+			type="button"
+			class="vm-btn font-ui"
+			class:on={ui.viewMode === 'performance'}
+			onclick={() => ui.setViewMode('performance')}
+			aria-pressed={ui.viewMode === 'performance'}
+			title="Simplified 8-knob layout"
+		>
+			Simple
+		</button>
+		<button
+			type="button"
+			class="vm-btn font-ui"
+			class:on={ui.viewMode === 'advanced'}
+			onclick={() => ui.setViewMode('advanced')}
+			aria-pressed={ui.viewMode === 'advanced'}
+			title="Full controls"
+		>
+			Advanced
+		</button>
+	</div>
+
 	<!-- Panel pip row — one click toggles a single panel's visibility.
-	     Replaces the old fixed view-mode packs (full / performance /
-	     fretboard / piano) with per-element control. -->
+	     The Simple/Advanced view-mode pill above swaps the Controls
+	     panel's content (8 knobs vs full surface); pips still control
+	     which panels render in either view. -->
 	<div class="panel-pips" role="group" aria-label="Toggle visible panels">
 		{#each PANELS as p}
 			<button
@@ -186,6 +213,40 @@
 
 	.spacer {
 		flex: 1;
+	}
+
+	.view-mode-pill {
+		display: flex;
+		align-items: center;
+		gap: 0;
+		margin-right: 8px;
+	}
+	.vm-btn {
+		padding: 3px 10px;
+		font-size: var(--font-size-xs);
+		background: transparent;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-dim);
+		cursor: pointer;
+		min-width: 0;
+		opacity: 0.7;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+	.vm-btn + .vm-btn {
+		border-left: none;
+	}
+	.vm-btn:hover {
+		border-color: var(--color-accent-cyan);
+		color: var(--color-accent-cyan);
+		opacity: 0.95;
+	}
+	.vm-btn.on {
+		background: var(--color-accent-teal);
+		border-color: var(--color-accent-cyan);
+		color: #ffffff;
+		opacity: 1;
+		box-shadow: var(--glow-teal);
 	}
 
 	.panel-pips {

@@ -153,6 +153,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async setOctaveIntensity(amount: number): Promise<void> {
+		try {
+			await invoke('set_octave_intensity', { amount });
+		} catch (e) {
+			throw new Error(`Failed to set octave intensity: ${e}`);
+		}
+	}
+
 	async setVoiceLeading(enabled: boolean, style: string): Promise<void> {
 		try {
 			await invoke('set_voice_leading', { enabled, style });

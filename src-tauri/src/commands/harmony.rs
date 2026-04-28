@@ -220,6 +220,18 @@ pub fn set_routing_mode(mode: String, state: State<AppState>) -> Result<(), Stri
     Ok(())
 }
 
+/// Continuous octave-spread coefficient applied to Spread / Split modes.
+/// Range [0.0, 1.0]; 0 = no displacement, 1 = legacy full-octave behavior.
+#[tauri::command]
+pub fn set_octave_intensity(amount: f32, state: State<AppState>) -> Result<(), String> {
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_octave_intensity(amount);
+    }
+    raise_panic(&state);
+    Ok(())
+}
+
 /// Set global detune in cents. The router thread reads this atomically each
 /// frame and sends MIDI pitch bend to all output ports when the value changes.
 #[tauri::command]

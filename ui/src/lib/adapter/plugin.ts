@@ -107,6 +107,10 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('setOctaveMode', mode);
 	}
 
+	async setOctaveIntensity(amount: number): Promise<void> {
+		this.send('setOctaveIntensity', amount);
+	}
+
 	async setVoiceLeading(enabled: boolean, _style: string): Promise<void> {
 		this.send('setVoiceLeading', enabled);
 	}

@@ -370,25 +370,109 @@ fn run_tauri_router(
             break;
         }
 
-        // Panic handling: any engine-config command that could strand
-        // active notes sets panic_pending. Emit MIDI All-Notes-Off (CC
-        // 123) on every channel × every port to release stuck notes,
-        // then clear tracked note state so the UI stops showing them.
+        // Reharmonize on parameter change. Any engine-config setter that
+        // could change the harmony output sets panic_pending and stashes
+        // the previously-held input MIDI numbers in the engine's
+        // `pending_reharm_inputs`. We replay each of those inputs under
+        // the new parameters, compute a diff against the previously-
+        // sounding harmony set, and dispatch only the difference:
+        // NoteOff for harmony notes that drop out, NoteOn for newly-
+        // needed ones. The user's held input note never gets
+        // interrupted — knob sweeps produce a smooth musical morph.
         if panic_pending.swap(false, Ordering::SeqCst) {
-            let num_ports = output_router.connection_count();
-            for p in 0..num_ports {
-                for ch in 0u8..16 {
-                    let _ = output_router.send_to_port(p, &[0xB0 | ch, 123, 0]);
+            // Snapshot what's currently sounding (harmony + borrowed only —
+            // input notes belong to the user, leave them alone).
+            let old_harmonies: HashSet<u8> = {
+                let h = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
+                let b = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
+                h.iter().chain(b.iter()).copied().collect()
+            };
+
+            // Drain held inputs from the engine and replay them under the
+            // new parameters. Each replay populates `active_notes` and
+            // updates `last_port_map` for the per-voice routing below.
+            let mut new_harmonies: HashSet<u8> = HashSet::new();
+            let mut per_input: Vec<(Vec<u8>, Vec<usize>)> = Vec::new();
+            {
+                let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
+                let inputs = eng.take_reharm_inputs();
+                for midi in inputs {
+                    if let Ok(input_note) = Note::try_from(midi) {
+                        let result = eng.harmonize_note_on(input_note);
+                        let port_map = eng.last_port_map().to_vec();
+                        // Skip index 0 (the input itself) — only harmonies
+                        // contribute to the diff. Input keeps ringing.
+                        let harm_midis: Vec<u8> =
+                            result.iter().skip(1).map(|n| u8::from(*n)).collect();
+                        for &m in &harm_midis {
+                            new_harmonies.insert(m);
+                        }
+                        // Keep the input + harmonies + ports together so we
+                        // can route attacks correctly. Index 0 of harm_midis
+                        // is unused (input is at result[0]); we store the
+                        // full result for routing.
+                        let full_midis: Vec<u8> = result.iter().map(|n| u8::from(*n)).collect();
+                        per_input.push((full_midis, port_map));
+                    }
                 }
             }
-            if let Ok(mut n) = input_notes.lock() {
-                n.clear();
+
+            let to_release: Vec<u8> = old_harmonies.difference(&new_harmonies).copied().collect();
+            let to_attack: HashSet<u8> =
+                new_harmonies.difference(&old_harmonies).copied().collect();
+
+            // Send NoteOff for released notes — synth + every external
+            // port (overspray on external is harmless; we don't track
+            // per-note routing for releases).
+            let num_ports = output_router.connection_count();
+            for n in &to_release {
+                let _ = synth_tx.send(SynthEvent::NoteOff { note: *n });
+                let msg = [0x80, *n, 0]; // NoteOff channel 0
+                for p in 0..num_ports {
+                    let _ = output_router.send_to_port(p, &msg);
+                }
             }
-            if let Ok(mut n) = harmony_notes.lock() {
-                n.clear();
+
+            // Send NoteOn for newly-attacked notes, routed per voice via
+            // each replay's port map and the live voice_outputs table.
+            let voice_targets: Vec<VoiceOutputTarget> = voice_outputs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            for (midis, port_map) in &per_input {
+                // Skip index 0 — that's the user's input note, already
+                // sounding from when they pressed the key.
+                for (i, &n) in midis.iter().enumerate().skip(1) {
+                    if !to_attack.contains(&n) {
+                        continue; // already sounding from before
+                    }
+                    let slot = port_map.get(i).copied().unwrap_or(i);
+                    let target = voice_targets.get(slot).copied().unwrap_or_default();
+                    match target {
+                        VoiceOutputTarget::Synth => {
+                            let _ = synth_tx.send(SynthEvent::NoteOn {
+                                note: n,
+                                velocity: 100,
+                            });
+                        }
+                        VoiceOutputTarget::MidiPort { port } => {
+                            if port < num_ports {
+                                let msg = [0x90, n, 100]; // NoteOn channel 0
+                                let _ = output_router.send_to_port(port, &msg);
+                            }
+                        }
+                        VoiceOutputTarget::Off => {}
+                    }
+                }
             }
-            if let Ok(mut n) = borrowed_notes.lock() {
-                n.clear();
+
+            // Replace UI tracking sets with the new harmony state. Input
+            // notes stay as-is — user's still holding them.
+            if let Ok(mut h) = harmony_notes.lock() {
+                *h = new_harmonies;
+            }
+            if let Ok(mut b) = borrowed_notes.lock() {
+                b.clear();
             }
         }
 

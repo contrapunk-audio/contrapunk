@@ -229,6 +229,11 @@ pub struct HarmonyEngine {
     key: Key,
     mode: HarmonyMode,
     octave_mode: OctaveMode,
+    /// Continuous coefficient applied to Spread and BassTrebleSplit
+    /// displacement amounts. Range [0.0, 1.0]; default 1.0 preserves
+    /// the legacy full-octave behavior. The simple-view Spread knob
+    /// uses this for smooth audible morphs as the knob sweeps.
+    octave_intensity: f32,
     scale_mode: ScaleMode,
     scale: Scale,
     interchange_enabled: bool,
@@ -278,6 +283,15 @@ pub struct HarmonyEngine {
     /// they would otherwise stay stuck. Drained by the router each
     /// `harmonize_note_on` cycle via `take_pending_releases`.
     pending_releases: Vec<Note>,
+    /// Input MIDI notes that were held when a parameter change cleared
+    /// `active_notes`. The router drains this via
+    /// `take_reharm_inputs()` and re-runs `harmonize_note_on` for each
+    /// to produce fresh harmonies under the new parameters, then diffs
+    /// against the previously-sounding harmony set so only notes that
+    /// actually drop out get `NoteOff` and only newly-needed notes get
+    /// `NoteOn`. The user's held input never gets interrupted —
+    /// transitions between knob positions are seamless.
+    pending_reharm_inputs: Vec<u8>,
 }
 
 impl HarmonyEngine {
@@ -297,6 +311,7 @@ impl HarmonyEngine {
             key,
             mode,
             octave_mode: OctaveMode::None,
+            octave_intensity: 1.0,
             scale_mode: ScaleMode::Ionian,
             scale,
             interchange_enabled: false,
@@ -323,6 +338,7 @@ impl HarmonyEngine {
             counterpoint_strictness: CounterpointStrictness::default(),
             saved_scale_mode: None,
             pending_releases: Vec::new(),
+            pending_reharm_inputs: Vec::new(),
             harmonic_context: None,
         }
     }
@@ -367,8 +383,7 @@ impl HarmonyEngine {
     pub fn set_octave_mode(&mut self, octave_mode: OctaveMode) {
         self.octave_mode = octave_mode;
         // Clear note tracking since octave transformations change output
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
     }
 
     /// Returns the current voice count.
@@ -393,8 +408,7 @@ impl HarmonyEngine {
             position, self.voice_count
         );
         self.voice_position = position;
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
         self.voice_leading
             .rebuild_for_voices(self.voice_count, position);
     }
@@ -429,8 +443,7 @@ impl HarmonyEngine {
                 s
             })
             .collect();
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
         self.voice_leading
             .rebuild_for_voices(count, self.voice_position);
     }
@@ -454,8 +467,7 @@ impl HarmonyEngine {
         // Reset harmonic context to avoid stale chord state from previous key
         self.harmonic_context = None;
         // Clear note tracking since harmonies would change with new scale
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
         self.voice_leading.reset();
         // Clear cached beat-phase; router will push a fresh value next cycle.
         self.counterpoint_beat_phase = None;
@@ -500,8 +512,7 @@ impl HarmonyEngine {
         // Reset harmonic context to avoid stale chord state from previous mode
         self.harmonic_context = None;
         // Clear note tracking since harmonies would change with new mode
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
         self.voice_leading.reset();
         // Clear cached beat-phase; router pushes a fresh value on next cycle.
         self.counterpoint_beat_phase = None;
@@ -542,8 +553,7 @@ impl HarmonyEngine {
         }
         // Reset harmonic context to avoid stale chord state from previous scale mode
         self.harmonic_context = None;
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
         self.voice_leading.reset();
         // Clear cached beat-phase; router pushes a fresh value on next cycle.
         self.counterpoint_beat_phase = None;
@@ -558,8 +568,7 @@ impl HarmonyEngine {
     pub fn set_interchange_enabled(&mut self, enabled: bool) {
         self.interchange_enabled = enabled;
         self.scale.set_interchange_enabled(enabled);
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
     }
 
     /// Returns the current borrowing range (1-5).
@@ -571,8 +580,7 @@ impl HarmonyEngine {
     pub fn set_borrowing_range(&mut self, range: u8) {
         self.borrowing_range = range.clamp(1, 5);
         self.scale.set_borrowing_range(self.borrowing_range);
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
     }
 
     /// Returns the last mode borrowed from during modal interchange.
@@ -596,15 +604,29 @@ impl HarmonyEngine {
         if !enabled {
             self.voice_leading.reset();
         }
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
     }
 
     /// Sets the voice leading style, resetting VL state.
     pub fn set_voice_leading_style(&mut self, style: VoiceLeadingStyle) {
         self.voice_leading.set_style(style);
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
+    }
+
+    /// Continuous octave-spread coefficient applied to Spread and
+    /// BassTrebleSplit modes. Range [0.0, 1.0]; 0.0 = no displacement,
+    /// 1.0 = full-octave (legacy) displacement.
+    pub fn octave_intensity(&self) -> f32 {
+        self.octave_intensity
+    }
+
+    pub fn set_octave_intensity(&mut self, amount: f32) {
+        let clamped = amount.clamp(0.0, 1.0);
+        if (clamped - self.octave_intensity).abs() < f32::EPSILON {
+            return;
+        }
+        self.octave_intensity = clamped;
+        self.clear_active_for_reharm();
     }
 
     pub fn set_beat_phase(&mut self, phase: BeatPhase) {
@@ -637,8 +659,7 @@ impl HarmonyEngine {
         for state in &mut self.counterpoint_states {
             state.set_species(species);
         }
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
     }
 
     /// Returns the active counterpoint strictness (Relaxed vs Strict).
@@ -652,8 +673,7 @@ impl HarmonyEngine {
         for state in &mut self.counterpoint_states {
             state.set_strictness(strictness);
         }
-        self.active_notes.clear();
-        self.active_port_maps.clear();
+        self.clear_active_for_reharm();
     }
 
     /// Harmonizes a single note based on the current mode.
@@ -859,12 +879,17 @@ impl HarmonyEngine {
             }
         };
 
+        let intensity = self.octave_intensity;
         match self.octave_mode {
             OctaveMode::None => {}
             OctaveMode::Spread => {
                 for (i, note) in notes.iter_mut().enumerate().skip(1) {
                     let midi = u8::from(*note);
-                    let shifted = midi.saturating_add((i as u8) * 12).min(127);
+                    // Continuous: per-voice shift = i × intensity × 12.
+                    // intensity = 0 → no displacement. intensity = 1 →
+                    // full-octave per voice (legacy behavior).
+                    let shift = ((i as f32) * intensity * 12.0).round().max(0.0) as u8;
+                    let shifted = midi.saturating_add(shift).min(127);
                     if anchor_ok(i, shifted) {
                         if let Ok(new_note) = Note::try_from(shifted) {
                             *note = new_note;
@@ -874,12 +899,13 @@ impl HarmonyEngine {
                 }
             }
             OctaveMode::BassTrebleSplit => {
+                let shift = (intensity * 12.0).round().max(0.0) as u8;
                 for (i, note) in notes.iter_mut().enumerate().skip(1) {
                     let midi = u8::from(*note);
                     let shifted = if midi < user_midi {
-                        midi.saturating_sub(12)
+                        midi.saturating_sub(shift)
                     } else {
-                        midi.saturating_add(12).min(127)
+                        midi.saturating_add(shift).min(127)
                     };
                     if anchor_ok(i, shifted) {
                         if let Ok(new_note) = Note::try_from(shifted) {
@@ -1251,6 +1277,27 @@ impl HarmonyEngine {
     /// take over. Returns an empty Vec when no key change happened.
     pub fn take_pending_releases(&mut self) -> Vec<Note> {
         std::mem::take(&mut self.pending_releases)
+    }
+
+    /// Drain the list of input MIDI notes that were held when a
+    /// parameter change wiped `active_notes`. The router re-runs
+    /// `harmonize_note_on` for each so the new parameters take effect
+    /// without dropping the user's held input.
+    pub fn take_reharm_inputs(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.pending_reharm_inputs)
+    }
+
+    /// Wipe per-note tracking after a parameter change, but record the
+    /// held input MIDI numbers in `pending_reharm_inputs` so the router
+    /// can replay them under the new parameters. Replaces the previous
+    /// `self.active_notes.clear(); self.active_port_maps.clear();`
+    /// idiom in every parameter setter — the user's held inputs no
+    /// longer drop on knob changes.
+    fn clear_active_for_reharm(&mut self) {
+        self.pending_reharm_inputs
+            .extend(self.active_notes.keys().copied());
+        self.active_notes.clear();
+        self.active_port_maps.clear();
     }
 
     pub fn harmonize_note_off(&mut self, note: Note) -> Vec<Note> {

@@ -646,6 +646,7 @@ class EngineStore {
 	modeNumber = $state(1);
 	scaleMode = $state<ScaleModeName>('Ionian');
 	octaveMode = $state<OctaveModeName>('None');
+	octaveIntensity = $state(1.0);
 
 	// -- Voice leading --
 	voiceLeadingEnabled = $state(false);
@@ -801,6 +802,20 @@ class EngineStore {
 			this.persist();
 		} catch (e) {
 			this.octaveMode = prev;
+			throw e;
+		}
+	}
+
+	/** Continuous octave-spread intensity coefficient. Range [0,1].
+	 *  Used by the Performance view's Spread knob — knob value passes
+	 *  through directly. Combined with setOctaveMode, the engine
+	 *  produces a smooth audible morph as the knob sweeps. */
+	async setOctaveIntensity(amount: number) {
+		const clamped = Math.max(0, Math.min(1, amount));
+		this.octaveIntensity = clamped;
+		try {
+			await adapter.setOctaveIntensity(clamped);
+		} catch (e) {
 			throw e;
 		}
 	}

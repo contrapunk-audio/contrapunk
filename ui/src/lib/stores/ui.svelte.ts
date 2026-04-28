@@ -13,6 +13,7 @@ const SCALE_KEY = 'contrapunk-ui-scale';
 const FONT_SCALE_KEY = 'contrapunk-font-scale';
 const NOTE_LABELS_KEY = 'contrapunk-show-note-labels';
 const PANELS_KEY = 'contrapunk-panels';
+const VIEW_MODE_KEY = 'contrapunk-view-mode';
 
 const MIN_SCALE = 0.75;
 const MAX_SCALE = 2.0;
@@ -50,6 +51,13 @@ const DEFAULT_PANELS: PanelVisibility = {
 	piano: true
 };
 
+/** Top-level layout choice: the simplified 8-knob Performance view vs.
+ *  the full Advanced surface (today's UI). Orthogonal to `activeTab`
+ *  ('play' vs 'chain') and to the Play-tab `panels` toggles — view mode
+ *  picks WHICH layout, panels pick WHICH bits of the Advanced layout
+ *  render. The Performance view ignores `panels` entirely. */
+export type ViewMode = 'performance' | 'advanced';
+
 // === UI Store (Svelte 5 runes) ===
 
 class UiStore {
@@ -85,6 +93,13 @@ class UiStore {
 	/** Which Play-tab panels render, per `PanelId`. Toggled from the
 	 *  StatusBar pip row; persists to localStorage. */
 	panels = $state<PanelVisibility>({ ...DEFAULT_PANELS });
+
+	/** Top-level layout selection. 'advanced' = today's full UI;
+	 *  'performance' = the simplified 8-knob view. Persists to
+	 *  localStorage so the user lands in their preferred layout on
+	 *  relaunch. Default 'advanced' for now — flip to 'performance'
+	 *  once the new view is feature-complete. */
+	viewMode = $state<ViewMode>('advanced');
 
 	/**
 	 * Toggle animations on/off and apply the reduced-motion class
@@ -230,6 +245,35 @@ class UiStore {
 	private persistPanels() {
 		try {
 			localStorage.setItem(PANELS_KEY, JSON.stringify(this.panels));
+		} catch {
+			/* localStorage unavailable */
+		}
+	}
+
+	/** Switch the top-level layout and persist. */
+	setViewMode(mode: ViewMode) {
+		this.viewMode = mode;
+		try {
+			localStorage.setItem(VIEW_MODE_KEY, mode);
+		} catch {
+			/* localStorage unavailable */
+		}
+	}
+
+	/** Toggle between Performance and Advanced layouts. */
+	toggleViewMode() {
+		this.setViewMode(this.viewMode === 'performance' ? 'advanced' : 'performance');
+	}
+
+	/** Hydrate viewMode from localStorage. Falls back to default if no
+	 *  saved value or value is unrecognized (e.g. forward-compat). */
+	restoreViewMode() {
+		if (typeof window === 'undefined') return;
+		try {
+			const raw = localStorage.getItem(VIEW_MODE_KEY);
+			if (raw === 'performance' || raw === 'advanced') {
+				this.viewMode = raw;
+			}
 		} catch {
 			/* localStorage unavailable */
 		}
