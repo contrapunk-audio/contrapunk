@@ -163,6 +163,46 @@ pub fn random_below_no_seconds(note: Note, scale: &mut Scale) -> Vec<Note> {
 // When `above` is true, harmony is generated above the input note.
 // When `above` is false, harmony is generated below.
 
+/// Try `harmonize_smart`; if it would land out of MIDI range [0, 127],
+/// retry with the input octave-shifted toward the center of the range so
+/// the chain doesn't silently drop voices at register edges. Direction
+/// (above/below) is honored on the first attempt; the wrap fallback may
+/// land the harmony on either side of the input but keeps the voice
+/// audible — the harmonize() chain caller stitches results together by
+/// arrangement slot, not by pitch ordering.
+fn harmonize_smart_or_wrap(
+    scale: &mut Scale,
+    note: Note,
+    degrees: i8,
+    above: bool,
+) -> Option<Note> {
+    if let Some(h) = scale.harmonize_smart(note, degrees, above) {
+        return Some(h);
+    }
+    let m = u8::from(note) as i16;
+    // Try shifting input toward MIDI center (60). Order favors the shift
+    // direction that "undoes" the overflow: if we asked for above and
+    // failed, the harmony was too high — pull input down. If we asked for
+    // below and failed, pull input up.
+    let shifts: [i16; 4] = if above {
+        [-12, -24, 12, 24]
+    } else {
+        [12, 24, -12, -24]
+    };
+    for off in shifts {
+        let shifted = m + off;
+        if !(0..=127).contains(&shifted) {
+            continue;
+        }
+        if let Ok(shifted_note) = Note::try_from(shifted as u8) {
+            if let Some(h) = scale.harmonize_smart(shifted_note, degrees, above) {
+                return Some(h);
+            }
+        }
+    }
+    None
+}
+
 /// Directed diatonic thirds: above or below the input note.
 ///
 /// Used by [`super::HarmonyEngine`] for multi-voice generation where
@@ -170,7 +210,7 @@ pub fn random_below_no_seconds(note: Note, scale: &mut Scale) -> Vec<Note> {
 /// voice position.
 pub fn diatonic_thirds_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
     let interval = if above { 2 } else { -2 };
-    match scale.harmonize_smart(note, interval, above) {
+    match harmonize_smart_or_wrap(scale, note, interval, above) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
     }
@@ -179,7 +219,7 @@ pub fn diatonic_thirds_directed(note: Note, scale: &mut Scale, above: bool) -> V
 /// Directed diatonic fourths: above or below the input note.
 pub fn diatonic_fourths_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
     let interval = if above { 3 } else { -3 };
-    match scale.harmonize_smart(note, interval, above) {
+    match harmonize_smart_or_wrap(scale, note, interval, above) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
     }
@@ -198,7 +238,7 @@ pub fn random_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> 
     };
     let interval = intervals[rng.random_range(0..intervals.len())];
 
-    match scale.harmonize_smart(note, interval, above) {
+    match harmonize_smart_or_wrap(scale, note, interval, above) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
     }
@@ -217,7 +257,7 @@ pub fn random_no_seconds_directed(note: Note, scale: &mut Scale, above: bool) ->
     };
     let interval = intervals[rng.random_range(0..intervals.len())];
 
-    match scale.harmonize_smart(note, interval, above) {
+    match harmonize_smart_or_wrap(scale, note, interval, above) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
     }

@@ -852,6 +852,12 @@ class EngineStore {
 		this.voiceCount = count;
 		try {
 			await adapter.setVoiceCount(count);
+			// Engine clamps voice_position to count-1 on shrink (e.g. 4→2 with
+			// position=Bass=3 ends up at position 1). Mirror that locally so
+			// the "You play" dropdown still matches a valid option.
+			if (this.voicePosition >= count) {
+				this.voicePosition = Math.max(0, count - 1);
+			}
 			this.persist();
 		} catch (e) {
 			this.voiceCount = prev;

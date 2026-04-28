@@ -349,15 +349,13 @@ fn run_tauri_router(
     let mut output_router = OutputRouter::new(output_ports)?;
     let num_outputs = output_router.connection_count();
 
-    // Sync voice_count to the number of routable outputs at the start of
-    // the session. All other engine parameters (key, mode, scale, voice
-    // leading, etc.) are user-driven and already live on `engine`; we
-    // share that instance with the Tauri command handlers so changes
-    // made during the session take effect on this routing pass.
-    {
-        let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
-        eng.set_voice_count(num_outputs);
-    }
+    // voice_count is user-controlled via `set_voice_count`. With
+    // per-voice routing, voices in excess of the connected MIDI ports
+    // route to the built-in synth — there's no reason to clamp the
+    // engine's voice_count to `num_outputs` at routing start. (Doing
+    // so silently overrode the UI's voice picker — see the wave of
+    // "I picked soprano in a 4-voice setup but the engine had only
+    // 2 voices" reports.)
 
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();
@@ -660,8 +658,16 @@ fn handle_note_on(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let target_for =
-        |i: usize| -> VoiceOutputTarget { voice_targets.get(i).copied().unwrap_or_default() };
+    // The harmony engine returns notes as `[input, closest_harmony, ...]`
+    // — input always at index 0. To route each entry to the correct
+    // SATB voice slot (so e.g. the user's note plays through the
+    // tenor's output target when voice_position=2), we map result-Vec
+    // index → arrangement slot via the engine's port map.
+    let port_map: Vec<usize> = engine.last_port_map().to_vec();
+    let target_for = |i: usize| -> VoiceOutputTarget {
+        let slot = port_map.get(i).copied().unwrap_or(i);
+        voice_targets.get(slot).copied().unwrap_or_default()
+    };
 
     // Fan each voice into the built-in synth, gated by voice_outputs.
     for (i, &n) in notes.iter().enumerate() {
@@ -738,13 +744,18 @@ fn handle_note_off(
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
 
-    // Snapshot voice routing — same pattern as handle_note_on.
+    // Snapshot voice routing — same pattern as handle_note_on. Use the
+    // engine's port map so the per-voice routing slot matches the SATB
+    // arrangement (input note's slot follows voice_position, not 0).
     let voice_targets: Vec<VoiceOutputTarget> = voice_outputs
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let target_for =
-        |i: usize| -> VoiceOutputTarget { voice_targets.get(i).copied().unwrap_or_default() };
+    let port_map: Vec<usize> = engine.last_port_map().to_vec();
+    let target_for = |i: usize| -> VoiceOutputTarget {
+        let slot = port_map.get(i).copied().unwrap_or(i);
+        voice_targets.get(slot).copied().unwrap_or_default()
+    };
 
     // Fan releases into the built-in synth only for voices routed there.
     for (i, &n) in notes.iter().enumerate() {
