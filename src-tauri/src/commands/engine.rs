@@ -20,6 +20,7 @@ use contrapunk::harmony::HarmonyEngine;
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
 use contrapunk::synth::SynthEvent;
+use contrapunk::transport::Transport;
 
 use crate::guitar_bridge::GuitarBridge;
 use crate::state::{AppState, VoiceOutputTarget};
@@ -208,6 +209,12 @@ pub fn start_routing(
     // Lock-read at each note dispatch to honor live UI changes.
     let voice_outputs = Arc::clone(&state.voice_outputs);
 
+    // Share the transport clock with the router thread so it can push
+    // current beat-phase to the engine each iteration. Counterpoint
+    // Species 2-4 read this; without a fresh phase they fall back to
+    // Species 1 behavior.
+    let transport = Arc::clone(&state.transport);
+
     // Spawn router thread
     thread::spawn(move || {
         if let Err(e) = run_tauri_router(
@@ -232,6 +239,7 @@ pub fn start_routing(
             panic_flag,
             synth_tx,
             voice_outputs,
+            transport,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -305,6 +313,7 @@ fn run_tauri_router(
     panic_pending: Arc<std::sync::atomic::AtomicBool>,
     synth_tx: mpsc::Sender<SynthEvent>,
     voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    transport: Arc<Transport>,
 ) -> anyhow::Result<()> {
     // Connect to either Guitar Audio bridge, physical MIDI input, or
     // nothing at all (Computer Keyboard virtual input — notes are pushed
@@ -368,6 +377,24 @@ fn run_tauri_router(
     loop {
         if stop_signal.load(Ordering::SeqCst) {
             break;
+        }
+
+        // Push current beat-phase from the transport clock to the engine.
+        // Counterpoint Species 2-4 read this on every NoteOn to decide
+        // passing tones / suspensions / strong-vs-weak-beat behavior.
+        // Without a fresh phase, the engine sees None and silently falls
+        // back to Species 1 regardless of which Species the user picked.
+        // When transport is stopped we explicitly push None so Species
+        // 2-4 fall back to Species 1 (per the engine doc on
+        // `counterpoint_beat_phase: Option<f64>`).
+        {
+            let phase = if transport.is_running() {
+                Some(transport.beat_position())
+            } else {
+                None
+            };
+            let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
+            eng.set_counterpoint_beat_phase(phase);
         }
 
         // Reharmonize on parameter change. Any engine-config setter that

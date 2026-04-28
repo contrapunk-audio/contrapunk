@@ -29,7 +29,8 @@ export type PanelId =
 	| 'activeNotes'
 	| 'history'
 	| 'fretboard'
-	| 'piano';
+	| 'piano'
+	| 'pattern';
 
 export const PANELS: { id: PanelId; label: string }[] = [
 	{ id: 'midi', label: 'MIDI' },
@@ -37,7 +38,8 @@ export const PANELS: { id: PanelId; label: string }[] = [
 	{ id: 'activeNotes', label: 'Notes' },
 	{ id: 'history', label: 'History' },
 	{ id: 'fretboard', label: 'Fret' },
-	{ id: 'piano', label: 'Piano' }
+	{ id: 'piano', label: 'Piano' },
+	{ id: 'pattern', label: 'Pattern' }
 ];
 
 export type PanelVisibility = Record<PanelId, boolean>;
@@ -48,7 +50,11 @@ const DEFAULT_PANELS: PanelVisibility = {
 	activeNotes: true,
 	history: true,
 	fretboard: true,
-	piano: true
+	piano: true,
+	// Pattern off by default — opt-in feature; turning all cells on makes
+	// it harmless when first enabled (matches today's "fire on every note"
+	// behavior) but it adds visual surface that most users don't need.
+	pattern: false
 };
 
 /** Top-level layout choice: the simplified 8-knob Performance view vs.
