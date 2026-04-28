@@ -388,6 +388,10 @@ impl HarmonyEngine {
         if position == self.voice_position {
             return;
         }
+        println!(
+            "[VP] set_voice_position: {} (voice_count={})",
+            position, self.voice_count
+        );
         self.voice_position = position;
         self.active_notes.clear();
         self.active_port_maps.clear();
@@ -2169,5 +2173,57 @@ mod tests {
         let _ = engine.take_pending_releases();
         // Second call must be empty — the queue is drained, not cloned.
         assert!(engine.take_pending_releases().is_empty());
+    }
+
+    // --- voice_position chain direction tests ---
+
+    #[test]
+    fn voice_position_soprano_all_harmonies_below_input() {
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        e.set_voice_position(0); // soprano = top
+        let result = e.harmonize_note_on(Note::C5);
+        let input_midi = u8::from(Note::C5);
+        for (i, &n) in result.iter().enumerate().skip(1) {
+            let m = u8::from(n);
+            assert!(
+                m < input_midi,
+                "voice_position=0 (soprano): result[{i}] = {m}, expected below input {input_midi}",
+            );
+        }
+    }
+
+    #[test]
+    fn voice_position_bass_all_harmonies_above_input() {
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        e.set_voice_position(3); // bass = bottom
+        let result = e.harmonize_note_on(Note::C3);
+        let input_midi = u8::from(Note::C3);
+        for (i, &n) in result.iter().enumerate().skip(1) {
+            let m = u8::from(n);
+            assert!(
+                m > input_midi,
+                "voice_position=3 (bass): result[{i}] = {m}, expected above input {input_midi}",
+            );
+        }
+    }
+
+    #[test]
+    fn voice_position_tenor_harmonies_split_around_input() {
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        e.set_voice_position(2); // tenor = third from top in 4-voice
+        let result = e.harmonize_note_on(Note::C4);
+        let input_midi = u8::from(Note::C4);
+        let above = result[1..]
+            .iter()
+            .filter(|n| u8::from(**n) > input_midi)
+            .count();
+        let below = result[1..]
+            .iter()
+            .filter(|n| u8::from(**n) < input_midi)
+            .count();
+        assert!(
+            above > 0 && below > 0,
+            "voice_position=2 (tenor): expected harmonies both above and below input, got above={above} below={below}, full result={result:?}",
+        );
     }
 }
