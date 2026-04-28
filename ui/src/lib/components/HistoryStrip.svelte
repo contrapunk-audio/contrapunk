@@ -13,6 +13,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { transport } from '$lib/stores/transport.svelte';
+	import { pattern } from '$lib/stores/pattern.svelte';
 	import { Renderer, Stave, StaveNote, Formatter, Accidental, Voice } from 'vexflow';
 
 	// How many chord moments to keep on-screen. At 1040px staff width with
@@ -246,6 +248,29 @@
 </script>
 
 <div class="history-strip" aria-label="Recent notes — grand staff memory">
+	<!-- Beat-aligned header: shows bar/beat from transport + currently-
+	     playing cell when pattern is enabled. Provides timing context for
+	     the chord moments rendered on the staff below. -->
+	<div class="beat-header font-ui">
+		<span class="bar-readout">
+			Bar <span class="bar-num">{Math.floor(transport.totalBeat / Math.max(1, transport.beatsPerBar)) + 1}</span>.<span
+				class="beat-num">{(transport.beatInBar | 0) + 1}</span>
+		</span>
+		<div class="beat-pips" aria-hidden="true">
+			{#each Array.from({ length: transport.beatsPerBar }, (_, i) => i) as i (i)}
+				<span class="beat-pip" class:active={transport.running && transport.beatInBar === i}
+					class:downbeat={i === 0}></span>
+			{/each}
+		</div>
+		{#if pattern.cells.length > 0}
+			<div class="pattern-mini" aria-label="Pattern cells, currently-playing cell highlighted">
+				{#each pattern.cells as on, i (i)}
+					{@const playing = transport.running && pattern.cellIndexAt(transport.totalBeat) === i}
+					<span class="pattern-cell" class:on class:playing></span>
+				{/each}
+			</div>
+		{/if}
+	</div>
 	<!-- Fixed-aspect SVG host sized to match the Fretboard (1040 × 150).
 	     VexFlow renders its SVG inside at that exact pixel size; the outer
 	     CSS scales it responsively without distorting proportions. -->
@@ -258,6 +283,57 @@
 		padding: 0 0 2px 0;
 		background: var(--color-bg-deep);
 		border-bottom: 1px solid var(--color-border);
+	}
+	.beat-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 3px 8px;
+		font-size: var(--font-size-xs);
+		color: var(--color-text-dim);
+		border-bottom: 1px solid var(--color-border);
+	}
+	.bar-readout .bar-num,
+	.bar-readout .beat-num {
+		color: var(--color-accent-cyan);
+	}
+	.beat-pips {
+		display: flex;
+		gap: 3px;
+	}
+	.beat-pip {
+		width: 8px;
+		height: 8px;
+		background: var(--color-border);
+		border: 1px solid var(--color-border);
+	}
+	.beat-pip.downbeat {
+		border-color: var(--color-text-dim);
+	}
+	.beat-pip.active {
+		background: var(--color-accent-cyan);
+		box-shadow: 0 0 4px var(--color-accent-cyan);
+	}
+	.pattern-mini {
+		display: flex;
+		gap: 1px;
+		flex: 1;
+		min-width: 0;
+		max-width: 600px;
+	}
+	.pattern-cell {
+		flex: 1 1 0;
+		min-width: 4px;
+		height: 8px;
+		background: rgba(0, 0, 0, 0.4);
+		border: 1px solid var(--color-border);
+	}
+	.pattern-cell.on {
+		background: var(--color-accent-teal);
+	}
+	.pattern-cell.playing {
+		box-shadow: 0 0 4px var(--color-accent-amber);
+		border-color: var(--color-accent-amber);
 	}
 	.staff-host {
 		width: 100%;
