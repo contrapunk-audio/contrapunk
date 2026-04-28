@@ -349,15 +349,13 @@ fn run_tauri_router(
     let mut output_router = OutputRouter::new(output_ports)?;
     let num_outputs = output_router.connection_count();
 
-    // Sync voice_count to the number of routable outputs at the start of
-    // the session. All other engine parameters (key, mode, scale, voice
-    // leading, etc.) are user-driven and already live on `engine`; we
-    // share that instance with the Tauri command handlers so changes
-    // made during the session take effect on this routing pass.
-    {
-        let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
-        eng.set_voice_count(num_outputs);
-    }
+    // voice_count is user-controlled via `set_voice_count`. With
+    // per-voice routing, voices in excess of the connected MIDI ports
+    // route to the built-in synth — there's no reason to clamp the
+    // engine's voice_count to `num_outputs` at routing start. (Doing
+    // so silently overrode the UI's voice picker — see the wave of
+    // "I picked soprano in a 4-voice setup but the engine had only
+    // 2 voices" reports.)
 
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();

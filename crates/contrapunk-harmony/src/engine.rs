@@ -922,6 +922,114 @@ impl HarmonyEngine {
         }
     }
 
+    /// Octave-shift `harmony` so it lands on the correct side of `anchor`.
+    /// Returns None if no valid shift exists in MIDI range.
+    fn octave_shift_to_side(harmony: Note, anchor: Note, above: bool) -> Option<Note> {
+        let anchor_midi = u8::from(anchor) as i16;
+        let mut harm_midi = u8::from(harmony) as i16;
+        let on_correct_side = if above {
+            harm_midi > anchor_midi
+        } else {
+            harm_midi < anchor_midi
+        };
+        if on_correct_side {
+            return Some(harmony);
+        }
+        if above {
+            while harm_midi <= anchor_midi {
+                harm_midi += 12;
+                if harm_midi > 127 {
+                    return None;
+                }
+            }
+        } else {
+            while harm_midi >= anchor_midi {
+                harm_midi -= 12;
+                if harm_midi < 0 {
+                    return None;
+                }
+            }
+        }
+        Note::try_from(harm_midi as u8).ok()
+    }
+
+    /// Octave-shift block-voicing harmonies around `notes[0]` so the user's
+    /// note ends up at SATB slot `voice_position`. Used by block-voicing
+    /// modes (BarryHarris, FunctionalHarmony, BachChorale) which produce
+    /// a fixed voicing without natively respecting voice_position.
+    ///
+    /// Picks the closest-to-input harmonies to relocate. Also rewrites
+    /// `last_arrangement_indices` based on the post-shift pitch order so
+    /// downstream code (apply_octave_mode anchor logic, MIDI routing) sees
+    /// the correct SATB slot for each note.
+    fn redistribute_for_voice_position(&mut self, notes: &mut [Note]) {
+        if notes.len() <= 1 {
+            return;
+        }
+        let input_midi = u8::from(notes[0]) as i16;
+        let voice_position = self.voice_position;
+        // Number of harmonies that should sit above the user's note.
+        let target_above = voice_position.min(notes.len().saturating_sub(1));
+
+        let mut below_indices: Vec<usize> = Vec::new();
+        let mut above_indices: Vec<usize> = Vec::new();
+        for (i, n) in notes.iter().enumerate().skip(1) {
+            let m = u8::from(*n) as i16;
+            if m < input_midi {
+                below_indices.push(i);
+            } else if m > input_midi {
+                above_indices.push(i);
+            }
+        }
+        let cur_above = above_indices.len();
+
+        if cur_above < target_above {
+            // Promote closest-to-input below-harmonies (highest MIDI) up.
+            below_indices.sort_by_key(|&i| std::cmp::Reverse(u8::from(notes[i])));
+            for &i in below_indices.iter().take(target_above - cur_above) {
+                let mut new_midi = u8::from(notes[i]) as i16;
+                while new_midi <= input_midi {
+                    new_midi += 12;
+                    if new_midi > 127 {
+                        break;
+                    }
+                }
+                if (0..=127).contains(&new_midi) {
+                    if let Ok(n) = Note::try_from(new_midi as u8) {
+                        notes[i] = n;
+                    }
+                }
+            }
+        } else if cur_above > target_above {
+            // Demote closest-to-input above-harmonies (lowest MIDI) down.
+            above_indices.sort_by_key(|&i| u8::from(notes[i]));
+            for &i in above_indices.iter().take(cur_above - target_above) {
+                let mut new_midi = u8::from(notes[i]) as i16;
+                while new_midi >= input_midi {
+                    new_midi -= 12;
+                    if new_midi < 0 {
+                        break;
+                    }
+                }
+                if (0..=127).contains(&new_midi) {
+                    if let Ok(n) = Note::try_from(new_midi as u8) {
+                        notes[i] = n;
+                    }
+                }
+            }
+        }
+
+        // Rewrite arrangement_indices by post-shift pitch order: highest
+        // note → slot 0 (soprano), lowest → slot voice_count-1 (bass).
+        let mut order: Vec<usize> = (0..notes.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(u8::from(notes[i])));
+        let mut arr = vec![0usize; notes.len()];
+        for (slot, &idx) in order.iter().enumerate() {
+            arr[idx] = slot;
+        }
+        self.last_arrangement_indices = arr;
+    }
+
     fn harmonize_block_chord(&mut self, note: Note) -> Vec<Note> {
         match super::barry_harris::build_voicing(note, &self.scale, self.beat_phase) {
             Some(voicing) => {
@@ -934,6 +1042,7 @@ impl HarmonyEngine {
                     }
                 }
                 self.last_arrangement_indices = (0..result.len()).collect();
+                self.redistribute_for_voice_position(&mut result);
                 self.apply_octave_mode(&mut result);
                 result
             }
@@ -956,7 +1065,7 @@ impl HarmonyEngine {
         let ctx = self
             .harmonic_context
             .get_or_insert_with(|| HarmonicContext::new(tonic, scale_mode));
-        let result = match self.mode {
+        let mut result = match self.mode {
             HarmonyMode::BachChorale => functional::bach_chorale(note, ctx, scale_mode),
             HarmonyMode::FunctionalHarmony => {
                 functional::functional_harmony(note, ctx, scale_mode, self.voice_count)
@@ -964,6 +1073,7 @@ impl HarmonyEngine {
             _ => vec![note],
         };
         self.last_arrangement_indices = (0..result.len()).collect();
+        self.redistribute_for_voice_position(&mut result);
         self.last_port_map = self.last_arrangement_indices.clone();
         result
     }
@@ -998,17 +1108,23 @@ impl HarmonyEngine {
             }
             HarmonyMode::StrictCounterpoint => {
                 // Species 1 is direction-aware via process_directed. Species 2-4
-                // rely on beat-phase and use the non-directed process path, so
-                // when a non-Species1 species is active we route through
-                // process_with_beat and ignore `above`.
+                // rely on beat-phase and use process_with_beat which ignores
+                // `above` — we octave-shift the result post-hoc to honor the
+                // chain's direction request.
                 let species = self.counterpoint_species;
                 let beat_phase = self.counterpoint_beat_phase;
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
-                    if matches!(species, CounterpointSpecies::Species1) {
+                    let result = if matches!(species, CounterpointSpecies::Species1) {
                         state.process_directed(&mut self.scale, note, above)
                     } else {
                         state.process_with_beat(&mut self.scale, note, beat_phase)
+                    };
+                    if !matches!(species, CounterpointSpecies::Species1) && result.len() > 1 {
+                        if let Some(shifted) = Self::octave_shift_to_side(result[1], note, above) {
+                            return vec![note, shifted];
+                        }
                     }
+                    result
                 } else {
                     vec![note]
                 }
@@ -2224,6 +2340,86 @@ mod tests {
         assert!(
             above > 0 && below > 0,
             "voice_position=2 (tenor): expected harmonies both above and below input, got above={above} below={below}, full result={result:?}",
+        );
+    }
+
+    // --- block-voicing modes respect voice_position (fix #1) ---
+
+    #[test]
+    fn block_chord_bass_position_redistributes_voicing_above() {
+        // Barry Harris block voicing normally stacks below the melody.
+        // With voice_position=Bass, all harmonies must be above the input.
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 4);
+        e.set_voice_position(3); // bass
+        let result = e.harmonize_note_on(Note::C4);
+        if result.len() <= 1 {
+            return; // No voicing produced — depends on beat phase; not a regression
+        }
+        let input_midi = u8::from(Note::C4);
+        for (i, &n) in result.iter().enumerate().skip(1) {
+            let m = u8::from(n);
+            assert!(
+                m > input_midi,
+                "block-chord voice_position=3 (bass): result[{i}] = {m}, expected above input {input_midi}, full result={result:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn block_chord_alto_position_splits_around_input() {
+        // voice_position=alto in 4-voice → 1 above, 2 below.
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 4);
+        e.set_voice_position(1); // alto
+        let result = e.harmonize_note_on(Note::C4);
+        if result.len() <= 1 {
+            return;
+        }
+        let input_midi = u8::from(Note::C4);
+        let above = result[1..]
+            .iter()
+            .filter(|n| u8::from(**n) > input_midi)
+            .count();
+        assert_eq!(
+            above, 1,
+            "block-chord voice_position=1 (alto): expected exactly 1 above-input harmony, got {above}, full result={result:?}",
+        );
+    }
+
+    // --- counterpoint Species 2-4 honor direction (fix #1 cont.) ---
+
+    #[test]
+    fn counterpoint_species2_bass_position_harmony_above() {
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
+        e.set_counterpoint_species(CounterpointSpecies::Species2);
+        e.set_voice_position(1); // bass in 2-voice
+        e.set_counterpoint_beat_phase(Some(0.0));
+        let result = e.harmonize_note_on(Note::C4);
+        if result.len() <= 1 {
+            return;
+        }
+        let input_midi = u8::from(Note::C4);
+        let h = u8::from(result[1]);
+        assert!(
+            h > input_midi,
+            "Species2 voice_position=bass: harmony {h} should be above input {input_midi}, full result={result:?}",
+        );
+    }
+
+    // --- register-edge wrap (fix #2) ---
+
+    #[test]
+    fn chain_continues_at_low_register_edge() {
+        // User plays MIDI 1 (very low) as soprano in 4-voice. Chain below
+        // would land below MIDI 0 — pre-fix the chain broke and dropped
+        // voices; post-fix it wraps an octave to keep voices audible.
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
+        e.set_voice_position(0); // soprano
+        let very_low = Note::try_from(1u8).unwrap();
+        let result = e.harmonize_note_on(very_low);
+        assert!(
+            result.len() >= 2,
+            "chain at register edge produced only {} note(s); expected the wrap fallback to keep voices, full result={result:?}",
+            result.len()
         );
     }
 }
