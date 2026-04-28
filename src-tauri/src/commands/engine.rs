@@ -215,6 +215,13 @@ pub fn start_routing(
     // Species 1 behavior.
     let transport = Arc::clone(&state.transport);
 
+    // Beat-aligned chord trigger: master enable + pattern config. When
+    // enabled, the router retriggers harmony on each pattern cell-on
+    // boundary (Live mode). Pushed by the frontend pattern store via
+    // `set_pattern_enabled` / `set_pattern_config`.
+    let pattern_enabled = Arc::clone(&state.pattern_enabled);
+    let pattern_config = Arc::clone(&state.pattern_config);
+
     // Spawn router thread
     thread::spawn(move || {
         if let Err(e) = run_tauri_router(
@@ -240,6 +247,8 @@ pub fn start_routing(
             synth_tx,
             voice_outputs,
             transport,
+            pattern_enabled,
+            pattern_config,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -314,7 +323,10 @@ fn run_tauri_router(
     synth_tx: mpsc::Sender<SynthEvent>,
     voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
     transport: Arc<Transport>,
+    pattern_enabled: Arc<std::sync::atomic::AtomicBool>,
+    pattern_config: Arc<Mutex<crate::state::PatternConfig>>,
 ) -> anyhow::Result<()> {
+    let mut last_pattern_cell: Option<usize> = None;
     // Connect to either Guitar Audio bridge, physical MIDI input, or
     // nothing at all (Computer Keyboard virtual input — notes are pushed
     // by inject_note_on/off commands via the shared router_tx).
@@ -395,6 +407,53 @@ fn run_tauri_router(
             };
             let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
             eng.set_counterpoint_beat_phase(phase);
+        }
+
+        // Beat-aligned chord retrigger. When pattern is enabled and the
+        // transport is running, detect cell-boundary crossings and
+        // retrigger the currently-sounding harmony on each cell-on
+        // boundary (Live mode). Skip silently when pattern off or
+        // transport stopped — fall through to today's real-time path.
+        if pattern_enabled.load(Ordering::SeqCst) && transport.is_running() {
+            let total_beats = transport.total_beats();
+            let (current_cell, cell_is_on) = {
+                let cfg = pattern_config.lock().unwrap_or_else(|e| e.into_inner());
+                if cfg.cells.is_empty() {
+                    (0usize, false)
+                } else {
+                    let idx = cfg.cell_index_at(total_beats);
+                    let on = cfg.cells.get(idx).copied().unwrap_or(false);
+                    (idx, on)
+                }
+            };
+            if Some(current_cell) != last_pattern_cell {
+                last_pattern_cell = Some(current_cell);
+                if cell_is_on {
+                    // Snapshot currently-sounding harmonies, send NoteOff
+                    // then NoteOn back-to-back for each → produces a fresh
+                    // attack on the synth (rhythmic stab/strum). Input
+                    // notes left alone — the user's note keeps ringing.
+                    let harmonies: Vec<u8> = harmony_notes
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .iter()
+                        .copied()
+                        .collect();
+                    for n in &harmonies {
+                        let _ = synth_tx.send(SynthEvent::NoteOff { note: *n });
+                    }
+                    for n in &harmonies {
+                        let _ = synth_tx.send(SynthEvent::NoteOn {
+                            note: *n,
+                            velocity: 100,
+                        });
+                    }
+                }
+            }
+        } else {
+            // Pattern disabled or transport stopped — clear the cell
+            // memory so re-enabling at the same beat correctly fires.
+            last_pattern_cell = None;
         }
 
         // Reharmonize on parameter change. Any engine-config setter that

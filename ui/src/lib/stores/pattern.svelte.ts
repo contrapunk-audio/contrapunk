@@ -18,6 +18,8 @@
  * bar of 16th notes in 4/4).
  */
 
+import { adapter } from '$lib/adapter';
+
 const STORAGE_KEY = 'contrapunk-pattern';
 
 /** Cells per beat. 1=quarter, 2=eighth, 4=16th, 8=32nd. */
@@ -189,6 +191,34 @@ class PatternStore {
 			);
 		} catch {
 			/* localStorage unavailable */
+		}
+		// Push to backend so the router thread sees the change. Fire-and-
+		// forget — adapter errors are not fatal for UI state. wasm/plugin
+		// adapters no-op.
+		void adapter.setPatternConfig({
+			cells: this.cells,
+			subdivision: this.subdivision,
+			length: this.length,
+			beatsPerBar: this.beatsPerBar,
+			inputMode: this.inputMode
+		});
+	}
+
+	/** Master enable for the pattern feature. Tied to the panel-pip
+	 *  visibility — when the user shows the Pattern panel, dispatch
+	 *  enable; on hide, dispatch disable. */
+	async setEnabled(enabled: boolean) {
+		await adapter.setPatternEnabled(enabled);
+		// Push the current config too so the router has fresh state when
+		// it starts reading.
+		if (enabled) {
+			await adapter.setPatternConfig({
+				cells: this.cells,
+				subdivision: this.subdivision,
+				length: this.length,
+				beatsPerBar: this.beatsPerBar,
+				inputMode: this.inputMode
+			});
 		}
 	}
 

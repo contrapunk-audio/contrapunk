@@ -11,6 +11,7 @@
 
 <script lang="ts">
 	import { pattern } from '$lib/stores/pattern.svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import {
 		SUBDIVISION_OPTIONS,
 		LENGTH_OPTIONS,
@@ -21,6 +22,16 @@
 	} from '$lib/stores/pattern.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
 	import PixelSelect from './PixelSelect.svelte';
+
+	// Pattern feature is enabled while this panel is mounted (the user
+	// has the panel pip on). Dispatch master enable on mount, disable on
+	// unmount — the router falls back to today's real-time path when off.
+	onMount(() => {
+		void pattern.setEnabled(true);
+	});
+	onDestroy(() => {
+		void pattern.setEnabled(false);
+	});
 
 	// Currently-playing cell index, derived from transport. Re-evaluates
 	// whenever totalBeat advances (driven by the audio-clock beat-update

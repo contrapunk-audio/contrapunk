@@ -13,7 +13,7 @@ use contrapunk::harmony::{
     VoiceLeadingStyle,
 };
 
-use crate::state::AppState;
+use crate::state::{AppState, PatternConfig, PatternInputMode};
 
 /// Raise the router-thread panic flag so stuck notes from the previous
 /// engine configuration get released via MIDI All-Notes-Off on the next
@@ -229,6 +229,44 @@ pub fn set_octave_intensity(amount: f32, state: State<AppState>) -> Result<(), S
         engine.set_octave_intensity(amount);
     }
     raise_panic(&state);
+    Ok(())
+}
+
+/// Master enable for the beat-aligned chord-trigger pattern. When false,
+/// router uses today's real-time harmony dispatch.
+#[tauri::command]
+pub fn set_pattern_enabled(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    state
+        .pattern_enabled
+        .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+/// Push the full pattern config from the frontend store. Replaces the
+/// backend's `PatternConfig` atomically.
+#[tauri::command]
+pub fn set_pattern_config(
+    cells: Vec<bool>,
+    subdivision: u8,
+    length: u8,
+    beats_per_bar: u8,
+    input_mode: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let mode = match input_mode.as_str() {
+        "live" => PatternInputMode::Live,
+        "quantized" => PatternInputMode::Quantized,
+        "gated" => PatternInputMode::Gated,
+        other => return Err(format!("Unknown input mode: {}", other)),
+    };
+    let mut cfg = state.pattern_config.lock().map_err(|e| e.to_string())?;
+    *cfg = PatternConfig {
+        cells,
+        subdivision,
+        length,
+        beats_per_bar,
+        input_mode: mode,
+    };
     Ok(())
 }
 

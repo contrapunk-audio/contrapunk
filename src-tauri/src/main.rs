@@ -75,6 +75,8 @@ fn main() {
             commands::harmony::set_counterpoint_strictness,
             commands::harmony::set_detune,
             commands::harmony::get_detune,
+            commands::harmony::set_pattern_enabled,
+            commands::harmony::set_pattern_config,
             // MIDI device management
             commands::midi::list_midi_inputs,
             commands::midi::list_midi_outputs,
