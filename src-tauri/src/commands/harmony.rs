@@ -233,12 +233,18 @@ pub fn set_octave_intensity(amount: f32, state: State<AppState>) -> Result<(), S
 }
 
 /// Master enable for the beat-aligned chord-trigger pattern. When false,
-/// router uses today's real-time harmony dispatch.
+/// router uses today's real-time harmony dispatch. When true, also
+/// auto-starts the transport clock (the pattern is BPM-driven; without
+/// a running clock `total_beats()` is frozen and cell indices never
+/// advance, so the pattern would silently do nothing).
 #[tauri::command]
 pub fn set_pattern_enabled(enabled: bool, state: State<AppState>) -> Result<(), String> {
     state
         .pattern_enabled
         .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    if enabled && !state.transport.is_running() {
+        state.transport.play();
+    }
     Ok(())
 }
 
