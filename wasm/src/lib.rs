@@ -421,6 +421,13 @@ impl Engine {
         Ok(())
     }
 
+    /// Continuous octave-spread coefficient. Range [0.0, 1.0]; 0 = no
+    /// displacement, 1 = full-octave (legacy) per-voice displacement.
+    pub fn set_octave_intensity(&mut self, amount: f32) {
+        self.inner.set_octave_intensity(amount);
+        self.clear_notes();
+    }
+
     /// Configure voice leading (enabled flag + style string).
     pub fn set_voice_leading(&mut self, enabled: bool, style: &str) -> Result<(), JsValue> {
         let vl_style = parse_voice_leading_style(style)?;

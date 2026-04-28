@@ -64,6 +64,7 @@ fn main() {
             commands::harmony::set_mode,
             commands::harmony::set_scale_mode,
             commands::harmony::set_octave_mode,
+            commands::harmony::set_octave_intensity,
             commands::harmony::set_voice_leading,
             commands::harmony::set_interchange,
             commands::harmony::set_voice_position,

@@ -158,6 +158,15 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async setOctaveIntensity(amount: number): Promise<void> {
+		this.ensureInit();
+		try {
+			engine.set_octave_intensity(amount);
+		} catch (e) {
+			throw new Error(`Failed to set octave intensity: ${e}`);
+		}
+	}
+
 	async setVoiceLeading(enabled: boolean, style: string): Promise<void> {
 		this.ensureInit();
 		try {

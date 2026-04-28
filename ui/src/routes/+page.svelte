@@ -4,6 +4,7 @@
 	import Piano from '$lib/components/Piano.svelte';
 	import MidiDevices from '$lib/components/MidiDevices.svelte';
 	import GuitarInputPanel from '$lib/components/GuitarInputPanel.svelte';
+	import PerformanceView from '$lib/components/PerformanceView.svelte';
 	// PresetManager temporarily unmounted (backend + component file
 	// kept). Tracked in contrapunk#65 — will return with a redesigned UX.
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
@@ -40,6 +41,7 @@
 			try {
 				ui.restoreAppearance();
 				ui.restorePanels();
+				ui.restoreViewMode();
 				await adapter.init();
 				await engine.syncFromBackend();
 				await engine.restoreSettings();
@@ -143,7 +145,10 @@
 				<!-- Setup row: MIDI devices + Harmony controls. Each
 				     column is a togglable panel; the row collapses to
 				     a single column when only one is visible, and
-				     disappears entirely when both are off. -->
+				     disappears entirely when both are off. The right
+				     column swaps between PerformanceView (8 knobs) and
+				     ControlPanel (today's full surface) based on
+				     `ui.viewMode`. -->
 				<div
 					class="content-area"
 					class:two-col={ui.panels.midi && ui.panels.controls}
@@ -160,7 +165,11 @@
 					{/if}
 					{#if ui.panels.controls}
 						<div class="column column-center">
-							<ControlPanel />
+							{#if ui.viewMode === 'performance'}
+								<PerformanceView />
+							{:else}
+								<ControlPanel />
+							{/if}
 						</div>
 					{/if}
 				</div>
