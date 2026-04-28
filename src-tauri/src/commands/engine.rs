@@ -417,14 +417,14 @@ fn run_tauri_router(
         // transport stopped — fall through to today's real-time path.
         if pattern_enabled.load(Ordering::SeqCst) && transport.is_running() {
             let total_beats = transport.total_beats();
-            let (current_cell, cell_is_on) = {
+            let (current_cell, cell_is_on, input_mode) = {
                 let cfg = pattern_config.lock().unwrap_or_else(|e| e.into_inner());
                 if cfg.cells.is_empty() {
-                    (0usize, false)
+                    (0usize, false, cfg.input_mode)
                 } else {
                     let idx = cfg.cell_index_at(total_beats);
                     let on = cfg.cells.get(idx).copied().unwrap_or(false);
-                    (idx, on)
+                    (idx, on, cfg.input_mode)
                 }
             };
             if Some(current_cell) != last_pattern_cell {
@@ -432,25 +432,43 @@ fn run_tauri_router(
                 last_pattern_cell = Some(current_cell);
                 last_pattern_cell_on = cell_is_on;
 
-                // Step-sequencer semantics:
-                //   prev on  → new on   : retrigger (NoteOff + NoteOn)
-                //   prev on  → new off  : silence (NoteOff)
-                //   prev off → new on   : attack (NoteOn)
-                //   prev off → new off  : nothing
-                // Input notes are left alone — the user's pressed key
-                // keeps ringing regardless of pattern state.
                 let harmonies: Vec<u8> = harmony_notes
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .iter()
                     .copied()
                     .collect();
-                if prev_was_on {
+
+                // Mode semantics:
+                //   Live      — every cell-on boundary attacks (and
+                //               retriggers consecutive ons). Cell-off
+                //               boundaries silence. Staccato / step-seq.
+                //   Quantized — same as Live for now (true quantization
+                //               of input onset to next beat needs a MIDI
+                //               buffer; treated as Live until Phase 4.5).
+                //   Gated     — sustained legato: NoteOn only on rising
+                //               edge (off→on), NoteOff only on falling
+                //               edge (on→off). No retrigger on
+                //               consecutive ons.
+                use crate::state::PatternInputMode;
+                let (do_off, do_on) = match input_mode {
+                    PatternInputMode::Live | PatternInputMode::Quantized => {
+                        (prev_was_on, cell_is_on)
+                    }
+                    PatternInputMode::Gated => {
+                        // off→on: only NoteOn. on→off: only NoteOff.
+                        // on→on, off→off: nothing.
+                        let rising = !prev_was_on && cell_is_on;
+                        let falling = prev_was_on && !cell_is_on;
+                        (falling, rising)
+                    }
+                };
+                if do_off {
                     for n in &harmonies {
                         let _ = synth_tx.send(SynthEvent::NoteOff { note: *n });
                     }
                 }
-                if cell_is_on {
+                if do_on {
                     for n in &harmonies {
                         let _ = synth_tx.send(SynthEvent::NoteOn {
                             note: *n,
@@ -460,8 +478,21 @@ fn run_tauri_router(
                 }
             }
         } else {
-            // Pattern disabled or transport stopped — clear the cell
-            // memory so re-enabling at the same beat correctly fires.
+            // Pattern disabled or transport stopped. If we left harmony
+            // sounding (last cell was on), drain it so the synth voices
+            // release cleanly — otherwise the user is stuck with a held
+            // chord they didn't ask for.
+            if last_pattern_cell_on {
+                let harmonies: Vec<u8> = harmony_notes
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .iter()
+                    .copied()
+                    .collect();
+                for n in &harmonies {
+                    let _ = synth_tx.send(SynthEvent::NoteOff { note: *n });
+                }
+            }
             last_pattern_cell = None;
             last_pattern_cell_on = false;
         }
