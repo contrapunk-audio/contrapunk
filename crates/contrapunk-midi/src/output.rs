@@ -36,10 +36,9 @@ impl OutputRouter {
     /// - Any port index is invalid
     /// - Any connection fails
     pub fn new(port_indices: &[usize]) -> Result<Self> {
-        if port_indices.is_empty() {
-            return Err(anyhow!("No output ports specified"));
-        }
-
+        // Empty is allowed — voices may route entirely to the built-in synth
+        // via the per-voice routing table. Returning an empty router keeps
+        // the MIDI-output path no-op without blocking routing start.
         let mut connections = Vec::new();
 
         for (i, &idx) in port_indices.iter().enumerate() {
