@@ -206,6 +206,13 @@ export class PluginAdapter implements ContrapunkAdapter {
 		};
 	}
 
+	onKnobCcRaw(_callback: (cc: number, value: number) => void): () => void {
+		// Plugin path: DAW host owns MIDI routing. Knob CC mapping
+		// would happen via DAW automation rather than direct CC
+		// interception. No-op for now.
+		return () => {};
+	}
+
 	// -- Virtual Input (not applicable in plugin mode) --
 
 	async injectNoteOn(note: number, _velocity?: number): Promise<number[]> {

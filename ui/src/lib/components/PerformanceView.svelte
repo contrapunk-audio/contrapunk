@@ -12,6 +12,7 @@
 -->
 
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import { engine, ALL_KEYS, KEY_DISPLAY } from '$lib/stores/engine.svelte';
 	import type {
 		HarmonyModeName,
@@ -19,6 +20,8 @@
 		VoiceLeadingStyleName,
 		KeyName
 	} from '$lib/stores/engine.svelte';
+	import { adapter } from '$lib/adapter';
+	import { knobMidiMap, type KnobIndex } from '$lib/stores/knobMidiMap.svelte';
 	import Knob from './Knob.svelte';
 
 	// === Mode (5 detents) ===
@@ -163,63 +166,165 @@
 	function toggleAutoKey() {
 		void engine.setAutoKey(!engine.autoKey);
 	}
+
+	// === Hardware-knob CC routing (MIDI Learn) ===
+	// Backend emits "knob-cc-raw" events with `{ cc, value }` for every
+	// MIDI CC received. We resolve the CC → knob-index via the user's
+	// learned mapping (`knobMidiMap`), then dispatch to the same apply
+	// function the on-screen knob uses. While a knob is in "learning"
+	// state, the next CC observed binds to that knob instead.
+	function dispatchKnobValue(idx: KnobIndex, value: number) {
+		switch (idx) {
+			case 0: // Mode (5 detents)
+				onModeChange(value * 4);
+				break;
+			case 1: // Voices (1-8)
+				onVoicesChange(1 + value * 7);
+				break;
+			case 2: // Tightness (0..1)
+				applyTightness(value);
+				break;
+			case 3: // Adventurous (0..1)
+				applyAdventurous(value);
+				break;
+			case 4: // Key (12 detents) — also disables auto-key on hardware turn
+				onKeyChange(value * 11);
+				break;
+			case 5: // Scale (8 categories)
+				onScaleChange(value * 7);
+				break;
+			case 6: // You play (1..voiceCount)
+				onYouPlayChange(1 + value * Math.max(0, engine.voiceCount - 1));
+				break;
+			case 7: // Spread (continuous)
+				applySpread(value);
+				break;
+		}
+	}
+
+	let unlistenKnobCc: (() => void) | undefined;
+	onMount(() => {
+		unlistenKnobCc = adapter.onKnobCcRaw((cc, value) => {
+			const learning = knobMidiMap.learning;
+			if (learning !== null) {
+				// Capture this CC as the bound CC for the learning knob.
+				knobMidiMap.bind(learning, cc);
+				knobMidiMap.cancelLearn();
+				return;
+			}
+			const idx = knobMidiMap.knobForCc(cc);
+			if (idx !== null) dispatchKnobValue(idx, value);
+		});
+
+		// Escape cancels in-progress learning.
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape' && knobMidiMap.learning !== null) {
+				knobMidiMap.cancelLearn();
+			}
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
+	onDestroy(() => {
+		unlistenKnobCc?.();
+	});
+
+	function toggleLearn(idx: KnobIndex) {
+		knobMidiMap.toggleLearn(idx);
+	}
+
+	function ccLabel(idx: KnobIndex): string {
+		const cc = knobMidiMap.map[idx];
+		return cc === null ? '—' : `CC${cc}`;
+	}
+
+	function resetMidiMap() {
+		knobMidiMap.resetToMpkDefaults();
+	}
 </script>
+
+{#snippet learnPip(idx: KnobIndex)}
+	<button
+		type="button"
+		class="learn-pip font-ui"
+		class:learning={knobMidiMap.learning === idx}
+		onclick={() => toggleLearn(idx)}
+		aria-pressed={knobMidiMap.learning === idx}
+		title={knobMidiMap.learning === idx
+			? 'Waiting for MIDI CC… (Esc to cancel)'
+			: `Click, then move a hardware knob to bind it (${ccLabel(idx)})`}
+	>
+		{knobMidiMap.learning === idx ? 'LEARN…' : ccLabel(idx)}
+	</button>
+{/snippet}
 
 <div class="performance-view">
 	<div class="knob-grid">
 		<!-- Row 1 — live performance dials -->
 		<div class="knob-cell">
-			<Knob
-				value={modeIndex}
-				min={0}
-				max={4}
-				step={1}
-				size={72}
-				label="Mode"
-				format={(v) => MODE_LABELS[Math.round(v)] ?? ''}
-				onchange={onModeChange}
-			/>
+			<div class="learn-stack">
+				<Knob
+					value={modeIndex}
+					min={0}
+					max={4}
+					step={1}
+					size={72}
+					label="Mode"
+					format={(v) => MODE_LABELS[Math.round(v)] ?? ''}
+					onchange={onModeChange}
+				/>
+				{@render learnPip(0)}
+			</div>
 		</div>
 		<div class="knob-cell">
-			<Knob
-				value={engine.voiceCount}
-				min={1}
-				max={8}
-				step={1}
-				size={72}
-				label="Voices"
-				format={(v) => Math.round(v).toString()}
-				onchange={onVoicesChange}
-			/>
+			<div class="learn-stack">
+				<Knob
+					value={engine.voiceCount}
+					min={1}
+					max={8}
+					step={1}
+					size={72}
+					label="Voices"
+					format={(v) => Math.round(v).toString()}
+					onchange={onVoicesChange}
+				/>
+				{@render learnPip(1)}
+			</div>
 		</div>
 		<div class="knob-cell">
-			<Knob
-				value={tightness}
-				min={0}
-				max={1}
-				step={0.01}
-				size={72}
-				label="Tightness"
-				format={tightnessLabel}
-				onchange={applyTightness}
-			/>
+			<div class="learn-stack">
+				<Knob
+					value={tightness}
+					min={0}
+					max={1}
+					step={0.01}
+					size={72}
+					label="Tightness"
+					format={tightnessLabel}
+					onchange={applyTightness}
+				/>
+				{@render learnPip(2)}
+			</div>
 		</div>
 		<div class="knob-cell">
-			<Knob
-				value={adventurous}
-				min={0}
-				max={1}
-				step={0.01}
-				size={72}
-				label="Adventurous"
-				format={adventurousLabel}
-				onchange={applyAdventurous}
-			/>
+			<div class="learn-stack">
+				<Knob
+					value={adventurous}
+					min={0}
+					max={1}
+					step={0.01}
+					size={72}
+					label="Adventurous"
+					format={adventurousLabel}
+					onchange={applyAdventurous}
+				/>
+				{@render learnPip(3)}
+			</div>
 		</div>
 
 		<!-- Row 2 — per-song / per-set setup -->
 		<div class="knob-cell">
-			<div class="key-stack">
+			<div class="learn-stack">
 				<Knob
 					value={keyIndex}
 					min={0}
@@ -230,60 +335,79 @@
 					format={(v) => KEY_DISPLAY[ALL_KEYS[Math.round(v)] ?? 'C'] ?? '?'}
 					onchange={onKeyChange}
 				/>
-				<button
-					type="button"
-					class="auto-pip font-ui"
-					class:on={engine.autoKey}
-					onclick={toggleAutoKey}
-					aria-pressed={engine.autoKey}
-					title={engine.autoKey ? 'Auto-key on (engine detects)' : 'Auto-key off (manual)'}
-				>
-					{engine.autoKey ? 'AUTO' : 'MAN'}
-				</button>
+				<div class="pip-row">
+					<button
+						type="button"
+						class="auto-pip font-ui"
+						class:on={engine.autoKey}
+						onclick={toggleAutoKey}
+						aria-pressed={engine.autoKey}
+						title={engine.autoKey ? 'Auto-key on (engine detects)' : 'Auto-key off (manual)'}
+					>
+						{engine.autoKey ? 'AUTO' : 'MAN'}
+					</button>
+					{@render learnPip(4)}
+				</div>
 			</div>
 		</div>
 		<div class="knob-cell">
-			<Knob
-				value={scaleIndex}
-				min={0}
-				max={7}
-				step={1}
-				size={72}
-				label="Scale"
-				format={(v) => SCALE_CATEGORIES[Math.round(v)]?.label ?? ''}
-				onchange={onScaleChange}
-			/>
+			<div class="learn-stack">
+				<Knob
+					value={scaleIndex}
+					min={0}
+					max={7}
+					step={1}
+					size={72}
+					label="Scale"
+					format={(v) => SCALE_CATEGORIES[Math.round(v)]?.label ?? ''}
+					onchange={onScaleChange}
+				/>
+				{@render learnPip(5)}
+			</div>
 		</div>
 		<div class="knob-cell">
-			<Knob
-				value={engine.voicePosition + 1}
-				min={1}
-				max={Math.max(1, engine.voiceCount)}
-				step={1}
-				size={72}
-				label="You play"
-				format={(v) => {
-					const i = Math.round(v) - 1;
-					if (engine.voiceCount <= 4) {
-						return ['Soprano', 'Alto', 'Tenor', 'Bass'][i] ?? `V${i + 1}`;
-					}
-					return `V${i + 1}`;
-				}}
-				onchange={onYouPlayChange}
-			/>
+			<div class="learn-stack">
+				<Knob
+					value={engine.voicePosition + 1}
+					min={1}
+					max={Math.max(1, engine.voiceCount)}
+					step={1}
+					size={72}
+					label="You play"
+					format={(v) => {
+						const i = Math.round(v) - 1;
+						if (engine.voiceCount <= 4) {
+							return ['Soprano', 'Alto', 'Tenor', 'Bass'][i] ?? `V${i + 1}`;
+						}
+						return `V${i + 1}`;
+					}}
+					onchange={onYouPlayChange}
+				/>
+				{@render learnPip(6)}
+			</div>
 		</div>
 		<div class="knob-cell">
-			<Knob
-				value={spread}
-				min={0}
-				max={1}
-				step={0.01}
-				size={72}
-				label="Spread"
-				format={spreadLabel}
-				onchange={applySpread}
-			/>
+			<div class="learn-stack">
+				<Knob
+					value={spread}
+					min={0}
+					max={1}
+					step={0.01}
+					size={72}
+					label="Spread"
+					format={spreadLabel}
+					onchange={applySpread}
+				/>
+				{@render learnPip(7)}
+			</div>
 		</div>
+	</div>
+
+	<div class="midi-learn-footer">
+		<button type="button" class="reset-btn font-ui" onclick={resetMidiMap}
+			title="Restore the MPK Mini default mapping (knobs 1-8 → CC 70-77)">
+			Reset to MPK Mini defaults
+		</button>
 	</div>
 </div>
 
@@ -313,14 +437,24 @@
 		min-width: 0;
 	}
 
-	.key-stack {
+	.learn-stack {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 6px;
 	}
 
-	.auto-pip {
+	.pip-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 4px;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+
+	.auto-pip,
+	.learn-pip {
 		padding: 2px 10px;
 		font-size: var(--font-size-xs, 11px);
 		background: transparent;
@@ -337,8 +471,41 @@
 		color: #fff;
 		box-shadow: var(--glow-teal, 0 0 6px #1a8a8a);
 	}
-	.auto-pip:hover {
+	.auto-pip:hover,
+	.learn-pip:hover {
 		border-color: var(--color-accent-cyan, #4dd);
 	}
 
+	/* "Learning" state — pulsing border + amber tint to make it
+	 * unambiguous that the next CC will bind. */
+	.learn-pip.learning {
+		background: var(--color-accent-amber, #c98a1a);
+		border-color: var(--color-accent-amber, #c98a1a);
+		color: #111;
+		animation: learn-pulse 0.8s infinite;
+	}
+	@keyframes learn-pulse {
+		0%, 100% { box-shadow: 0 0 0 0 var(--color-accent-amber, #c98a1a); }
+		50%      { box-shadow: 0 0 8px 2px var(--color-accent-amber, #c98a1a); }
+	}
+
+	.midi-learn-footer {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: 0.75rem;
+	}
+
+	.reset-btn {
+		padding: 4px 12px;
+		font-size: var(--font-size-xs, 11px);
+		background: transparent;
+		border: 1px solid var(--color-border, #444);
+		color: var(--color-text-dim, #888);
+		cursor: pointer;
+		letter-spacing: 0.05em;
+	}
+	.reset-btn:hover {
+		border-color: var(--color-accent-cyan, #4dd);
+		color: var(--color-text, #ddd);
+	}
 </style>

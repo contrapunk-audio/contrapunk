@@ -599,6 +599,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 		};
 	}
 
+	onKnobCcRaw(_callback: (cc: number, value: number) => void): () => void {
+		// Browser/wasm path: raw MIDI CCs aren't currently forwarded
+		// from the Web MIDI input handler. Could be wired up in a
+		// future iteration to enable MIDI Learn in the browser; for
+		// now, no-op.
+		return () => {};
+	}
+
 	/**
 	 * Poll for note state changes using requestAnimationFrame.
 	 * WASM doesn't push events, so we pull at frame rate.
