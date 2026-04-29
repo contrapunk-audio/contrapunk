@@ -29,6 +29,3 @@ au-wrapper/build/
 
 # Claude agent local state
 .claude/
-
-# Marketing / event ops planning — never committed (lives only locally)
-.planning/marketing/
