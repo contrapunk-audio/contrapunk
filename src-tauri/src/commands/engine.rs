@@ -1267,13 +1267,26 @@ fn dispatch_voice(
 /// by an auto-key change in `handle_note_on`, and the panic-replay
 /// `to_release` diff in `run_tauri_router`. Per-port routing isn't
 /// tracked on a per-note basis at the router level, so we accept
-/// over-broad delivery — extra NoteOffs to ports that didn't see
-/// the matching NoteOn are harmless on every consumer in practice.
+/// over-broad delivery: extra NoteOffs to ports that didn't see the
+/// matching NoteOn are inaudible on synths, samplers, and DAWs. A
+/// few MIDI routing/merge utilities log a warning about unbalanced
+/// pairs; that's the trade-off for not tracking per-note port
+/// routing.
 ///
 /// Channel 0 is conventional for these broadcast releases since the
 /// notes' original channel may differ across the held set; 0 is a
 /// safe default for general MIDI consumers that don't filter on
-/// channel.
+/// channel. Caveat: voices originally attacked on non-zero channels
+/// (MPE, multi-channel routing) will not be matched by this path —
+/// the reharm/panic flow doesn't preserve per-note channel through
+/// `take_pending_releases` / `take_reharm_inputs`. Tracked as a
+/// limitation in the held_harmonies follow-up issue #90.
+///
+/// Implemented as a thin loop over `dispatch_voice` so the byte
+/// encoding lives in exactly one place — adding a fourth dispatch
+/// destination only requires updating the helper. The helper's
+/// `debug_assert!(channel < 16)` / `debug_assert!(v < 128)` invariants
+/// guard this path too.
 fn broadcast_note_off(
     note: u8,
     num_ports: usize,
@@ -1281,9 +1294,25 @@ fn broadcast_note_off(
     output: &mut OutputRouter,
 ) {
     debug_assert!(note < 128, "MIDI note out of range: {}", note);
-    let _ = synth_tx.send(SynthEvent::NoteOff { note });
-    let msg = [0x80, note, 0];
+    let event = VoiceDispatch::NoteOff { note, velocity: 0 };
+    // Synth fanout — channel arg ignored by the Synth target.
+    dispatch_voice(
+        VoiceOutputTarget::Synth,
+        0,
+        event,
+        num_ports,
+        synth_tx,
+        output,
+    );
+    // Every external port — channel 0 by convention (see fn doc).
     for port in 0..num_ports {
-        let _ = output.send_to_port(port, &msg);
+        dispatch_voice(
+            VoiceOutputTarget::MidiPort { port },
+            0,
+            event,
+            num_ports,
+            synth_tx,
+            output,
+        );
     }
 }

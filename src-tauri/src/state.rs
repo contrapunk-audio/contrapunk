@@ -312,8 +312,8 @@ pub struct AppState {
     /// Per-voice output routing table, indexed 0..MAX_VOICES.
     /// Router thread reads this on every note to decide whether each
     /// voice goes to the internal synth, to a specific MIDI port, or
-    /// nowhere. Default all `UseDefault` preserves the legacy fan-out
-    /// behavior for existing users until the UI sets explicit values.
+    /// nowhere. Default all `Synth` so users get audio out of the box
+    /// without configuring a MIDI port first.
     pub voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
 
     /// Master enable for the beat-aligned pattern feature. When false
