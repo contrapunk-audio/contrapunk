@@ -198,10 +198,16 @@ pub enum VoiceOutputTarget {
 /// engine. The captured `target` reflects the routing as of attack
 /// time — later changes to `voice_outputs` apply to subsequent
 /// attacks but do not retroactively reroute already-sounding voices.
+///
+/// `channel` mirrors the MIDI channel of the original input event
+/// (0-15). Pattern-driven NoteOn/NoteOff dispatch on this channel so
+/// MPE / multi-channel routing setups don't see all pattern traffic
+/// land on channel 0.
 #[derive(Clone, Copy, Debug)]
 pub struct HeldVoice {
     pub note: u8,
     pub target: VoiceOutputTarget,
+    pub channel: u8,
 }
 
 /// Application state managed by Tauri.
