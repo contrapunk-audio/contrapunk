@@ -32,6 +32,9 @@ export type Length = 1 | 2 | 4 | 8;
  *
  * - `live`: input plays as performed; harmony fires only on pattern-active beats.
  * - `quantized`: input + harmony both snap to the next pattern beat.
+ *   NOT YET IMPLEMENTED — backend treats it as `live`. Hidden from the
+ *   picker until the input-onset MIDI buffer ships. Re-add to
+ *   INPUT_MODE_OPTIONS when wired.
  * - `gated`: input + harmony continuous, NoteOff harmony on pattern-off cells.
  */
 export type InputMode = 'live' | 'quantized' | 'gated';
@@ -52,7 +55,6 @@ export const LENGTH_OPTIONS: { value: Length; label: string }[] = [
 
 export const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
 	{ value: 'live', label: 'Live' },
-	{ value: 'quantized', label: 'Quantized' },
 	{ value: 'gated', label: 'Gated' }
 ];
 
@@ -65,7 +67,13 @@ interface PersistedPattern {
 
 const VALID_SUBDIVISIONS: Set<number> = new Set([1, 2, 4, 8]);
 const VALID_LENGTHS: Set<number> = new Set([1, 2, 4, 8]);
-const VALID_INPUT_MODES: Set<string> = new Set(['live', 'quantized', 'gated']);
+// `quantized` is intentionally absent — see InputMode docs. Users with
+// it persisted from an older build silently migrate to the default `live`.
+const VALID_INPUT_MODES: Set<string> = new Set(['live', 'gated']);
+
+/** Debounce window for IPC pushes to the backend. localStorage writes
+ *  remain synchronous so a crash mid-paint loses at most ~1 frame. */
+const PERSIST_IPC_DEBOUNCE_MS = 75;
 
 class PatternStore {
 	cells = $state<boolean[]>([]);
@@ -76,6 +84,8 @@ class PatternStore {
 	/** Time-signature numerator. Updated from transport via `setBeatsPerBar`
 	 *  on app init / time-sig change. Default 4 covers the common case. */
 	beatsPerBar = $state(4);
+
+	private _persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor() {
 		this.cells = new Array(this.cellCount).fill(true);
@@ -151,8 +161,18 @@ class PatternStore {
 	/** Compute the cell index playing at a given total-beats position
 	 *  (monotonic global counter from the transport). Wraps at the
 	 *  pattern's loop length. Used by the UI to highlight the
-	 *  currently-playing cell, and by the router to decide whether
-	 *  to trigger a chord. */
+	 *  currently-playing cell.
+	 *
+	 *  IMPORTANT: This must agree with `PatternConfig::cell_index_at`
+	 *  in `src-tauri/src/state.rs` — the router thread uses the Rust
+	 *  implementation to decide cell boundaries, this one drives the
+	 *  visual highlight. If they drift, the highlighted cell stops
+	 *  matching the cell that actually fires.
+	 *
+	 *  Reference table pinning shared behavior is in the Rust unit test
+	 *  `pattern_config_tests::cell_index_at_matches_reference_table`.
+	 *  Mirror any algorithm change there. A dev-mode self-check below
+	 *  asserts a few of those vectors at module load. */
 	cellIndexAt(totalBeats: number): number {
 		const beatsPerLoop = this.beatsPerBar * this.length;
 		if (beatsPerLoop <= 0) return 0;
@@ -192,16 +212,23 @@ class PatternStore {
 		} catch {
 			/* localStorage unavailable */
 		}
-		// Push to backend so the router thread sees the change. Fire-and-
-		// forget — adapter errors are not fatal for UI state. wasm/plugin
-		// adapters no-op.
-		void adapter.setPatternConfig({
-			cells: this.cells,
-			subdivision: this.subdivision,
-			length: this.length,
-			beatsPerBar: this.beatsPerBar,
-			inputMode: this.inputMode
-		});
+		// Push to backend so the router thread sees the change. Debounced
+		// so a paint of N cells produces ≤2 IPCs instead of N. Trailing-
+		// edge so the final config wins — leading-edge would freeze the
+		// router on the first cell of a paint until idle.
+		if (this._persistTimer !== null) {
+			clearTimeout(this._persistTimer);
+		}
+		this._persistTimer = setTimeout(() => {
+			this._persistTimer = null;
+			void adapter.setPatternConfig({
+				cells: this.cells,
+				subdivision: this.subdivision,
+				length: this.length,
+				beatsPerBar: this.beatsPerBar,
+				inputMode: this.inputMode
+			});
+		}, PERSIST_IPC_DEBOUNCE_MS);
 	}
 
 	/** Master enable for the pattern feature. Tied to the panel-pip
@@ -254,3 +281,40 @@ class PatternStore {
 }
 
 export const pattern = new PatternStore();
+
+// Dev-mode lockstep check: a subset of the Rust reference table
+// (`pattern_config_tests::cell_index_at_matches_reference_table`).
+// Catches drift between the two cellIndexAt implementations at
+// module load — a console error here means the cell highlight will
+// no longer match the cell that fires. Production builds skip this.
+if (import.meta.env.DEV) {
+	type Case = [number, number, number, number, number]; // [subdiv, bpb, length, totalBeats, expectedIdx]
+	const cases: Case[] = [
+		[4, 4, 1, 0.0, 0],
+		[4, 4, 1, 0.5, 2],
+		[4, 4, 1, 1.0, 4],
+		[4, 4, 1, 3.75, 15],
+		[4, 4, 1, 4.0, 0],
+		[4, 4, 1, -0.25, 15],
+		[1, 4, 1, 1.0, 1],
+		[8, 4, 2, 7.5, 60],
+		[2, 3, 1, 1.5, 3]
+	];
+	const probe = new PatternStore();
+	const failures: string[] = [];
+	for (const [s, bpb, l, tb, expected] of cases) {
+		probe.subdivision = s as Subdivision;
+		probe.beatsPerBar = bpb;
+		probe.length = l as Length;
+		const got = probe.cellIndexAt(tb);
+		if (got !== expected) {
+			failures.push(`cellIndexAt(s=${s}, bpb=${bpb}, l=${l}, tb=${tb}) = ${got}, expected ${expected}`);
+		}
+	}
+	if (failures.length > 0) {
+		console.error(
+			'[pattern.svelte] cellIndexAt drift detected — does not match Rust PatternConfig::cell_index_at:\n' +
+				failures.join('\n')
+		);
+	}
+}
