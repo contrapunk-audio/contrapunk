@@ -1273,6 +1273,19 @@ fn dispatch_voice(
     synth_tx: &mpsc::Sender<SynthEvent>,
     output: &mut OutputRouter,
 ) {
+    // Pin the u7/u4 invariants for callers — every existing site
+    // already produces values in range (channel.index() / u8::from
+    // on wmidi U7 newtypes), but a future caller passing a raw byte
+    // from an untrusted source would silently corrupt the MIDI byte
+    // stream without these. Zero release-build cost.
+    debug_assert!(channel < 16, "MIDI channel out of range: {}", channel);
+    let (n, v) = match event {
+        VoiceDispatch::NoteOn { note, velocity } => (note, velocity),
+        VoiceDispatch::NoteOff { note, velocity } => (note, velocity),
+    };
+    debug_assert!(n < 128, "MIDI note out of range: {}", n);
+    debug_assert!(v < 128, "MIDI velocity out of range: {}", v);
+
     match (target, event) {
         (VoiceOutputTarget::Synth, VoiceDispatch::NoteOn { note, velocity }) => {
             let _ = synth_tx.send(SynthEvent::NoteOn { note, velocity });
