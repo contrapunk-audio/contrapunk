@@ -27,7 +27,18 @@
 	// Pattern feature is enabled while this panel is mounted (the user
 	// has the panel pip on). Dispatch master enable on mount, disable on
 	// unmount — the router falls back to today's real-time path when off.
+	//
+	// Pattern needs a running transport (cell indices derive from
+	// `total_beats()`). Start it here if the user hasn't already, so
+	// opening the panel without a manual play press still produces
+	// audible cells. We do NOT auto-stop on unmount — the user may have
+	// other reasons for the clock to keep running (metronome, future
+	// loop recorder), and silently stopping their transport would be
+	// surprising.
 	onMount(() => {
+		if (!transport.running) {
+			void transport.play();
+		}
 		void pattern.setEnabled(true);
 	});
 	onDestroy(() => {

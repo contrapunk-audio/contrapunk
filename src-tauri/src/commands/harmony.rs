@@ -171,8 +171,11 @@ pub fn set_voice_position(position: usize, state: State<AppState>) -> Result<(),
 /// Enable or disable auto-key detection.
 #[tauri::command]
 pub fn set_auto_key(enabled: bool, state: State<AppState>) -> Result<(), String> {
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_auto_key(enabled);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_auto_key(enabled);
+    }
+    raise_panic(&state);
     Ok(())
 }
 
@@ -233,18 +236,19 @@ pub fn set_octave_intensity(amount: f32, state: State<AppState>) -> Result<(), S
 }
 
 /// Master enable for the beat-aligned chord-trigger pattern. When false,
-/// router uses today's real-time harmony dispatch. When true, also
-/// auto-starts the transport clock (the pattern is BPM-driven; without
-/// a running clock `total_beats()` is frozen and cell indices never
-/// advance, so the pattern would silently do nothing).
+/// router uses today's real-time harmony dispatch.
+///
+/// Note: this command does NOT touch the transport. The pattern is
+/// BPM-driven, so without a running transport `total_beats()` is frozen
+/// and cell indices never advance; callers (today: `PatternPanel`'s
+/// `onMount`) are responsible for starting the transport themselves
+/// before enabling. Keeping the transport policy in the UI prevents a
+/// Tauri setter from silently mutating an unrelated subsystem.
 #[tauri::command]
 pub fn set_pattern_enabled(enabled: bool, state: State<AppState>) -> Result<(), String> {
     state
         .pattern_enabled
         .store(enabled, std::sync::atomic::Ordering::SeqCst);
-    if enabled && !state.transport.is_running() {
-        state.transport.play();
-    }
     Ok(())
 }
 
