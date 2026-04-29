@@ -77,25 +77,6 @@ pub fn inject_note_off(note: u8, state: State<AppState>) -> Result<Vec<u8>, Stri
     Ok(vec![note])
 }
 
-/// Returns the current note state snapshot.
-#[tauri::command]
-pub fn get_note_state(state: State<AppState>) -> Result<NoteUpdatePayload, String> {
-    let input = state.input_notes.lock().map_err(|e| e.to_string())?;
-    let harmony = state.harmony_notes.lock().map_err(|e| e.to_string())?;
-    let borrowed = state.borrowed_notes.lock().map_err(|e| e.to_string())?;
-    let chord = state.chord_name.lock().map_err(|e| e.to_string())?;
-
-    let engine = state.engine.lock().map_err(|e| e.to_string())?;
-    Ok(NoteUpdatePayload {
-        input_notes: input.iter().copied().collect(),
-        harmony_notes: harmony.iter().copied().collect(),
-        borrowed_notes: borrowed.iter().copied().collect(),
-        chord_name: chord.clone(),
-        last_borrowed_from: String::new(),
-        current_key: format!("{}", engine.key()),
-    })
-}
-
 /// Starts MIDI routing from the specified input to the specified outputs.
 ///
 /// Spawns a background router thread that processes MIDI messages through
@@ -164,18 +145,6 @@ pub fn start_routing(
     // Store the new stop signal so stop_routing can use it
     if let Ok(mut sig) = state.stop_signal.lock() {
         *sig = Some(Arc::clone(&stop_signal));
-    }
-
-    // Store references in AppState for stop_routing and get_note_state
-    {
-        let mut app_input = state.input_notes.lock().map_err(|e| e.to_string())?;
-        app_input.clear();
-        let mut app_harmony = state.harmony_notes.lock().map_err(|e| e.to_string())?;
-        app_harmony.clear();
-        let mut app_borrowed = state.borrowed_notes.lock().map_err(|e| e.to_string())?;
-        app_borrowed.clear();
-        let mut app_chord = state.chord_name.lock().map_err(|e| e.to_string())?;
-        app_chord.clear();
     }
 
     state.is_running.store(true, Ordering::SeqCst);
@@ -278,20 +247,6 @@ pub fn stop_routing(state: State<AppState>) -> Result<(), String> {
 
     state.is_running.store(false, Ordering::SeqCst);
 
-    // Clear note state
-    if let Ok(mut notes) = state.input_notes.lock() {
-        notes.clear();
-    }
-    if let Ok(mut notes) = state.harmony_notes.lock() {
-        notes.clear();
-    }
-    if let Ok(mut notes) = state.borrowed_notes.lock() {
-        notes.clear();
-    }
-    if let Ok(mut name) = state.chord_name.lock() {
-        name.clear();
-    }
-
     Ok(())
 }
 
@@ -337,6 +292,16 @@ fn run_tauri_router(
     // other thread needs to read it. Pattern-tick attacks/releases use
     // this to honor per-voice routing without re-running the harmony
     // engine; panic-replay rebuilds it after engine-config changes.
+    //
+    // Known limitation: entries are removed only on a matching Note-Off,
+    // a routing stop, or a panic-replay rebuild. If the device drops a
+    // Note-Off (USB glitch, MPE channel rotation, host pause/resume),
+    // the entry persists indefinitely and pattern tick keeps retriggering
+    // ghost voices until routing stops. None of the cheap fixes are
+    // obviously correct: a TTL false-releases long sustains; cross-
+    // referencing input_notes is updated by the same handle_note_on/off
+    // path so it's always in sync; CC 123 (All-Notes-Off) needs device
+    // support. Tracked in a follow-up issue — see PR #89 review history.
     let held_harmonies: Arc<Mutex<HashMap<u8, Vec<HeldVoice>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     // Connect to either Guitar Audio bridge, physical MIDI input, or
@@ -656,15 +621,10 @@ fn run_tauri_router(
                 new_harmonies.difference(&old_harmonies).copied().collect();
 
             // Send NoteOff for released notes — synth + every external
-            // port (overspray on external is harmless; we don't track
-            // per-note routing for releases).
+            // port via the shared broadcast helper.
             let num_ports = output_router.connection_count();
             for n in &to_release {
-                let _ = synth_tx.send(SynthEvent::NoteOff { note: *n });
-                let msg = [0x80, *n, 0]; // NoteOff channel 0
-                for p in 0..num_ports {
-                    let _ = output_router.send_to_port(p, &msg);
-                }
+                broadcast_note_off(*n, num_ports, &synth_tx, &mut output_router);
             }
 
             // Send NoteOn for newly-attacked notes, routed per voice via
@@ -1003,13 +963,7 @@ fn handle_note_on(
     // routing on the router side.
     if !stale_releases.is_empty() {
         for &n in &stale_releases {
-            let _ = synth_tx.send(SynthEvent::NoteOff { note: u8::from(n) });
-            let msg = MidiMessage::NoteOff(channel, n, velocity);
-            let mut buf = vec![0u8; msg.bytes_size()];
-            let _ = msg.copy_to_slice(&mut buf);
-            for port in 0..num_outputs {
-                let _ = output.send_to_port(port, &buf);
-            }
+            broadcast_note_off(u8::from(n), num_outputs, synth_tx, output);
         }
         let mut harm = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
         let mut borr = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
@@ -1303,5 +1257,33 @@ fn dispatch_voice(
             let _ = output.send_to_port(port, &msg);
         }
         (VoiceOutputTarget::Off, _) => {}
+    }
+}
+
+/// Broadcast NoteOff to the synth and every connected external port.
+///
+/// Used by code paths that release a harmony note without knowing
+/// which output port it originally went to: stale-releases triggered
+/// by an auto-key change in `handle_note_on`, and the panic-replay
+/// `to_release` diff in `run_tauri_router`. Per-port routing isn't
+/// tracked on a per-note basis at the router level, so we accept
+/// over-broad delivery — extra NoteOffs to ports that didn't see
+/// the matching NoteOn are harmless on every consumer in practice.
+///
+/// Channel 0 is conventional for these broadcast releases since the
+/// notes' original channel may differ across the held set; 0 is a
+/// safe default for general MIDI consumers that don't filter on
+/// channel.
+fn broadcast_note_off(
+    note: u8,
+    num_ports: usize,
+    synth_tx: &mpsc::Sender<SynthEvent>,
+    output: &mut OutputRouter,
+) {
+    debug_assert!(note < 128, "MIDI note out of range: {}", note);
+    let _ = synth_tx.send(SynthEvent::NoteOff { note });
+    let msg = [0x80, note, 0];
+    for port in 0..num_ports {
+        let _ = output.send_to_port(port, &msg);
     }
 }

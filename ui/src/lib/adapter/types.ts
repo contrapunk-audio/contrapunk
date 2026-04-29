@@ -283,9 +283,6 @@ export interface ContrapunkAdapter {
 
 	// -- Real-time state --
 
-	/** Get the current note state snapshot. */
-	getNoteState(): Promise<NoteState>;
-
 	/**
 	 * Subscribe to real-time note updates.
 	 * Returns an unsubscribe function.

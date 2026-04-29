@@ -373,15 +373,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async getNoteState(): Promise<NoteState> {
-		try {
-			const raw = (await invoke('get_note_state')) as Record<string, unknown>;
-			return mapNoteState(raw);
-		} catch (e) {
-			throw new Error(`Failed to get note state: ${e}`);
-		}
-	}
-
 	onNoteUpdate(callback: (state: NoteState) => void): () => void {
 		let unlisten: UnlistenFn | undefined;
 		let cancelled = false;

@@ -199,17 +199,6 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	// -- Real-time state --
 
-	async getNoteState(): Promise<NoteState> {
-		return {
-			inputNotes: [],
-			harmonyNotes: [],
-			borrowedNotes: [],
-			chordName: '',
-			lastBorrowedFrom: '',
-			currentKey: (currentParams.key as string) ?? 'C'
-		};
-	}
-
 	onNoteUpdate(callback: (state: NoteState) => void): () => void {
 		this.noteUpdateCallback = callback;
 		return () => {

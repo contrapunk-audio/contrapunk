@@ -84,7 +84,6 @@ fn main() {
             // Engine routing
             commands::engine::start_routing,
             commands::engine::stop_routing,
-            commands::engine::get_note_state,
             commands::engine::inject_note_on,
             commands::engine::inject_note_off,
             // Per-voice output routing
