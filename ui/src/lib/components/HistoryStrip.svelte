@@ -13,6 +13,9 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { transport } from '$lib/stores/transport.svelte';
+	import { pattern } from '$lib/stores/pattern.svelte';
+	import BeatGrid from './BeatGrid.svelte';
 	import { Renderer, Stave, StaveNote, Formatter, Accidental, Voice } from 'vexflow';
 
 	// How many chord moments to keep on-screen. At 1040px staff width with
@@ -246,6 +249,30 @@
 </script>
 
 <div class="history-strip" aria-label="Recent notes — grand staff memory">
+	<!-- Beat-aligned header: shows bar/beat from transport + currently-
+	     playing cell when pattern is enabled. Provides timing context for
+	     the chord moments rendered on the staff below. -->
+	<div class="beat-header font-ui">
+		<span class="bar-readout">
+			Bar <span class="bar-num">{Math.floor(transport.totalBeat / Math.max(1, transport.beatsPerBar)) + 1}</span>.<span
+				class="beat-num">{(transport.beatInBar | 0) + 1}</span>
+		</span>
+		<BeatGrid
+			count={transport.beatsPerBar}
+			currentIndex={transport.running ? transport.beatInBar : null}
+			variant="pip"
+			ariaLabel="Beat indicator"
+		/>
+		{#if pattern.cells.length > 0}
+			<BeatGrid
+				count={pattern.cells.length}
+				cellOn={(i) => !!pattern.cells[i]}
+				currentIndex={transport.running ? pattern.cellIndexAt(transport.totalBeat) : null}
+				variant="mini"
+				ariaLabel="Pattern preview"
+			/>
+		{/if}
+	</div>
 	<!-- Fixed-aspect SVG host sized to match the Fretboard (1040 × 150).
 	     VexFlow renders its SVG inside at that exact pixel size; the outer
 	     CSS scales it responsively without distorting proportions. -->
@@ -258,6 +285,19 @@
 		padding: 0 0 2px 0;
 		background: var(--color-bg-deep);
 		border-bottom: 1px solid var(--color-border);
+	}
+	.beat-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 3px 8px;
+		font-size: var(--font-size-xs);
+		color: var(--color-text-dim);
+		border-bottom: 1px solid var(--color-border);
+	}
+	.bar-readout .bar-num,
+	.bar-readout .beat-num {
+		color: var(--color-accent-cyan);
 	}
 	.staff-host {
 		width: 100%;

@@ -218,6 +218,20 @@ export interface ContrapunkAdapter {
 	 */
 	setCounterpointStrictness(strictness: string): Promise<void>;
 
+	/** Master enable for the beat-aligned pattern feature. */
+	setPatternEnabled(enabled: boolean): Promise<void>;
+
+	/** Push the full pattern config from the frontend store. The router
+	 *  reads this on every loop iteration to detect cell-on boundaries
+	 *  and retrigger harmony. */
+	setPatternConfig(args: {
+		cells: boolean[];
+		subdivision: number;
+		length: number;
+		beatsPerBar: number;
+		inputMode: 'live' | 'quantized' | 'gated';
+	}): Promise<void>;
+
 	// -- MIDI devices --
 
 	/**
@@ -268,9 +282,6 @@ export interface ContrapunkAdapter {
 	getVoiceOutputs(): Promise<VoiceOutputTarget[]>;
 
 	// -- Real-time state --
-
-	/** Get the current note state snapshot. */
-	getNoteState(): Promise<NoteState>;
 
 	/**
 	 * Subscribe to real-time note updates.

@@ -143,6 +143,20 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('setCounterpointStrictness', strictness);
 	}
 
+	async setPatternEnabled(_enabled: boolean): Promise<void> {
+		// Pattern feature not exposed in plugin mode yet.
+	}
+
+	async setPatternConfig(_args: {
+		cells: boolean[];
+		subdivision: number;
+		length: number;
+		beatsPerBar: number;
+		inputMode: 'live' | 'quantized' | 'gated';
+	}): Promise<void> {
+		// Pattern feature not exposed in plugin mode yet.
+	}
+
 	// -- MIDI devices (DAW handles routing in plugin mode) --
 
 	/** DAW manages MIDI for the plugin; no browser permission needed. */
@@ -184,17 +198,6 @@ export class PluginAdapter implements ContrapunkAdapter {
 	}
 
 	// -- Real-time state --
-
-	async getNoteState(): Promise<NoteState> {
-		return {
-			inputNotes: [],
-			harmonyNotes: [],
-			borrowedNotes: [],
-			chordName: '',
-			lastBorrowedFrom: '',
-			currentKey: (currentParams.key as string) ?? 'C'
-		};
-	}
 
 	onNoteUpdate(callback: (state: NoteState) => void): () => void {
 		this.noteUpdateCallback = callback;
