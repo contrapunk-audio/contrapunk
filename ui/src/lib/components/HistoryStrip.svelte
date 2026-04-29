@@ -299,44 +299,6 @@
 	.bar-readout .beat-num {
 		color: var(--color-accent-cyan);
 	}
-	.beat-pips {
-		display: flex;
-		gap: 3px;
-	}
-	.beat-pip {
-		width: 8px;
-		height: 8px;
-		background: var(--color-border);
-		border: 1px solid var(--color-border);
-	}
-	.beat-pip.downbeat {
-		border-color: var(--color-text-dim);
-	}
-	.beat-pip.active {
-		background: var(--color-accent-cyan);
-		box-shadow: 0 0 4px var(--color-accent-cyan);
-	}
-	.pattern-mini {
-		display: flex;
-		gap: 1px;
-		flex: 1;
-		min-width: 0;
-		max-width: 600px;
-	}
-	.pattern-cell {
-		flex: 1 1 0;
-		min-width: 4px;
-		height: 8px;
-		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid var(--color-border);
-	}
-	.pattern-cell.on {
-		background: var(--color-accent-teal);
-	}
-	.pattern-cell.playing {
-		box-shadow: 0 0 4px var(--color-accent-amber);
-		border-color: var(--color-accent-amber);
-	}
 	.staff-host {
 		width: 100%;
 		height: auto;
