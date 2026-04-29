@@ -515,33 +515,32 @@ fn run_tauri_router(
                 };
                 if do_off {
                     for v in &voices {
-                        match v.target {
-                            VoiceOutputTarget::Synth => {
-                                let _ = synth_tx.send(SynthEvent::NoteOff { note: v.note });
-                            }
-                            VoiceOutputTarget::MidiPort { port } if port < num_ports_now => {
-                                let msg = [0x80 | (v.channel & 0x0F), v.note, 0];
-                                let _ = output_router.send_to_port(port, &msg);
-                            }
-                            _ => {}
-                        }
+                        dispatch_voice(
+                            v.target,
+                            v.channel,
+                            VoiceDispatch::NoteOff {
+                                note: v.note,
+                                velocity: 0,
+                            },
+                            num_ports_now,
+                            &synth_tx,
+                            &mut output_router,
+                        );
                     }
                 }
                 if do_on {
                     for v in &voices {
-                        match v.target {
-                            VoiceOutputTarget::Synth => {
-                                let _ = synth_tx.send(SynthEvent::NoteOn {
-                                    note: v.note,
-                                    velocity: v.velocity,
-                                });
-                            }
-                            VoiceOutputTarget::MidiPort { port } if port < num_ports_now => {
-                                let msg = [0x90 | (v.channel & 0x0F), v.note, v.velocity];
-                                let _ = output_router.send_to_port(port, &msg);
-                            }
-                            _ => {}
-                        }
+                        dispatch_voice(
+                            v.target,
+                            v.channel,
+                            VoiceDispatch::NoteOn {
+                                note: v.note,
+                                velocity: v.velocity,
+                            },
+                            num_ports_now,
+                            &synth_tx,
+                            &mut output_router,
+                        );
                     }
                 }
             }
@@ -588,16 +587,17 @@ fn run_tauri_router(
                 }
                 let num_ports_now = output_router.connection_count();
                 for v in &voices {
-                    match v.target {
-                        VoiceOutputTarget::Synth => {
-                            let _ = synth_tx.send(SynthEvent::NoteOff { note: v.note });
-                        }
-                        VoiceOutputTarget::MidiPort { port } if port < num_ports_now => {
-                            let msg = [0x80 | (v.channel & 0x0F), v.note, 0];
-                            let _ = output_router.send_to_port(port, &msg);
-                        }
-                        _ => {}
-                    }
+                    dispatch_voice(
+                        v.target,
+                        v.channel,
+                        VoiceDispatch::NoteOff {
+                            note: v.note,
+                            velocity: 0,
+                        },
+                        num_ports_now,
+                        &synth_tx,
+                        &mut output_router,
+                    );
                 }
             }
             last_pattern_cell = None;
@@ -675,28 +675,28 @@ fn run_tauri_router(
                 .clone();
             for (midis, port_map) in &per_input {
                 // Skip index 0 — that's the user's input note, already
-                // sounding from when they pressed the key.
+                // sounding from when they pressed the key. Channel 0
+                // and velocity 100 are reharm-path defaults (engine
+                // doesn't track per-input channel/velocity through
+                // take_reharm_inputs); same as the to_release loop
+                // above.
                 for (i, &n) in midis.iter().enumerate().skip(1) {
                     if !to_attack.contains(&n) {
                         continue; // already sounding from before
                     }
                     let slot = port_map.get(i).copied().unwrap_or(i);
                     let target = voice_targets.get(slot).copied().unwrap_or_default();
-                    match target {
-                        VoiceOutputTarget::Synth => {
-                            let _ = synth_tx.send(SynthEvent::NoteOn {
-                                note: n,
-                                velocity: 100,
-                            });
-                        }
-                        VoiceOutputTarget::MidiPort { port } => {
-                            if port < num_ports {
-                                let msg = [0x90, n, 100]; // NoteOn channel 0
-                                let _ = output_router.send_to_port(port, &msg);
-                            }
-                        }
-                        VoiceOutputTarget::Off => {}
-                    }
+                    dispatch_voice(
+                        target,
+                        0,
+                        VoiceDispatch::NoteOn {
+                            note: n,
+                            velocity: 100,
+                        },
+                        num_ports,
+                        &synth_tx,
+                        &mut output_router,
+                    );
                 }
             }
 
@@ -1047,14 +1047,26 @@ fn handle_note_on(
         voice_targets.get(slot).copied().unwrap_or_default()
     };
 
-    // Fan each voice into the built-in synth, gated by voice_outputs.
+    // Fan each voice via the unified dispatch helper. Synth and
+    // external MIDI go in one loop; `dispatch_voice` handles the
+    // target.match cases internally. Order: dispatch first so the
+    // synth's audible NoteOn precedes the tracking-set updates that
+    // chord-display reads from (chord display tolerates briefly
+    // stale state better than humans tolerate audible latency).
+    let channel_idx: u8 = channel.index();
+    let velocity_byte: u8 = u8::from(velocity);
     for (i, &n) in notes.iter().enumerate() {
-        if matches!(target_for(i), VoiceOutputTarget::Synth) {
-            let _ = synth_tx.send(SynthEvent::NoteOn {
+        dispatch_voice(
+            target_for(i),
+            channel_idx,
+            VoiceDispatch::NoteOn {
                 note: u8::from(n),
-                velocity: u8::from(velocity),
-            });
-        }
+                velocity: velocity_byte,
+            },
+            num_outputs,
+            synth_tx,
+            output,
+        );
     }
 
     // Update shared state — recover from poisoned mutexes rather than panic.
@@ -1089,20 +1101,6 @@ fn handle_note_on(
         }
     }
 
-    // Send notes to external MIDI outputs, per-voice. Synth and Off
-    // skip MIDI entirely; only MidiPort dispatches.
-    for (i, &n) in notes.iter().enumerate() {
-        if let VoiceOutputTarget::MidiPort { port } = target_for(i) {
-            if port >= num_outputs {
-                continue;
-            }
-            let msg = MidiMessage::NoteOn(channel, n, velocity);
-            let mut buf = vec![0u8; msg.bytes_size()];
-            let _ = msg.copy_to_slice(&mut buf);
-            let _ = output.send_to_port(port, &buf);
-        }
-    }
-
     // Track this input's voices for routing-aware pattern dispatch.
     // Skip i=0 (the input note itself); only the harmonies are
     // pattern-controllable. Channel + velocity from the input event
@@ -1110,8 +1108,6 @@ fn handle_note_on(
     // dispatch on the same channel and at the original velocity —
     // a soft input doesn't get reattacked at full volume on every
     // cell tick, and MPE / multi-channel routing is preserved.
-    let channel_idx: u8 = channel.index();
-    let velocity_byte: u8 = u8::from(velocity);
     let mut voices_for_input: Vec<HeldVoice> = Vec::with_capacity(notes.len().saturating_sub(1));
     for (i, &n) in notes.iter().enumerate().skip(1) {
         voices_for_input.push(HeldVoice {
@@ -1151,29 +1147,24 @@ fn handle_note_on(
         hh.insert(u8::from(note), voices_for_input);
         prev
     };
+    // Orphan release dispatches on the CAPTURED channel of the prior
+    // entry, NOT this NoteOn's channel — matters when the user
+    // retriggers the same MIDI number on a different channel and the
+    // voices that attacked under the old channel have to release
+    // there. `dispatch_voice` takes the channel as a u8 so we hand it
+    // `v.channel` directly; no wmidi::Channel reconstruction needed.
     for v in &orphaned {
-        match v.target {
-            VoiceOutputTarget::Synth => {
-                let _ = synth_tx.send(SynthEvent::NoteOff { note: v.note });
-            }
-            VoiceOutputTarget::MidiPort { port } if port < num_outputs => {
-                // Use the typed wmidi API like the realtime path. The
-                // captured `v.channel` belongs to the original input
-                // event, which may differ from this NoteOn's channel
-                // (e.g., user retriggers the same MIDI number on a
-                // different channel — the orphan release has to land
-                // on the OLD channel where the voices attacked).
-                let v_chan =
-                    wmidi::Channel::from_index(v.channel & 0x0F).unwrap_or(wmidi::Channel::Ch1);
-                let v_note = wmidi::Note::from_u8_lossy(v.note);
-                let v_vel = wmidi::Velocity::from_u8_lossy(0);
-                let msg = MidiMessage::NoteOff(v_chan, v_note, v_vel);
-                let mut buf = vec![0u8; msg.bytes_size()];
-                let _ = msg.copy_to_slice(&mut buf);
-                let _ = output.send_to_port(port, &buf);
-            }
-            _ => {}
-        }
+        dispatch_voice(
+            v.target,
+            v.channel,
+            VoiceDispatch::NoteOff {
+                note: v.note,
+                velocity: 0,
+            },
+            num_outputs,
+            synth_tx,
+            output,
+        );
     }
 }
 
@@ -1209,11 +1200,24 @@ fn handle_note_off(
         voice_targets.get(slot).copied().unwrap_or_default()
     };
 
-    // Fan releases into the built-in synth only for voices routed there.
+    // Unified per-voice release. Synth NoteOff drops release velocity
+    // (SynthEvent::NoteOff has no velocity field); external MIDI
+    // preserves it from the input event since some hardware (Yamaha,
+    // certain virtual instruments) responds to release velocity.
+    let channel_idx: u8 = channel.index();
+    let velocity_byte: u8 = u8::from(velocity);
     for (i, &n) in notes.iter().enumerate() {
-        if matches!(target_for(i), VoiceOutputTarget::Synth) {
-            let _ = synth_tx.send(SynthEvent::NoteOff { note: u8::from(n) });
-        }
+        dispatch_voice(
+            target_for(i),
+            channel_idx,
+            VoiceDispatch::NoteOff {
+                note: u8::from(n),
+                velocity: velocity_byte,
+            },
+            num_outputs,
+            synth_tx,
+            output,
+        );
     }
 
     {
@@ -1236,17 +1240,55 @@ fn handle_note_off(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(&u8::from(note));
+}
 
-    // External MIDI note-offs, per-voice. Synth + Off skip MIDI.
-    for (i, &n) in notes.iter().enumerate() {
-        if let VoiceOutputTarget::MidiPort { port } = target_for(i) {
-            if port >= num_outputs {
-                continue;
-            }
-            let msg = MidiMessage::NoteOff(channel, n, velocity);
-            let mut buf = vec![0u8; msg.bytes_size()];
-            let _ = msg.copy_to_slice(&mut buf);
-            let _ = output.send_to_port(port, &buf);
+/// One per-voice dispatch event consumed by `dispatch_voice`. Carries
+/// note + velocity in u8 form (0-127). Channel is passed alongside to
+/// the helper since it's typically uniform across a batch of voices
+/// (one input event → many voices).
+#[derive(Clone, Copy, Debug)]
+enum VoiceDispatch {
+    /// Send a NoteOn at the given velocity.
+    NoteOn { note: u8, velocity: u8 },
+    /// Send a NoteOff. `velocity` is the release velocity (0 for most
+    /// MIDI consumers; some Yamaha hardware uses non-zero release).
+    NoteOff { note: u8, velocity: u8 },
+}
+
+/// Single fanout shared by every router-thread NoteOn/NoteOff dispatch
+/// site (real-time `handle_note_on` / `handle_note_off`, beat-pattern
+/// tick, drain-on-disable, orphan-release-on-retrigger, panic-replay
+/// re-attack). Centralises the `target.match { Synth | MidiPort | Off }`
+/// skeleton — adding a fourth destination, changing the byte encoding,
+/// or instrumenting MIDI traffic now happens in one place.
+///
+/// Channel and velocity are u8 (0-15 / 0-127). Real-time callers
+/// convert from wmidi types at the boundary; pattern / orphan callers
+/// pass captured `HeldVoice` fields directly.
+fn dispatch_voice(
+    target: VoiceOutputTarget,
+    channel: u8,
+    event: VoiceDispatch,
+    num_ports: usize,
+    synth_tx: &mpsc::Sender<SynthEvent>,
+    output: &mut OutputRouter,
+) {
+    match (target, event) {
+        (VoiceOutputTarget::Synth, VoiceDispatch::NoteOn { note, velocity }) => {
+            let _ = synth_tx.send(SynthEvent::NoteOn { note, velocity });
         }
+        (VoiceOutputTarget::Synth, VoiceDispatch::NoteOff { note, .. }) => {
+            let _ = synth_tx.send(SynthEvent::NoteOff { note });
+        }
+        (VoiceOutputTarget::MidiPort { port }, _) if port >= num_ports => {}
+        (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOn { note, velocity }) => {
+            let msg = [0x90 | (channel & 0x0F), note, velocity];
+            let _ = output.send_to_port(port, &msg);
+        }
+        (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOff { note, velocity }) => {
+            let msg = [0x80 | (channel & 0x0F), note, velocity];
+            let _ = output.send_to_port(port, &msg);
+        }
+        (VoiceOutputTarget::Off, _) => {}
     }
 }
