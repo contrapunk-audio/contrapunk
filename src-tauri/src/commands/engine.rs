@@ -3,7 +3,7 @@
 //! Handles starting/stopping the MIDI router thread and emitting
 //! real-time note-update events to the frontend.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -23,7 +23,7 @@ use contrapunk::synth::SynthEvent;
 use contrapunk::transport::Transport;
 
 use crate::guitar_bridge::GuitarBridge;
-use crate::state::{AppState, VoiceOutputTarget};
+use crate::state::{AppState, HeldVoice, VoiceOutputTarget};
 
 /// Virtual input sentinels — must match the values in MidiDevices.svelte.
 const VIRTUAL_COMPUTER_KEYBOARD: usize = 999_998;
@@ -328,6 +328,17 @@ fn run_tauri_router(
 ) -> anyhow::Result<()> {
     let mut last_pattern_cell: Option<usize> = None;
     let mut last_pattern_cell_on: bool = false;
+    // Routing-aware tracker for currently-sounding harmony voices.
+    // Indexed by input MIDI note (the user's held key); each entry is
+    // the list of harmony voices the engine produced for that input,
+    // each carrying the routing target it was attacked through.
+    //
+    // Owned by the router thread; not exposed via AppState because no
+    // other thread needs to read it. Pattern-tick attacks/releases use
+    // this to honor per-voice routing without re-running the harmony
+    // engine; panic-replay rebuilds it after engine-config changes.
+    let held_harmonies: Arc<Mutex<HashMap<u8, Vec<HeldVoice>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     // Connect to either Guitar Audio bridge, physical MIDI input, or
     // nothing at all (Computer Keyboard virtual input — notes are pushed
     // by inject_note_on/off commands via the shared router_tx).
@@ -415,7 +426,15 @@ fn run_tauri_router(
         // retrigger the currently-sounding harmony on each cell-on
         // boundary (Live mode). Skip silently when pattern off or
         // transport stopped — fall through to today's real-time path.
-        if pattern_enabled.load(Ordering::SeqCst) && transport.is_running() {
+        //
+        // Skip entirely when `panic_pending` is set: this iteration
+        // belongs to the reharmonize cycle below, which will replay
+        // held inputs and dispatch a clean diff. Firing the pattern
+        // tick first would attack stale `harmony_notes` and produce an
+        // audible click as reharm immediately releases the displaced
+        // voices.
+        let panic_will_fire = panic_pending.load(Ordering::SeqCst);
+        if !panic_will_fire && pattern_enabled.load(Ordering::SeqCst) && transport.is_running() {
             let total_beats = transport.total_beats();
             let (current_cell, cell_is_on, input_mode) = {
                 let cfg = pattern_config.lock().unwrap_or_else(|e| e.into_inner());
@@ -427,25 +446,47 @@ fn run_tauri_router(
                     (idx, on, cfg.input_mode)
                 }
             };
-            if Some(current_cell) != last_pattern_cell {
+            // First iteration after pattern-enable (or transport-start
+            // while enabled): seed `last_pattern_cell` to the current
+            // cell without firing a transition. This phase-aligns to
+            // the music — the next genuine cell-boundary crossing
+            // produces the first attack. Without this, enabling the
+            // pattern mid-cell fires a misaligned NoteOn the very
+            // next router-loop iteration.
+            //
+            // Trade-off: on cold-start (pattern already enabled when
+            // transport begins), cell 0 is silent for the first cell
+            // duration. Acceptable — minor lead-in delay vs. spurious
+            // mid-cell attacks on every panel toggle.
+            if last_pattern_cell.is_none() {
+                last_pattern_cell = Some(current_cell);
+                last_pattern_cell_on = cell_is_on;
+            } else if Some(current_cell) != last_pattern_cell {
                 let prev_was_on = last_pattern_cell_on;
                 last_pattern_cell = Some(current_cell);
                 last_pattern_cell_on = cell_is_on;
 
-                let harmonies: Vec<u8> = harmony_notes
+                // Snapshot the held voices once for both off- and on-
+                // dispatch. Flatten across all currently-held inputs;
+                // the order doesn't matter — we send N independent
+                // NoteOff/NoteOn events.
+                let voices: Vec<HeldVoice> = held_harmonies
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .iter()
+                    .values()
+                    .flatten()
                     .copied()
                     .collect();
+                let num_ports_now = output_router.connection_count();
 
                 // Mode semantics:
                 //   Live      — every cell-on boundary attacks (and
                 //               retriggers consecutive ons). Cell-off
                 //               boundaries silence. Staccato / step-seq.
-                //   Quantized — same as Live for now (true quantization
-                //               of input onset to next beat needs a MIDI
-                //               buffer; treated as Live until Phase 4.5).
+                //   Quantized — currently hidden from the UI (see
+                //               InputMode in pattern.svelte.ts). Code
+                //               path remains so a stale persisted
+                //               value still works; treated as Live.
                 //   Gated     — sustained legato: NoteOn only on rising
                 //               edge (off→on), NoteOff only on falling
                 //               edge (on→off). No retrigger on
@@ -464,33 +505,68 @@ fn run_tauri_router(
                     }
                 };
                 if do_off {
-                    for n in &harmonies {
-                        let _ = synth_tx.send(SynthEvent::NoteOff { note: *n });
+                    for v in &voices {
+                        match v.target {
+                            VoiceOutputTarget::Synth => {
+                                let _ = synth_tx.send(SynthEvent::NoteOff { note: v.note });
+                            }
+                            VoiceOutputTarget::MidiPort { port } if port < num_ports_now => {
+                                let msg = [0x80, v.note, 0]; // NoteOff channel 0
+                                let _ = output_router.send_to_port(port, &msg);
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 if do_on {
-                    for n in &harmonies {
-                        let _ = synth_tx.send(SynthEvent::NoteOn {
-                            note: *n,
-                            velocity: 100,
-                        });
+                    for v in &voices {
+                        match v.target {
+                            VoiceOutputTarget::Synth => {
+                                let _ = synth_tx.send(SynthEvent::NoteOn {
+                                    note: v.note,
+                                    velocity: 100,
+                                });
+                            }
+                            VoiceOutputTarget::MidiPort { port } if port < num_ports_now => {
+                                let msg = [0x90, v.note, 100]; // NoteOn channel 0
+                                let _ = output_router.send_to_port(port, &msg);
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
-        } else {
+        } else if !panic_will_fire {
             // Pattern disabled or transport stopped. If we left harmony
-            // sounding (last cell was on), drain it so the synth voices
-            // release cleanly — otherwise the user is stuck with a held
-            // chord they didn't ask for.
+            // sounding (last cell was on), drain it per-voice so each
+            // voice's actual destination (synth or specific MIDI port)
+            // gets the matching NoteOff. Without this, external MIDI
+            // gear keeps any pattern-attacked notes hanging.
+            //
+            // Don't drain when `panic_will_fire`: the panic block below
+            // will rebuild harmony state from scratch by replaying held
+            // inputs; an extra drain here would NoteOff notes the panic
+            // path is about to legitimately re-attack.
             if last_pattern_cell_on {
-                let harmonies: Vec<u8> = harmony_notes
+                let voices: Vec<HeldVoice> = held_harmonies
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .iter()
+                    .values()
+                    .flatten()
                     .copied()
                     .collect();
-                for n in &harmonies {
-                    let _ = synth_tx.send(SynthEvent::NoteOff { note: *n });
+                let num_ports_now = output_router.connection_count();
+                for v in &voices {
+                    match v.target {
+                        VoiceOutputTarget::Synth => {
+                            let _ = synth_tx.send(SynthEvent::NoteOff { note: v.note });
+                        }
+                        VoiceOutputTarget::MidiPort { port } if port < num_ports_now => {
+                            let msg = [0x80, v.note, 0];
+                            let _ = output_router.send_to_port(port, &msg);
+                        }
+                        _ => {}
+                    }
                 }
             }
             last_pattern_cell = None;
@@ -601,6 +677,28 @@ fn run_tauri_router(
             if let Ok(mut b) = borrowed_notes.lock() {
                 b.clear();
             }
+
+            // Rebuild routing-aware tracking from the replay results.
+            // Each input's harmonies (skipping i=0, the input itself)
+            // get re-keyed with their freshly-resolved per-voice
+            // target. Pattern attacks/releases on subsequent ticks
+            // dispatch from this map.
+            if let Ok(mut hh) = held_harmonies.lock() {
+                hh.clear();
+                for (midis, port_map) in &per_input {
+                    if midis.is_empty() {
+                        continue;
+                    }
+                    let input_note = midis[0];
+                    let mut voices: Vec<HeldVoice> = Vec::with_capacity(midis.len() - 1);
+                    for (i, &n) in midis.iter().enumerate().skip(1) {
+                        let slot = port_map.get(i).copied().unwrap_or(i);
+                        let target = voice_targets.get(slot).copied().unwrap_or_default();
+                        voices.push(HeldVoice { note: n, target });
+                    }
+                    hh.insert(input_note, voices);
+                }
+            }
         }
 
         // Apply detune as MIDI pitch bend when the value changes.
@@ -634,6 +732,7 @@ fn run_tauri_router(
                     routing_mode,
                     &synth_tx,
                     &voice_outputs,
+                    &held_harmonies,
                 );
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -746,6 +845,7 @@ fn process_midi_message(
     routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &mpsc::Sender<SynthEvent>,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    held_harmonies: &Arc<Mutex<HashMap<u8, Vec<HeldVoice>>>>,
 ) {
     let msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
@@ -777,6 +877,7 @@ fn process_midi_message(
                     routing_mode,
                     synth_tx,
                     voice_outputs,
+                    held_harmonies,
                 );
             } else {
                 handle_note_on(
@@ -792,6 +893,7 @@ fn process_midi_message(
                     routing_mode,
                     synth_tx,
                     voice_outputs,
+                    held_harmonies,
                 );
             }
         }
@@ -809,6 +911,7 @@ fn process_midi_message(
                 routing_mode,
                 synth_tx,
                 voice_outputs,
+                held_harmonies,
             );
         }
         _ => {
@@ -831,6 +934,7 @@ fn handle_note_on(
     routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &mpsc::Sender<SynthEvent>,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    held_harmonies: &Arc<Mutex<HashMap<u8, Vec<HeldVoice>>>>,
 ) {
     let notes = engine.harmonize_note_on(note);
     // Drain any harmonies the engine flagged for explicit release —
@@ -860,6 +964,16 @@ fn handle_note_on(
             harm.remove(&u8::from(n));
             borr.remove(&u8::from(n));
         }
+        // Drop matching entries from the routing-aware tracker so
+        // subsequent pattern attacks don't retrigger notes the engine
+        // already released. If an input's harmony list empties out,
+        // remove the input entry too.
+        let stale_set: HashSet<u8> = stale_releases.iter().map(|n| u8::from(*n)).collect();
+        let mut hh = held_harmonies.lock().unwrap_or_else(|e| e.into_inner());
+        hh.retain(|_, voices| {
+            voices.retain(|v| !stale_set.contains(&v.note));
+            !voices.is_empty()
+        });
     }
 
     // Snapshot voice routing once per note event — clone is cheap
@@ -935,6 +1049,22 @@ fn handle_note_on(
             let _ = output.send_to_port(port, &buf);
         }
     }
+
+    // Track this input's voices for routing-aware pattern dispatch.
+    // Skip i=0 (the input note itself); only the harmonies are
+    // pattern-controllable. Replaces any prior entry for the same
+    // input — a NoteOn while already-held overrides previous voices.
+    let mut voices_for_input: Vec<HeldVoice> = Vec::with_capacity(notes.len().saturating_sub(1));
+    for (i, &n) in notes.iter().enumerate().skip(1) {
+        voices_for_input.push(HeldVoice {
+            note: u8::from(n),
+            target: target_for(i),
+        });
+    }
+    held_harmonies
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(u8::from(note), voices_for_input);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -951,6 +1081,7 @@ fn handle_note_off(
     routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &mpsc::Sender<SynthEvent>,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    held_harmonies: &Arc<Mutex<HashMap<u8, Vec<HeldVoice>>>>,
 ) {
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
@@ -987,6 +1118,14 @@ fn handle_note_off(
             borr.remove(&(n as u8));
         }
     }
+
+    // Drop this input's tracked harmony voices. The engine already
+    // recomputed which notes should be released; our routing-aware
+    // tracker just follows.
+    held_harmonies
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&u8::from(note));
 
     // External MIDI note-offs, per-voice. Synth + Off skip MIDI.
     for (i, &n) in notes.iter().enumerate() {

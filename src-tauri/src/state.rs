@@ -82,6 +82,95 @@ impl PatternConfig {
     }
 }
 
+#[cfg(test)]
+mod pattern_config_tests {
+    use super::*;
+
+    fn cfg(subdivision: u8, beats_per_bar: u8, length: u8) -> PatternConfig {
+        let cells_count = (subdivision.max(1) as usize)
+            * (beats_per_bar.max(1) as usize)
+            * (length.max(1) as usize);
+        PatternConfig {
+            cells: vec![true; cells_count],
+            subdivision,
+            length,
+            beats_per_bar,
+            input_mode: PatternInputMode::Live,
+        }
+    }
+
+    /// Reference table pinning `cell_index_at` outputs for known
+    /// `(subdivision, beats_per_bar, length, total_beats) -> idx`
+    /// tuples. The same table is mirrored in
+    /// `ui/src/lib/stores/pattern.svelte.ts`'s `cellIndexAt` doc
+    /// comment and dev-mode self-check — keep both in lockstep.
+    /// If you change this table, change both.
+    #[test]
+    fn cell_index_at_matches_reference_table() {
+        // (subdivision, beats_per_bar, length, total_beats, expected_idx)
+        let cases: &[(u8, u8, u8, f64, usize)] = &[
+            // 4×4×1 = 16 cells (16th-note bar in 4/4)
+            (4, 4, 1, 0.0, 0),
+            (4, 4, 1, 0.5, 2),
+            (4, 4, 1, 1.0, 4),
+            (4, 4, 1, 2.0, 8),
+            (4, 4, 1, 3.75, 15),
+            (4, 4, 1, 4.0, 0), // wraps to start
+            (4, 4, 1, 4.25, 1),
+            (4, 4, 1, -0.25, 15), // negative wraps backward
+            // 1×4×1 = 4 cells (quarter-note bar)
+            (1, 4, 1, 0.0, 0),
+            (1, 4, 1, 1.0, 1),
+            (1, 4, 1, 3.5, 3),
+            (1, 4, 1, 4.0, 0),
+            // 8×4×2 = 64 cells (32nd-note 2-bar loop)
+            (8, 4, 2, 0.0, 0),
+            (8, 4, 2, 7.5, 60),
+            (8, 4, 2, 8.0, 0),
+            // 2×3×1 = 6 cells (eighth-note 3/4 bar)
+            (2, 3, 1, 0.0, 0),
+            (2, 3, 1, 1.5, 3),
+            (2, 3, 1, 3.0, 0),
+        ];
+        for &(s, bpb, l, tb, expected) in cases {
+            let got = cfg(s, bpb, l).cell_index_at(tb);
+            assert_eq!(
+                got, expected,
+                "subdivision={}, bpb={}, length={}, total_beats={}",
+                s, bpb, l, tb
+            );
+        }
+    }
+
+    /// Reference table for `cell_count`. Same lockstep contract as
+    /// `cell_index_at_matches_reference_table` above.
+    #[test]
+    fn cell_count_matches_reference_table() {
+        let cases: &[(u8, u8, u8, usize)] = &[
+            (4, 4, 1, 16),
+            (1, 4, 1, 4),
+            (8, 4, 2, 64),
+            (2, 3, 1, 6),
+            (4, 4, 4, 64),
+        ];
+        for &(s, bpb, l, expected) in cases {
+            let got = cfg(s, bpb, l).cell_count();
+            assert_eq!(got, expected, "s={}, bpb={}, l={}", s, bpb, l);
+        }
+    }
+
+    #[test]
+    fn cell_index_at_handles_pathological_inputs() {
+        // Zero subdivision/length/bpb get clamped to 1 by max(1).
+        // Pattern with 1 cell is degenerate but stable.
+        let mut c = cfg(1, 1, 1);
+        c.cells = vec![true];
+        assert_eq!(c.cell_index_at(0.0), 0);
+        assert_eq!(c.cell_index_at(100.0), 0);
+        assert_eq!(c.cell_index_at(-100.0), 0);
+    }
+}
+
 /// Per-voice output destination. Each engine-emitted voice (by index
 /// 0..voice_count-1) can be routed independently.
 ///
@@ -98,6 +187,21 @@ pub enum VoiceOutputTarget {
     MidiPort { port: usize },
     /// Skip both synth and external MIDI. Voice is silent.
     Off,
+}
+
+/// One harmony voice currently sounding, with the routing target it
+/// was attacked through.
+///
+/// Tracked alongside `harmony_notes` (a flat HashSet of MIDI numbers
+/// used for UI display + chord detection) so the beat-pattern can
+/// dispatch NoteOn/NoteOff per-voice without re-running the harmony
+/// engine. The captured `target` reflects the routing as of attack
+/// time — later changes to `voice_outputs` apply to subsequent
+/// attacks but do not retroactively reroute already-sounding voices.
+#[derive(Clone, Copy, Debug)]
+pub struct HeldVoice {
+    pub note: u8,
+    pub target: VoiceOutputTarget,
 }
 
 /// Application state managed by Tauri.
