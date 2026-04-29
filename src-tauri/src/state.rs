@@ -177,7 +177,7 @@ mod pattern_config_tests {
 /// Three explicit destinations only — no implicit "defer to global
 /// routing_mode" fallback. Default is `Synth` so users get audio out
 /// of the box without needing to add a MIDI port first.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VoiceOutputTarget {
     /// Send to the internal synth only. Skip external MIDI for this voice.
@@ -203,11 +203,16 @@ pub enum VoiceOutputTarget {
 /// (0-15). Pattern-driven NoteOn/NoteOff dispatch on this channel so
 /// MPE / multi-channel routing setups don't see all pattern traffic
 /// land on channel 0.
+///
+/// `velocity` mirrors the input event's velocity (1-127). Pattern-
+/// driven attacks reuse this so a soft input doesn't get reattacked
+/// at full volume on every cell tick.
 #[derive(Clone, Copy, Debug)]
 pub struct HeldVoice {
     pub note: u8,
     pub target: VoiceOutputTarget,
     pub channel: u8,
+    pub velocity: u8,
 }
 
 /// Application state managed by Tauri.

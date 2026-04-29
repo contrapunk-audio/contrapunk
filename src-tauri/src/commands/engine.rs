@@ -483,15 +483,8 @@ fn run_tauri_router(
                     .copied()
                     .collect();
                 {
-                    let mut seen: HashSet<(u8, u8, u8)> = HashSet::new();
-                    voices.retain(|v| {
-                        let target_key = match v.target {
-                            VoiceOutputTarget::Synth => 0u8,
-                            VoiceOutputTarget::MidiPort { port } => 1 + (port as u8 & 0x7F),
-                            VoiceOutputTarget::Off => 255u8,
-                        };
-                        seen.insert((v.note, target_key, v.channel))
-                    });
+                    let mut seen: HashSet<(u8, VoiceOutputTarget, u8)> = HashSet::new();
+                    voices.retain(|v| seen.insert((v.note, v.target, v.channel)));
                 }
                 let num_ports_now = output_router.connection_count();
 
@@ -540,11 +533,11 @@ fn run_tauri_router(
                             VoiceOutputTarget::Synth => {
                                 let _ = synth_tx.send(SynthEvent::NoteOn {
                                     note: v.note,
-                                    velocity: 100,
+                                    velocity: v.velocity,
                                 });
                             }
                             VoiceOutputTarget::MidiPort { port } if port < num_ports_now => {
-                                let msg = [0x90 | (v.channel & 0x0F), v.note, 100];
+                                let msg = [0x90 | (v.channel & 0x0F), v.note, v.velocity];
                                 let _ = output_router.send_to_port(port, &msg);
                             }
                             _ => {}
@@ -590,15 +583,8 @@ fn run_tauri_router(
                 // overlapping harmonies from polyphonic inputs would
                 // otherwise produce two NoteOffs to the same target.
                 {
-                    let mut seen: HashSet<(u8, u8, u8)> = HashSet::new();
-                    voices.retain(|v| {
-                        let target_key = match v.target {
-                            VoiceOutputTarget::Synth => 0u8,
-                            VoiceOutputTarget::MidiPort { port } => 1 + (port as u8 & 0x7F),
-                            VoiceOutputTarget::Off => 255u8,
-                        };
-                        seen.insert((v.note, target_key, v.channel))
-                    });
+                    let mut seen: HashSet<(u8, VoiceOutputTarget, u8)> = HashSet::new();
+                    voices.retain(|v| seen.insert((v.note, v.target, v.channel)));
                 }
                 let num_ports_now = output_router.connection_count();
                 for v in &voices {
@@ -729,15 +715,15 @@ fn run_tauri_router(
             // target. Pattern attacks/releases on subsequent ticks
             // dispatch from this map.
             //
-            // Channel: rebuilt as 0 because `take_reharm_inputs()`
-            // returns just MIDI numbers and the engine doesn't track
-            // per-input channel through the reharm path (existing
-            // limitation, predates this fix). Pattern dispatch after
-            // a panic event will use channel 0 for these voices
-            // until the user releases and re-presses the input. The
-            // panic block's own to_release dispatch already uses
-            // channel 0 for the same reason — see the to_release
-            // loop above.
+            // Channel + velocity: rebuilt as 0 / 100 because
+            // `take_reharm_inputs()` returns just MIDI numbers and
+            // the engine doesn't track per-input channel/velocity
+            // through the reharm path (existing limitation, predates
+            // these fixes). Pattern dispatch after a panic event
+            // will use these defaults for these voices until the
+            // user releases and re-presses the input. The panic
+            // block's own to_release dispatch above also uses
+            // channel 0 for the same reason.
             if let Ok(mut hh) = held_harmonies.lock() {
                 hh.clear();
                 for (midis, port_map) in &per_input {
@@ -753,6 +739,7 @@ fn run_tauri_router(
                             note: n,
                             target,
                             channel: 0,
+                            velocity: 100,
                         });
                     }
                     hh.insert(input_note, voices);
@@ -878,7 +865,11 @@ fn run_tauri_router(
         }
     }
 
-    // Clear note state on exit
+    // Clear note state on exit. held_harmonies is also cleared so
+    // that any voices left in the tracker (e.g. from a Note-Off the
+    // device never sent due to USB glitch / cable yank / MPE channel
+    // rotation) don't survive a routing restart and produce ghost-
+    // voice retriggers under a freshly-spawned router thread.
     if let Ok(mut notes) = input_notes.lock() {
         notes.clear();
     }
@@ -887,6 +878,9 @@ fn run_tauri_router(
     }
     if let Ok(mut notes) = borrowed_notes.lock() {
         notes.clear();
+    }
+    if let Ok(mut hh) = held_harmonies.lock() {
+        hh.clear();
     }
 
     Ok(())
@@ -1111,17 +1105,20 @@ fn handle_note_on(
 
     // Track this input's voices for routing-aware pattern dispatch.
     // Skip i=0 (the input note itself); only the harmonies are
-    // pattern-controllable. Channel from the input event is captured
-    // per voice so pattern-driven NoteOff dispatches on the same
-    // MIDI channel the original NoteOn used (matters for MPE setups
-    // and any consumer routing by channel).
+    // pattern-controllable. Channel + velocity from the input event
+    // are captured per voice so pattern-driven NoteOn/NoteOff
+    // dispatch on the same channel and at the original velocity —
+    // a soft input doesn't get reattacked at full volume on every
+    // cell tick, and MPE / multi-channel routing is preserved.
     let channel_idx: u8 = channel.index();
+    let velocity_byte: u8 = u8::from(velocity);
     let mut voices_for_input: Vec<HeldVoice> = Vec::with_capacity(notes.len().saturating_sub(1));
     for (i, &n) in notes.iter().enumerate().skip(1) {
         voices_for_input.push(HeldVoice {
             note: u8::from(n),
             target: target_for(i),
             channel: channel_idx,
+            velocity: velocity_byte,
         });
     }
     // Release any orphaned voices from a prior entry for this input.
@@ -1131,36 +1128,53 @@ fn handle_note_on(
     // changed `voice_outputs` between presses, or the engine's mode
     // changed mid-session and harmonies differ. Without this, the
     // old voices stay sounding on their captured target with no path
-    // to release them — pattern tick would dispatch only the new
-    // voices going forward.
+    // to release them.
+    //
+    // Lock pattern: single acquire for read + install, then drop
+    // before dispatching MIDI. Holding the Mutex across
+    // `output.send_to_port` would couple lock duration to USB
+    // backpressure; held_harmonies is router-thread-local in
+    // practice so contention is impossible, but the explicit
+    // drop-before-dispatch keeps that guarantee local.
     let new_notes: HashSet<u8> = voices_for_input.iter().map(|v| v.note).collect();
-    let orphaned: Vec<HeldVoice> = held_harmonies
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get(&u8::from(note))
-        .map(|prev| {
-            prev.iter()
-                .filter(|v| !new_notes.contains(&v.note))
-                .copied()
-                .collect()
-        })
-        .unwrap_or_default();
+    let orphaned: Vec<HeldVoice> = {
+        let mut hh = held_harmonies.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = hh
+            .get(&u8::from(note))
+            .map(|p| {
+                p.iter()
+                    .filter(|v| !new_notes.contains(&v.note))
+                    .copied()
+                    .collect()
+            })
+            .unwrap_or_default();
+        hh.insert(u8::from(note), voices_for_input);
+        prev
+    };
     for v in &orphaned {
         match v.target {
             VoiceOutputTarget::Synth => {
                 let _ = synth_tx.send(SynthEvent::NoteOff { note: v.note });
             }
             VoiceOutputTarget::MidiPort { port } if port < num_outputs => {
-                let msg = [0x80 | (v.channel & 0x0F), v.note, 0];
-                let _ = output.send_to_port(port, &msg);
+                // Use the typed wmidi API like the realtime path. The
+                // captured `v.channel` belongs to the original input
+                // event, which may differ from this NoteOn's channel
+                // (e.g., user retriggers the same MIDI number on a
+                // different channel — the orphan release has to land
+                // on the OLD channel where the voices attacked).
+                let v_chan =
+                    wmidi::Channel::from_index(v.channel & 0x0F).unwrap_or(wmidi::Channel::Ch1);
+                let v_note = wmidi::Note::from_u8_lossy(v.note);
+                let v_vel = wmidi::Velocity::from_u8_lossy(0);
+                let msg = MidiMessage::NoteOff(v_chan, v_note, v_vel);
+                let mut buf = vec![0u8; msg.bytes_size()];
+                let _ = msg.copy_to_slice(&mut buf);
+                let _ = output.send_to_port(port, &buf);
             }
             _ => {}
         }
     }
-    held_harmonies
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(u8::from(note), voices_for_input);
 }
 
 #[allow(clippy::too_many_arguments)]
