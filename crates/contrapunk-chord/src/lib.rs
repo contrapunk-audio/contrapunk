@@ -263,22 +263,18 @@ pub fn detect_chord(notes: &HashSet<u8>) -> Option<String> {
 ///
 /// - If no notes: returns em-dash
 /// - If chord detected: returns chord name (e.g., "Cmaj")
-/// - If no chord pattern matches: returns individual note names
+/// - If no chord pattern matches: returns empty string (UI hides the
+///   chord readout, falls through to its `--` placeholder). Goal is
+///   that `detect_chord` covers all musically-meaningful sets so this
+///   branch never fires; the empty fallback prevents ad-hoc "+"-joined
+///   strings from leaking into the music-notation UI surfaces while
+///   the chord pattern table is being expanded.
 pub fn chord_display(notes: &HashSet<u8>) -> String {
     if notes.is_empty() {
         return "\u{2014}".to_string();
     }
 
-    match detect_chord(notes) {
-        Some(chord) => chord,
-        None => {
-            let mut pcs: Vec<u8> = notes.iter().map(|n| n % 12).collect();
-            pcs.sort();
-            pcs.dedup();
-            let names: Vec<&str> = pcs.iter().map(|&pc| NOTE_NAMES[pc as usize]).collect();
-            names.join(" + ")
-        }
-    }
+    detect_chord(notes).unwrap_or_default()
 }
 
 /// Returns the roman numeral for a scale degree relative to a key tonic.
@@ -314,15 +310,13 @@ pub fn chord_display_with_analysis(notes: &HashSet<u8>, key_tonic: Option<u8>) -
         return "\u{2014}".to_string();
     }
 
+    // Fallback semantics: empty string when no chord pattern matches,
+    // so the UI hides the chord readout instead of surfacing a "+"-joined
+    // ad-hoc list (which doesn't read as music notation). See chord_display
+    // doc-comment for context.
     let chord_str = match detect_chord(notes) {
         Some(chord) => chord,
-        None => {
-            let mut pcs: Vec<u8> = notes.iter().map(|n| n % 12).collect();
-            pcs.sort();
-            pcs.dedup();
-            let names: Vec<&str> = pcs.iter().map(|&pc| NOTE_NAMES[pc as usize]).collect();
-            return names.join(" + ");
-        }
+        None => return String::new(),
     };
 
     if let Some(tonic) = key_tonic {
@@ -427,10 +421,13 @@ mod tests {
     }
 
     #[test]
-    fn test_chord_display_unknown() {
+    fn test_chord_display_unknown_returns_empty() {
+        // Two-note semitone cluster — no chord pattern matches. We now
+        // return empty string so the UI hides the chord readout instead
+        // of showing an ad-hoc "+"-joined fallback that doesn't read as
+        // music notation.
         let notes: HashSet<u8> = [60, 61].into_iter().collect();
-        let display = chord_display(&notes);
-        assert!(display.contains("C") && display.contains("C#"));
+        assert_eq!(chord_display(&notes), "");
     }
 
     // === Extended chord tests ===

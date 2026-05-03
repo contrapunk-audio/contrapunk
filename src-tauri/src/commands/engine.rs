@@ -1132,7 +1132,7 @@ fn handle_note_off(
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
-    _chord_name: &Arc<Mutex<String>>,
+    chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &mpsc::Sender<SynthEvent>,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
@@ -1184,6 +1184,28 @@ fn handle_note_off(
         for &n in notes.iter().skip(1) {
             harm_notes.remove(&(n as u8));
             borr.remove(&(n as u8));
+        }
+    }
+
+    // Recompute chord-name display after the release. Mirrors the
+    // identical block in handle_note_on at the all_sounding read site —
+    // without this, the previous chord text persists when a note is
+    // released, so legato (note-on B before note-off A) shows "A+B"
+    // even after A's release leaves only B held. Empties the chord
+    // string when nothing is sounding so the UI's `{#if chordName}`
+    // checks fall through to the placeholder.
+    {
+        let all_sounding: HashSet<u8> = {
+            let in_notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());
+            let harm_notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
+            in_notes.union(&harm_notes).copied().collect()
+        };
+        let mut ch = chord_name.lock().unwrap_or_else(|e| e.into_inner());
+        if all_sounding.is_empty() {
+            ch.clear();
+        } else {
+            let key_tonic = Some(engine.key().semitones_from_c());
+            *ch = chord_display_with_analysis(&all_sounding, key_tonic);
         }
     }
 
