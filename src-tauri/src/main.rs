@@ -8,6 +8,7 @@
 
 mod audio_clock;
 mod commands;
+mod companion;
 mod guitar_bridge;
 mod state;
 
