@@ -191,6 +191,39 @@ Not all need software equivalents in the Performance view, but the hardware mapp
 
 (No scene save/recall in v1 — see "Save/recall — explicitly out of scope" section. Pads 6/7/8 may become user-assignable in a later iteration.)
 
+## Hardware-knob mapping — MIDI Learn
+
+The 8 software knobs are bound to hardware MIDI CC numbers via a per-knob MIDI Learn flow (no preset library beyond the built-in MPK Mini default). The mapping is `Record<KnobIndex, number | null>` where each of the 8 knob indices maps to an optional CC number; persisted in localStorage under `contrapunk-knob-cc-map`.
+
+**Cold-start default** — MPK Mini MK3 baseline preset, seeded on first run if no localStorage entry exists:
+
+| Knob # | Knob | CC |
+|---|---|---|
+| 0 | Mode | 70 |
+| 1 | Voices | 71 |
+| 2 | Tightness | 72 |
+| 3 | Adventurous | 73 |
+| 4 | Key | 74 |
+| 5 | Scale | 75 |
+| 6 | You play | 76 |
+| 7 | Spread | 77 |
+
+**Learn flow:**
+- Each knob has a small "Learn" pip displaying its current CC binding (e.g. `CC70`) or `—` if unbound.
+- Clicking the pip arms that knob; the pip pulses amber and shows `LEARN…`.
+- The next CC message received via the active MIDI input binds to that knob.
+- Clicking the same pip again, or pressing Escape, cancels the learn.
+- Bindings are one-to-one: if a CC is already bound to another knob, that other knob is unbound to keep the table unique.
+
+**Reset to MPK Mini defaults** — a small button in the Performance view footer restores the seed mapping. No multi-preset system; this single preset plus user-configurable Learn covers the v1 surface.
+
+**Backend contract** — the Tauri router thread emits a `knob-cc-raw` event with `{ cc: u8, value: f32 }` for every Control Change message it receives on the active input. CC → knob-index resolution lives entirely in the frontend; the Rust side has no hardcoded controller mapping. Browser/wasm/plugin transports do not currently forward raw CCs (no-op `onKnobCcRaw`); MIDI Learn in those transports is a future iteration.
+
+**Out of scope for v1:**
+- A multi-controller preset library (only the MPK Mini baseline ships).
+- Pitch bend / aftertouch / NRPN learn — only standard 7-bit CC.
+- Multi-channel filtering — every CC on every channel is observed; first-byte mask `0xB0` matches all channels.
+
 ## Save/recall — explicitly out of scope for v1
 
 Decision: no preset manager, no named scenes, no save/recall UI. PresetManager (#65) stays unmounted. The brutal-critic UI review flagged this as the single biggest live-perf failure; we are accepting that trade-off because:

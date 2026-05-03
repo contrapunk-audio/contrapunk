@@ -396,6 +396,25 @@ export class TauriAdapter implements ContrapunkAdapter {
 		};
 	}
 
+	onKnobCcRaw(callback: (cc: number, value: number) => void): () => void {
+		let unlisten: UnlistenFn | undefined;
+		let cancelled = false;
+
+		listen<{ cc: number; value: number }>('knob-cc-raw', (event) => {
+			if (!cancelled) {
+				callback(event.payload.cc, event.payload.value);
+			}
+		}).then((fn) => {
+			if (cancelled) fn();
+			else unlisten = fn;
+		});
+
+		return () => {
+			cancelled = true;
+			unlisten?.();
+		};
+	}
+
 	async listPresets(): Promise<Preset[]> {
 		try {
 			const raw = (await invoke('list_presets')) as Array<Record<string, unknown>>;

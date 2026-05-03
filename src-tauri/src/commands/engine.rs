@@ -51,6 +51,21 @@ pub struct GuitarSignalPayload {
     pub midi_note: u8,
 }
 
+/// Payload for the "knob-cc-raw" Tauri event — every Control Change
+/// message that arrives on the active MIDI input is forwarded to the
+/// frontend, which resolves the CC number to a Performance-view knob
+/// index via the user's MIDI Learn mapping (`contrapunk-knob-cc-map`
+/// in localStorage). The router thread no longer hardcodes a CC →
+/// knob-index table; that lives entirely in the UI now so users can
+/// rebind any controller without a backend rebuild.
+#[derive(Clone, Serialize)]
+pub struct KnobCcRawPayload {
+    /// MIDI CC number (0-127).
+    pub cc: u8,
+    /// Normalized 0.0..1.0 value (CC 0-127 / 127).
+    pub value: f32,
+}
+
 /// Inject a Note-On event into the active router pipeline.
 ///
 /// Used by virtual inputs (e.g. Computer Keyboard) in the UI. Only has
@@ -727,19 +742,40 @@ fn run_tauri_router(
         // Process MIDI messages
         match rx.recv_timeout(Duration::from_millis(5)) {
             Ok(message) => {
-                process_midi_message(
-                    &message,
-                    &engine,
-                    &mut output_router,
-                    &input_notes,
-                    &harmony_notes,
-                    &borrowed_notes,
-                    &chord_name,
-                    routing_mode,
-                    &synth_tx,
-                    &voice_outputs,
-                    &held_harmonies,
-                );
+                // Intercept Control Change messages (status 0xB0-0xBF) and
+                // forward every CC to the frontend as "knob-cc-raw". The UI
+                // owns the CC → Performance-view-knob mapping (MIDI Learn,
+                // persisted in localStorage). MPK Mini's CC 70-77 baseline
+                // is seeded as the default preset on first run.
+                if message.len() >= 3 && (message[0] & 0xF0) == 0xB0 {
+                    let cc_number = message[1];
+                    let cc_value = message[2];
+                    let value = (cc_value as f32) / 127.0;
+                    let _ = app_handle.emit(
+                        "knob-cc-raw",
+                        KnobCcRawPayload {
+                            cc: cc_number,
+                            value,
+                        },
+                    );
+                    // Don't fall through — CCs are not notes. Forwarding to
+                    // process_midi_message would route them to send_to_first
+                    // which is wrong for control data.
+                } else {
+                    process_midi_message(
+                        &message,
+                        &engine,
+                        &mut output_router,
+                        &input_notes,
+                        &harmony_notes,
+                        &borrowed_notes,
+                        &chord_name,
+                        routing_mode,
+                        &synth_tx,
+                        &voice_outputs,
+                        &held_harmonies,
+                    );
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => {

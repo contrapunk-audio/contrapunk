@@ -289,6 +289,19 @@ export interface ContrapunkAdapter {
 	 */
 	onNoteUpdate(callback: (state: NoteState) => void): () => void;
 
+	/**
+	 * Subscribe to raw MIDI CC events. Every Control Change message
+	 * received on the active input is forwarded with its raw CC number
+	 * and normalized 0..1 value. The Performance view uses this to
+	 * implement MIDI Learn — it maps CC numbers to software-knob
+	 * indices via a user-configurable table persisted in localStorage.
+	 * Browser/wasm/plugin platforms that don't deliver raw MIDI CC
+	 * may return a no-op.
+	 *
+	 * Returns an unsubscribe function.
+	 */
+	onKnobCcRaw(callback: (cc: number, value: number) => void): () => void;
+
 	// -- Virtual Input (keyboard) --
 
 	/** Inject a Note On event directly (for virtual inputs like computer keyboard). */
