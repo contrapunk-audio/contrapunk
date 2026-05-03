@@ -1,22 +1,32 @@
 # Companion Architecture
 
-**Status:** Draft, locked at session start 2026-05-04 (Sun)
+**Status:** Living document — rewritten 2026-05-04 (Sun) with state machine + Lane abstraction
 **Supersedes:** `01-looper.md` (the original brief — kept for reference, scope expanded)
-**Jam target:** Thu 2026-05-07
 **Author:** Vibhav, drafted with Claude Code
 
 ---
 
 ## TL;DR
 
-Promote **Companion** as the umbrella concept: an automated bandmate that plays alongside the user. The existing pattern programmer becomes one limb of the companion. We add multi-slot loops (input + output sources) as a second limb. Auto-key joins as a third limb. The router thread executes whatever ops the companion emits each tick, instead of embedding pattern decision logic directly.
+Promote **Companion** as the umbrella concept: an automated bandmate that plays alongside the user.
+
+Implemented as a **state machine** with three primitives:
+- `WorldState` — the observable. Holds transport, engine snapshot, held inputs, currently-sounding harmony, current chord, recent input window.
+- `Lane` — a trait. The unit of decision-making. Each Lane declares an `input_filter`, runs in one of three phases (Sense / Mutate / Decide), reads `WorldState`, and emits `Vec<DispatchOp>`.
+- `Companion` — the orchestrator. Holds the WorldState, owns a `Vec<Box<dyn Lane>>`, runs them in phase order on every router-loop tick and on every input event.
+
+Every feature in the 9-week jam pipeline that emits MIDI in time fits as a Lane. Pattern (existing PR #89) becomes the first Lane impl. Looper, BeatMachine (Logic Drummer-style), Arpeggiator, Drone, Pad, ChordSeq, AutoKey all follow the same shape. Audio FX (Bitcrusher, Reverse, Shimmer, Distortion) stays in the existing `src/fx/` framework — separate from Companion.
 
 Practical wins:
+- Subsumes follow-up issue #91 (pure function extraction for testability) — `Lane::tick()` *is* the pure function.
+- Subsumes the "press during off-cell still fires harmony" pattern bug — `handle_note_on` consults Companion via `on_input`, Lanes can `SuppressDefault`.
+- 6/9 jam features fit cleanly as Lane impls. Audio FX features (3/9) sit safely outside.
+- Multi-slot loops, beat machine, arp all become incremental Lane adds, not router-thread surgery.
 
-- Naturally subsumes follow-up issue #91 (pure-function extraction for testability).
-- Single `companion.tick()` callback instead of three independent in-router subsystems.
-- Multi-slot loops sized as `Vec<LoopSlot>` so the count is configurable per session.
-- One `CompanionPanel` UI tab structure replaces the disjoint PatternPanel + (future) LooperPanel + AutoKey controls.
+Architectural debts surfaced this session, deferred to separate sessions:
+1. **Chain rework** — `src/chain/` not architected the way the user wants. Investigate, redesign in dedicated session.
+2. **Synth rework** — `src/synth/` similar concern. Investigate, redesign.
+3. `panic_pending` sledgehammer — replace with typed `EngineMutation` enum once Wk 2 ChordSeq Lane lands.
 
 ---
 
@@ -24,180 +34,617 @@ Practical wins:
 
 Reading the user's framing of the feature: *a companion that plays stuff on time in the background based on what you're playing in the key you're playing in, combined with auto-key, gives you a tool that comps and helps you jam better*.
 
-Pattern-as-rhythmic-gate is one expression of this. Loops-as-recorded-phrases is another. Auto-key as a passive "follow what I play" mode is a third. They share an audience (the soloing musician), a venue (the jam), and a tick model (the transport clock). Treating them as siblings under a `Companion` umbrella is the cleaner mental model and the cleaner code.
+Pattern-as-rhythmic-gate is one expression of this. Loops-as-recorded-phrases is another. Auto-key as a passive "follow what I play" mode is a third. A Logic-Drummer-style smart drummer is a fourth. They share an audience (the soloing musician), a venue (the jam), and a tick model (the transport clock). Treating them as siblings under a `Companion` umbrella is the cleaner mental model and the cleaner code.
 
 This naming is breaking: existing `pattern_*` Tauri commands, `PatternStore`, `PatternConfig`, etc. all get renamed under the companion namespace. We have no external customers, so this is a one-time migration cost.
 
 ---
 
-## Component composition
+## System architecture
 
 ```
-                    ┌────────────────────────────────────────────────────┐
-                    │                  COMPANION                          │
-                    │  master_enabled: AtomicBool                         │
-                    │  pattern: PatternConfig (renamed: CompanionPattern) │
-                    │  loops:   Vec<LoopSlot>                             │
-                    │  auto_key: AutoKeyConfig                            │
-                    │                                                    │
-                    │  fn tick(&self,                                    │
-                    │     transport: &Transport,                         │
-                    │     held: &HeldHarmonies)                          │
-                    │     -> Vec<DispatchOp>                             │
-                    └────────────────────────────────────────────────────┘
-                                          │
-                                          ↓ ops
-                                ┌──────────────────┐
-                                │   Router thread  │
-                                │   executes ops   │
-                                │   via dispatch_  │
-                                │   voice helper   │
-                                └──────────────────┘
-                                          ↓
-                                  harmony engine
-                                          ↓
-                                  per-voice routing
-                                          ↓
-                          MIDI ports / synth / outputs
+        ┌───────────────────────────────────────────────────────────────┐
+        │                         COMPANION                              │
+        │                                                                │
+   ┌────│──→ on_input(ev) ──→ Lanes ─→ ops ──┐                         │
+   │    │   (handle_note_on,                  │                         │
+   │    │    inject_note_on,                  ▼                         │
+INPUTS  │    note_off, MIDI in)         dispatch_voice ─────────┐       │
+keyboard│                                     ▲                  │       │
+virtual │    ┌─── WorldState (observable) ───┴───────┐          ├─→ MIDI / synth out
+MIDI in │    │  • transport      • engine_snapshot   │          │       │
+   │    │    │  • held_inputs    • sounding_voices   │          │       │
+   │    │    │  • current_chord  • recent_input_     │          │       │
+   │    │    │                     window            │          │       │
+   │    │    │                                       │          │       │
+   │    │    │  ▲ all Lanes read                     │          │       │
+   │    │    │  ▲ Sense + Mutate Lanes write         │          │       │
+   │    │    └───────────────────────────────────────┘          │       │
+   │    │                                     ▲                  │       │
+   └────│──→ tick() ────────→ Lanes ────→ ops ┘                 │       │
+        │   (every router-loop                                    │       │
+        │    iteration)                                           │       │
+        │                                                          │       │
+        └──────────────────────────────────────────────────────────┘       │
+                                                                            │
+   transport tick ──────────────────────────────────────────────────────────┘
+   (Arc<Transport>, sample-accurate, audio-thread-driven)
 ```
 
-**Invariant**: the router thread does no pattern/loop/key decisions of its own. It pulls ops from `companion.tick()`, executes them, returns to next iteration.
+Two entry points into Companion: `on_input` (event-driven) and `tick` (clock-driven). Both consult the same WorldState. Both produce `Vec<DispatchOp>` which the router thread executes through `dispatch_voice`.
 
 ---
 
-## Data model
+## WorldState — the observable
 
-### `Companion` (Rust, `src-tauri/src/companion/mod.rs` — new module)
+```rust
+pub struct WorldState {
+    /// Sample-accurate position. Read-only handle; updated by audio thread.
+    pub transport: Arc<Transport>,
+
+    /// Snapshot of HarmonyEngine config — read often, mutated rarely.
+    /// Wrapped so reads are lock-free atomic loads where possible.
+    /// Phase 1: just `Arc<Mutex<HarmonyEngine>>` — defer ArcSwap until profiling shows contention.
+    pub engine_snapshot: Arc<Mutex<HarmonyEngine>>,
+
+    /// Currently-held inputs. Keyed by MIDI note. Updated on every
+    /// handle_note_on/off via Companion::on_input.
+    pub held_inputs: Arc<Mutex<HashMap<u8, HeldInput>>>,
+
+    /// Currently-sounding harmony voices (per input note → routing-aware list).
+    /// Was `held_harmonies` in router-thread-local. Now owned by WorldState.
+    pub sounding_voices: Arc<Mutex<HashMap<u8, Vec<HeldVoice>>>>,
+
+    /// Detected current chord (from sounding voices). Updated by ChordDetect Sense Lane.
+    /// Powers Wk 6 motif transpose, Wk 7 arp, Wk 9 pad.
+    pub current_chord: Arc<Mutex<DetectedChord>>,
+
+    /// Time-windowed input history for auto-key + motif detection.
+    /// Bounded VecDeque; old entries pruned on insert.
+    /// Phase 1: defer until AutoKey Sense Lane needs it (before Wk 6).
+    pub recent_input_window: Arc<Mutex<VecDeque<InputEntry>>>,
+}
+
+pub struct HeldInput {
+    pub note: u8,
+    pub velocity: u8,
+    pub channel: u8,
+    pub pressed_at: Instant,
+}
+
+pub struct InputEntry {
+    pub at: Instant,
+    pub note: u8,
+    pub velocity: u8,
+}
+
+pub struct DetectedChord {
+    pub root: Option<u8>,
+    pub quality: Option<ChordQuality>,
+    pub display: String,  // human-readable, e.g. "Cmaj7"
+}
+```
+
+**Phase 1 must build:** `transport`, `engine_snapshot`, `held_inputs`, `sounding_voices`, `current_chord`.
+**Phase 1 defers:** `recent_input_window` (add when AutoKey rewrite needs it before Wk 6).
+
+---
+
+## Lane abstraction
+
+```rust
+pub trait Lane: Send + Sync {
+    fn name(&self) -> &str;
+
+    /// Phase the Lane participates in.
+    /// Sense lanes write to WorldState (auto-key, chord-detect).
+    /// Mutate lanes write engine state (chord seq).
+    /// Decide lanes only emit ops (pattern, loops, arp, drone, beats).
+    fn phase(&self) -> LanePhase;
+
+    /// What input events this Lane wants to handle. Inputs not matched by
+    /// any Lane fall through to default harmonize. Enables split-keyboard
+    /// / live-channel routing.
+    fn input_filter(&self) -> InputFilter { InputFilter::None }
+
+    /// Called once per router-loop iteration with current WorldState.
+    fn tick(&mut self, world: &WorldState) -> LaneOutput;
+
+    /// Called when an input event arrives that this Lane's filter matched.
+    /// Lane can suppress dispatch (return SuppressDefault), modify, or pass through.
+    fn on_input(&mut self, ev: InputEvent, world: &WorldState) -> LaneOutput {
+        LaneOutput::default()  // default: do nothing on input
+    }
+}
+
+pub enum LanePhase {
+    Sense,    // updates WorldState (e.g. auto-key writes detected key)
+    Mutate,   // mutates HarmonyEngine state (e.g. chord seq sets key/mode on bar)
+    Decide,   // emits dispatch ops only (pattern, loops, arp, drone, beats, pad)
+}
+
+pub enum InputFilter {
+    None,                                   // tick-only Lane (Drone, Pad — never claims input)
+    All,                                    // grabs everything (Pattern v1 default)
+    NoteRange(u8, u8),                      // split-keyboard mode (chord register only)
+    Channel(u8),                            // live-channel routing
+    Predicate(Box<dyn Fn(&InputEvent) -> bool + Send + Sync>),
+}
+
+pub struct LaneOutput {
+    pub ops: Vec<DispatchOp>,
+    pub engine_mutations: Vec<EngineMutation>, // only used by Mutate-phase lanes
+    pub world_writes: Vec<WorldWrite>,         // only used by Sense-phase lanes
+    pub suppress_default: bool,                // input-event only: skip default harmonize
+}
+
+pub enum DispatchOp {
+    NoteOn { target: VoiceOutputTarget, note: u8, velocity: u8, channel: u8 },
+    NoteOff { target: VoiceOutputTarget, note: u8, channel: u8 },
+    AllNotesOff { ports: Vec<u8> },
+}
+
+pub enum EngineMutation {
+    SetKey(Key),
+    SetMode(HarmonyMode),
+    SetScale(ScaleMode),
+    SetVoiceLeading(VoiceLeadingStyle),
+}
+
+pub enum WorldWrite {
+    UpdateChord(DetectedChord),
+    UpdateDetectedKey(Key),
+    UpdateDetectedMode(HarmonyMode),
+}
+
+pub enum InputEvent {
+    NoteOn { note: u8, velocity: u8, channel: u8 },
+    NoteOff { note: u8, channel: u8 },
+    Cc { number: u8, value: u8, channel: u8 },  // for sustain pedal etc.
+}
+```
+
+### Phase ordering — why it matters
+
+```
+   PHASE 1: SENSE        ─→ writes WorldState
+   ─────────────────       (engine_snapshot, current_chord, recent inputs)
+   AutoKey Lane
+   ChordDetect Lane
+                                    │
+                                    ▼
+   PHASE 2: MUTATE       ─→ writes HarmonyEngine state
+   ─────────────────       (key, mode, scale)
+   ChordSeq Lane
+                                    │
+                                    ▼
+   PHASE 3: DECIDE       ─→ emits dispatch ops
+   ─────────────────       (NoteOn, NoteOff, AllNotesOff)
+   Pattern Lane
+   LoopSlot Lane × N
+   Arpeggiator Lane
+   Drone Lane
+   AmbientPad Lane
+   BeatMachine Lane
+```
+
+**Concrete example of why ordering matters:** AutoKey detects you're vibing in D minor (Sense). Engine snapshot now reflects the new key. ChordSeq's "next chord" lookup uses the updated key (Mutate). Drone Lane reads the new tonic from the engine snapshot and emits a low D drone (Decide). Each lane sees a coherent world.
+
+Without phase ordering: Drone might read stale key while AutoKey is mid-update; ChordSeq fires harmony in the old key. Race conditions become latent musical glitches.
+
+### Input filter — split keyboard / live channel
+
+The user wants to play live melody while pattern + loops + drone + beats run in the background. Without `input_filter`, every Lane sees every press, and the Pattern Lane will try to gate the live melody just like the chord-register inputs.
+
+```
+                        on_input(ev)
+                             │
+                             ▼
+   ┌─ for each Lane ───────────────────────────────────┐
+   │  if lane.input_filter().matches(&ev):             │
+   │      lane.on_input(ev, &world)                    │
+   │          → ops + maybe SuppressDefault            │
+   └────────────────────────────────────────────────────┘
+                             │
+              if no Lane SuppressDefault
+                             ▼
+              HarmonyEngine.harmonize_note_on(note)
+              → voices → dispatch_voice
+              → WorldState.sounding_voices.update
+              → next-tick Sense lanes pick up the change
+```
+
+Default Lane filters:
+- **PatternLane**: `All` (today's behavior). User can configure to `NoteRange(C2..B3)` for split-keyboard.
+- **LooperLane (Input source)**: `All` (records anything user plays).
+- **LooperLane (Output source)**: `None` (taps engine output, not input).
+- **ArpLane**: `NoteRange(C2..B3)` default (chord register).
+- **DroneLane**: `None` (tick-only).
+- **PadLane**: `None` (tick-only).
+- **BeatMachineLane**: `None` (tick-only).
+- **AutoKeyLane**: writes via `world_writes`; doesn't suppress (lets harmony fire normally).
+
+---
+
+## Companion orchestrator
 
 ```rust
 pub struct Companion {
     pub enabled: AtomicBool,
-    pub pattern: Mutex<CompanionPattern>,
-    pub loops: Mutex<Vec<LoopSlot>>,
-    pub auto_key: Mutex<AutoKeyConfig>,
+    pub world: Arc<WorldState>,
+    pub lanes: Vec<Box<dyn Lane>>,  // sorted by phase: Sense → Mutate → Decide
 }
 
 impl Companion {
-    /// Pure function: given current transport position and held inputs,
-    /// emit the dispatch ops for this tick. Called once per router-loop
-    /// iteration. Side-effect-free — does not touch ports, synth, engine.
-    pub fn tick(
-        &self,
-        transport: &Transport,
-        held: &HeldHarmonies,
-    ) -> Vec<DispatchOp> {
-        let mut ops = Vec::new();
-        if !self.enabled.load(Acquire) { return ops; }
+    pub fn tick(&mut self, engine: &Mutex<HarmonyEngine>) -> Vec<DispatchOp> {
+        if !self.enabled.load(Ordering::Acquire) { return vec![]; }
 
-        // Pattern lane: gates harmony for held inputs
-        let pattern = self.pattern.lock().unwrap();
-        ops.extend(pattern.tick(transport, held));
-
-        // Loop lanes: each slot emits its own ops
-        let loops = self.loops.lock().unwrap();
-        for slot in loops.iter() {
-            ops.extend(slot.tick(transport));
+        // Phase 1: Sense lanes update WorldState.
+        for lane in self.lanes.iter_mut().filter(|l| l.phase() == LanePhase::Sense) {
+            let out = lane.tick(&self.world);
+            self.apply_world_writes(out.world_writes);
         }
 
-        // Auto-key state mutation happens elsewhere (in handle_note_on).
-        // Companion.tick is read-only on auto_key state.
+        // Phase 2: Mutate lanes change engine state.
+        for lane in self.lanes.iter_mut().filter(|l| l.phase() == LanePhase::Mutate) {
+            let out = lane.tick(&self.world);
+            for m in out.engine_mutations { engine.lock().unwrap().apply(m); }
+        }
 
-        ops
+        // Phase 3: Decide lanes emit dispatch ops.
+        let mut all_ops = Vec::new();
+        for lane in self.lanes.iter_mut().filter(|l| l.phase() == LanePhase::Decide) {
+            let out = lane.tick(&self.world);
+            all_ops.extend(out.ops);
+        }
+        all_ops
+    }
+
+    pub fn on_input(&mut self, ev: InputEvent, engine: &Mutex<HarmonyEngine>) -> CompanionInputResult {
+        // Update WorldState.held_inputs (if NoteOn/NoteOff).
+        self.update_held(&ev);
+
+        let mut suppress_default = false;
+        let mut ops = Vec::new();
+
+        // Run only Lanes whose filter matches.
+        for lane in self.lanes.iter_mut() {
+            if !lane.input_filter().matches(&ev) { continue; }
+            let out = lane.on_input(ev.clone(), &self.world);
+            ops.extend(out.ops);
+            if out.suppress_default { suppress_default = true; }
+            // Sense + Mutate writes apply same as in tick().
+            self.apply_world_writes(out.world_writes);
+            for m in out.engine_mutations { engine.lock().unwrap().apply(m); }
+        }
+
+        CompanionInputResult { ops, suppress_default }
     }
 }
-
-pub enum DispatchOp {
-    NoteOn  { target: VoiceOutputTarget, note: u8, velocity: u8, channel: u8 },
-    NoteOff { target: VoiceOutputTarget, note: u8, channel: u8 },
-    AllNotesOff { ports: Vec<u8> },  // CC 123 broadcast
-}
 ```
-
-### `LoopSlot`
-
-```rust
-pub struct LoopSlot {
-    pub id: u32,
-    pub source: LoopSource,
-    pub length_bars: u8,
-    pub state: LoopState,
-    pub buffer: Option<LoopBuffer>,
-    pub recorded_at_bar: Option<u32>,  // global bar when recording started
-}
-
-pub enum LoopSource { Input, Output }
-
-pub enum LoopState {
-    Empty,
-    Armed { length_bars: u8 },          // waiting for next bar
-    Recording { started_at_bar: u32 },  // capturing
-    Playing,                            // looped
-    Stopped,                            // buffer present, not playing
-}
-
-pub struct LoopBuffer {
-    pub source: LoopSource,             // capture-time decision
-    pub length_beats: f64,              // length_bars * beats_per_bar at record time
-    pub events: Vec<LoopEvent>,
-}
-
-pub struct LoopEvent {
-    pub beat_offset: f64,               // 0.0 .. length_beats
-    pub kind: LoopEventKind,
-}
-
-pub enum LoopEventKind {
-    NoteOn  { note: u8, velocity: u8, channel: u8 },
-    NoteOff { note: u8, channel: u8 },
-}
-```
-
-### `CompanionPattern` (renamed from `PatternConfig`)
-
-Same struct, same algorithm, same lockstep test. Renamed only:
-
-- File: `src-tauri/src/state.rs::PatternConfig` → `src-tauri/src/companion/pattern.rs::CompanionPattern`
-- Method: `cell_index_at` stays
-- Algorithm bit-identical Rust↔TS lockstep test stays
-- TS mirror: `pattern.svelte.ts::PatternStore::cellIndexAt` → `companion/pattern.svelte.ts::CompanionPatternStore::cellIndexAt`
-
-### `AutoKeyConfig`
-
-Currently a flat `AtomicBool` on AppState plus engine internal state. Pull into a struct under Companion. Keep `set_auto_key` raising `panic_pending` (verified correct in PR #89 review).
 
 ---
 
-## Pure function contract
+## Input pipeline (companion-mediated)
 
-`companion.tick()` invariants (subsume issue #91's F2/F4/F5/M3/H3):
+```rust
+fn handle_note_on(state: &AppState, note: u8, velocity: u8, channel: u8, ...) {
+    // 1. Notify Companion (updates WorldState, runs Lanes that filter-match).
+    let result = state.companion.lock().unwrap().on_input(
+        InputEvent::NoteOn { note, velocity, channel },
+        &state.engine,
+    );
 
-- **F2**: ops emitted by pattern lane do not double-fire when polyphonic input produces overlapping harmonies (e.g., C+E both producing G in Mirror mode).
+    // 2. Apply Lane-emitted ops (loop captures, arp pattern, etc.).
+    for op in result.ops { dispatch_voice(op, ...); }
+
+    // 3. Default harmonize unless a Lane suppressed it.
+    if !result.suppress_default {
+        let voices = state.engine.lock().unwrap().harmonize_note_on(note);
+        for (i, v) in voices.iter().enumerate() {
+            dispatch_voice(DispatchOp::NoteOn { target: target_for(i), note: u8::from(*v), velocity, channel }, ...);
+        }
+        // Update WorldState.sounding_voices.
+        state.world.sounding_voices.lock().unwrap().insert(note, voices_with_targets);
+    }
+}
+```
+
+This fixes:
+- **P1 (the press-during-off-cell bug)**: PatternLane.on_input checks current cell — if off, returns `SuppressDefault=true`. Press during off-cell does not fire harmony for Live or Gated mode.
+- **Looper capture**: LooperLane.on_input pushes the press into its capture buffer in addition to default harmonize.
+- **Arpeggiator behavior**: ArpLane.on_input returns `SuppressDefault=true` and keeps the held chord internally; emits arp pattern on tick.
+- **Live melody on top**: PatternLane filtered to chord register, melody-register notes don't match any filter, fall through to default harmonize unchanged.
+
+---
+
+## Lane catalog
+
+### PatternLane (Phase 1 — refactor of existing PR #89 logic)
+**Phase**: Decide. **Filter**: `All` default; configurable to `NoteRange(C2..B3)` for split-keyboard.
+- Reads: transport.totalBeat, sounding_voices (the dedupe set), current_cell index
+- Emits: NoteOn/NoteOff per held harmony voice on cell boundaries
+- Modes: Live (staccato retrigger), Gated (legato, edges only)
+- Existing F2/F4/F5/M3/H3 invariants port over; new P1 invariant added.
+
+### LooperLane × N (Phase 2 — Wk 1)
+**Phase**: Decide. **Filter** depends on source: `All` for Input source (captures user's notes), `None` for Output source (taps engine output via observation of sounding_voices on tick).
+- Slot lifecycle: Empty → Armed (waiting next bar) → Recording → Playing / Stopped
+- Replay paths: Input source re-enters via dispatch_voice → harmony engine; Output source emits direct dispatch ops
+- L1-L5 invariants from previous draft.
+- N configurable. `Vec<LoopSlot>` so adding slots is one operation.
+
+### MotifTransposerLane (before Wk 6)
+Extends LooperLane. Adds a transpose semitone control + reads `world.current_chord` to auto-fit a transposed loop to current chord. Auto-fit-to-chord descopable per Wk 6 brief.
+
+### ChordSeqLane (before Wk 2)
+**Phase**: Mutate. **Filter**: `None`.
+- Reads: transport.totalBeat (current bar)
+- Emits: `EngineMutation::SetKey(...)` + `SetMode(...)` on bar boundary, cycling through user-typed progression (`Am F C G`)
+- This is the first Mutate-phase Lane. Validates the EngineMutation enum.
+
+### DroneLane (before Wk 3)
+**Phase**: Decide. **Filter**: `None`.
+- Reads: engine_snapshot.tonic, transport (only to know we're running)
+- Emits: sustained NoteOn at tonic to configured voice (synth or external port)
+- Tracks "is currently emitting" to fire NoteOff on disable / tonic change.
+
+### ArpeggiatorLane (before Wk 7)
+**Phase**: Decide. **Filter**: `NoteRange(C2..B3)` default.
+- Reads: held_inputs (the chord), transport.totalBeat (subdivisions), current_chord, ARP config (pattern, octaves, rate)
+- Emits: NoteOn/NoteOff per arp step
+- on_input: returns `SuppressDefault=true` and stores the chord notes; tick emits the arp.
+- Sustain pedal handled at input pipeline filter level (not a Lane — see "Input filters").
+
+### AmbientPadLane (Wk 9)
+**Phase**: Decide. **Filter**: `None`.
+- Reads: engine_snapshot.key, transport.totalBeat (for slow morph timing)
+- Emits: slowly-evolving polyphonic NoteOns; morphs between 2-3 pad presets over 8-16 bars
+- Could share infrastructure with DroneLane.
+
+### AutoKeyLane (Sense — before Wk 6)
+**Phase**: Sense. **Filter**: `All` (observes inputs; doesn't claim — non-suppressing).
+- Reads: recent_input_window
+- Writes: `WorldWrite::UpdateDetectedKey(...)` + `UpdateDetectedMode(...)` based on Krumhansl scale fitting (issue #81)
+- Hysteresis to prevent flipping keys per note.
+- Replaces the current `set_auto_key` AtomicBool + set_auto_key panic_pending logic.
+
+### ChordDetectLane (Sense — Phase 1)
+**Phase**: Sense. **Filter**: `None`.
+- Reads: sounding_voices
+- Writes: `WorldWrite::UpdateChord(DetectedChord)` based on currently-sounding pitches
+- Replaces the existing `chord_name: Arc<Mutex<String>>` update site, lifts it to WorldState.
+
+### **BeatMachineLane (Logic Drummer-style — major feature, see dedicated section)**
+
+---
+
+## BeatMachine — Logic Drummer-style smart drummer
+
+**User vision**: Logic Pro's Drummer behavior. *Not* a basic step sequencer — a smart adaptive drummer with style presets, intensity controls, and auto-fills.
+
+### Behavior model
+
+```
+   ┌─ Drummer presets ──────────────────────────────────────────┐
+   │  Rock       Soul        Hip-Hop      Electro              │
+   │  Songwriter Jazz/Brush  Latin        Indie                 │
+   │  (start with 3-5; expand later)                            │
+   └────────────────────────────────────────────────────────────┘
+
+   ┌─ Intensity X/Y pad (live UI control) ──────────────────────┐
+   │   Y axis: Soft ←──────→ Loud  (velocity, density)          │
+   │   X axis: Simple ←────→ Complex (pattern busyness, fills)  │
+   │                                                             │
+   │   User drags the puck around during the jam — drummer       │
+   │   adapts the pattern in real time. Quantized to bar         │
+   │   boundaries so transitions feel musical.                   │
+   └────────────────────────────────────────────────────────────┘
+
+   ┌─ Auto-fills ───────────────────────────────────────────────┐
+   │   Every N bars (4, 8, 16) the drummer plays a fill          │
+   │   variant of the current pattern. Fill style adapts to      │
+   │   intensity X (simple → minimal; complex → busy fill).     │
+   └────────────────────────────────────────────────────────────┘
+
+   ┌─ Drum kit selector ────────────────────────────────────────┐
+   │   Acoustic (default)  Electronic  Hybrid  Brushes  ...     │
+   │   Each kit = a sample bank loaded into the internal         │
+   │   drum sampler.                                             │
+   └────────────────────────────────────────────────────────────┘
+
+   ┌─ Per-element overrides (advanced) ─────────────────────────┐
+   │   Kick: busy / sparse                                       │
+   │   Snare: ghost notes / rim / accents                        │
+   │   Hat: closed-only / open-on-2&4 / pumping                  │
+   │   Percussion: on / off / fills-only                         │
+   │   These are bias offsets layered on top of the preset.      │
+   └────────────────────────────────────────────────────────────┘
+```
+
+### Data model
+
+```rust
+pub struct BeatMachineLane {
+    pub enabled: bool,
+    pub preset: DrummerPreset,    // Rock / Soul / Jazz / etc
+    pub kit: KitSelector,          // Acoustic / Electronic / Hybrid
+    pub intensity_x: f32,          // 0.0 simple → 1.0 complex
+    pub intensity_y: f32,          // 0.0 soft → 1.0 loud
+    pub fill_every_bars: u8,       // 0=disabled, 4, 8, 16
+    pub element_overrides: ElementOverrides,
+    pub follow_target: Option<String>,  // Lane name to lock groove with (advanced)
+    target: VoiceOutputTarget,    // routing for drum events (drum sampler or external)
+}
+
+pub struct ElementOverrides {
+    pub kick: ElementBias,    // -1.0 sparse → 0.0 default → +1.0 busy
+    pub snare: ElementBias,
+    pub hat: ElementBias,
+    pub perc: ElementBias,
+}
+
+pub struct DrummerPreset {
+    pub name: String,                      // "Rock", "Hip-Hop", etc.
+    pub patterns: PatternBank,             // pre-authored patterns at 5 intensity levels
+    pub fills: FillBank,                   // pre-authored fills at 5 intensity levels
+    pub style_constraints: StyleSettings,  // swing, push/pull, dynamics
+}
+
+pub struct PatternBank {
+    /// 5 intensity levels × 4 element tracks (kick, snare, hat, perc)
+    /// Each cell = (active, velocity, accent).
+    pub levels: [PatternLevel; 5],  // intensity 0.0-0.2, 0.2-0.4, ... 0.8-1.0
+}
+
+pub struct PatternLevel {
+    pub kick: Vec<DrumCell>,
+    pub snare: Vec<DrumCell>,
+    pub hat: Vec<DrumCell>,
+    pub perc: Vec<DrumCell>,
+}
+
+pub struct DrumCell { pub on: bool, pub velocity: u8, pub accent: bool }
+```
+
+### Lane behavior
+
+`BeatMachineLane::tick(world)` per iteration:
+1. Read transport.totalBeat → current cell within the pattern.
+2. Determine current bar within the phrase (for auto-fill detection).
+3. Look up pattern for this cell, given current preset + intensity:
+   - Interpolate between adjacent intensity levels (e.g. intensity_x = 0.65 → blend levels[2] + levels[3]).
+   - At fill boundary (every N bars), substitute fill pattern.
+4. Apply per-element overrides (bias kick busier, snare sparser, etc.).
+5. Apply intensity_y (overall velocity multiplier).
+6. Emit DispatchOp::NoteOn for each track that fires this cell.
+
+### Build phases for BeatMachine
+
+This is multi-phase work — significantly more than a step sequencer.
+
+| Phase | What | Effort |
+|---|---|---|
+| **A. DrumSampler subsystem** | Internal Rust sampler with bundled kit (see next section). | 2-3 d |
+| **B. BeatMachineLane skeleton + step-sequencer behavior** | Lane impl, basic per-track cell grid, no presets/intensity yet. Validates Lane abstraction with a 2nd impl beyond Pattern. | 1-2 d |
+| **C. Pattern library authoring** | 3-5 drummer presets × 5 intensity levels × kick/snare/hat/perc. MIDI-style data. Done by hand initially. | 2-3 d |
+| **D. Intensity X/Y interpolation + auto-fills** | The "smart drummer" logic. Pattern selection by intensity, fill substitution at boundaries. | 2-3 d |
+| **E. UI: BeatsTab in CompanionPanel** | X/Y intensity pad, preset picker, kit picker, per-element overrides. | 2 d |
+| **F. Polish + edge cases** | Mute/solo per element, follow-target wiring, smooth transitions. | 1-2 d |
+
+**Total: 10-15 days** for v1 BeatMachine. Significantly more than fitting into a single jam-week slot.
+
+### Where this lands in the schedule
+
+The 9-week pipeline doesn't have a BeatMachine. Insertion options:
+
+| Option | Detail | Tradeoff |
+|---|---|---|
+| **Build alongside Phase 1 foundation** | Phase B only (basic step seq Lane). Validates Lane abstraction with 2 impls. v1 (full Drummer) lands later. | Phase 1 grows; "step sequencer for drums" might confuse users vs the promised Drummer experience |
+| **Replace Wk 7 Arpeggiator** | Slot the BeatMachine into Wk 7. Arp pushes to a later patch week. | Lose arp until later |
+| **New week between existing weeks** | E.g., Wk 3.5 BeatMachine. Pushes Wk 4-9 by half a week. | 9-week pipeline becomes 9.5 |
+| **Post-jam dedicated cycle** | Build it properly after Wk 9 ends. | Loses jam demo opportunity |
+
+User decision needed. Recommendation in dedicated decisions section below.
+
+---
+
+## Drum Sampler subsystem
+
+**Decision locked**: internal Rust drum sampler. Self-contained, works in browser via WASM, no external dependency.
+
+### Scope
+
+```rust
+// src/synth/drum_sampler.rs (NEW)
+pub struct DrumSampler {
+    pub kit: DrumKit,        // sample bank (kick, snare, hat, …)
+    pub voices: Vec<Voice>,  // polyphonic voice allocator
+    pub master_gain: f32,
+}
+
+pub struct DrumKit {
+    pub name: String,
+    pub samples: HashMap<u8 /* MIDI note */, DrumSample>,
+}
+
+pub struct DrumSample {
+    pub buffer: Arc<Vec<f32>>,    // mono PCM at engine sample rate
+    pub original_velocity: u8,    // for velocity-scaled multisamples (later)
+    pub envelope: SampleEnvelope, // ADSR for natural release
+}
+```
+
+### Default kit content (bundled)
+
+- 5 elements minimum: kick, snare, closed hi-hat, open hi-hat, ride bell
+- 8 elements ideal: + crash, tom, perc/clap
+- Sourced from CC0 / public domain libraries (avoid licensing issues at jam time)
+- Bundled at compile time via `include_bytes!` for native; downloaded once for WASM
+
+### Dispatch path
+
+BeatMachineLane emits `DispatchOp::NoteOn { target: VoiceOutputTarget::DrumSampler, note: 36 /* kick */, velocity: 100, ... }`.
+
+Adds a new `VoiceOutputTarget::DrumSampler` variant alongside `Synth`, `MidiPort`, `Off`. The existing `dispatch_voice` helper extends with one new match arm.
+
+### Phase
+
+Phase A above (2-3 days). Lands before BeatMachineLane Phase B.
+
+---
+
+## Audio FX framework — out of scope for Companion
+
+`src/fx/` and `src/chain/` already do this right. Bitcrusher (Wk 3), Reverse delay (Wk 4), Shimmer (Wk 4), Distortion (Wk 8) all extend that framework. **Don't conflate audio sample-rate processing with MIDI Lanes** — different cycles, different constraints, different abstractions.
+
+(See "Architectural debts" section: chain + synth need their own rework. Investigate in a separate session.)
+
+---
+
+## Pure-function contracts (Lane invariants)
+
+### Pattern invariants (existing, ported from PR #89)
+
+- **F2**: ops emitted by pattern lane do not double-fire when polyphonic input produces overlapping harmonies.
 - **F4**: when pattern lane re-fires a held voice with new routing, the old voice gets a NoteOff op before the new voice's NoteOn op.
 - **F5**: when a setter raises `panic_pending` and the pattern lane was about to fire on this tick, the panic-replay's `to_release` set covers the pattern-attacked notes; pattern lane skips this tick.
 - **M3**: the first tick after `companion.enabled` flips true seeds `last_pattern_cell` without firing — phase-alignment.
 - **H3**: pattern lane skipped when `panic_pending` on this tick.
 
-Plus new looper-specific invariants:
+### New: input pipeline invariant
+
+- **P1**: `handle_note_on` consults Companion before default harmonize. If a Lane returns `suppress_default=true`, default `harmonize_note_on` does not fire. PatternLane.on_input returns suppress_default=true when current cell is off in Live or Gated mode. Press during off-cell does not fire harmony.
+
+### Looper invariants
 
 - **L1**: a slot in `Recording` captures only events whose `beat_offset` is within `[0, length_beats)`. Events past the boundary close out the buffer and transition to `Playing`.
 - **L2**: a slot in `Playing` emits ops with `beat_offset == (transport.totalBeat - recorded_at_bar*beats_per_bar) mod length_beats` for each event matching this tick's window.
 - **L3**: a slot in `Stopped` emits a single `AllNotesOff` op on transition.
-- **L4**: a slot transition `Empty → Armed` schedules the recording to start at the next bar boundary (`Armed.armed_at_bar + 1`).
-- **L5**: `LoopSource::Output` slots, on replay, emit ops that bypass the pattern lane (since pattern was applied at capture time). `LoopSource::Input` slots emit ops that re-enter the pattern lane (their notes are treated as new held inputs).
+- **L4**: a slot transition `Empty → Armed` schedules the recording to start at the next bar boundary.
+- **L5**: `LoopSource::Output` slots, on replay, emit ops that bypass the pattern lane. `LoopSource::Input` slots emit ops that re-enter the pattern lane.
 
-All invariants get unit tests. The pure-function shape makes them all reachable without standing up the router thread.
+### BeatMachine invariants (TBD when phase B lands)
+
+- **B1**: tick emits at most one NoteOn per element per cell.
+- **B2**: intensity X interpolation is monotonic (intensity 0.5 produces "between level 2 and level 3" patterns, never something outside that range).
+- **B3**: auto-fill substitutes the *next* bar's pattern when fill boundary is crossed; the bar after that returns to base pattern.
+- **B4**: on disable, all currently-sounding drum notes get NoteOff (no stuck snare).
+
+All invariants get unit tests. Pure-function shape makes them reachable without standing up the router thread.
 
 ---
 
-## Naming migration (concrete checklist)
+## Naming migration
 
-**Rust**
+### Rust
 
 | Old | New |
 |---|---|
-| `state.rs::PatternConfig` | `companion/pattern.rs::CompanionPattern` |
-| `AppState::pattern_config` | `AppState::companion: Arc<Companion>` |
-| `AppState::pattern_enabled: AtomicBool` | `Companion::enabled: AtomicBool` |
+| `state.rs::PatternConfig` | `companion/pattern.rs::CompanionPattern` ✅ done in 1.2 |
+| `state.rs::PatternInputMode` | `companion/pattern.rs::CompanionInputMode` ✅ done in 1.2 |
+| `AppState::pattern_config` | `AppState::companion: Arc<Companion>` (Phase 1) |
+| `AppState::pattern_enabled: AtomicBool` | `Companion::enabled: AtomicBool` (Phase 1) |
 | `commands/engine.rs::set_pattern_enabled` | `commands/companion.rs::set_companion_enabled` |
 | `commands/engine.rs::set_pattern_config` | `commands/companion.rs::set_companion_pattern` |
 | `commands/engine.rs::set_auto_key` | `commands/companion.rs::set_companion_auto_key` |
@@ -205,29 +652,29 @@ All invariants get unit tests. The pure-function shape makes them all reachable 
 | (new) | `commands/companion.rs::set_companion_loop_stop` |
 | (new) | `commands/companion.rs::set_companion_loop_clear` |
 | (new) | `commands/companion.rs::set_companion_loop_count` |
-| `pattern_config_tests` | `companion_pattern_tests` |
+| (new) | `commands/companion.rs::set_companion_beat_intensity` |
+| (new) | `commands/companion.rs::set_companion_beat_preset` |
+| (new) | `commands/companion.rs::set_companion_beat_kit` |
+| `pattern_config_tests` | `companion_pattern_tests` ✅ done in 1.2 |
 
-**TS**
+### TS
 
 | Old | New |
 |---|---|
-| `lib/stores/pattern.svelte.ts::PatternStore` | `lib/stores/companion.svelte.ts::CompanionStore` (umbrella), with `companion.pattern: PatternLane`, `companion.loops: LoopSlot[]`, `companion.autoKey: AutoKeyLane` |
-| `pattern.svelte.ts::cellIndexAt` | `companion/pattern-lane.ts::cellIndexAt` (still lockstepped to Rust) |
-| `lib/components/PatternPanel.svelte` | `lib/components/companion/CompanionPanel.svelte` (umbrella) + `companion/PatternTab.svelte`, `companion/LoopsTab.svelte`, `companion/AutoKeyTab.svelte` |
+| `lib/stores/pattern.svelte.ts::PatternStore` | `lib/stores/companion.svelte.ts::CompanionStore` (umbrella, with `companion.pattern`, `companion.loops`, `companion.beats`, `companion.autoKey`) |
+| `lib/components/PatternPanel.svelte` | `lib/components/companion/CompanionPanel.svelte` (umbrella) + `companion/PatternTab.svelte`, `companion/LoopsTab.svelte`, `companion/BeatsTab.svelte`, `companion/AutoKeyTab.svelte` |
 | Adapter `setPatternConfig` | `setCompanionPattern` |
 | Adapter `setPatternEnabled` | `setCompanionEnabled` |
-| Adapter (new) | `armCompanionLoop(slotId, source, lengthBars)` |
-| Adapter (new) | `stopCompanionLoop(slotId)`, `clearCompanionLoop(slotId)`, `setCompanionLoopCount(n)` |
+| Adapter (new) | `armCompanionLoop(slotId, source, lengthBars)` etc. |
+| Adapter (new) | `setCompanionBeatIntensity(x, y)`, `setCompanionBeatPreset(name)`, etc. |
 
-**localStorage keys**
+### localStorage keys
 
 | Old | New |
 |---|---|
-| `'contrapunk-pattern'` | `'contrapunk-companion'` (one blob: `{pattern, loops:[...lengthAndSource], autoKey, enabled}`) |
+| `'contrapunk-pattern'` | `'contrapunk-companion'` (one blob: `{enabled, pattern, loops, beats, autoKey}`) |
 
-Loops persist their length and source preference but **not** the buffer (matches loop-pedal mental model).
-
-**Migration shim**: on first hydrate after the rename, read `'contrapunk-pattern'` if present, copy into the new `'contrapunk-companion'` shape under `companion.pattern`, delete the old key. One shot, then forget.
+Migration shim on first hydrate after the rename: read `'contrapunk-pattern'` if present, copy into the new shape under `companion.pattern`, delete old key.
 
 ---
 
@@ -238,160 +685,199 @@ Loops persist their length and source preference but **not** the buffer (matches
 │  ◉  Transport      ◉  Companion (master)      │
 └───────────────────────────────────────────────┘
 
-┌─ CompanionPanel ──────────────────────────────┐
-│  Tabs: [ ▣ Pattern ] [ Loops ] [ Auto-Key ]   │
-│  ─────────────────────────────────────────    │
-│  PatternTab content here, identical layout    │
-│  to existing PatternPanel:                    │
-│    - subdivision selector                     │
-│    - length selector                          │
-│    - input mode (live | gated)                │
-│    - cell strip                               │
-│    - clear / fillAll                          │
-└───────────────────────────────────────────────┘
+┌─ CompanionPanel ──────────────────────────────────┐
+│  [ ▣ Pattern ] [ Loops ] [ Beats ] [ Auto-Key ]   │
+│  ───────────────────────────────────────────────  │
+│  PatternTab — existing PatternPanel content       │
+│    subdivision, length, input mode, cells         │
+│    + new: input range selector (split-keyboard)   │
+└───────────────────────────────────────────────────┘
 
-┌─ CompanionPanel ──────────────────────────────┐
-│  Tabs: [ Pattern ] [ ▣ Loops ] [ Auto-Key ]   │
-│  ─────────────────────────────────────────    │
-│  Slot count: [ 1 | 2 | 3 | ▣ 4 | + Add ]      │
-│                                                │
-│  ┌─ Slot 1 ──┐  ┌─ Slot 2 ──┐                 │
-│  │ Capture:  │  │ Capture:  │                 │
-│  │ [In|▣Out] │  │ [▣In|Out] │                 │
-│  │ Length:   │  │ Length:   │                 │
-│  │ [1 ▣2 4 8]│  │ [▣1 2 4 8]│                 │
-│  │ ── State ─│  │ ── State ─│                 │
-│  │  ●Record  │  │  Playing  │                 │
-│  │  bar 1/2  │  │  bar 3/1  │                 │
-│  └───────────┘  └───────────┘                 │
-│  ┌─ Slot 3 ──┐  ┌─ Slot 4 ──┐                 │
-│  │  empty    │  │  empty    │                 │
-│  └───────────┘  └───────────┘                 │
-└───────────────────────────────────────────────┘
+┌─ CompanionPanel ──────────────────────────────────┐
+│  [ Pattern ] [ ▣ Loops ] [ Beats ] [ Auto-Key ]   │
+│  ───────────────────────────────────────────────  │
+│  Slot count: [ 1 | 2 | 3 | ▣ 4 | + Add ]          │
+│  Per-slot: capture toggle, length, state, record  │
+└───────────────────────────────────────────────────┘
+
+┌─ CompanionPanel ──────────────────────────────────┐
+│  [ Pattern ] [ Loops ] [ ▣ Beats ] [ Auto-Key ]   │
+│  ───────────────────────────────────────────────  │
+│  Drummer:  [ Rock ▼ ]    Kit: [ Acoustic ▼ ]     │
+│                                                    │
+│  ┌─ Intensity ──────┐   ┌─ Element overrides ─┐   │
+│  │     Loud          │   │  Kick    [─●─────]  │   │
+│  │  ┌────●─────┐    │   │  Snare   [───●───]  │   │
+│  │  │          │     │   │  Hat     [─────●─]  │   │
+│  │  │  X/Y pad │     │   │  Perc    [─●─────]  │   │
+│  │  │ (drag)   │     │   └─────────────────────┘   │
+│  │  └──────────┘     │                              │
+│  │     Soft          │   Auto-fill every: [ 8 ▼ ]  │
+│  │  Simple ←→ Complex│                              │
+│  └───────────────────┘                              │
+└───────────────────────────────────────────────────┘
+
+┌─ CompanionPanel ──────────────────────────────────┐
+│  [ Pattern ] [ Loops ] [ Beats ] [ ▣ Auto-Key ]   │
+│  ───────────────────────────────────────────────  │
+│  ☑ Enable auto-detect                              │
+│  Detected: D minor (confidence 0.84)               │
+│  Hysteresis: ●●●○○ (medium — 3 changes/min cap)    │
+└───────────────────────────────────────────────────┘
 ```
 
-**MIDI Learn integration** (PR #88): each slot exposes its arm/stop/clear commands as discoverable knob targets. Stable command names: `companion_loop_arm_slot_{N}` so MPK pads can map persistently. The MIDI learn map regenerates when slot count changes.
+**MIDI Learn integration** (PR #88): each Lane exposes its key actions as discoverable knob targets. Stable command names (`companion_loop_arm_slot_{N}`, `companion_beat_intensity_x`, `companion_pattern_enable`) so MPK pads / knobs map persistently. The MIDI learn map regenerates when slot count or beat configuration changes.
 
 ---
 
 ## WASM parity
 
-Browser-side companion lives in `wasm/src/lib.rs` mirroring the native shape. JS-side stores `LoopBuffer` in a `Map<slotId, LoopBuffer>` since the WASM engine doesn't have its own router thread (events flow synchronously through the wasm engine's `note_on`/`note_off` calls).
+Browser-side companion lives in `wasm/src/lib.rs` mirroring the native shape. JS-side stores LoopBuffer in a `Map<slotId, LoopBuffer>` since the WASM engine doesn't have its own router thread (events flow synchronously through the wasm engine's `note_on`/`note_off` calls).
 
-Pattern parity already shipped (we believe — verify in pre-flight). Loop parity adds the same `arm`/`stop`/`clear` surface to the wasm bindings.
+For the BeatMachine, the drum sampler runs in WASM the same as native (Rust → WASM compile). Sample bank streamed once on first load; cached via Service Worker.
+
+Audio FX in WASM requires WebAudio primitives, which is its own concern — covered in the chain/synth rework session.
 
 ---
 
-## Phases (build order)
+## Feature → architectural layer mapping
 
-The user has confirmed: all 6 phases, no shortcuts.
+```
+   FEATURE                          LAYER                    LANDS IN
 
-### Phase 0 — Pre-flight gate
-**Why first:** validate pattern infra before stacking loops on it. Catch known issues #90, #91, P0 #2 hazards.
-**Output:** automated gate green + manual UAT checklist passed
-**Artifacts:** updates to this doc with any pattern bugs surfaced
-**Effort:** 45 min
+   Pattern (current PR #89)         Decide Lane              Phase 1 (refactor)
 
-### Phase 1 — Pure-function extract + Companion skeleton + tests
-**Why second:** issue #91 is the regression net. The Companion abstraction *is* the extracted function. Any further phase that adds emitters (loop slots, auto-key passive accompaniment) attaches as another op-source.
-**Output:**
-- New `src-tauri/src/companion/` module
-- `Companion::tick() -> Vec<DispatchOp>` pure function with F2/F4/F5/M3/H3 unit tests
-- Router thread refactored to call `companion.tick()` and execute ops
-- Pattern behavior bit-identical to today (regression test: same lockstep table + new behavior tests)
-- Full naming migration (Rust + TS + Tauri commands + localStorage key)
-**Effort:** 1.5–2 days
+   Wk 1: Looper (input + output)    Decide Lane × N          Phase 2
 
-### Phase 2 — Single-slot looper, both Input + Output sources
-**Why third:** demo-quality minimum. Both sources because user locked dual-mode. One slot because slot-count is a UI concern, not a backend concern (`Vec<LoopSlot>` already supports N).
-**Output:**
-- `LoopSlot::tick()` with L1–L5 invariants and unit tests
-- Capture taps: input mode (4 sites in `handle_note_on/off`/`inject_note_on/off`); output mode (1 tap at `dispatch_voice` site, post-harmony, post-pattern)
-- LoopsTab UI (single slot for now)
-- Tauri commands: `arm_companion_loop`, `stop_companion_loop`, `clear_companion_loop`
-- Adapter methods + types
-**Effort:** 1.5–2 days
+   Wk 2: Chord progression seq      Mutate Lane              Before Wk 2
 
-### Phase 3 — WASM parity
-**Why fourth:** browser users get the feature. Native users already have it from Phase 2 if they update.
-**Output:**
-- WASM bindings for companion + loop slots
-- JS-side LoopBuffer storage
-- Browser smoke test: record + replay a 4-bar loop in `app.contrapunk.com`
-**Effort:** 0.5–1 day
+   Wk 3: Drone                      Decide Lane              Before Wk 3
+   Wk 3: Bitcrusher                 src/fx/  (audio FX)      no companion change
 
-### Phase 4 — Multi-slot (N configurable)
-**Why fifth:** Phase 2's single slot is `Vec<LoopSlot>::with_capacity(1)` already; this phase exposes N to the UI. Most of the work is UI + stable MIDI Learn slot identifiers.
-**Output:**
-- Slot count selector in LoopsTab
-- Per-slot UI rendering
-- Per-slot MIDI Learn binding stability (stable command names, regenerated on count change)
-- Per-slot persistence (length + source toggle, not buffer)
-**Effort:** 1 day
+   Wk 4: Reverse delay              src/fx/                  no companion change
+   Wk 4: Shimmer reverb             src/fx/                  no companion change
 
-### Phase 5 — UI consolidation: CompanionPanel umbrella
-**Why sixth:** the existing PatternPanel becomes a tab inside CompanionPanel. AutoKey gets its tab. Single companion-master pip in StatusBar replaces the panel-pip-per-feature pattern.
-**Output:**
-- `CompanionPanel.svelte` with tabs (Pattern | Loops | Auto-Key)
-- Existing pattern panel content moved verbatim into PatternTab.svelte
-- AutoKey controls extracted into AutoKeyTab.svelte
-- StatusBar pip becomes single Companion master toggle (replaces pattern-pip)
-**Effort:** 1 day
+   Wk 5: Exotic scales              pure scale data          no companion change
 
-### Phase 6 — Pattern + Loop combo polish
-**Why last:** the killer combo (Input loop + pattern programmer = chord track + auto-strum) needs edge-case work. Capture-during-pattern-on-cells, replay during pattern-off, transport stop mid-loop, etc.
-**Output:**
-- Documented and tested edge cases in the LoopSlot + CompanionPattern interaction
-- Visual loop indicator on piano keyboard during playback (if confirmed)
-- Demo video script tested
-**Effort:** 0.5 day
+   Wk 6: Motif transposer           extends Looper Lane      Before Wk 6
+   Wk 6: auto-fit-to-chord          reads current_chord      (foundation already there)
 
-**Total realistic estimate: 5.5–8 days.**
+   Wk 7: Arpeggiator                Decide Lane              Before Wk 7
+   Wk 7: Sustain pedal              input pipeline filter    small input-layer change
 
-### Timeline reality check vs jam (Sun → Thu = 3 days)
+   Wk 8: Distortion                 src/fx/                  no companion change
+   Wk 8: Power-chord mode           HarmonyEngine option     one engine flag
+   Wk 8: Drop-tune preset           guitar_pipeline config   subsystem-local
 
-The user said "all 6 phases, no shortcuts." Realistic estimate exceeds the jam window. Three honest paths:
+   Wk 9: Ambient pad                Decide Lane              Before Wk 9
 
-1. **Move the jam date** — push it to ~Thu 2026-05-14 (10 days). Phases 0-6 fit comfortably.
-2. **Ship through Phase 3 by Thu, finish 4-6 the following week** — jam has working single-slot looper (both modes) on the new Companion architecture, multi-slot + UI consolidation lands ~05-09. Demo video scripts use single-slot. The "companion" naming is in by jam day.
-3. **Ship through Phase 2 by Thu (native only)**, then Phases 3-6 the following week — jam has native looper but no browser parity by demo. Risky if jam attendees expect web access.
+   AutoKey rewrite (issue #81)      Sense Lane               Before Wk 6
+                                    + recent_input_window    (motif transpose dep)
 
-**Recommended path: 2.** It uses the 3 days for the architecturally hardest work (Phase 0+1+2+3) and saves the additive UI work for next session. The jam demo doesn't need 4 slots — 1 slot recorded twice tells the same story.
+   BEAT MACHINE (Logic Drummer)     Decide Lane              See dedicated section
+   DRUM SAMPLER subsystem            src/synth/drum_sampler   Independent of Lanes
+
+   ─────────────────────────────────────────────────────────────────────────
+   FEATURES NEEDING THE COMPANION ARCHITECTURE: 1, 2, 3, 6, 7, 9 + Beat = 7
+   FEATURES SAFELY OUTSIDE COMPANION:           4, 5, 8 sub-pieces       = 3
+```
+
+---
+
+## Phase plan (revised)
+
+| Phase | What | Effort | Status |
+|---|---|---|---|
+| **0** | Pre-flight gate (cargo test + UI check + manual UAT) | 45 min | ✅ automated done; manual UAT pending user |
+| **1.1** | Companion module skeleton, type stubs | 1 hr | ✅ done (`2ca0291`) |
+| **1.2** | Move PatternConfig into companion/pattern.rs as CompanionPattern | 30 min | ✅ done (`19053a6`) |
+| **1.3** | Update consumers, drop migration aliases | 30 min | ✅ done (`b4f8940`) |
+| **1.4** | Define `WorldState`, move held trackers from router thread | 1 d | next |
+| **1.5** | `Lane` trait + `Companion` orchestrator + phase ordering | 1 d | |
+| **1.6** | PatternLane impl wrapping existing logic + tests | 1 d | |
+| **1.7** | Companion-mediated input pipeline (P1 fix for press-during-off-cell) | 0.5 d | |
+| **1.8** | TS adapter rename + frontend store split (CompanionStore umbrella) | 1 d | |
+| **1.9** | localStorage migration shim, Tauri command rename | 0.5 d | |
+| **2** | LooperLane: single + multi-slot, both Input/Output sources | 2-3 d | |
+| **3** | WASM parity for Pattern + Looper | 1 d | |
+| **A** | DrumSampler subsystem (internal Rust sampler + bundled kit) | 2-3 d | |
+| **B** | BeatMachineLane skeleton (basic step-seq behavior) | 1-2 d | |
+| **C** | Drummer pattern library (3-5 presets × 5 intensity levels) | 2-3 d | |
+| **D** | Intensity X/Y interpolation + auto-fills | 2-3 d | |
+| **E** | UI: BeatsTab in CompanionPanel | 2 d | |
+| **F** | BeatMachine polish + edge cases | 1-2 d | |
+| **5** | UI consolidation: CompanionPanel umbrella with all tabs | 1-2 d | |
+| **6** | ChordSeqLane (Wk 2) | 1-2 d | |
+| **7** | DroneLane (Wk 3) | 0.5-1 d | |
+| **8** | AutoKeyLane (Sense) rewrite — issue #81 | 2 d | |
+| **9** | MotifTransposerLane (Wk 6) | 1-2 d | |
+| **10** | ArpeggiatorLane + sustain pedal (Wk 7) | 1-2 d | |
+| **11** | AmbientPadLane (Wk 9) | 1 d | |
+
+**Total: 26-37 days** for everything in this doc. Note: Phases A-F (BeatMachine + DrumSampler) alone are 10-15 days — a major component.
+
+The user has confirmed "no shortcuts, all phases." Timeline is the user's call — this doc just states the realistic effort.
 
 ---
 
 ## Decisions locked
 
-1. ✅ Companion as umbrella concept (pattern + loops + auto-key as limbs)
+1. ✅ Companion as umbrella concept (pattern + loops + auto-key + beats as limbs)
 2. ✅ Both Input + Output loop sources, per-slot toggle
-3. ✅ N configurable slots (UI selector, default starts at 4)
+3. ✅ N configurable slots
 4. ✅ Pre-flight gate before Phase 1
 5. ✅ Architecture artifact (this document)
-6. ✅ Full rename (Tauri commands + types + storage keys + files), no backwards-compat shim except the one-shot localStorage migration
+6. ✅ Full rename (Tauri commands + types + storage keys + files), no backwards-compat shim except one-shot localStorage migration
+7. ✅ State machine with Lane trait + WorldState + 3-phase orchestration
+8. ✅ Lanes declare `input_filter` for split-keyboard / live-channel
+9. ✅ `handle_note_on` consults companion → fixes press-during-off-cell bug (P1 invariant)
+10. ✅ BeatMachine = Logic Drummer-style smart drummer (NOT a basic step sequencer)
+11. ✅ Internal Rust drum sampler (NOT external GM MIDI)
+12. ✅ Audio FX framework (`src/fx/`) stays separate from Companion
 
 ---
 
 ## Open questions
 
-1. **Timeline path** — option 1, 2, or 3 from the deadline reality check above.
-2. **Recording start** — arm-and-wait-for-next-bar (recommend) or start-immediately on Record-button press?
-3. **Default loop slot count on first run** — 1, 2, or 4?
-4. **MIDI Learn binding for per-slot loop arm/stop on day 1** — or punt to Phase 6?
-5. **Visual loop indicator on piano during playback** — Phase 2 polish or Phase 6 polish?
-6. **AutoKey tab scope in Phase 5** — just expose the existing `set_auto_key` toggle, or also surface key/mode confidence + visualizations?
+1. **BeatMachine schedule**: build alongside Phase 1 (Phase B basic only), replace Wk 7 Arp, insert Wk 3.5, or post-jam? — recommend: alongside Phase 1 with Phase B (validates Lane abstraction), Phase C-F lands later as dedicated feature.
+2. **Recording start**: arm-and-wait-for-next-bar (recommend) or start immediately on Record press?
+3. **Default loop slot count on first run**: 1, 2, or 4?
+4. **MIDI Learn binding for per-slot loop arm/stop on day 1** or punt to polish phase?
+5. **Visual loop indicator on piano during playback** in Phase 2 polish or later?
+6. **AutoKey tab scope**: just the existing toggle, or also surface key/mode confidence + visualizations?
+7. **Drum kit selection in v1 BeatMachine**: ship one kit (Acoustic), or 3 (Acoustic / Electronic / Brushes)?
 
 ---
 
-## Acceptance criteria (Phase 6 gate)
+## Architectural debts (out of scope for this doc; flagged for separate sessions)
 
-- [ ] All 6 phases shipped, all unit tests green
+1. **Chain rework** — `src/chain/` is not architected the way the user wants. Investigate, redesign in dedicated session. Likely impacts how voice routing, FX insertion, and plugin hosting compose.
+
+2. **Synth rework** — `src/synth/` similar. Current synth is tonal; adding the DrumSampler exposes how the synth subsystem extends. Probably needs a `Synth` trait or a multi-source mixer, not a hard-coded single voice generator.
+
+3. **`panic_pending` is a sledgehammer** — every engine setter triggers full reharm. Adds a Lane → adds another consumer that has to survive the panic-replay. Replace with typed `EngineMutation` enum (Phase 6 ChordSeqLane is the natural home for this work).
+
+4. **Issue #90 (held_harmonies stale-entry recovery)** — defensive `CC123 AllNotesOff` ops in Companion-emitted state changes mitigate the symptom for the new code. Root fix (TTL or cross-reference) tracked separately.
+
+5. **Audio thread lock contention** — `Mutex<HarmonyEngine>` reads on the Decide-phase hot path. Profile after Phase 5; if contention shows, swap for `ArcSwap<EngineSnapshot>` and have engine setters publish snapshots.
+
+6. **Router thread testability** — Phase 1 unit-tests Lane impls against the trait. Integration tests for the *router thread itself* (spawn router + scripted MIDI input + assert dispatched events) tracked as a follow-up to issue #91.
+
+---
+
+## Acceptance criteria (Phase end-state)
+
+- [ ] All planned Lanes shipped (Pattern, Looper × N, BeatMachine, ChordSeq, Drone, Pad, Arp, AutoKey, MotifTransposer)
+- [ ] Drum sampler ships with at least one bundled kit
+- [ ] BeatMachine has 3+ Drummer presets, intensity X/Y, auto-fills
+- [ ] Live-play-on-top works: chord-register patterns + melody-register live notes coexist
 - [ ] No regressions in existing pattern behavior (validated by lockstep test + visual comparison against pre-rename behavior)
-- [ ] User can: arm a loop slot, record N bars, hear it loop. Toggle between Input and Output sources. Stop and clear. Multiple slots playing simultaneously without timing drift.
-- [ ] Native + WASM parity (record + replay a 4-bar loop in `app.contrapunk.com`)
-- [ ] No stuck notes on loop stop/clear (defensive CC 123 broadcast)
-- [ ] Per-slot MIDI Learn discoverable on knob/pad map
+- [ ] Native + WASM parity (everything in this doc works in `app.contrapunk.com`)
+- [ ] No stuck notes on Lane state changes (defensive CC 123 broadcast)
+- [ ] Per-slot/per-Lane MIDI Learn discoverable
 - [ ] Companion master toggle in StatusBar replaces the panel-pip pattern
-- [ ] AutoKey functionality preserved and accessible from Companion AutoKey tab
+- [ ] AutoKey functionality preserved + improved with Krumhansl-style detection
+- [ ] All Lane invariants (P1, F2-H3, L1-L5, B1-B4) covered by unit tests
 
 ---
 
@@ -399,17 +885,20 @@ The user said "all 6 phases, no shortcuts." Realistic estimate exceeds the jam w
 
 - `01-looper.md` — original brief, superseded
 - `.planning/phases/bpm-clock/bpm-clock-LEARNINGS.md` — pattern infra learnings, F2-H3 invariants
+- Issue [#81](https://github.com/contrapunk-audio/contrapunk/issues/81) — Auto-key Krumhansl detection (becomes AutoKeyLane)
 - Issue [#90](https://github.com/contrapunk-audio/contrapunk/issues/90) — `held_harmonies` stale-entry recovery
 - Issue [#91](https://github.com/contrapunk-audio/contrapunk/issues/91) — router-loop pure-function extraction (subsumed by Phase 1)
-- `.planning/STATE.md` P0 #2 — stuck MIDI notes on settings change (looper inherits this hazard; defensive CC 123 mitigation in this work)
+- `.planning/STATE.md` P0 #2 — stuck MIDI notes on settings change (defensive mitigation in Lanes)
+- `.planning/jam-features-2026/README.md` — 9-week feature pipeline + cross-feature dependencies
 - HANDOFF.json — paused-session context that triggered this design
 - PR #87 (PerformanceView), PR #88 (MIDI Learn), PR #89 (BPM-clock + Pattern programmer)
+- Logic Pro Drummer (Apple) — reference behavior for the BeatMachine
 
 ---
 
 ## Pre-flight gate manual UAT checklist
 
-Run this in `cargo tauri dev` before Phase 1 starts. Each item below has a clear pass/fail criterion. If items 1, 3, or 5 fail, stop and fix the underlying pattern bug before continuing.
+Run this in `cargo tauri dev` before Phase 1.4 starts. Each item below has a clear pass/fail criterion. If items 1, 3, or 5 fail, stop the gate and we fix the underlying pattern bug first.
 
 ### Setup
 - [ ] `cargo tauri dev` launches, app window opens
@@ -452,6 +941,12 @@ Run this in `cargo tauri dev` before Phase 1 starts. Each item below has a clear
 - [ ] Audible: only voice 0 (port 1) and voice 1 (synth). Voice 2 silent.
 - [ ] Stopped pattern → no stuck notes on port 1 or in synth
 
+### 6. Press during off-cell (P1 — KNOWN CURRENT BUG)
+- [ ] Pattern: only cells 0, 4, 8, 12 on (downbeats only)
+- [ ] Press middle C during cell 1 (off)
+- [ ] Currently: harmony fires immediately. **This is the bug Phase 1.7 fixes.**
+- [ ] Document current behavior; do not fail the gate on this.
+
 ### Cleanup
 - [ ] Close PatternPanel → pattern disables → all held harmony released
 - [ ] Press transport stop → all notes released
@@ -459,4 +954,4 @@ Run this in `cargo tauri dev` before Phase 1 starts. Each item below has a clear
 
 ---
 
-**End of architecture document. Phase 1 begins after Phase 0 (pre-flight gate) passes.**
+**End of architecture document. Phase 1.4 (WorldState + Lane trait) is next after pre-flight UAT passes (manual UAT items 1, 3, 5).**
