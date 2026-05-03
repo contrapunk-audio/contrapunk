@@ -12,7 +12,13 @@
 	let harmonyNames = $derived(notesToNames(engine.harmonyNotes));
 	let hasInput = $derived(engine.inputNotes.length > 0);
 	let hasHarmony = $derived(engine.harmonyNotes.length > 0);
-	let chordDisplay = $derived(formatMusicalString(engine.chordName));
+	// Strip the "(IVmaj7 in C)" roman-numeral analysis suffix that the
+	// Rust chord_display_with_analysis appends — ActiveNotes is the big
+	// musical readout, the analysis is academic clutter here. The
+	// StatusBar still shows the full string for users who want it.
+	let chordDisplay = $derived(
+		formatMusicalString(engine.chordName.split(' (')[0])
+	);
 	let borrowedDisplay = $derived(formatMusicalString(engine.lastBorrowedFrom));
 </script>
 
