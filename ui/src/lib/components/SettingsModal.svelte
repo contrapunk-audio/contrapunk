@@ -58,6 +58,10 @@
 		ui.setShowNoteLabels(!ui.showNoteLabels);
 	}
 
+	function toggleNoteLingering() {
+		ui.setNoteLingering(!ui.noteLingering);
+	}
+
 	function close() {
 		ui.closeSettings();
 	}
@@ -168,6 +172,25 @@
 							</button>
 							<span class="hint font-ui">
 								{ui.animationsEnabled ? 'Glows + particles' : 'Reduced motion'}
+							</span>
+						</div>
+					</div>
+
+					<div class="row">
+						<span class="row-label font-ui">Note trail</span>
+						<div class="row-control">
+							<button
+								class="pixel-btn font-ui"
+								class:active={ui.noteLingering}
+								onclick={toggleNoteLingering}
+								type="button"
+							>
+								{ui.noteLingering ? 'On' : 'Off'}
+							</button>
+							<span class="hint font-ui">
+								{ui.noteLingering
+									? 'Released notes fade out'
+									: 'Released notes vanish'}
 							</span>
 						</div>
 					</div>

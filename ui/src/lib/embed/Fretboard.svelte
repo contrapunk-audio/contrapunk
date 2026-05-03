@@ -18,6 +18,30 @@
 		midiToName
 	} from './music-utils';
 
+	/**
+	 * HLD-style afterimage: when a note releases, the cell stays as a
+	 * fading ghost — opacity decays, saturation drops (washes toward
+	 * white), and the glow expands then fades. Gives a sense of the
+	 * note "echoing" off the fretboard. Applied via `out:ghostFade` on
+	 * the cell-fill rect.
+	 */
+	function ghostFade(_node: Element, { duration = 520 }: { duration?: number } = {}) {
+		return {
+			duration,
+			css: (t: number, u: number) => {
+				// t goes 1 → 0 (visible → invisible), u goes 0 → 1
+				const opacity = t;
+				const brightness = 1 + u * 0.5;
+				const saturate = 0.2 + t * 0.8;
+				const glow = 6 + u * 18;
+				return `opacity: ${opacity};
+					filter: brightness(${brightness}) saturate(${saturate})
+						drop-shadow(0 0 ${glow}px currentColor);`;
+			}
+		};
+	}
+
+
 	let {
 		inputNotes,
 		harmonyNotes,
@@ -26,7 +50,8 @@
 		onNoteOff,
 		frets = 24,
 		interactive = true,
-		showLabels = true
+		showLabels = true,
+		lingering = true
 	}: {
 		inputNotes: number[];
 		harmonyNotes: number[];
@@ -36,7 +61,14 @@
 		frets?: number;
 		interactive?: boolean;
 		showLabels?: boolean;
+		/** Hyper Light Drifter–style afterimage on note release.
+		 *  When false, cells unmount instantly. */
+		lingering?: boolean;
 	} = $props();
+
+	// Duration to feed the ghostFade out-transition. Setting it to 0
+	// makes Svelte unmount the rect/text immediately, no fade.
+	let ghostDuration = $derived(lingering ? 520 : 0);
 
 	const FRET_MARKERS = [3, 5, 7, 9, 12, 15, 17, 19, 21, 24];
 	const DOUBLE_MARKERS = [12, 24];
@@ -205,6 +237,7 @@
 							height={STRING_SPACING - 2}
 							fill={fillFor(state)}
 							rx="1"
+							out:ghostFade={{ duration: ghostDuration }}
 						/>
 						{#if showLabels}
 							<text
@@ -213,6 +246,7 @@
 								y={y + 2.5}
 								text-anchor="middle"
 								fill={state === 'input' ? '#0a0612' : '#f5e9c9'}
+								out:ghostFade={{ duration: ghostDuration }}
 							>
 								{midiToName(midi)}
 							</text>
@@ -225,17 +259,39 @@
 </div>
 
 <style>
-	.fretboard-wrapper { width: 100%; padding: 0 0 2px 0; }
-	.fretboard-svg { width: 100%; height: auto; display: block; touch-action: none; }
+	.fretboard-wrapper {
+		width: 100%;
+		/* Bulletproof aspect-lock via padding-bottom percentage trick.
+		   padding-bottom: % is calculated against the PARENT's WIDTH per
+		   CSS spec, so this gives a width-derived height regardless of
+		   children. Works in every browser including older WebKit, and
+		   doesn't depend on `aspect-ratio` (Safari 15.4+) or `contain`
+		   (which WebKit may not honor for SVG layout). The SVG is
+		   absolutely positioned to fill, so it can't push the wrapper.
+		   14.4231% = 150 / 1040 (matches viewBox aspect). */
+		padding: 0 0 14.4231% 0;
+		position: relative;
+		overflow: hidden;
+		/* Belt-and-suspenders: contain still helps in browsers that
+		   honor it; harmless in those that don't. */
+		contain: layout paint;
+	}
+	.fretboard-svg {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		display: block;
+		touch-action: none;
+	}
 	.fret-hit { -webkit-tap-highlight-color: transparent; }
 	.fret-hit.interactive { cursor: pointer; }
 
 	.cell-fill {
-		animation: fret-glitch-in 220ms steps(6, end);
+		animation: fret-glitch-in 480ms steps(6, end);
 		filter: drop-shadow(0 0 6px currentColor);
 		pointer-events: none;
-		transform-box: fill-box;
-		transform-origin: center;
 	}
 	.cell-fill.input { color: #4fe8c3; }
 	.cell-fill.harmony { color: #ff2e88; }
@@ -247,16 +303,32 @@
 		font-weight: 600;
 		letter-spacing: 0;
 		pointer-events: none;
-		animation: fret-glitch-in 220ms steps(6, end);
+		animation: fret-glitch-in 480ms steps(6, end);
 	}
 
+	/* In-place Hyper Light Drifter style press flash — cell snaps into
+	   place at its final position from frame 0, then a hot near-white
+	   core + wide colored bloom decays out over ~280ms. No translate or
+	   scale, so cells never jump. steps(6, end) keeps the discrete
+	   pixel-art glitch character (each step looks like one frame of a
+	   stop-motion neon flash). */
 	@keyframes fret-glitch-in {
-		0%   { opacity: 1; transform: translateX(-4px) scaleX(1.2); filter: brightness(2.4) hue-rotate(24deg) drop-shadow(0 0 10px currentColor); }
-		20%  { opacity: 1; transform: translateX( 3px) scaleX(0.9); filter: brightness(1.8) hue-rotate(-18deg) drop-shadow(0 0 8px currentColor); }
-		40%  { opacity: 1; transform: translateX(-2px) scaleX(1.1); filter: brightness(1.5) hue-rotate(10deg) drop-shadow(0 0 6px currentColor); }
-		60%  { opacity: 0.85; transform: translateX( 1px) scaleX(1);   filter: brightness(1.2) hue-rotate(-4deg) drop-shadow(0 0 6px currentColor); }
-		80%  { opacity: 1; transform: translateX( 0)     scaleX(1);   filter: brightness(1.1) drop-shadow(0 0 6px currentColor); }
-		100% { opacity: 1; transform: translateX( 0)     scaleX(1);   filter: brightness(1) drop-shadow(0 0 6px currentColor); }
+		0%   { opacity: 1; filter: brightness(4.5) saturate(0.3)
+		         drop-shadow(0 0 18px #ffffff)
+		         drop-shadow(0 0 36px currentColor); }
+		15%  { opacity: 1; filter: brightness(3.2) saturate(0.7)
+		         drop-shadow(0 0 14px #ffffff)
+		         drop-shadow(0 0 28px currentColor); }
+		30%  { opacity: 1; filter: brightness(2.2)
+		         drop-shadow(0 0 10px currentColor)
+		         drop-shadow(0 0 22px currentColor); }
+		55%  { opacity: 1; filter: brightness(1.5)
+		         drop-shadow(0 0 8px  currentColor)
+		         drop-shadow(0 0 16px currentColor); }
+		80%  { opacity: 1; filter: brightness(1.15)
+		         drop-shadow(0 0 7px  currentColor); }
+		100% { opacity: 1; filter: brightness(1)
+		         drop-shadow(0 0 6px  currentColor); }
 	}
 
 	@media (prefers-reduced-motion: reduce) {

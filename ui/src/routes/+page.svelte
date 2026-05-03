@@ -19,6 +19,7 @@
 	import { ui } from '$lib/stores/ui.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import { pattern } from '$lib/stores/pattern.svelte';
+	import { transport } from '$lib/stores/transport.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
 
 	// Virtual input sentinels (must match MidiDevices.svelte and engine.rs)
@@ -54,6 +55,17 @@
 				// Tauri / Plugin: resolves immediately and refreshes.
 				await midi.hydratePermission();
 				await synth.syncFromBackend();
+				// Force the metronome OFF on every fresh launch. Backend
+				// AppState already defaults `metronome_enabled` to false,
+				// but explicitly resetting here defends against any
+				// startup race condition (audio thread firing a beat
+				// crossing before the UI's syncFromBackend completes) and
+				// guarantees the user never gets a click on first boot.
+				try {
+					await transport.setMetronomeEnabled(false);
+				} catch {
+					/* no transport adapter (browser w/o backend) */
+				}
 				initDone = true;
 			} catch (e) {
 				initError = `Init failed: ${e}`;
@@ -212,6 +224,17 @@
 	.app-layout {
 		display: grid;
 		grid-template-rows: auto auto 1fr auto;
+		/* Lock the grid to a single viewport-width column. Without this,
+		   the implicit column defaults to `auto` (= max-content), and any
+		   child whose intrinsic width exceeds 100vw (e.g. ActiveNotes'
+		   nowrap note-list spans when many notes are pressed) silently
+		   widens the column. Every sibling — including .piano-area, which
+		   contains the fretboard — then inherits that wider column,
+		   making the fretboard grow on note count. minmax(0, 1fr) tells
+		   the grid: "ignore children's min-content; cap at 1fr of the
+		   container width." Architectural lock against any conditional
+		   content pushing the layout. */
+		grid-template-columns: minmax(0, 1fr);
 		height: 100vh;
 		width: 100vw;
 		overflow: hidden;

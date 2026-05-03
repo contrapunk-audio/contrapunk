@@ -228,14 +228,18 @@
 		text-transform: uppercase;
 	}
 
-	/* Serum-style hover tooltip — dark bubble above the knob with
-	   "Label : Value" while hovering or dragging. Positioned above
-	   the dial so the cursor doesn't occlude it on drag. */
+	/* Serum-style hover tooltip — dark bubble below the knob with
+	   "Label : Value" while hovering or dragging. Positioned BELOW
+	   the dial (was above) because the .column parent has
+	   overflow:hidden and the top-row knobs sit close to the
+	   tab-strip — an above-tooltip got clipped behind the tab-strip
+	   on Mode/Voices/Tightness/Adventurous. Below has more headroom
+	   inside the column and never collides with the chrome above. */
 	.knob-tooltip {
 		position: absolute;
-		bottom: 100%;
+		top: 100%;
 		left: 50%;
-		transform: translate(-50%, -4px);
+		transform: translate(-50%, 4px);
 		padding: 3px 8px;
 		font-size: var(--font-size-xs);
 		background: rgba(15, 14, 26, 0.95);
@@ -243,7 +247,7 @@
 		color: var(--color-text);
 		white-space: nowrap;
 		pointer-events: none;
-		z-index: 10;
+		z-index: 100;
 		box-shadow: 0 0 8px rgba(77, 221, 221, 0.3);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;

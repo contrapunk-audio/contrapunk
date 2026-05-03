@@ -259,26 +259,155 @@ pub fn detect_chord(notes: &HashSet<u8>) -> Option<String> {
     })
 }
 
+/// Chord-tone label for a given interval in semitones from the root.
+/// Used by both the partial-chord "(no X)" omission suffix and the
+/// intervals-fallback display. Uses Unicode music-notation accidentals
+/// (♭, ♯) so output matches the rest of the UI's notation surfaces.
+fn interval_label(semis: u8) -> &'static str {
+    match semis % 12 {
+        0 => "R",
+        1 => "♭9",
+        2 => "9",
+        3 => "♭3",
+        4 => "3",
+        5 => "11",
+        6 => "♭5",
+        7 => "5",
+        8 => "♭13",
+        9 => "13",
+        10 => "♭7",
+        11 => "7",
+        _ => "?",
+    }
+}
+
+/// Try to identify the input as a recognized chord pattern with up to
+/// 2 missing chord tones, returning the chord name with `(no X)` or
+/// `(no X, Y)` suffix per common jazz lead-sheet convention.
+///
+/// Used as a fallback when `detect_chord` returns None — captures the
+/// musical intent of partial voicings (shell voicings of jazz 7ths,
+/// power chords with the 5th omitted, etc.) instead of just listing
+/// pitch classes. Examples:
+///   - {C, E, B}      → "Cmaj7(no 5)"
+///   - {C, G, B♭}     → "C7(no 3)"
+///   - {C, E♭, B♭, D} → "Cmin9(no 5)"
+///
+/// Tie-break: prefer fewer missing tones, then earlier pattern in the
+/// CHORD_PATTERNS table (which is roughly ordered by specificity, more
+/// intervals first).
+fn detect_partial_chord(notes: &HashSet<u8>) -> Option<String> {
+    if notes.len() < 2 {
+        return None;
+    }
+
+    let bass = *notes.iter().min().unwrap();
+    let bass_pc = bass % 12;
+    let pcs: HashSet<u8> = notes.iter().map(|n| n % 12).collect();
+    if pcs.len() < 2 {
+        return None;
+    }
+
+    // (missing_count, pattern_idx, root, name, missing_intervals)
+    let mut best: Option<(usize, usize, u8, &str, Vec<u8>)> = None;
+
+    for &root in &pcs {
+        let input_intervals: HashSet<u8> = pcs.iter().map(|&pc| (pc + 12 - root) % 12).collect();
+
+        // Partial-match only makes musical sense when the candidate root
+        // is actually present in the input — otherwise we'd be naming a
+        // chord by a pitch the user didn't play.
+        if !input_intervals.contains(&0) {
+            continue;
+        }
+
+        for (pidx, pattern) in CHORD_PATTERNS.iter().enumerate() {
+            let pattern_set: HashSet<u8> = pattern.intervals.iter().copied().collect();
+            if !input_intervals.is_subset(&pattern_set) {
+                continue;
+            }
+            let mut missing: Vec<u8> = pattern
+                .intervals
+                .iter()
+                .filter(|i| !input_intervals.contains(i))
+                .copied()
+                .collect();
+            missing.sort();
+            let missing_count = missing.len();
+            // Cap omissions at 2 — naming a 6-tone chord with 4 missing
+            // tones isn't useful to the reader. Such cases fall through
+            // to the intervals-notation fallback in chord_display.
+            if missing_count == 0 || missing_count > 2 {
+                continue;
+            }
+
+            let better = match &best {
+                None => true,
+                Some((bm, bp, _, _, _)) => {
+                    missing_count < *bm || (missing_count == *bm && pidx < *bp)
+                }
+            };
+            if better {
+                best = Some((missing_count, pidx, root, pattern.name, missing));
+            }
+        }
+    }
+
+    best.map(|(_, _, root, name, missing)| {
+        let root_name = NOTE_NAMES[root as usize];
+        let parts: Vec<&str> = missing.iter().map(|&i| interval_label(i)).collect();
+        let suffix = format!("(no {})", parts.join(", "));
+        if bass_pc != root {
+            let bass_name = NOTE_NAMES[bass_pc as usize];
+            format!("{}{}{}/{}", root_name, name, suffix, bass_name)
+        } else {
+            format!("{}{}{}", root_name, name, suffix)
+        }
+    })
+}
+
+/// Final fallback: bass note + space-separated intervals-from-bass.
+/// e.g. {C, D♭, E, G♭} → "C ♭9 3 ♭5". Visually distinct from a real
+/// chord name (no maj/min/sus suffix, intervals listed explicitly with
+/// spaces) so the reader knows it's an unidentified note set.
+fn notes_as_intervals(notes: &HashSet<u8>) -> String {
+    if notes.is_empty() {
+        return String::new();
+    }
+    let bass = *notes.iter().min().unwrap();
+    let bass_pc = bass % 12;
+    let pcs: HashSet<u8> = notes.iter().map(|n| n % 12).collect();
+    let mut intervals: Vec<u8> = pcs
+        .iter()
+        .map(|&pc| (pc + 12 - bass_pc) % 12)
+        .filter(|&i| i != 0)
+        .collect();
+    intervals.sort();
+    let root_name = NOTE_NAMES[bass_pc as usize];
+    if intervals.is_empty() {
+        return root_name.to_string();
+    }
+    let parts: Vec<&str> = intervals.iter().map(|&i| interval_label(i)).collect();
+    format!("{} {}", root_name, parts.join(" "))
+}
+
 /// Returns a display string for the chord, or special indicators.
 ///
-/// - If no notes: returns em-dash
-/// - If chord detected: returns chord name (e.g., "Cmaj")
-/// - If no chord pattern matches: returns individual note names
+/// Three-tier chain so the chord readout always carries information:
+///   1. `detect_chord` — exact pattern match, e.g. "Cmaj7"
+///   2. `detect_partial_chord` — closest superset with up to 2 missing
+///      chord tones, e.g. "Cmaj7(no 5)"
+///   3. `notes_as_intervals` — bass + intervals notation when no chord
+///      pattern is even close, e.g. "C ♭9 3 ♭5"
+///
+/// Empty notes return em-dash.
 pub fn chord_display(notes: &HashSet<u8>) -> String {
     if notes.is_empty() {
         return "\u{2014}".to_string();
     }
-
-    match detect_chord(notes) {
-        Some(chord) => chord,
-        None => {
-            let mut pcs: Vec<u8> = notes.iter().map(|n| n % 12).collect();
-            pcs.sort();
-            pcs.dedup();
-            let names: Vec<&str> = pcs.iter().map(|&pc| NOTE_NAMES[pc as usize]).collect();
-            names.join(" + ")
-        }
-    }
+    detect_chord(notes)
+        .or_else(|| detect_partial_chord(notes))
+        .unwrap_or_else(|| notes_as_intervals(notes))
 }
 
 /// Returns the roman numeral for a scale degree relative to a key tonic.
@@ -314,26 +443,28 @@ pub fn chord_display_with_analysis(notes: &HashSet<u8>, key_tonic: Option<u8>) -
         return "\u{2014}".to_string();
     }
 
-    let chord_str = match detect_chord(notes) {
-        Some(chord) => chord,
-        None => {
-            let mut pcs: Vec<u8> = notes.iter().map(|n| n % 12).collect();
-            pcs.sort();
-            pcs.dedup();
-            let names: Vec<&str> = pcs.iter().map(|&pc| NOTE_NAMES[pc as usize]).collect();
-            return names.join(" + ");
-        }
+    // Mirror chord_display's three-tier chain. Roman numeral analysis
+    // only attaches to results that came from detect_chord OR
+    // detect_partial_chord (both produce parseable Root+quality strings);
+    // the intervals fallback returns a space-separated form that doesn't
+    // play well with the analysis suffix, so we hand it back as-is.
+    let (chord_str, has_chord_name) = if let Some(s) = detect_chord(notes) {
+        (s, true)
+    } else if let Some(s) = detect_partial_chord(notes) {
+        (s, true)
+    } else {
+        (notes_as_intervals(notes), false)
     };
 
-    if let Some(tonic) = key_tonic {
-        // Extract root from chord name (first 1-2 chars)
-        let root_pc = parse_root_from_chord(&chord_str);
-        if let Some(rpc) = root_pc {
-            let rn = roman_numeral(rpc, tonic);
-            // Extract quality (everything after root name)
-            let quality = extract_quality(&chord_str);
-            let key_name = NOTE_NAMES[tonic as usize];
-            return format!("{} ({}{} in {})", chord_str, rn, quality, key_name);
+    if has_chord_name {
+        if let Some(tonic) = key_tonic {
+            let root_pc = parse_root_from_chord(&chord_str);
+            if let Some(rpc) = root_pc {
+                let rn = roman_numeral(rpc, tonic);
+                let quality = extract_quality(&chord_str);
+                let key_name = NOTE_NAMES[tonic as usize];
+                return format!("{} ({}{} in {})", chord_str, rn, quality, key_name);
+            }
         }
     }
 
@@ -427,10 +558,47 @@ mod tests {
     }
 
     #[test]
-    fn test_chord_display_unknown() {
+    fn test_chord_display_chromatic_cluster_falls_to_intervals() {
+        // Three adjacent semitones {C, C♯, D} — no chord pattern in the
+        // table contains an interval set with three consecutive
+        // semitones for ANY root choice (chord patterns always include
+        // a 3rd or larger gap somewhere), so even the partial-chord
+        // pass can't superset-match within the 2-omission cap. Drops
+        // through to the intervals-notation fallback.
+        let notes: HashSet<u8> = [60, 61, 62].into_iter().collect();
+        assert_eq!(chord_display(&notes), "C ♭9 9");
+    }
+
+    #[test]
+    fn test_chord_display_partial_slash_voicing() {
+        // {C, C♯} — partial-chord pass DOES find a valid slash
+        // interpretation: C♯maj7 (intervals 0, 4, 7, 11 from C♯) with
+        // the 3rd and 5th omitted, voiced over a C bass. Esoteric but
+        // musically real (cluster jazz voicing). Locks the slash-form
+        // partial match so future changes don't accidentally break the
+        // bass-different-from-root path. Note: NOTE_NAMES uses ASCII
+        // '#' on the Rust side (engine wire format); the UI's
+        // formatMusicalString converts '#' → '♯' at display time.
         let notes: HashSet<u8> = [60, 61].into_iter().collect();
-        let display = chord_display(&notes);
-        assert!(display.contains("C") && display.contains("C#"));
+        assert_eq!(chord_display(&notes), "C#maj7(no 3, 5)/C");
+    }
+
+    #[test]
+    fn test_chord_display_partial_maj7_no_5() {
+        // {C, E, B} — Cmaj7 with the 5th omitted. Common shell voicing.
+        // detect_chord finds nothing exact; detect_partial_chord names it.
+        let notes: HashSet<u8> = [60, 64, 71].into_iter().collect();
+        assert_eq!(chord_display(&notes), "Cmaj7(no 5)");
+    }
+
+    #[test]
+    fn test_chord_display_partial_7_no_3() {
+        // {C, G, B♭} — C7 with the 3rd omitted. The pattern table also
+        // contains "5" for {C, G}, but the 4-tone superset match wins
+        // because it covers more of the input intent (the B♭ is the
+        // defining flat-7 of a dominant chord).
+        let notes: HashSet<u8> = [60, 67, 70].into_iter().collect();
+        assert_eq!(chord_display(&notes), "C7(no 3)");
     }
 
     // === Extended chord tests ===

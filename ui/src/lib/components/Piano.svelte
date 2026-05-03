@@ -3,6 +3,7 @@
 	import { adapter } from '$lib/adapter';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { getPianoKeyColor } from '$lib/theme/colors';
+	import { formatMusicalString } from '$lib/embed/music-utils';
 
 	/** Contrast text color for a key based on which state is driving its fill.
 	 *  Input (teal) + default-cream fills are light → dark label.
@@ -24,9 +25,11 @@
 		return [1, 3, 6, 8, 10].includes(midi % 12);
 	}
 
-	/** Convert MIDI note number to note name (e.g., 60 -> "C4"). */
+	/** Convert MIDI note number to note name (e.g., 60 -> "C4"). Uses
+	 *  Unicode ♯ for sharps so the rendered key labels read as music
+	 *  notation rather than ASCII identifiers. */
 	function midiToName(midi: number): string {
-		const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+		const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 		const octave = Math.floor(midi / 12) - 1;
 		return names[midi % 12] + octave;
 	}
@@ -139,41 +142,73 @@
 	// =========================================================
 
 	type Flash = { id: number; midi: number; kind: 'harmony' | 'input' };
+	type Ghost = { id: number; midi: number; kind: 'harmony' | 'input' };
 	let flashes = $state<Flash[]>([]);
+	let ghosts = $state<Ghost[]>([]);
 	let nextFlashId = 0;
+	let nextGhostId = 0;
 
 	let prevHarmony: Set<number> = new Set();
 	let prevInput: Set<number> = new Set();
 
+	// Combined arrival + release tracking. Newly-arrived notes spawn a
+	// press flash; newly-released notes spawn a Hyper Light Drifter
+	// afterimage ghost that fades over ~520ms. Both overlays mount per
+	// key and self-remove via `onanimationend`.
 	$effect(() => {
-		const currentHarmony = new Set(engine.harmonyNotes);
-		const newly: Flash[] = [];
-		for (const m of currentHarmony) {
-			if (!prevHarmony.has(m)) newly.push({ id: nextFlashId++, midi: m, kind: 'harmony' });
+		const current = new Set(engine.harmonyNotes);
+		const newFlashes: Flash[] = [];
+		const newGhosts: Ghost[] = [];
+		for (const m of current) {
+			if (!prevHarmony.has(m)) newFlashes.push({ id: nextFlashId++, midi: m, kind: 'harmony' });
 		}
-		prevHarmony = currentHarmony;
-		if (newly.length) flashes = [...flashes, ...newly];
+		// Only spawn ghosts when the user has enabled the lingering trail
+		// in Settings. prevHarmony still gets updated either way so that
+		// toggling the setting doesn't produce a flood of ghosts on the
+		// next state change.
+		if (ui.noteLingering) {
+			for (const m of prevHarmony) {
+				if (!current.has(m)) newGhosts.push({ id: nextGhostId++, midi: m, kind: 'harmony' });
+			}
+		}
+		prevHarmony = current;
+		if (newFlashes.length) flashes = [...flashes, ...newFlashes];
+		if (newGhosts.length) ghosts = [...ghosts, ...newGhosts];
 	});
 
 	$effect(() => {
-		const currentInput = new Set(engine.inputNotes);
-		const newly: Flash[] = [];
-		for (const m of currentInput) {
-			if (!prevInput.has(m)) newly.push({ id: nextFlashId++, midi: m, kind: 'input' });
+		const current = new Set(engine.inputNotes);
+		const newFlashes: Flash[] = [];
+		const newGhosts: Ghost[] = [];
+		for (const m of current) {
+			if (!prevInput.has(m)) newFlashes.push({ id: nextFlashId++, midi: m, kind: 'input' });
 		}
-		prevInput = currentInput;
-		if (newly.length) flashes = [...flashes, ...newly];
+		if (ui.noteLingering) {
+			for (const m of prevInput) {
+				if (!current.has(m)) newGhosts.push({ id: nextGhostId++, midi: m, kind: 'input' });
+			}
+		}
+		prevInput = current;
+		if (newFlashes.length) flashes = [...flashes, ...newFlashes];
+		if (newGhosts.length) ghosts = [...ghosts, ...newGhosts];
 	});
 
 	function removeFlash(id: number) {
 		flashes = flashes.filter((f) => f.id !== id);
 	}
+	function removeGhost(id: number) {
+		ghosts = ghosts.filter((g) => g.id !== id);
+	}
 </script>
 
 <div class="piano-wrapper">
-	{#if engine.chordName}
-		<div class="chord-display font-code">{engine.chordName}</div>
-	{/if}
+	<!-- Always-rendered chord display. Content swaps between the chord
+	     name and a non-breaking space so the line-box never collapses,
+	     which would otherwise mount/unmount this div on every silence↔
+	     playing boundary and shift .piano-wrapper height by ~24px. -->
+	<div class="chord-display font-code" class:empty={!engine.chordName}>
+		{engine.chordName ? formatMusicalString(engine.chordName) : ' '}
+	</div>
 	<div class="piano-container" style="--num-white-keys: {NUM_WHITE_KEYS};">
 		<!-- White keys -->
 		{#each whiteKeys as midi}
@@ -201,6 +236,9 @@
 				{/if}
 				{#each flashes.filter((f) => f.midi === midi) as f (f.id)}
 					<span class="flash flash-{f.kind}" onanimationend={() => removeFlash(f.id)}></span>
+				{/each}
+				{#each ghosts.filter((g) => g.midi === midi) as g (g.id)}
+					<span class="ghost ghost-{g.kind}" onanimationend={() => removeGhost(g.id)}></span>
 				{/each}
 				{#if active && ui.showNoteLabels}
 					<span class="key-label font-code" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
@@ -236,6 +274,9 @@
 				{#each flashes.filter((f) => f.midi === midi) as f (f.id)}
 					<span class="flash flash-{f.kind}" onanimationend={() => removeFlash(f.id)}></span>
 				{/each}
+				{#each ghosts.filter((g) => g.midi === midi) as g (g.id)}
+					<span class="ghost ghost-{g.kind}" onanimationend={() => removeGhost(g.id)}></span>
+				{/each}
 				{#if active && ui.showNoteLabels}
 					<span class="key-label font-code" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
@@ -257,6 +298,13 @@
 		padding: 2px 0;
 		background: var(--color-bg-deep);
 		border-bottom: 1px solid var(--color-border);
+	}
+
+	/* Empty state: keep the box (and therefore .piano-wrapper height)
+	   stable but make it visually inert. visibility:hidden preserves
+	   layout box, removes paint. */
+	.chord-display.empty {
+		visibility: hidden;
 	}
 
 	.piano-container {
@@ -381,12 +429,41 @@
 		100% { box-shadow: 0 0 6px  #ff2e88, 0 0 14px #ff2e8866;                    background: transparent;               }
 	}
 
+	/* Hyper Light Drifter afterimage on note release. The cell holds the
+	   active color briefly, then fades opacity → 0 while desaturating
+	   and brightening — feels like the note is echoing off the key.
+	   z-index: 4 puts it above .scale-overlay (auto z) and even above
+	   .flash (z 3) so it's never hidden by either. */
+	.ghost {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		border-radius: inherit;
+		z-index: 4;
+		animation: cp-ghost-fade 520ms linear forwards;
+	}
+	.ghost.ghost-input {
+		background: #4fe8c3;
+		box-shadow: 0 0 12px #4fe8c3, 0 0 24px #4fe8c3aa;
+	}
+	.ghost.ghost-harmony {
+		background: #ff2e88;
+		box-shadow: 0 0 12px #ff2e88, 0 0 24px #ff2e88aa;
+	}
+
+	@keyframes cp-ghost-fade {
+		0%   { opacity: 1;    filter: saturate(1.2) brightness(1.4); }
+		40%  { opacity: 0.7;  filter: saturate(1)   brightness(1.3); }
+		70%  { opacity: 0.4;  filter: saturate(0.6) brightness(1.4); }
+		100% { opacity: 0;    filter: saturate(0.2) brightness(1.5); }
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.white-key, .black-key {
 			transition: none;
 		}
 		.white-key.pressed, .black-key.pressed,
-		.flash {
+		.flash, .ghost {
 			animation: none;
 		}
 	}

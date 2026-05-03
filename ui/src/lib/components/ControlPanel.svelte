@@ -18,13 +18,15 @@
 		type KeyName
 	} from '$lib/stores/engine.svelte';
 	import PixelSelect from './PixelSelect.svelte';
+	import { formatMusicalString } from '$lib/embed/music-utils';
 
-	// --- Dropdown option lists ---
+	// --- Dropdown option lists. Scale/mode labels are piped through
+	// formatMusicalString so "Lydian #2" → "Lydian ♯2" etc. ---
 	let keyOptions = ALL_KEYS.map((k) => ({ value: k, label: KEY_DISPLAY[k] }));
-	let modeOptions = ALL_MODES.map((m) => ({ value: m.name, label: m.label }));
+	let modeOptions = ALL_MODES.map((m) => ({ value: m.name, label: formatMusicalString(m.label) }));
 	let octaveOptions = OCTAVE_MODES.map((om) => ({ value: om.name, label: om.label }));
 	let vlStyleOptions = VOICE_LEADING_STYLES.map((s) => ({ value: s.name, label: s.label }));
-	let familyOptions = SCALE_FAMILIES.map((g) => ({ value: g.family, label: g.label }));
+	let familyOptions = SCALE_FAMILIES.map((g) => ({ value: g.family, label: formatMusicalString(g.label) }));
 	let speciesOptions = COUNTERPOINT_SPECIES.map((sp) => ({ value: sp.name, label: sp.label }));
 	let strictnessOptions = COUNTERPOINT_STRICTNESS.map((s) => ({ value: s.name, label: s.label }));
 
@@ -38,7 +40,7 @@
 	let scaleInFamilyOptions = $derived(
 		(SCALE_FAMILIES.find((g) => g.family === currentFamily)?.modes ?? []).map((m) => ({
 			value: m.name,
-			label: m.label
+			label: formatMusicalString(m.label)
 		}))
 	);
 

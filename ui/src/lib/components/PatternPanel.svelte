@@ -28,17 +28,14 @@
 	// has the panel pip on). Dispatch master enable on mount, disable on
 	// unmount — the router falls back to today's real-time path when off.
 	//
-	// Pattern needs a running transport (cell indices derive from
-	// `total_beats()`). Start it here if the user hasn't already, so
-	// opening the panel without a manual play press still produces
-	// audible cells. We do NOT auto-stop on unmount — the user may have
-	// other reasons for the clock to keep running (metronome, future
-	// loop recorder), and silently stopping their transport would be
-	// surprising.
+	// Pattern needs a running transport for cell indices to advance,
+	// but auto-starting it here causes a surprise click on every fresh
+	// launch: panel visibility persists in localStorage, so any user
+	// who ever turned the Pattern panel on gets an unsolicited beat-
+	// pattern firing the moment they relaunch the app. The user must
+	// now press the transport ▶ in the TransportBar to start the clock
+	// (the Pattern panel does NOT touch the transport on its own).
 	onMount(() => {
-		if (!transport.running) {
-			void transport.play();
-		}
 		void pattern.setEnabled(true);
 	});
 	onDestroy(() => {
