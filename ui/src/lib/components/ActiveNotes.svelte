@@ -12,13 +12,19 @@
 	let harmonyNames = $derived(notesToNames(engine.harmonyNotes));
 	let hasInput = $derived(engine.inputNotes.length > 0);
 	let hasHarmony = $derived(engine.harmonyNotes.length > 0);
-	// Strip the "(IVmaj7 in C)" roman-numeral analysis suffix that the
-	// Rust chord_display_with_analysis appends — ActiveNotes is the big
-	// musical readout, the analysis is academic clutter here. The
-	// StatusBar still shows the full string for users who want it.
-	let chordDisplay = $derived(
-		formatMusicalString(engine.chordName.split(' (')[0])
-	);
+	// Strip the trailing "(IVmaj7 in C)" roman-numeral analysis suffix
+	// the Rust chord_display_with_analysis appends. Find the LAST " ("
+	// (not the first — that would mangle partial chord names like
+	// "Cmaj7(no 5)") and only strip it when the suffix matches the
+	// analysis pattern "(... in <Key>)". Leaves chord names without
+	// analysis untouched.
+	function stripAnalysis(name: string): string {
+		const idx = name.lastIndexOf(' (');
+		if (idx < 0) return name;
+		const suffix = name.slice(idx);
+		return /in [A-G][b#]?\)$/.test(suffix) ? name.slice(0, idx) : name;
+	}
+	let chordDisplay = $derived(formatMusicalString(stripAnalysis(engine.chordName)));
 	let borrowedDisplay = $derived(formatMusicalString(engine.lastBorrowedFrom));
 </script>
 
