@@ -19,6 +19,7 @@
 	import { ui } from '$lib/stores/ui.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import { pattern } from '$lib/stores/pattern.svelte';
+	import { transport } from '$lib/stores/transport.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
 
 	// Virtual input sentinels (must match MidiDevices.svelte and engine.rs)
@@ -54,6 +55,17 @@
 				// Tauri / Plugin: resolves immediately and refreshes.
 				await midi.hydratePermission();
 				await synth.syncFromBackend();
+				// Force the metronome OFF on every fresh launch. Backend
+				// AppState already defaults `metronome_enabled` to false,
+				// but explicitly resetting here defends against any
+				// startup race condition (audio thread firing a beat
+				// crossing before the UI's syncFromBackend completes) and
+				// guarantees the user never gets a click on first boot.
+				try {
+					await transport.setMetronomeEnabled(false);
+				} catch {
+					/* no transport adapter (browser w/o backend) */
+				}
 				initDone = true;
 			} catch (e) {
 				initError = `Init failed: ${e}`;
