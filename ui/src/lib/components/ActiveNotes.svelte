@@ -102,12 +102,13 @@
 		font-weight: 600;
 		letter-spacing: 1px;
 		text-shadow: 0 0 8px rgba(51, 221, 255, 0.55), 0 0 18px rgba(51, 221, 255, 0.25);
-		/* Overflow guard for very long chord names — ellipsis instead
-		   of pushing the column wider than its 1fr track. */
+		/* Overflow guard: clip without "..." since the dots leak into
+		   the chord name visually (e.g. "Cmaj7add9..." reads wrong).
+		   Long chord names just hard-clip at the column boundary. */
 		max-width: 100%;
 		white-space: nowrap;
 		overflow: hidden;
-		text-overflow: ellipsis;
+		text-overflow: clip;
 	}
 	.chord-name.dim {
 		color: var(--color-text-dim);
