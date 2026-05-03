@@ -3,6 +3,10 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui, PANELS } from '$lib/stores/ui.svelte';
 	import TransportBar from './TransportBar.svelte';
+	import { formatMusicalString } from '$lib/embed/music-utils';
+
+	let chordDisplay = $derived(formatMusicalString(engine.chordName));
+	let borrowedDisplay = $derived(formatMusicalString(engine.lastBorrowedFrom));
 
 	/**
 	 * Toggle MIDI routing on/off.
@@ -61,12 +65,12 @@
 	<!-- Chord display -->
 	<div class="chord-info">
 		{#if engine.chordName}
-			<span class="chord-name font-code">{engine.chordName}</span>
+			<span class="chord-name font-code">{chordDisplay}</span>
 		{:else}
 			<span class="chord-name font-code dim">---</span>
 		{/if}
 		{#if engine.interchangeEnabled && engine.lastBorrowedFrom}
-			<span class="borrowed-label font-code">from {engine.lastBorrowedFrom}</span>
+			<span class="borrowed-label font-code">from {borrowedDisplay}</span>
 		{/if}
 	</div>
 

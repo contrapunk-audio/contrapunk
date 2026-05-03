@@ -212,6 +212,17 @@
 	.app-layout {
 		display: grid;
 		grid-template-rows: auto auto 1fr auto;
+		/* Lock the grid to a single viewport-width column. Without this,
+		   the implicit column defaults to `auto` (= max-content), and any
+		   child whose intrinsic width exceeds 100vw (e.g. ActiveNotes'
+		   nowrap note-list spans when many notes are pressed) silently
+		   widens the column. Every sibling — including .piano-area, which
+		   contains the fretboard — then inherits that wider column,
+		   making the fretboard grow on note count. minmax(0, 1fr) tells
+		   the grid: "ignore children's min-content; cap at 1fr of the
+		   container width." Architectural lock against any conditional
+		   content pushing the layout. */
+		grid-template-columns: minmax(0, 1fr);
 		height: 100vh;
 		width: 100vw;
 		overflow: hidden;

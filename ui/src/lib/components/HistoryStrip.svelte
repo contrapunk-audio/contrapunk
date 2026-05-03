@@ -227,7 +227,7 @@
 	}
 
 	function noteName(m: number): string {
-		const n = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+		const n = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 		return n[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
 	}
 

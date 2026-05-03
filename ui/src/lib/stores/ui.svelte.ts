@@ -12,6 +12,7 @@ import { platformName } from '$lib/adapter';
 const SCALE_KEY = 'contrapunk-ui-scale';
 const FONT_SCALE_KEY = 'contrapunk-font-scale';
 const NOTE_LABELS_KEY = 'contrapunk-show-note-labels';
+const NOTE_LINGERING_KEY = 'contrapunk-note-lingering';
 const PANELS_KEY = 'contrapunk-panels';
 const VIEW_MODE_KEY = 'contrapunk-view-mode';
 
@@ -95,6 +96,11 @@ class UiStore {
 	fontScale = $state(1.0);
 	/** Whether to show "C4", "D#5" etc. labels on active piano keys + fretboard notes. */
 	showNoteLabels = $state(true);
+
+	/** Hyper Light Drifter–style afterimage: released notes leave a
+	 *  fading ghost on the Piano and Fretboard. Off → notes vanish
+	 *  instantly on release. Persists to localStorage. */
+	noteLingering = $state(true);
 
 	/** Which Play-tab panels render, per `PanelId`. Toggled from the
 	 *  StatusBar pip row; persists to localStorage. */
@@ -233,6 +239,15 @@ class UiStore {
 		}
 	}
 
+	setNoteLingering(on: boolean) {
+		this.noteLingering = on;
+		try {
+			localStorage.setItem(NOTE_LINGERING_KEY, on ? 'on' : 'off');
+		} catch {
+			/* localStorage unavailable */
+		}
+	}
+
 	// === Panel visibility ===
 
 	/** Flip a single panel on/off and persist. */
@@ -330,6 +345,9 @@ class UiStore {
 			}
 			const savedLabels = localStorage.getItem(NOTE_LABELS_KEY);
 			if (savedLabels === 'off') this.showNoteLabels = false;
+
+			const savedLingering = localStorage.getItem(NOTE_LINGERING_KEY);
+			if (savedLingering === 'off') this.noteLingering = false;
 
 			// Legacy cleanup — strip any font-mode body class applied by
 			// older builds and drop the stale localStorage key.

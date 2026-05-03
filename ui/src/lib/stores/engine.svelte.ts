@@ -216,19 +216,23 @@ export const ALL_KEYS: KeyName[] = [
 	'B'
 ];
 
-/** Display labels for keys — uses flats where musicians expect them. */
+/** Display labels for keys — uses Unicode music-notation glyphs (♯, ♭)
+ *  and flat spellings where musicians expect them. The dict keys remain
+ *  the ASCII wire-format identifiers ('C#', 'D#') because those have to
+ *  match the Rust engine's KeyName enum on the wire; only the values
+ *  change for display. */
 export const KEY_DISPLAY: Record<KeyName, string> = {
 	'C': 'C',
-	'C#': 'C#/Db',
+	'C#': 'C♯/D♭',
 	'D': 'D',
-	'D#': 'Eb',
+	'D#': 'E♭',
 	'E': 'E',
 	'F': 'F',
-	'F#': 'F#/Gb',
+	'F#': 'F♯/G♭',
 	'G': 'G',
-	'G#': 'Ab',
+	'G#': 'A♭',
 	'A': 'A',
-	'A#': 'Bb',
+	'A#': 'B♭',
 	'B': 'B',
 };
 
