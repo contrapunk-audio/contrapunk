@@ -20,6 +20,12 @@ jobs:
   website-build:
     name: Website builds with this PR
     runs-on: ubuntu-latest
+    # Non-blocking: contrapunk-audio/website is now a private repo, so
+    # the default GITHUB_TOKEN can't clone it. When a WEBSITE_REPO_TOKEN
+    # secret with read access is configured, this job succeeds and gives
+    # us the cross-repo build check; when it isn't (e.g. PRs from forks
+    # or pre-secret-setup), the job fails but doesn't block merge.
+    continue-on-error: true
     steps:
       - name: Checkout contrapunk PR
         uses: actions/checkout@v6
@@ -31,6 +37,9 @@ jobs:
         with:
           repository: contrapunk-audio/website
           ref: main
+          # Falls back to GITHUB_TOKEN when secret isn't set, which fails
+          # for the private repo and gracefully exits via continue-on-error.
+          token: ${{ secrets.WEBSITE_REPO_TOKEN || secrets.GITHUB_TOKEN }}
           path: website
           # Skip submodule init — we override `vendor/contrapunk` with
           # this PR's contrapunk checkout below.
