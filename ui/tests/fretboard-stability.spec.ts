@@ -82,6 +82,9 @@ test.describe('Fretboard layout stability', () => {
 				type EngineModule = { engine: { inputNotes: number[] } };
 				let engine: EngineModule['engine'];
 				try {
+					// Vite-runtime path resolved by the dev server; TypeScript's
+					// `svelte-check` can't follow it, so suppress the type error.
+					// @ts-expect-error - dynamic Vite path
 					const mod = (await import('/src/lib/stores/engine.svelte.ts')) as EngineModule;
 					engine = mod.engine;
 				} catch (e) {
