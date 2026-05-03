@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-03T20:31:11Z",
+  "phase": null,
+  "phase_name": "UI polish + jam-prep session (no active phase)",
+  "phase_dir": null,
+  "branch": "main",
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "PR #92 — UI polish bundle (layout stability + HLD afterimage + music notation + chord_name on note-off + partial-chord (no X) fallback + grid-template-columns lock + no auto-pattern-start + force metronome OFF on init)", "status": "done", "commit": "9b2834f"},
+    {"id": 2, "name": "PR #88 — MIDI Learn for Performance view knobs + MPK Mini preset, rebased onto main", "status": "done", "commit": "7e6b436"},
+    {"id": 3, "name": "Strip roman-numeral analysis suffix from ActiveNotes chord readout (preserves partial-chord parens like '(no 5)')", "status": "done", "commit": "81a8e9d"},
+    {"id": 4, "name": "Set WEBSITE_REPO_TOKEN secret + made website-compat workflow non-blocking", "status": "done", "commit": "e82c773 + secret added 2026-05-03T20:08:58Z"}
+  ],
+  "remaining_tasks": [
+    {"id": 5, "name": "Wk 1 Looper feature for jam — fully scoped at .planning/jam-features-2026/01-looper.md", "status": "not_started", "deadline": "Thu 2026-05-07 (jam launches)"},
+    {"id": 6, "name": "Pattern + Looper integration design — both share transport timeline, need to spec how they coexist", "status": "not_started", "blocking": "needs design before implementation"},
+    {"id": 7, "name": "Simple ↔ Advanced view-mode mismatch audit — some controls don't round-trip cleanly between PerformanceView and ControlPanel", "status": "not_started"},
+    {"id": 8, "name": "Knob color blending fix — track ring stroke + indicator line stroke share accent color, blend visually", "status": "not_started", "estimate": "5min CSS"},
+    {"id": 9, "name": "Responsive sizing for top header + knobs + inputs/outputs (kill fixed pixel widths, use 1fr/minmax(0,1fr)/clamp/container queries — same architectural pattern as the .app-layout grid lock)", "status": "not_started"},
+    {"id": 10, "name": "Piano coloring audit — user reported (resolved: their scaleMode was wrong; .scale-overlay rgba(255,253,140,0.3) may still be too subtle, candidate to bump to 0.5-0.6 if desired)", "status": "deferred"},
+    {"id": 11, "name": "Local cleanup: git fetch && git branch -D feat/ui-polish-jam-prep feat/midi-learn (both squash-merged, branches deleted on remote)", "status": "not_started", "estimate": "1min"},
+    {"id": 12, "name": "ROTATE the WEBSITE_REPO_TOKEN PAT — was pasted in plaintext during the session", "status": "not_started", "blocking": "security"}
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {"action": "Rotate the WEBSITE_REPO_TOKEN PAT (github_pat_11AC3K5...) — pasted in plaintext during this session, conversation logs preserve it. Generate new fine-grained PAT (Contents:Read on contrapunk-audio/website only), then `gh secret set WEBSITE_REPO_TOKEN --repo contrapunk-audio/contrapunk` with new value.", "context": "Security hygiene", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "Three-tier chord_display chain: detect_chord → detect_partial_chord (up to 2 missing tones, jazz lead-sheet '(no X)' notation) → notes_as_intervals fallback", "rationale": "Empty-string fallback was hiding meaningful info; '+'-joined was non-music notation. Partial detection captures shell voicings."},
+    {"decision": "Padding-bottom percentage trick (14.4231% = 150/1040) for fretboard aspect lock instead of CSS aspect-ratio + contain", "rationale": "Engine-agnostic, works in every browser including older WebKit; aspect-ratio is Safari 15.4+ only and contain may not honor SVG layout in WebKit."},
+    {"decision": ".app-layout `grid-template-columns: minmax(0, 1fr)` instead of relying on implicit auto column", "rationale": "Auto column = max-content; ActiveNotes' nowrap note-list could push the column past viewport, propagating to fretboard width. Architectural lock against any conditional content pushing layout."},
+    {"decision": "ActiveNotes strips trailing '(... in <Key>)' analysis suffix using `lastIndexOf(' (')` + regex check, NOT split on first ' ('", "rationale": "Splitting on first ' (' mangles partial chord names like 'Cmaj7(no 5)'. Last-pair-only stripping preserves them."},
+    {"decision": "PatternPanel.onMount no longer auto-starts the transport", "rationale": "Panel visibility persists in localStorage; auto-start fired on every fresh launch where user previously toggled the panel on, producing surprise click. User must press transport ▶ explicitly."},
+    {"decision": "Force metronome OFF in +page.svelte init effect after sync completes", "rationale": "Defends against any startup race where audio thread fires a beat crossing before UI's syncFromBackend completes."},
+    {"decision": "website-compat job is non-blocking via continue-on-error + token fallback to GITHUB_TOKEN", "rationale": "contrapunk-audio/website is private; default GITHUB_TOKEN can't clone it from PR contexts. Job still runs and surfaces failures but doesn't gate merge."}
+  ],
+  "uncommitted_files": [
+    "Various ui/build/ deletions (build output, gitignored)",
+    "Various ui/node_modules/ modifications (dep cache, gitignored)",
+    ".planning/STATE.md (auto-bumped date — noise, not committed)"
+  ],
+  "background_processes": [
+    {"task_id": "b7aypx29l", "command": "cargo tauri dev (running from .claude/worktrees/agent-a331e492aba54583c/src-tauri)", "note": "Built from feat/midi-learn branch BEFORE the chord-strip commits 8a5c788 + 81a8e9d landed. HMR may or may not have caught those — recommend kill + rebuild from main when resuming."}
+  ],
+  "next_action": "Resume by killing the stale Tauri (TaskStop b7aypx29l), `git fetch`, delete merged local branches (feat/ui-polish-jam-prep, feat/midi-learn), then choose: (a) Wk 1 Looper feature work — 3-day deadline, brief at .planning/jam-features-2026/01-looper.md ready to execute; (b) Pattern + Looper integration design — needed before Looper if both must share transport; (c) Quick wins first: knob color fix (5min) + Simple/Advanced parity audit. Recommend (b) as design pre-req for (a).",
+  "context_notes": "Long polish session: 12 commits across 2 PRs, both merged. User was iterating fast on UI polish, repeatedly course-correcting (e.g. discovered the 'click on launch' was actually pattern-auto-starting transport, not metronome). Context budget got tight near the end — chord-name strip fix needed two iterations because first version mangled '(no 5)' partial chords. WEBSITE_REPO_TOKEN was pasted in plaintext (handled, but rotation pending). Tauri running from a worktree path, not main — clean up before resuming. Next session should /clear immediately to recover full context budget for the bigger Pattern+Looper design work."
+}
