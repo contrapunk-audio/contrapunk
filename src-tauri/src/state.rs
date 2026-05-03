@@ -22,14 +22,7 @@ use contrapunk::transport::Transport;
 /// itself accepts any voice_count up to this value.
 pub const MAX_VOICES: usize = 8;
 
-// Pattern config moved to `crate::companion::pattern`. These aliases
-// preserve the old `crate::state::PatternConfig` / `PatternInputMode`
-// import surface during the multi-increment migration. The next
-// increment updates consumers to import from `crate::companion`
-// directly and removes these aliases.
-pub use crate::companion::pattern::{
-    CompanionInputMode as PatternInputMode, CompanionPattern as PatternConfig,
-};
+use crate::companion::pattern::CompanionPattern;
 
 /// Per-voice output destination. Each engine-emitted voice (by index
 /// 0..voice_count-1) can be routed independently.
@@ -186,7 +179,7 @@ pub struct AppState {
     /// Beat-aligned chord trigger pattern config. Pushed by the frontend
     /// `pattern` store via `set_pattern_config` whenever the user edits.
     /// Read by the router thread per loop iteration.
-    pub pattern_config: Arc<Mutex<PatternConfig>>,
+    pub pattern_config: Arc<Mutex<CompanionPattern>>,
 }
 
 impl Default for AppState {
@@ -221,7 +214,7 @@ impl Default for AppState {
             chain_commander: Mutex::new(None),
             voice_outputs: Arc::new(Mutex::new(vec![VoiceOutputTarget::default(); MAX_VOICES])),
             pattern_enabled: Arc::new(AtomicBool::new(false)),
-            pattern_config: Arc::new(Mutex::new(PatternConfig::default())),
+            pattern_config: Arc::new(Mutex::new(CompanionPattern::default())),
         }
     }
 }

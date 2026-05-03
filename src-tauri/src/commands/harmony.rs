@@ -13,7 +13,8 @@ use contrapunk::harmony::{
     VoiceLeadingStyle,
 };
 
-use crate::state::{AppState, PatternConfig, PatternInputMode};
+use crate::companion::pattern::{CompanionInputMode, CompanionPattern};
+use crate::state::AppState;
 
 /// Raise the router-thread panic flag so stuck notes from the previous
 /// engine configuration get released via MIDI All-Notes-Off on the next
@@ -253,7 +254,7 @@ pub fn set_pattern_enabled(enabled: bool, state: State<AppState>) -> Result<(), 
 }
 
 /// Push the full pattern config from the frontend store. Replaces the
-/// backend's `PatternConfig` atomically.
+/// backend's `CompanionPattern` atomically.
 #[tauri::command]
 pub fn set_pattern_config(
     cells: Vec<bool>,
@@ -264,13 +265,13 @@ pub fn set_pattern_config(
     state: State<AppState>,
 ) -> Result<(), String> {
     let mode = match input_mode.as_str() {
-        "live" => PatternInputMode::Live,
-        "quantized" => PatternInputMode::Quantized,
-        "gated" => PatternInputMode::Gated,
+        "live" => CompanionInputMode::Live,
+        "quantized" => CompanionInputMode::Quantized,
+        "gated" => CompanionInputMode::Gated,
         other => return Err(format!("Unknown input mode: {}", other)),
     };
     let mut cfg = state.pattern_config.lock().map_err(|e| e.to_string())?;
-    *cfg = PatternConfig {
+    *cfg = CompanionPattern {
         cells,
         subdivision,
         length,

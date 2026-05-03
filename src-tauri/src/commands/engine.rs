@@ -294,7 +294,7 @@ fn run_tauri_router(
     voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
     transport: Arc<Transport>,
     pattern_enabled: Arc<std::sync::atomic::AtomicBool>,
-    pattern_config: Arc<Mutex<crate::state::PatternConfig>>,
+    pattern_config: Arc<Mutex<crate::companion::CompanionPattern>>,
 ) -> anyhow::Result<()> {
     let mut last_pattern_cell: Option<usize> = None;
     let mut last_pattern_cell_on: bool = false;
@@ -480,12 +480,12 @@ fn run_tauri_router(
                 //               edge (off→on), NoteOff only on falling
                 //               edge (on→off). No retrigger on
                 //               consecutive ons.
-                use crate::state::PatternInputMode;
+                use crate::companion::pattern::CompanionInputMode;
                 let (do_off, do_on) = match input_mode {
-                    PatternInputMode::Live | PatternInputMode::Quantized => {
+                    CompanionInputMode::Live | CompanionInputMode::Quantized => {
                         (prev_was_on, cell_is_on)
                     }
-                    PatternInputMode::Gated => {
+                    CompanionInputMode::Gated => {
                         // off→on: only NoteOn. on→off: only NoteOff.
                         // on→on, off→off: nothing.
                         let rising = !prev_was_on && cell_is_on;

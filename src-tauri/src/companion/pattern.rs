@@ -9,13 +9,6 @@
 //! module's tests pins both implementations together — change one,
 //! change both, run the tests.
 //!
-//! Migration phase: external consumers still reference these as
-//! `PatternConfig` / `PatternInputMode` via aliases in `crate::state`.
-//! The dead_code lint doesn't follow type aliases transparently, so
-//! suppress it module-wide until the next increment renames consumers
-//! and removes the aliases.
-
-#![allow(dead_code)]
 
 /// Beat-aligned chord-trigger pattern config. Mirrors the frontend
 /// pattern store. Pushed via the `set_pattern_config` Tauri command
