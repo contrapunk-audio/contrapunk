@@ -970,7 +970,15 @@ Sidechain edges are just routes with a typed source/destination. The route recor
 | `DrumSampler` | `builtin.drum_sampler` | Source | BeatMachine drum playback |
 | `Drone` (Wk 3) | `builtin.drone_synth` | Source | Sustained drone — single-voice synth optimized for hold-forever |
 | `Pad` (Wk 9) | `builtin.pad_synth` | Source | Slow-evolving polyphonic pad |
-| `ClapInstrument` | `clap.<plugin-id>` | Source | CLAP plugin host wrapper |
+
+### Plugin host Nodes (any plugin format — see "Plugin host" cross-cutting section)
+
+| Node | type_id format | Role | Notes |
+|---|---|---|---|
+| `PluginNode` (CLAP) | `plugin.clap.<plugin-id>` | Source or Processor | Decided at runtime by the plugin |
+| `PluginNode` (VST3) | `plugin.vst3.<guid>` | Source or Processor | macOS / Windows / Linux |
+| `PluginNode` (AU) | `plugin.au.<type-subtype-mfr>` | Source or Processor | macOS only |
+| `PluginNode` (LV2) | `plugin.lv2.<plugin-uri>` | Source or Processor | Linux primarily; works elsewhere with the right host runtime |
 
 ### Built-in processors shipped in v1
 
@@ -1192,7 +1200,32 @@ Elixir has its own internal 3-bus FX graph (Compressor / EQ / Reverb / Delay / D
 | **Elixir-internal FX** | Per-instrument, per-voice (mostly) | Each Elixir patch is a complete sound — a "preset" includes its own reverb, delay, modulation. Saving a patch saves its FX state too. |
 | **Contrapunk-graph-level FX** | Cross-instrument, post-mix, on buses | Master reverb across all instruments. A drum bus compressor. A side-chained ducker. Things that can't live inside one instrument because they span multiple. |
 
-Code sharing: where the DSP algorithms overlap (Reverb, Delay), the underlying impl lives in a shared crate (`contrapunk-dsp` or similar) so both `elixir-engine::FxModule::Reverb` and `contrapunk-audio::Reverb` Node use the same code path. Locked decision pending — this is recorded as an open question.
+**Code sharing — locked: shared `contrapunk-dsp` crate.** DSP algorithms (Reverb FDN, Delay, Compressor, EQ, Distortion, Bitcrusher, Chorus, etc.) live in `crates/contrapunk-dsp/` — pure DSP, no allocs, no Tauri/UI deps. Both Elixir-internal `FxModule` impls and contrapunk-graph Processor `Node` impls are thin wrappers around the same algorithms.
+
+```
+   crates/
+     contrapunk-dsp/                         ← NEW. Pure DSP. No allocs, no UI deps.
+       src/
+         reverb.rs                            ← FDN reverb (shared)
+         delay.rs                             ← stereo delay (shared)
+         compressor.rs                        ← FF compressor (shared)
+         eq.rs                                ← parametric EQ (shared)
+         distortion.rs                        ← multi-mode (shared)
+         bitcrusher.rs                        ← (shared)
+         ...
+     contrapunk-audio/
+       src/fx/
+         reverb.rs                            ← Node impl wrapping contrapunk_dsp::Reverb
+         delay.rs                             ← ditto
+         ...
+     elixir-engine/
+       src/fx/
+         reverb.rs                            ← FxModule impl wrapping contrapunk_dsp::Reverb
+                                                (with extra mod-matrix integration glue)
+         ...
+```
+
+Single source of truth for DSP — bug fixes land in one place. Quality bar consistent across contrapunk and Elixir. Elixir's tighter mod-matrix integration becomes thin glue, not a parallel implementation. Trigger for the extract: Phase G2 (when migrating Reverb/Delay to Nodes anyway).
 
 ### Elixir as its own phase track
 
@@ -1206,6 +1239,333 @@ Per user direction: **Elixir is its own phase track**, not coupled to any specif
 Companion work doesn't block on Elixir, and Elixir's standalone shell ships its own demos. The two converge at E11.
 
 The Elixir effort is real (~3-6 months part-time per the design doc's pacing). It is documented separately and tracked as its own track in the broader project plan, not interleaved into the day-by-day Companion phasing.
+
+### Elixir license
+
+**Locked: dual MIT / Apache-2.0.** Standard Rust ecosystem default (matches `cargo new`). Apache provides explicit patent grant; MIT for simplest adoption. Most upstream Rust crates pick this combo, so dependency licensing is automatic. `crates/elixir-engine/LICENSE-MIT` + `LICENSE-APACHE` from day one.
+
+(Contrapunk currently has no LICENSE file — should match Elixir's dual-license to avoid mismatch when E11 integrates. Tracked as separate todo, not blocking.)
+
+### Standalone Elixir vs early contrapunk integration
+
+**Locked: standalone-first per Elixir DESIGN.md.** Standalone Elixir is a product in its own right — open-source Serum clone with independent users / demos / marketing. Contrapunk integration at E11 extends the standalone shell, doesn't replace it.
+
+Re-evaluation gate: after E5-E7 (when Elixir has WT engine + filter + voice manager + FX), check whether the standalone shell still earns its keep or whether folding integration earlier would be cleaner. User-driven check, not pre-scheduled.
+
+For now: standalone-first stays locked. BasicSynth carries contrapunk's tonal load through Companion + Audio + Rig phases. No coupling between Elixir's pace and contrapunk's pace until E11.
+
+---
+
+## Cross-cutting audio concerns
+
+This section addresses architectural questions that span Part 2 — threading, parameter safety, engine boundary, plugin host design, multi-output routing, MIDI event extension. These are decisions that affect every Node and how the audio thread interacts with the rest of the system.
+
+### Thread responsibilities
+
+```
+   Audio thread (cpal callback, realtime, no allocs / no locks)
+   ─────────────────────────────────────────────────────────────
+     • Owns AudioGraph + all Nodes
+     • Drains MidiRouter SPSC queue at top of each block
+     • Drains AudioGraphCommander SPSC queue at top of each block
+     • Calls AudioGraph.process() — writes to output buffer
+     • Reads Node params via lock-free atomics (smoothing layer applies)
+     • NEVER touches WorldState, HarmonyEngine, Tauri commands
+
+   Router thread (companion home, near-realtime ~60-200 Hz)
+   ─────────────────────────────────────────────────────────────
+     • Owns Companion + WorldState (Mutexes for held_inputs, sounding_voices, …)
+     • Listens for transport beat-crosses (channel from audio thread)
+     • Listens for MIDI input events (from midir thread + Tauri commands)
+     • Runs Companion.tick() and Companion.on_input()
+     • Pushes DispatchOps onto MidiRouter SPSC queue → audio thread
+     • Reads/mutates HarmonyEngine briefly under Mutex
+
+   Main thread (Tauri command handlers, UI)
+   ─────────────────────────────────────────────────────────────
+     • Handles Tauri commands from the Svelte UI
+     • Dispatches to router thread via mpsc / signal channels
+     • Reads WorldState briefly for display (chord_name, sounding voices)
+     • Pushes graph mutations onto AudioGraphCommander SPSC queue
+     • Handles file I/O for rig save / load (off the audio path entirely)
+```
+
+**Lock contract**:
+
+| Resource | Audio thread | Router thread | Main thread |
+|---|---|---|---|
+| `AudioGraph.nodes` | full ownership; mutates by draining commander queue | — | — (mutates only via commander) |
+| `Node::params()` (atomic store) | read (lock-free) | read/write (lock-free) | read/write (lock-free) |
+| `WorldState.held_inputs` etc | — | brief Mutex | brief Mutex (UI display) |
+| `HarmonyEngine` | — | brief Mutex (Sense reads, Mutate writes, default harmonize) | brief Mutex (UI commands) |
+| `MidiRouter` SPSC | drain only | push only | — |
+| `AudioGraphCommander` SPSC | drain only | — | push only |
+
+**Audio thread realtime invariants**:
+
+- No `Box::new`, `Vec::push`, `String` allocation
+- No `Mutex::lock` (only `try_lock` if absolutely needed; even that's avoided)
+- No I/O, no logging, no `println!`
+- No `panic!` or unwinding (use `unwrap_or_default()` patterns; debug_assert in test builds)
+- No floating-point denormals (clamp / underflow-prevent in DSP loops)
+
+### Real-time parameter safety: standardized `ParamStore`
+
+Every Node exposes its parameters through a uniform interface. UI commands, MIDI Learn, mod-matrix targets, and rig serialization all use the same surface.
+
+```rust
+pub trait Node: Send {
+    // ... existing methods ...
+    fn params(&self) -> &dyn ParamStore;
+}
+
+pub trait ParamStore: Send + Sync {
+    fn get(&self, id: ParamId) -> f32;
+    fn set(&self, id: ParamId, value: f32);
+    fn iter(&self) -> Box<dyn Iterator<Item = (ParamId, ParamMeta)> + '_>;
+}
+
+pub type ParamId = u32;
+
+pub struct ParamMeta {
+    pub id: ParamId,
+    pub name: String,            // "Filter Cutoff"
+    pub min: f32,
+    pub max: f32,
+    pub default: f32,
+    pub unit: String,            // "Hz", "ms", "dB", "ratio", ""
+    pub log_scale: bool,
+    pub smoothing_ms: f32,       // 0 = no smoothing; default 5.0
+}
+```
+
+Default impl is `AtomicParamStore`:
+
+```rust
+pub struct AtomicParamStore {
+    params: Vec<(ParamId, ParamMeta, AtomicU32)>,  // f32 stored as u32 bits
+}
+
+impl ParamStore for AtomicParamStore {
+    fn get(&self, id: ParamId) -> f32 {
+        let raw = self.find(id).unwrap().2.load(Ordering::Relaxed);
+        f32::from_bits(raw)
+    }
+    fn set(&self, id: ParamId, value: f32) {
+        let entry = self.find(id).unwrap();
+        let clamped = value.clamp(entry.1.min, entry.1.max);
+        entry.2.store(clamped.to_bits(), Ordering::Relaxed);
+    }
+    // ... iter
+}
+```
+
+Audio-thread smoothing: each Node maintains a per-param `current_value: f32` field that ramps toward `params().get(id)` over the configured `smoothing_ms`. Parameter writes from UI take effect smoothly; sample-by-sample stepping prevents zipper noise.
+
+**This unification unlocks:**
+- UI parameter changes: `node.params().set(id, value)` from any thread
+- Rig save/load: `for (id, meta) in node.params().iter() { ... }`
+- MIDI Learn: stores `(node_id: NodeId, param_id: ParamId)` tuples
+- Mod matrix destinations: `(node_id, param_id)` — same shape
+- Plugin params: a CLAP/VST3 plugin's params expose the same `ParamStore` interface (the plugin host adapter implements it)
+
+### HarmonyEngine boundary
+
+**HarmonyEngine sits OUTSIDE the audio graph and OUTSIDE the Lane abstraction.** It's its own primitive.
+
+Why not a Node: produces MIDI events, not audio samples. Putting it in the audio graph is a category error.
+Why not a Lane: it's a stateful object that Lanes *consume*, not a decision-maker that Lanes orchestrate. AutoKey writes its state, ChordSeq writes its state, harmonize_note_on reads it. Engine is the data Lanes operate on, not a Lane itself.
+
+Access model:
+
+| Path | Who | How |
+|---|---|---|
+| Read engine config (key, mode, scale) | Sense Lanes, Decide Lanes (occasionally) | `WorldState.engine_snapshot.lock().<getter>()` |
+| Mutate engine config | Mutate Lanes (e.g. ChordSeqLane on bar boundary) | `EngineMutation::SetKey(...)` enum returned in `LaneOutput.engine_mutations`; Companion applies via `engine.lock().apply(m)` |
+| Default-harmonize on input | Companion's input pipeline (after Lane suppress check) | `engine.lock().harmonize_note_on(note)` directly in `handle_note_on` |
+| UI engine commands (set_key, set_mode etc) | Main thread | Tauri command → engine Mutex |
+
+`HarmonyEngine` lives in `AppState`, owned by main thread, Mutex-guarded. Router thread accesses via `Arc<Mutex<HarmonyEngine>>`. Brief critical sections — no audio-thread concern (audio thread never touches it).
+
+### Plugin host (multi-format) integration
+
+**Support CLAP first (Rust-native, easiest), VST3 + AU + LV2 next.** Plugins of any format are wrapped in a single `PluginNode` Node type — the format is implementation detail, not a separate Node class.
+
+Plugins can be either Sources (instruments — note in, audio out) or Processors (effects — audio in, audio out). The `PluginNode::role()` is determined at instantiation by querying the plugin, not baked into the Rust type. This is why we don't call them `ClapInstrument` — a plugin isn't necessarily an instrument.
+
+#### Architecture
+
+```rust
+// Format-agnostic Node wrapper — single type used in the audio graph
+pub struct PluginNode {
+    plugin_id: String,            // e.g. "com.u-he.Diva"
+    instance: Box<dyn PluginInstance>,
+}
+
+impl Node for PluginNode {
+    fn type_id(&self) -> &str { /* "plugin.clap.com.u-he.Diva" etc */ }
+    fn role(&self) -> NodeRole { self.instance.role() }
+    fn input_count(&self) -> usize { self.instance.input_count() }
+    fn output_count(&self) -> usize { self.instance.output_count() }
+    fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize, channels: usize) {
+        self.instance.process(inputs, outputs, frames, channels);
+    }
+    fn params(&self) -> &dyn ParamStore { self.instance.params() }
+    fn serialize_state(&self) -> serde_json::Value {
+        json!({
+            "format": self.instance.format(),
+            "plugin_id": self.plugin_id,
+            "chunk": base64::encode(self.instance.save_state()),
+        })
+    }
+    fn deserialize_state(&mut self, state: serde_json::Value) -> Result<(), String> {
+        let chunk = base64::decode(state["chunk"].as_str().unwrap_or(""))?;
+        self.instance.restore_state(&chunk)
+    }
+    // ... reset, set_sample_rate
+}
+
+// Format-specific instance trait
+pub trait PluginInstance: Send {
+    fn format(&self) -> PluginFormat;
+    fn role(&self) -> NodeRole;          // queried from the plugin metadata at instantiation
+    fn input_count(&self) -> usize;
+    fn output_count(&self) -> usize;
+    fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize, channels: usize);
+    fn midi_event(&mut self, ev: MidiBlockEvent);
+    fn save_state(&self) -> Vec<u8>;
+    fn restore_state(&mut self, chunk: &[u8]) -> Result<(), String>;
+    fn params(&self) -> &dyn ParamStore;
+    fn open_gui(&mut self, parent: Option<NativeWindowHandle>) -> Option<NativeWindowHandle>;
+    fn close_gui(&mut self);
+}
+
+pub enum PluginFormat { Clap, Vst3, Au, Lv2 }
+
+// Per-format implementations live in src/plugin_host/{clap,vst3,au,lv2}/
+pub struct ClapInstance { /* ... */ }
+pub struct Vst3Instance { /* ... */ }
+pub struct AuInstance   { /* ... */ }   // macOS only
+pub struct Lv2Instance  { /* ... */ }   // primarily Linux
+
+// Per-format scan + factory exposed via a host module
+pub trait PluginHost {
+    fn format(&self) -> PluginFormat;
+    fn scan(&self) -> Vec<PluginDescriptor>;
+    fn instantiate(&self, id: &str, sample_rate: u32) -> Result<Box<dyn PluginInstance>, HostError>;
+}
+
+pub struct PluginDescriptor {
+    pub format: PluginFormat,
+    pub id: String,           // format-specific id
+    pub name: String,
+    pub vendor: String,
+    pub role: NodeRole,       // peeked from metadata if available
+    pub file_path: PathBuf,
+}
+```
+
+#### Format-specific identifiers (used in rig type_ids)
+
+| Format | id format | Example |
+|---|---|---|
+| CLAP | reverse-DNS plugin id | `plugin.clap.com.u-he.Diva` |
+| VST3 | 16-byte UID hex-encoded | `plugin.vst3.5653544D726F6E5253796E5677617665` |
+| AU | type/subtype/manufacturer 4cc tags | `plugin.au.aumu.div8.UHE0` |
+| LV2 | plugin URI | `plugin.lv2.http://drobilla.net/plugins/mda/Piano` |
+
+Rig loader picks the right host (`ClapHost`/`Vst3Host`/`AuHost`/`Lv2Host`) by parsing the type_id format prefix.
+
+#### GUI hosting
+
+| Format | GUI strategy |
+|---|---|
+| CLAP | Plugin opens its own native window via `clap_plugin_gui` extension. We track window handle for show/hide. |
+| VST3 | Plugin's GUI via `IPlugView`. Native window, separate from contrapunk's. |
+| AU | NSView via Audio Unit Cocoa View. Embeds in macOS native window. |
+| LV2 | Plugin GUI via X11Window / WaylandSurface (Linux) or platform equivalent. |
+
+No window-in-window embedding. Plugin GUI = separate native window. Contrapunk's UI shows a button "Open GUI" / "Close GUI" per `PluginNode`.
+
+#### Plugin scan caching
+
+- On startup, walk standard paths per format:
+  - CLAP: `~/.clap`, `/Library/Audio/Plug-Ins/CLAP`, `%COMMONPROGRAMFILES%\CLAP`
+  - VST3: `~/Library/Audio/Plug-Ins/VST3`, `%PROGRAMFILES%\Common Files\VST3`, `~/.vst3`
+  - AU: `/Library/Audio/Plug-Ins/Components` (macOS only)
+  - LV2: `/usr/lib/lv2`, `~/.lv2`
+- Cache scan output in `~/.config/contrapunk/plugin-scan.json`, keyed by `(format, id, file_path, file_mtime)`.
+- Re-scan on UI request or when paths change. Cache invalidated entries trigger re-scan.
+
+#### MIDI Learn binding
+
+A bound knob targets `(node_id: NodeId, param_id: ParamId)`. Plugin params discovered via the format's params extension at instantiation (`clap_plugin_params` for CLAP, `IEditController` for VST3, AUParameter for AU, LV2 ports). All formats expose the same `ParamStore` interface, so MIDI Learn doesn't care which format the plugin is.
+
+#### Multi-instance
+
+Each `PluginNode` is a separate plugin instance. Two Diva instances = two Nodes with different NodeIds, independent state, independent windows. Rig save captures all instances independently.
+
+#### WASM / browser
+
+Plugins do not run in browsers regardless of format (no Rust-callable host runtime in WebAudio). When a rig containing `plugin.*` type_ids loads in browser context:
+- Loader replaces each `PluginNode` with a `PlaceholderNode` that passes audio through unchanged
+- UI shows a warning per missing plugin
+- Saving the rig in browser preserves the original `plugin.*` type_id (not the placeholder), so re-loading on native restores the real plugin
+
+#### Phase scheduling
+
+| Plugin format | Lands in | Effort |
+|---|---|---|
+| CLAP | Phase G3 (alongside MidiRouter — first format) | 3-4 d |
+| VST3 | Phase G3.1 (after CLAP works) | 4-5 d (more complex API) |
+| AU | Phase G3.2 (macOS-only, after VST3) | 3-4 d |
+| LV2 | Phase G3.3 (after AU) | 2-3 d |
+
+CLAP is first because it's Rust-native (clack / clap-host crates) and least mature ecosystem so it benefits most from contrapunk supporting it. VST3 brings the largest plugin universe. AU is macOS-only but mandatory for macOS jam users with AU-only plugins. LV2 is a courtesy for Linux users.
+
+### Multi-output / channel routing
+
+**V1: single stereo `Output` Node baked in.** AudioGraph supports multiple Output Nodes structurally (DAG with multiple sinks), but the v1 `AudioGraphCommander` restricts to one. UI similarly assumes one device.
+
+V2 (deferred until user demand surfaces):
+
+- `Output` Node parameterized: `Output { device_id: String, channel_count: u8, channel_offset: u8 }`
+- Multiple `Output` Nodes in one AudioGraph (e.g. monitors out 1-2, headphones out 3-4, hardware FX send out 5-6)
+- UI: device picker per Output, route from Buses/Mixers to specific Outputs
+- Per-output sample-rate / buffer-size config
+
+Use cases that motivate v2:
+- "Drums on out 3-4 to my hardware sampler"
+- "Wet/dry split: dry to monitors, wet to FX rack"
+- "Stems out for live multi-track recording"
+
+The v1 architecture explicitly does not preclude v2 — graph + commander + serialization all handle multiple Output Nodes already. The UI is the only thing that limits to one in v1.
+
+### MidiBlockEvent — MPE-capable extension
+
+The current `MidiBlockEvent` enum needs to grow to support MPE / pitch bend / CC / poly-pressure for Elixir + future MPE-aware Lanes:
+
+```rust
+pub enum MidiBlockEvent {
+    NoteOn       { channel: u8, note: u8, velocity: u8 },
+    NoteOff      { channel: u8, note: u8 },
+    AllNotesOff,
+    PitchBend    { channel: u8, value: i16 },                      // -8192..8191 (14-bit signed)
+    PolyPressure { channel: u8, note: u8, value: u8 },             // per-note pressure
+    ChannelPressure { channel: u8, value: u8 },                    // per-channel pressure
+    Cc           { channel: u8, controller: u8, value: u8 },       // any CC, incl. CC74 (MPE Y)
+}
+```
+
+All variants carry `channel` (was missing in NoteOn/NoteOff before — channel matters for MPE per-note routing).
+
+Migration:
+- `src/chain/block.rs` — extend enum
+- `src/synth/voice.rs::Synth::midi_event` — handle new variants (BasicSynth ignores them; ok for now)
+- `src-tauri/src/commands/engine.rs` — MidiRouter dispatches all variants
+- ElixirInstrument / VST3 / AU plugins forward all variants to their plugin's MIDI input
+
+Lands in **Phase G3** (MidiRouter introduction) — natural moment to extend the event surface.
 
 ---
 
@@ -1510,8 +1870,20 @@ Loading a rig with stuck notes from the previous setup is handled by the panic_p
 | (new) | `commands/rig.rs::save_rig`, `load_rig`, `list_rigs`, `delete_rig`, `import_rig`, `export_rig` |
 | `chain.rs::Chain` | `audio/graph.rs::AudioGraph` |
 | `chain.rs::ChainCommander` | `audio/graph.rs::AudioGraphCommander` |
-| `synth/voice.rs::Synth` | `audio/instruments/basic_synth.rs::BasicSynth` |
-| `chain/block.rs::AudioBlock` | `audio/node.rs::Node` (broader trait) |
+| `synth/voice.rs::Synth` | `audio/instruments/basic_synth.rs::BasicSynth` (transitional) |
+| (eventually replaces BasicSynth) | `crates/elixir-engine::Synth` wrapped as `audio/instruments/elixir.rs::ElixirInstrument` |
+| `chain/block.rs::AudioBlock` | `audio/node.rs::Node` (broader trait, with `params()` accessor) |
+| `chain/block.rs::MidiBlockEvent` | extended to MPE-capable: adds `PitchBend`/`PolyPressure`/`ChannelPressure`/`Cc` variants; all carry `channel` |
+| (new) | `audio/params.rs::ParamStore`, `ParamMeta`, `ParamId` |
+| (new) | `audio/plugin/mod.rs::PluginNode` (format-agnostic Node wrapper) |
+| (new) | `audio/plugin/mod.rs::PluginInstance` trait |
+| (new) | `audio/plugin/mod.rs::PluginFormat { Clap, Vst3, Au, Lv2 }` |
+| (new) | `audio/plugin/mod.rs::PluginHost` trait + `PluginDescriptor` |
+| `plugin_host/clap/host.rs` | `audio/plugin/clap/instance.rs::ClapInstance` (impls `PluginInstance`) + `host.rs::ClapHost` (impls `PluginHost`) |
+| (new) | `audio/plugin/vst3/instance.rs::Vst3Instance` + `host.rs::Vst3Host` |
+| (new) | `audio/plugin/au/instance.rs::AuInstance` + `host.rs::AuHost` (macOS only) |
+| (new) | `audio/plugin/lv2/instance.rs::Lv2Instance` + `host.rs::Lv2Host` |
+| (new) | `crates/contrapunk-dsp/` — shared DSP algorithms (Reverb FDN, Delay, Compressor, EQ, etc.) |
 | `pattern_config_tests` | `companion_pattern_tests` ✅ done in 1.2 |
 
 ### TS
@@ -1602,9 +1974,37 @@ Loading a rig with stuck notes from the previous setup is handled by the panic_p
 
 Browser-side companion + audio graph + drum sampler all run in WASM (Rust → WASM compile). Sample bank streamed once on first load; cached via Service Worker.
 
-WebAudio integration: AudioGraph topo-sorts Rust-side, then renders into a `Float32Array` consumed by an AudioWorkletNode. Web MIDI feeds the input pipeline.
+### WebAudio strategy: single AudioWorkletNode hosting the whole Rust graph
 
-CLAP plugins are NOT supported in WASM. The loader detects `clap.*` type_ids in a rig loaded in browser context and replaces with placeholder + warns.
+**Locked: Path α — single `AudioWorkletNode` runs the entire Rust audio graph.** Compile `contrapunk-audio` (the audio graph crate) to WASM. One `AudioWorkletNode` loads the WASM module, calls `AudioGraph::process()` per buffer. WebAudio nodes wrap it for input source + output destination. Web MIDI feeds events through the same MidiRouter SPSC pattern.
+
+```
+   Browser:
+     [Web MIDI input] ─→ JS bridge ─→ MidiRouter SPSC ─→
+                                                          ┌──────────────────────────┐
+                                                          │   AudioWorkletNode        │
+                                                          │   (Rust → WASM)           │
+   [WebAudio AudioContext.destination] ←─────  output ←──│   AudioGraph::process()   │
+                                                          └──────────────────────────┘
+```
+
+Rejected: Path β (map each Rust Node to a WebAudio node like ConvolverNode/DelayNode). Reasons:
+
+- Sound parity: same Rust DSP runs native and browser → same audio
+- Single audio architecture, no platform divergence in Node implementations
+- WebAudio's built-in DSP has different params/quality from ours; using them creates "this reverb sounds different in browser" complaints
+- Path α is simpler to maintain and test
+
+CPU at our load (8 voices + 5 FX nodes + drum sampler) is well within modern browser AudioWorkletNode + WASM capacity.
+
+### Plugins not available in browser
+
+Plugins (CLAP / VST3 / AU / LV2) do not run in WASM regardless of format — no host runtime accessible from WebAudio. Rig loader behavior in browser context:
+
+- Detects `plugin.*` type_ids in the rig
+- Replaces each `PluginNode` with a `PlaceholderNode` (audio passes through unchanged; UI shows a warning per missing plugin)
+- Saving the rig in browser preserves the original `plugin.*` type_id (not the placeholder), so re-loading on native restores the real plugin
+- Native-only features the user might use in a plugin-using rig stay listed in the UI as "available on desktop"
 
 ---
 
@@ -1760,6 +2160,20 @@ Elixir is its own phase track — runs independently of Companion / Audio / Rig 
 26. ✅ Elixir is its own phase track — runs in parallel with Companion phases, not gated on or by jam-pipeline weeks.
 27. ✅ Two-level audio architecture: contrapunk graph (outer) + Elixir's internal voice/mod/FX graph (inner). Outer treats Elixir as one Instrument Node.
 28. ✅ `@elixir/ui` workspace package — Elixir's Svelte components reused by contrapunk UI for any Elixir-controlling panels.
+29. ✅ Three-thread architecture: audio thread (realtime, lock-free) + router thread (companion + WorldState) + main thread (Tauri/UI). Lock contracts enumerated.
+30. ✅ Standardized `Node::params() -> &dyn ParamStore` — every Node exposes parameters through a uniform atomic-backed interface. Per-param 5ms smoothing default, configurable per param.
+31. ✅ HarmonyEngine sits OUTSIDE the audio graph and OUTSIDE the Lane abstraction. Owned by AppState. Read via `WorldState.engine_snapshot`, mutated via `EngineMutation` enum from Mutate-phase Lanes.
+32. ✅ **Multi-format plugin support**: CLAP + VST3 + AU + LV2 — single `PluginNode` Node type wraps `Box<dyn PluginInstance>`. Per-format adapters (`ClapInstance`, `Vst3Instance`, `AuInstance`, `Lv2Instance`).
+33. ✅ Plugins are NOT named after instrument/effect role — `PluginNode` is format-agnostic, `role()` is determined at instantiation by querying the plugin. CLAP can host effects; VST3 can host instruments; the Node wrapper doesn't presume.
+34. ✅ Plugin format scheduling: CLAP first (Phase G3), VST3 next (G3.1), AU (G3.2 macOS-only), LV2 (G3.3).
+35. ✅ Plugin GUI hosting via separate native window per platform (no window-in-window embedding).
+36. ✅ Plugin scan caching: `~/.config/contrapunk/plugin-scan.json`, keyed by `(format, id, file_path, file_mtime)`.
+37. ✅ V1 ships with single stereo Output Node. Multi-output deferred to v0.2; graph foundation already supports it (multi-sink DAG).
+38. ✅ WASM port: single `AudioWorkletNode` hosting whole Rust graph (Path α). Rejected per-Node WebAudio mapping (Path β).
+39. ✅ MidiBlockEvent extended to MPE-capable: `NoteOn`/`NoteOff`/`PitchBend`/`PolyPressure`/`ChannelPressure`/`Cc` all carry `channel`. Extension lands in Phase G3.
+40. ✅ Shared `contrapunk-dsp` crate for FX algorithms — Elixir-internal FxModules and contrapunk-graph Processor Nodes both wrap the same DSP. Single source of truth.
+41. ✅ Elixir license: dual MIT / Apache-2.0 (Rust ecosystem default). Contrapunk should match before any open release.
+42. ✅ Standalone Elixir first per Elixir DESIGN.md. Re-evaluation gate after E5-E7. BasicSynth carries contrapunk's tonal load until E11.
 
 ---
 
@@ -1776,11 +2190,12 @@ Elixir is its own phase track — runs independently of Companion / Audio / Rig 
 9. **Rig auto-save**: opt-in setting (recommend off), opt-out (recommend on), or always-on?
 10. **Rig sharing**: should rigs be shareable URLs (`app.contrapunk.com/?rig=base64...`) for the jam? Future feature; not v1.
 11. **Plugin scan caching**: rigs reference CLAP plugins by id. If user moves plugins after saving a rig, fallback handling? Recommend: warn-and-continue with placeholder Node.
-12. **Live-edit gain ramping**: V1 brief mute is acceptable, V2 5ms ramps deferred. Move V2 forward if user does live rig editing during performance? Pick when first user-tested.
-13. **FX DSP code sharing between Elixir-internal and contrapunk-graph**: Reverb/Delay overlap. Extract to a shared `contrapunk-dsp` crate consumed by both, OR keep separate impls (Elixir's quality bar may diverge)?
-14. **Elixir license**: MIT vs Apache-2.0 vs dual MIT/Apache. Decide before first push of `crates/elixir-engine`.
-15. **Standalone Elixir vs contrapunk-first**: Elixir DESIGN.md commits to standalone-first. Worth re-confirming once Companion + Audio + Rig foundations are in place — does standalone shell still earn its keep, or fold into contrapunk earlier?
-16. **MidiBlockEvent extension for MPE**: Elixir wants pitch_bend/poly_pressure/cc through. Extend `MidiBlockEvent` enum (small refactor) when bridging.
+12. **Plugin scan strategy on first launch**: scan blocking with progress UI, or scan on-demand when user opens plugin browser? Recommend on-demand to keep startup fast; scan once user enters the plugin picker.
+13. **Sample rate change handling**: cpal occasionally renegotiates SR. Currently `set_sample_rate` ripples through every Node. With multi-output support (v0.2), per-Output SRs would be needed. For v1, single SR throughout the graph; document the assumption.
+14. **Plugin sandboxing**: a buggy CLAP/VST3 plugin can crash the audio thread (and the whole app). Run plugins in a separate process? Defer — adds complexity. v1 accepts plugin-induced crash risk; user gets full restart.
+15. **Buffer size + latency knob**: contrapunk currently uses cpal's default. Expose buffer size in Settings UI for users on slower machines (256/512/1024). Defer; recordable as v0.2.
+
+(Resolved questions 16+ moved to "Decisions locked" — see #29-#42.)
 
 ---
 
@@ -1802,9 +2217,13 @@ Elixir is its own phase track — runs independently of Companion / Audio / Rig 
 
 8. **Elixir Phase E12+ (plugin shells: CLAP/VST3/AU)** — out of scope. Will need a dedicated design pass on webview-in-plugin tradeoffs (latency, resize, hi-DPI, multi-instance state) vs falling back to vizia native UI for plugin shells. Tracked separately in Elixir DESIGN.md.
 
-9. **DSP code reuse between Elixir-internal FX and contrapunk-graph FX** — Reverb/Delay overlap. Possible extract to a shared `contrapunk-dsp` crate. Open question (#13). Decide when Elixir Phase E6 lands or when contrapunk's FX nodes start diverging meaningfully.
+9. **Multi-output / multi-device audio routing** — graph supports multiple Output Nodes structurally; v1 commander + UI restrict to single stereo Output. v0.2 promotes this when user demand surfaces (drum-stems-out, FX-send-out, multichannel hardware). No rewrite needed — UI work + commander relaxation.
 
-10. **Standalone Elixir vs early contrapunk integration** — Elixir DESIGN.md commits to standalone-first (Phase E1) with contrapunk integration at E11. Worth re-evaluating after Companion + Audio + Rig land; might fold integration earlier if the standalone shell isn't earning its keep.
+10. **Plugin sandboxing** — a buggy plugin can crash the audio thread (and the whole app). Out-of-process plugin hosting (à la Bitwig) is significant work. v1 accepts this risk; user gets full restart on plugin crash. Revisit if plugin instability becomes a recurring user complaint.
+
+11. **Per-output sample-rate handling** — when multi-output lands, different devices may have different SRs. Currently single-SR pipeline. v0.2 needs SR conversion at the graph boundary or per-Output SR contexts.
+
+12. **Buffer size + latency control** — Tauri Settings UI to override cpal's default buffer size (256/512/1024). Useful for users on slower machines. Defer to v0.2 polish.
 
 ---
 
@@ -1828,6 +2247,16 @@ Elixir is its own phase track — runs independently of Companion / Audio / Rig 
 - [ ] Validation rejects cycles, port mismatches, output-as-source
 - [ ] At least one sidechain template (kick→bass duck) ships as a default rig action
 - [ ] Sidechain input ports work end-to-end on Compressor
+- [ ] Three-thread architecture validated: audio thread takes no Mutexes during process; router thread holds Mutexes only briefly
+- [ ] Every Node exposes parameters via `Node::params() -> &dyn ParamStore`; UI param changes go through this single surface
+- [ ] HarmonyEngine accessible only via `WorldState.engine_snapshot` (Lanes) or `EngineMutation` enum (Mutate Lanes); no direct mutation paths leak
+- [ ] **Plugin support**: CLAP works (load + play + save state); VST3 works; AU works on macOS; LV2 works on Linux
+- [ ] Plugin scan caches to `~/.config/contrapunk/plugin-scan.json`; re-scan on demand
+- [ ] Plugin GUI opens in separate native window per format (no window-in-window embedding)
+- [ ] Plugins missing on rig load surface a placeholder + warning; rig stays loadable
+- [ ] **`contrapunk-dsp` crate exists**; both Elixir-internal FX and contrapunk-graph FX consume the same Reverb/Delay impl
+- [ ] **MidiBlockEvent extended** with PitchBend/PolyPressure/ChannelPressure/Cc; channel field on all variants
+- [ ] **WASM port works**: single AudioWorkletNode hosts the Rust audio graph; companion + audio + rig save/load all functional
 - [ ] **Save / Load rigs from native filesystem**
 - [ ] **Save / Load rigs from browser IndexedDB**
 - [ ] **Import / Export rigs as JSON files** (cross-platform)
