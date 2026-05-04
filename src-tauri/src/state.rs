@@ -22,8 +22,6 @@ use contrapunk::transport::Transport;
 /// itself accepts any voice_count up to this value.
 pub const MAX_VOICES: usize = 8;
 
-use crate::companion::pattern::CompanionPattern;
-
 /// Per-voice output destination. Each engine-emitted voice (by index
 /// 0..voice_count-1) can be routed independently.
 ///
@@ -40,32 +38,6 @@ pub enum VoiceOutputTarget {
     MidiPort { port: usize },
     /// Skip both synth and external MIDI. Voice is silent.
     Off,
-}
-
-/// One harmony voice currently sounding, with the routing target it
-/// was attacked through.
-///
-/// Tracked alongside `harmony_notes` (a flat HashSet of MIDI numbers
-/// used for UI display + chord detection) so the beat-pattern can
-/// dispatch NoteOn/NoteOff per-voice without re-running the harmony
-/// engine. The captured `target` reflects the routing as of attack
-/// time — later changes to `voice_outputs` apply to subsequent
-/// attacks but do not retroactively reroute already-sounding voices.
-///
-/// `channel` mirrors the MIDI channel of the original input event
-/// (0-15). Pattern-driven NoteOn/NoteOff dispatch on this channel so
-/// MPE / multi-channel routing setups don't see all pattern traffic
-/// land on channel 0.
-///
-/// `velocity` mirrors the input event's velocity (1-127). Pattern-
-/// driven attacks reuse this so a soft input doesn't get reattacked
-/// at full volume on every cell tick.
-#[derive(Clone, Copy, Debug)]
-pub struct HeldVoice {
-    pub note: u8,
-    pub target: VoiceOutputTarget,
-    pub channel: u8,
-    pub velocity: u8,
 }
 
 /// Application state managed by Tauri.
@@ -169,17 +141,6 @@ pub struct AppState {
     /// nowhere. Default all `Synth` so users get audio out of the box
     /// without configuring a MIDI port first.
     pub voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
-
-    /// Master enable for the beat-aligned pattern feature. When false
-    /// (default), the pattern panel + cells are inert and harmony
-    /// dispatch follows today's real-time path. Toggled via
-    /// `set_pattern_enabled`.
-    pub pattern_enabled: Arc<AtomicBool>,
-
-    /// Beat-aligned chord trigger pattern config. Pushed by the frontend
-    /// `pattern` store via `set_pattern_config` whenever the user edits.
-    /// Read by the router thread per loop iteration.
-    pub pattern_config: Arc<Mutex<CompanionPattern>>,
 }
 
 impl Default for AppState {
@@ -213,8 +174,6 @@ impl Default for AppState {
             delay_params: Arc::new(DelayParams::default()),
             chain_commander: Mutex::new(None),
             voice_outputs: Arc::new(Mutex::new(vec![VoiceOutputTarget::default(); MAX_VOICES])),
-            pattern_enabled: Arc::new(AtomicBool::new(false)),
-            pattern_config: Arc::new(Mutex::new(CompanionPattern::default())),
         }
     }
 }

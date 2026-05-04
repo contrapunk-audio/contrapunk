@@ -5,7 +5,6 @@
 	import MidiDevices from '$lib/components/MidiDevices.svelte';
 	import GuitarInputPanel from '$lib/components/GuitarInputPanel.svelte';
 	import PerformanceView from '$lib/components/PerformanceView.svelte';
-	import PatternPanel from '$lib/components/PatternPanel.svelte';
 	// PresetManager temporarily unmounted (backend + component file
 	// kept). Tracked in contrapunk#65 — will return with a redesigned UX.
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
@@ -18,7 +17,6 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
-	import { pattern } from '$lib/stores/pattern.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
 
@@ -45,7 +43,6 @@
 				ui.restoreAppearance();
 				ui.restorePanels();
 				ui.restoreViewMode();
-				pattern.restore();
 				await adapter.init();
 				await engine.syncFromBackend();
 				await engine.restoreSettings();
@@ -196,12 +193,6 @@
 				</div>
 			{/if}
 
-			{#if ui.panels.pattern}
-				<div class="pattern-strip">
-					<PatternPanel />
-				</div>
-			{/if}
-
 			{#if ui.panels.history || ui.panels.fretboard || ui.panels.piano}
 				<div class="piano-area">
 					{#if ui.panels.history}<HistoryStrip />{/if}
@@ -295,14 +286,6 @@
 		border-top: 1px solid var(--color-border);
 		background: rgba(15, 14, 26, 0.88);
 		padding: 4px 8px;
-	}
-
-	/* Pattern programmer strip — sits below ActiveNotes, full-width.
-	   Toggleable via the StatusBar Pattern pip; off by default. */
-	.pattern-strip {
-		border-top: 1px solid var(--color-border);
-		background: rgba(15, 14, 26, 0.88);
-		padding: 6px 8px;
 	}
 
 	.column {

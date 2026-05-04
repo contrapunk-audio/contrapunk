@@ -13,7 +13,6 @@ use contrapunk::harmony::{
     VoiceLeadingStyle,
 };
 
-use crate::companion::pattern::{CompanionInputMode, CompanionPattern};
 use crate::state::AppState;
 
 /// Raise the router-thread panic flag so stuck notes from the previous
@@ -237,50 +236,6 @@ pub fn set_octave_intensity(amount: f32, state: State<AppState>) -> Result<(), S
 }
 
 /// Master enable for the beat-aligned chord-trigger pattern. When false,
-/// router uses today's real-time harmony dispatch.
-///
-/// Note: this command does NOT touch the transport. The pattern is
-/// BPM-driven, so without a running transport `total_beats()` is frozen
-/// and cell indices never advance; callers (today: `PatternPanel`'s
-/// `onMount`) are responsible for starting the transport themselves
-/// before enabling. Keeping the transport policy in the UI prevents a
-/// Tauri setter from silently mutating an unrelated subsystem.
-#[tauri::command]
-pub fn set_pattern_enabled(enabled: bool, state: State<AppState>) -> Result<(), String> {
-    state
-        .pattern_enabled
-        .store(enabled, std::sync::atomic::Ordering::SeqCst);
-    Ok(())
-}
-
-/// Push the full pattern config from the frontend store. Replaces the
-/// backend's `CompanionPattern` atomically.
-#[tauri::command]
-pub fn set_pattern_config(
-    cells: Vec<bool>,
-    subdivision: u8,
-    length: u8,
-    beats_per_bar: u8,
-    input_mode: String,
-    state: State<AppState>,
-) -> Result<(), String> {
-    let mode = match input_mode.as_str() {
-        "live" => CompanionInputMode::Live,
-        "quantized" => CompanionInputMode::Quantized,
-        "gated" => CompanionInputMode::Gated,
-        other => return Err(format!("Unknown input mode: {}", other)),
-    };
-    let mut cfg = state.pattern_config.lock().map_err(|e| e.to_string())?;
-    *cfg = CompanionPattern {
-        cells,
-        subdivision,
-        length,
-        beats_per_bar,
-        input_mode: mode,
-    };
-    Ok(())
-}
-
 /// Set global detune in cents. The router thread reads this atomically each
 /// frame and sends MIDI pitch bend to all output ports when the value changes.
 #[tauri::command]

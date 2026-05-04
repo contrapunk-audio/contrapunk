@@ -1,0 +1,408 @@
+<!doctype html><html><head><meta charset="utf-8"><title>font-pixel audit</title>
+<style>
+body { font-family: system-ui, sans-serif; background: #15141e; color: #eee; margin: 0; padding: 16px 24px; }
+h1 { margin: 0 0 12px; font-size: 20px; }
+h2 { margin: 24px 0 8px; font-size: 14px; font-family: 'JetBrains Mono', monospace; color: #ffaa33; letter-spacing: 1px; }
+.summary { background: #1a1928; border: 1px solid #2a2935; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; }
+.summary .chip { display: inline-block; padding: 2px 8px; margin-right: 6px; border-radius: 2px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; margin-bottom: 16px; background: #1a1928; border: 1px solid #2a2935; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2935; vertical-align: top; }
+th { background: #21202e; color: #aaa; font-weight: 600; }
+td.line { font-family: 'JetBrains Mono', monospace; color: #888; width: 48px; text-align: right; }
+td.snippet { font-family: 'JetBrains Mono', monospace; color: #ddd; white-space: pre-wrap; word-break: break-word; }
+td.target { width: 110px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+td.reason { width: 40%; color: #bbb; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 2px; color: #15141e; font-weight: 600; }
+</style></head><body>
+<h1>font-pixel migration audit — Issue #51</h1>
+<div class='summary'>
+Total occurrences: <b>250</b> across <b>33</b> files. 
+<span class='chip' style='background:#3399ff;color:#15141e'>--font-ui: 183</span>
+<span class='chip' style='background:#00ccaa;color:#15141e'>--font-code: 65</span>
+<span class='chip' style='background:#888888;color:#15141e'>--font-body: 0</span>
+<span class='chip' style='background:#ff3388;color:#15141e'>--font-display: 0</span>
+<span class='chip' style='background:#ffaa33;color:#15141e'>--ambiguous: 2</span>
+</div>
+<h2>ui/src/lib/components/ActiveNotes.svelte <span style='color:#888;font-weight:400'>(9)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>25</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Notes&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header - UI chrome</td></tr>
+<tr><td class='line'>29</td><td class='snippet'>&lt;div class="chord-name font-pixel"&gt;{engine.chordName}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Chord name readout (e.g. Cmaj7) - technical</td></tr>
+<tr><td class='line'>34</td><td class='snippet'>&lt;div class="borrowed-from font-pixel"&gt;from {engine.lastBorrowedFrom}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Borrowed-chord readout (mode/chord name technical)</td></tr>
+<tr><td class='line'>39</td><td class='snippet'>&lt;span class="section-label font-pixel"&gt;INPUT&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Section label (UI caps chrome)</td></tr>
+<tr><td class='line'>41</td><td class='snippet'>&lt;span class="note-list input-notes font-pixel"&gt;{inputNames.join(…)}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Comma-separated list of MIDI note names (C4, D5…)</td></tr>
+<tr><td class='line'>45</td><td class='snippet'>&lt;span class="note-none font-pixel"&gt;(none)&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Placeholder stands in for the note-list - same visual slot</td></tr>
+<tr><td class='line'>51</td><td class='snippet'>&lt;span class="section-label font-pixel"&gt;HARMONY&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Section label</td></tr>
+<tr><td class='line'>53</td><td class='snippet'>&lt;span class="note-list harmony-notes font-pixel"&gt;{harmonyNames.join(…)}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Harmony note-names list</td></tr>
+<tr><td class='line'>57</td><td class='snippet'>&lt;span class="note-none font-pixel"&gt;(none)&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Placeholder for harmony list</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/ChainPanel.svelte <span style='color:#888;font-weight:400'>(25)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>28</td><td class='snippet'>&lt;div class="chain-header font-pixel"&gt;Audio chain&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Panel header</td></tr>
+<tr><td class='line'>29</td><td class='snippet'>&lt;button class="pixel-btn font-pixel add-plugin-btn" …&gt;+ Plugin&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Add-plugin button</td></tr>
+<tr><td class='line'>36</td><td class='snippet'>&lt;div class="flow-node source font-pixel"&gt;&lt;Harmony/MIDI&gt;&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Signal-flow node label (Harmony/MIDI) - UI chrome</td></tr>
+<tr><td class='line'>41</td><td class='snippet'>&lt;div class="flow-arrow font-pixel"&gt;━━▶&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Flow arrow glyph - decorative chrome</td></tr>
+<tr><td class='line'>43</td><td class='snippet'>&lt;div class="flow-node synth-node font-pixel"&gt;&lt;Synth/8-voice&gt;&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Signal-flow node label</td></tr>
+<tr><td class='line'>48</td><td class='snippet'>&lt;div class="flow-node delay-node font-pixel" …&gt;&lt;Delay/on|bypass&gt;&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Signal-flow node label</td></tr>
+<tr><td class='line'>53</td><td class='snippet'>&lt;div class="flow-node reverb-node font-pixel" …&gt;&lt;Reverb/on|bypass&gt;&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Signal-flow node label</td></tr>
+<tr><td class='line'>59</td><td class='snippet'>&lt;div class="flow-node plugin-node font-pixel" title={b.typeId}&gt;&lt;name/CLAP&gt;&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Signal-flow plugin node - UI chrome (name is short label, not a data readout)</td></tr>
+<tr><td class='line'>65</td><td class='snippet'>&lt;div class="flow-arrow font-pixel"&gt;━━▶&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Flow arrow glyph</td></tr>
+<tr><td class='line'>66</td><td class='snippet'>&lt;div class="flow-node sink font-pixel"&gt;&lt;Output/Speakers&gt;&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Signal-flow sink node</td></tr>
+<tr><td class='line'>75</td><td class='snippet'>&lt;span class="rack-title font-pixel"&gt;Synth&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Rack title - panel chrome</td></tr>
+<tr><td class='line'>77</td><td class='snippet'>&lt;button class="pixel-btn power-btn font-pixel" class:active={synth.enabled} …&gt;{ON|OFF}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Power toggle button</td></tr>
+<tr><td class='line'>89</td><td class='snippet'>&lt;div class="section-label font-pixel"&gt;Osc&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Rack-section label</td></tr>
+<tr><td class='line'>101</td><td class='snippet'>&lt;div class="section-label font-pixel"&gt;Filter&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Rack-section label</td></tr>
+<tr><td class='line'>132</td><td class='snippet'>&lt;div class="section-label font-pixel"&gt;Env&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Rack-section label</td></tr>
+<tr><td class='line'>194</td><td class='snippet'>&lt;div class="section-label font-pixel"&gt;Amp&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Rack-section label</td></tr>
+<tr><td class='line'>212</td><td class='snippet'>&lt;div class="rack-footer font-pixel"&gt;Drag knobs ↕ • Shift = fine • Double-click = reset&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Rack hint/chrome caption</td></tr>
+<tr><td class='line'>222</td><td class='snippet'>&lt;span class="rack-title delay-title font-pixel"&gt;Delay&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Rack title</td></tr>
+<tr><td class='line'>224</td><td class='snippet'>&lt;button class="pixel-btn power-btn font-pixel" …&gt;{ON|OFF}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Power toggle button</td></tr>
+<tr><td class='line'>276</td><td class='snippet'>&lt;span class="rack-title reverb-title font-pixel"&gt;Reverb&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Rack title</td></tr>
+<tr><td class='line'>278</td><td class='snippet'>&lt;button class="pixel-btn power-btn font-pixel" …&gt;{ON|OFF}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Power toggle button</td></tr>
+<tr><td class='line'>333</td><td class='snippet'>&lt;span class="rack-title plugin-title font-pixel"&gt;{b.name}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Plugin rack title</td></tr>
+<tr><td class='line'>336</td><td class='snippet'>&lt;button class="pixel-btn font-pixel plugin-open-btn" …&gt;Open UI&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Open UI button</td></tr>
+<tr><td class='line'>344</td><td class='snippet'>&lt;button class="pixel-btn font-pixel plugin-remove-btn" …&gt;Remove&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Remove button</td></tr>
+<tr><td class='line'>352</td><td class='snippet'>&lt;div class="plugin-body font-pixel"&gt;&lt;Type:CLAP / Plugin ID: b.typeId&gt;&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#ffaa33'>ambiguous</span></td><td class='reason'>Parent wraps a Type:CLAP label (UI) + plugin-id value (code). Split: labels -&gt; font-ui, .plugin-value.plugin-id -&gt; font-code</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/ClapPluginPicker.svelte <span style='color:#888;font-weight:400'>(8)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>46</td><td class='snippet'>&lt;div class="modal-header font-pixel"&gt;…Add CLAP plugin…&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Modal header - UI chrome</td></tr>
+<tr><td class='line'>48</td><td class='snippet'>&lt;button class="pixel-btn font-pixel" onclick={() =&gt; (open = false)}&gt;X&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Modal close button</td></tr>
+<tr><td class='line'>52</td><td class='snippet'>&lt;input class="search font-pixel" type="text" placeholder="Search…" … /&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Search input field</td></tr>
+<tr><td class='line'>59</td><td class='snippet'>&lt;div class="status font-pixel"&gt;Scanning…&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Status chrome label</td></tr>
+<tr><td class='line'>61</td><td class='snippet'>&lt;div class="status font-pixel"&gt;No .clap plugins found…&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Status chrome label</td></tr>
+<tr><td class='line'>68</td><td class='snippet'>&lt;button class="plugin-row font-pixel" …&gt;name/vendor/path&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#ffaa33'>ambiguous</span></td><td class='reason'>Row contains plugin-name (UI) + path (code). Needs splitting — child spans should get font-ui / font-code per role</td></tr>
+<tr><td class='line'>82</td><td class='snippet'>&lt;div class="error font-pixel"&gt;{error}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Error chrome label</td></tr>
+<tr><td class='line'>85</td><td class='snippet'>&lt;div class="modal-footer font-pixel"&gt;…Rescan…&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Modal footer - UI chrome</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/ControlPanel.svelte <span style='color:#888;font-weight:400'>(16)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>114</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;…Key…&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>131</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Mode&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>140</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Octave&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>154</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Species&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>163</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Strictness&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>177</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Family&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>186</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Scale&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>199</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Voices&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>208</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;You play&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>217</td><td class='snippet'>&lt;span class="inline-note font-pixel"&gt;Solo melody&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Inline note/label in card, UI chrome</td></tr>
+<tr><td class='line'>225</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;…Voice Leading…&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>245</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;…Interchange…&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>257</td><td class='snippet'>&lt;span class="range-label font-pixel"&gt;Rng&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Range control label ('Rng') - UI chrome</td></tr>
+<tr><td class='line'>267</td><td class='snippet'>&lt;span class="range-label font-pixel"&gt;{engine.interchangeRange}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Numeric range value readout (1..5)</td></tr>
+<tr><td class='line'>275</td><td class='snippet'>&lt;div class="card-header font-pixel"&gt;Detune&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Card header label (UI chrome)</td></tr>
+<tr><td class='line'>277</td><td class='snippet'>&lt;span class="range-label font-pixel"&gt;{engine.detuneCents &gt; 0 ? '+' : ''}{engine.detuneCents}¢&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Numeric cents readout (technical value)</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/GuitarInputPanel.svelte <span style='color:#888;font-weight:400'>(36)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>99</td><td class='snippet'>&lt;div class="panel-header font-pixel"&gt;GUITAR INPUT&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Panel header (caps chrome label)</td></tr>
+<tr><td class='line'>103</td><td class='snippet'>&lt;div class="tuner-title font-pixel"&gt;CALIBRATING&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner status title</td></tr>
+<tr><td class='line'>105</td><td class='snippet'>&lt;div class="tuner-instruction font-pixel"&gt;Measuring noise floor...&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner instruction - UI caption</td></tr>
+<tr><td class='line'>106</td><td class='snippet'>&lt;div class="tuner-instruction font-pixel"&gt;Keep quiet for 3 seconds&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner instruction - UI caption</td></tr>
+<tr><td class='line'>117</td><td class='snippet'>&lt;div class="tuner-title font-pixel"&gt;TUNING -- String {n} of 6&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner status title</td></tr>
+<tr><td class='line'>120</td><td class='snippet'>&lt;div class="tuner-target font-pixel"&gt;Pluck {tunerTarget.name} ({tunerTarget.note})&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Displays target note name + pitch - technical readout</td></tr>
+<tr><td class='line'>125</td><td class='snippet'>&lt;div class="tuner-detected font-pixel tuner-dim"&gt;Waiting for signal...&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Placeholder/status caption</td></tr>
+<tr><td class='line'>126</td><td class='snippet'>&lt;div class="tuner-meter font-pixel tuner-dim"&gt;{buildMeter(0)}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>ASCII meter bar - fixed-width technical visualization</td></tr>
+<tr><td class='line'>128</td><td class='snippet'>&lt;div class="tuner-detected font-pixel"&gt;&lt;note/cents&gt;&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Detected note + cents readout - technical</td></tr>
+<tr><td class='line'>134</td><td class='snippet'>&lt;div class="tuner-meter font-pixel" …&gt;{buildMeter(…)}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>ASCII meter bar</td></tr>
+<tr><td class='line'>139</td><td class='snippet'>&lt;div class="tuner-advice font-pixel tuner-amber"&gt;SHARP -- tune down&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner advice label</td></tr>
+<tr><td class='line'>141</td><td class='snippet'>&lt;div class="tuner-advice font-pixel tuner-amber"&gt;FLAT -- tune up&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner advice label</td></tr>
+<tr><td class='line'>143</td><td class='snippet'>&lt;div class="tuner-advice font-pixel tuner-cyan"&gt;IN TUNE&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner advice label</td></tr>
+<tr><td class='line'>144</td><td class='snippet'>&lt;div class="tuner-hold font-pixel tuner-cyan"&gt;{buildHoldBar(…)} holding...&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>ASCII progress bar - fixed-width technical</td></tr>
+<tr><td class='line'>158</td><td class='snippet'>&lt;div class="tuner-title font-pixel tuner-cyan"&gt;TUNING COMPLETE&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner status title</td></tr>
+<tr><td class='line'>160</td><td class='snippet'>&lt;div class="tuner-instruction font-pixel tuner-cyan"&gt;All 6 strings tuned!&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tuner instruction</td></tr>
+<tr><td class='line'>171</td><td class='snippet'>&lt;div class="panel-header font-pixel"&gt;GUITAR INPUT&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Panel header</td></tr>
+<tr><td class='line'>175</td><td class='snippet'>&lt;span class="device-label font-pixel"&gt;DEVICE&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Field label (caps chrome)</td></tr>
+<tr><td class='line'>177</td><td class='snippet'>&lt;div class="device-error font-pixel"&gt;{guitar.audioDeviceError}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Error status caption</td></tr>
+<tr><td class='line'>189</td><td class='snippet'>&lt;span class="device-label font-pixel channel-label"&gt;CHANNEL&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Field label (caps chrome)</td></tr>
+<tr><td class='line'>190</td><td class='snippet'>&lt;label class="channel-override font-pixel"&gt;CH# &lt;input …/&gt;&lt;/label&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Form label wrapping number input</td></tr>
+<tr><td class='line'>194</td><td class='snippet'>&lt;input type="number" class="channel-count-input font-pixel" … /&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Numeric channel-count input field - technical value</td></tr>
+<tr><td class='line'>209</td><td class='snippet'>&lt;button class="channel-btn font-pixel" …&gt;{ch}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Channel-number button (integer readout)</td></tr>
+<tr><td class='line'>224</td><td class='snippet'>&lt;button class="dial-arrow dial-up font-pixel" …&gt;+&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial increment button glyph</td></tr>
+<tr><td class='line'>226</td><td class='snippet'>&lt;button class="dial-arrow dial-down font-pixel" …&gt;-&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial decrement button glyph</td></tr>
+<tr><td class='line'>228</td><td class='snippet'>&lt;span class="dial-label font-pixel"&gt;LATENCY&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial label</td></tr>
+<tr><td class='line'>233</td><td class='snippet'>&lt;button class="dial-arrow dial-up font-pixel" …&gt;+&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial increment button glyph</td></tr>
+<tr><td class='line'>235</td><td class='snippet'>&lt;button class="dial-arrow dial-down font-pixel" …&gt;-&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial decrement button glyph</td></tr>
+<tr><td class='line'>237</td><td class='snippet'>&lt;span class="dial-label font-pixel"&gt;GAIN&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial label</td></tr>
+<tr><td class='line'>242</td><td class='snippet'>&lt;button class="dial-arrow dial-up font-pixel" …&gt;+&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial increment button glyph</td></tr>
+<tr><td class='line'>244</td><td class='snippet'>&lt;button class="dial-arrow dial-down font-pixel" …&gt;-&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial decrement button glyph</td></tr>
+<tr><td class='line'>246</td><td class='snippet'>&lt;span class="dial-label font-pixel"&gt;CONFIDENCE&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dial label</td></tr>
+<tr><td class='line'>273</td><td class='snippet'>&lt;div class="calibration-status font-pixel" class:calibrated={…}&gt;{status}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Status caption</td></tr>
+<tr><td class='line'>279</td><td class='snippet'>&lt;div class="detection-status font-pixel" class:detecting={…}&gt;{detectionLine}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Status caption (could be borderline code; detectionLine is human-readable status string)</td></tr>
+<tr><td class='line'>283</td><td class='snippet'>&lt;div class="channel-warning font-pixel"&gt;Using ch{n} (wanted ch{n} — restart to change)&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Warning caption</td></tr>
+<tr><td class='line'>385</td><td class='snippet'>font-family: var(--font-pixel);  /* .channel-max-input */</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>CSS: numeric channel-count input field</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/Knob.svelte <span style='color:#888;font-weight:400'>(2)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>167</td><td class='snippet'>&lt;div class="knob-value font-pixel" class:dragging&gt;{displayValue(value)}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Knob numeric value readout (e.g. '120ms', '75%')</td></tr>
+<tr><td class='line'>171</td><td class='snippet'>&lt;div class="knob-label font-pixel"&gt;{label}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Knob label under the dial (e.g. 'Cutoff')</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/MidiDevices.svelte <span style='color:#888;font-weight:400'>(5)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>82</td><td class='snippet'>&lt;div class="section-header font-pixel"&gt;INPUT&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Panel section header / chrome label</td></tr>
+<tr><td class='line'>103</td><td class='snippet'>&lt;div class="keyboard-hint font-pixel"&gt;Z-M: C3-B3, Q-U: C4-C5&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Keyboard-shortcut readout (maps keys to MIDI notes) - technical/monospace</td></tr>
+<tr><td class='line'>107</td><td class='snippet'>&lt;div class="error-text font-pixel"&gt;{midi.error}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Short status/error chrome label, not a paragraph</td></tr>
+<tr><td class='line'>116</td><td class='snippet'>&lt;div class="section-header font-pixel"&gt;OUTPUTS&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Panel section header / chrome label</td></tr>
+<tr><td class='line'>121</td><td class='snippet'>&lt;span class="slot-label font-pixel"&gt;{slotLabel(slotIdx)}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Output slot label (e.g. 'Voice 1 (melody)') - UI chrome</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/Piano.svelte <span style='color:#888;font-weight:400'>(3)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>175</td><td class='snippet'>&lt;div class="chord-display font-pixel"&gt;{engine.chordName}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Chord name readout (e.g. Cmaj7) - technical/pitch readout</td></tr>
+<tr><td class='line'>206</td><td class='snippet'>&lt;span class="key-label font-pixel" style:color={labelColorFor(midi, isBlackKey(midi))}&gt;{midiToName(midi)}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>MIDI note name on white key label (e.g. C4)</td></tr>
+<tr><td class='line'>240</td><td class='snippet'>&lt;span class="key-label font-pixel" style:color={labelColorFor(midi, isBlackKey(midi))}&gt;{midiToName(midi)}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>MIDI note name on black key label (e.g. C#4)</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/PixelSelect.svelte <span style='color:#888;font-weight:400'>(3)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>56</td><td class='snippet'>&lt;button class="pixel-select-trigger font-pixel" …&gt;{selectedLabel}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dropdown trigger (select element)</td></tr>
+<tr><td class='line'>69</td><td class='snippet'>&lt;button class="pixel-select-option font-pixel" …&gt;{placeholder}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dropdown placeholder option</td></tr>
+<tr><td class='line'>78</td><td class='snippet'>&lt;button class="pixel-select-option font-pixel" …&gt;{opt.label}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Dropdown option item</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/PresetManager.svelte <span style='color:#888;font-weight:400'>(6)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>104</td><td class='snippet'>&lt;div class="section-header font-pixel"&gt;PRESETS&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Panel section header</td></tr>
+<tr><td class='line'>107</td><td class='snippet'>&lt;div class="loading-text font-pixel"&gt;Loading...&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Loading chrome label</td></tr>
+<tr><td class='line'>109</td><td class='snippet'>&lt;div class="error-text font-pixel"&gt;{error}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Error chrome label</td></tr>
+<tr><td class='line'>116</td><td class='snippet'>&lt;div class="preset-item font-pixel" …&gt;…preset name…&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>List-item with preset name + meta - chrome row</td></tr>
+<tr><td class='line'>130</td><td class='snippet'>&lt;button class="delete-btn font-pixel" …&gt;{X|?}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Delete button glyph - chrome</td></tr>
+<tr><td class='line'>155</td><td class='snippet'>&lt;input type="text" class="save-input font-pixel" bind:value={saveName} … /&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Text input (form field)</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/SettingsModal.svelte <span style='color:#888;font-weight:400'>(14)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>82</td><td class='snippet'>&lt;span class="title font-pixel"&gt;Settings&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Modal title - UI chrome</td></tr>
+<tr><td class='line'>83</td><td class='snippet'>&lt;button class="close-btn pixel-btn font-pixel" …&gt;×&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Close button</td></tr>
+<tr><td class='line'>91</td><td class='snippet'>&lt;h3 class="section-title font-pixel"&gt;Appearance&lt;/h3&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Settings section title (small caps panel header, not page H1)</td></tr>
+<tr><td class='line'>94</td><td class='snippet'>&lt;label class="row-label font-pixel" for="settings-ui-scale"&gt;UI scale&lt;/label&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Form label</td></tr>
+<tr><td class='line'>107</td><td class='snippet'>&lt;span class="value font-pixel"&gt;{previewPercent}%…&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Numeric percentage readout</td></tr>
+<tr><td class='line'>116</td><td class='snippet'>&lt;label class="row-label font-pixel" for="settings-font-scale"&gt;Font size&lt;/label&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Form label</td></tr>
+<tr><td class='line'>129</td><td class='snippet'>&lt;span class="value font-pixel"&gt;{previewFontPercent}%…&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Numeric percentage readout</td></tr>
+<tr><td class='line'>138</td><td class='snippet'>&lt;span class="row-label font-pixel"&gt;Note labels&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Form label</td></tr>
+<tr><td class='line'>141</td><td class='snippet'>&lt;button class="pixel-btn font-pixel" class:active={ui.showNoteLabels} …&gt;{On|Off}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Toggle button</td></tr>
+<tr><td class='line'>148</td><td class='snippet'>&lt;span class="hint font-pixel"&gt;{C4, D#5 on active keys|Keys + frets only}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hint/help text adjacent to toggle - UI caption (short)</td></tr>
+<tr><td class='line'>157</td><td class='snippet'>&lt;h3 class="section-title font-pixel"&gt;Effects&lt;/h3&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Settings section title</td></tr>
+<tr><td class='line'>160</td><td class='snippet'>&lt;span class="row-label font-pixel"&gt;Visual FX&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Form label</td></tr>
+<tr><td class='line'>163</td><td class='snippet'>&lt;button class="pixel-btn font-pixel" class:active={ui.animationsEnabled} …&gt;{On|Off}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Toggle button</td></tr>
+<tr><td class='line'>169</td><td class='snippet'>&lt;span class="hint font-pixel"&gt;{Glows + particles|Reduced motion}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hint/help caption - UI</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/SignalGraphs.svelte <span style='color:#888;font-weight:400'>(2)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>88</td><td class='snippet'>&lt;span class="graph-label font-pixel"&gt;AMP&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Graph axis/chrome label</td></tr>
+<tr><td class='line'>92</td><td class='snippet'>&lt;button class="gate-btn font-pixel" class:gate-on={guitar.noiseGateEnabled} …&gt;NG&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Noise-gate toggle button label</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/StatusBar.svelte <span style='color:#888;font-weight:400'>(7)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>41</td><td class='snippet'>&lt;button class="transport-btn font-pixel" …&gt;{Start|Stop}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Transport Start/Stop button</td></tr>
+<tr><td class='line'>52</td><td class='snippet'>&lt;span class="status-indicator font-pixel" …&gt;{ACTIVE|STOPPED}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Status indicator pill label</td></tr>
+<tr><td class='line'>64</td><td class='snippet'>&lt;span class="chord-name font-pixel"&gt;{engine.chordName}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Chord name readout (Cmaj7) - technical readout</td></tr>
+<tr><td class='line'>66</td><td class='snippet'>&lt;span class="chord-name font-pixel dim"&gt;---&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Chord slot placeholder - matches chord-name rule</td></tr>
+<tr><td class='line'>69</td><td class='snippet'>&lt;span class="borrowed-label font-pixel"&gt;from {engine.lastBorrowedFrom}&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Borrowed-chord readout - small technical label alongside chord-name</td></tr>
+<tr><td class='line'>78</td><td class='snippet'>&lt;button class="settings-btn pixel-btn font-pixel" …&gt;Settings&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Settings button (chrome)</td></tr>
+<tr><td class='line'>88</td><td class='snippet'>&lt;span class="brand font-pixel"&gt;Contrapunk&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Brand wordmark in top bar - chrome label</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/TransportBar.svelte <span style='color:#888;font-weight:400'>(4)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>40</td><td class='snippet'>&lt;button class="play-btn font-pixel" …&gt;{■|▶}&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Transport play/stop button glyph</td></tr>
+<tr><td class='line'>49</td><td class='snippet'>&lt;span class="bpm-label font-pixel"&gt;BPM&lt;/span&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Form field label</td></tr>
+<tr><td class='line'>51</td><td class='snippet'>&lt;input class="bpm-input font-pixel" type="number" … /&gt;</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Numeric BPM input (technical value)</td></tr>
+<tr><td class='line'>73</td><td class='snippet'>&lt;button class="click-btn font-pixel" …&gt;Click&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Metronome toggle button</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/AudioComparison.svelte <span style='color:#888;font-weight:400'>(2)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>104</td><td class='snippet'>.side-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>A/B comparison side label (caps chrome)</td></tr>
+<tr><td class='line'>122</td><td class='snippet'>.vs-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>'VS' divider label (caps chrome)</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/AudioPlayer.svelte <span style='color:#888;font-weight:400'>(1)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>151</td><td class='snippet'>.time { font-family: var(--font-pixel); font-size: 8px; … }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Time-code readout on audio player (mm:ss technical)</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/DemoAnimation.svelte <span style='color:#888;font-weight:400'>(3)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>191</td><td class='snippet'>.stage-label { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps stage label chrome</td></tr>
+<tr><td class='line'>229</td><td class='snippet'>.result-note { font-family: var(--font-pixel); font-size: 16px; … }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Note-name result (e.g. 'E4' after classification)</td></tr>
+<tr><td class='line'>286</td><td class='snippet'>.selector-label { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps string-selector label chrome</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/DiaryNav.svelte <span style='color:#888;font-weight:400'>(1)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>32</td><td class='snippet'>.brand { font-family: var(--font-pixel); color: var(--color-accent-magenta); }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Diary brand wordmark in sticky nav</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/RoundCard.svelte <span style='color:#888;font-weight:400'>(2)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>80</td><td class='snippet'>.circle { font-family: var(--font-pixel); font-size: 16px; color: var(--color-text-dim); }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Round number inside circular badge (integer stat)</td></tr>
+<tr><td class='line'>118</td><td class='snippet'>.round-accuracy { font-family: var(--font-pixel); font-size: 16px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Accuracy percentage numeric</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/SpectrogramComparison.svelte <span style='color:#888;font-weight:400'>(2)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>122</td><td class='snippet'>.spec-loading, .spec-error { font-family: var(--font-pixel); … }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Loading/error caption chrome</td></tr>
+<tr><td class='line'>154</td><td class='snippet'>.spec-vs { font-family: var(--font-pixel); … }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>'VS' divider label</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/SpectrogramViewer.svelte <span style='color:#888;font-weight:400'>(2)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>187</td><td class='snippet'>.spectrogram-label { font-family: var(--font-pixel); letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Panel label (caps chrome)</td></tr>
+<tr><td class='line'>213</td><td class='snippet'>.axis-label { font-family: var(--font-pixel); … letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Axis tick labels (frequency/time numerics)</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/StatBar.svelte <span style='color:#888;font-weight:400'>(1)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>33</td><td class='snippet'>.stat-value { font-family: var(--font-pixel); font-size: 22px; font-weight: 700; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Large stat numeric value</td></tr>
+</tbody></table>
+<h2>ui/src/lib/components/diary/WaveformDisplay.svelte <span style='color:#888;font-weight:400'>(1)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>121</td><td class='snippet'>.waveform-loading { font-family: var(--font-pixel); … }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Loading placeholder caption inside waveform component</td></tr>
+</tbody></table>
+<h2>ui/src/routes/+page.svelte <span style='color:#888;font-weight:400'>(4)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>173</td><td class='snippet'>&lt;div class="init-error font-pixel"&gt;{initError}&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Init error chrome caption</td></tr>
+<tr><td class='line'>186</td><td class='snippet'>&lt;button class="tab-btn font-pixel" …&gt;Play&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Main-tab button (UI chrome)</td></tr>
+<tr><td class='line'>193</td><td class='snippet'>&lt;button class="tab-btn font-pixel" …&gt;Chain&lt;/button&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Main-tab button</td></tr>
+<tr><td class='line'>238</td><td class='snippet'>&lt;div class="init-loading font-pixel"&gt;Initializing engine...&lt;/div&gt;</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Loading status chrome</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/+page.svelte <span style='color:#888;font-weight:400'>(3)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>84</td><td class='snippet'>.tagline-label { font-family: var(--font-pixel); … letter-spacing: 4px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hero tagline caps label chrome</td></tr>
+<tr><td class='line'>113</td><td class='snippet'>.section-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Chapters section caps label</td></tr>
+<tr><td class='line'>143</td><td class='snippet'>.chapter-phase { font-family: var(--font-pixel); font-size: 9px; … }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Phase indicator on chapter card (e.g. 'PHASE 37' - metadata stat)</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/machine-learning/+page.svelte <span style='color:#888;font-weight:400'>(4)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>193</td><td class='snippet'>.label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hero caps chapter label</td></tr>
+<tr><td class='line'>230</td><td class='snippet'>.step-num { font-family: var(--font-pixel); font-size: 18px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Step number numeric</td></tr>
+<tr><td class='line'>268</td><td class='snippet'>.tool-label { font-family: var(--font-pixel); font-size: 11px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Tool card label chrome</td></tr>
+<tr><td class='line'>306</td><td class='snippet'>.pivot-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Pivot card caps label chrome</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/machine-learning/playground/+page.svelte <span style='color:#888;font-weight:400'>(12)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>517</td><td class='snippet'>.label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Page caps label chrome</td></tr>
+<tr><td class='line'>601</td><td class='snippet'>.input-title { font-family: var(--font-pixel); font-size: 12px; … }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Input-card title label chrome</td></tr>
+<tr><td class='line'>616</td><td class='snippet'>.input-file-name { font-family: var(--font-pixel); font-size: 10px; … }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>File name readout (technical/path-like)</td></tr>
+<tr><td class='line'>626</td><td class='snippet'>.input-badge { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Pill/badge caps chrome</td></tr>
+<tr><td class='line'>688</td><td class='snippet'>.step-num { font-family: var(--font-pixel); font-size: 12px; color: dim; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Step number numeric</td></tr>
+<tr><td class='line'>749</td><td class='snippet'>.viz-meta { font-family: var(--font-pixel); font-size: 11px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Visualization meta readout (size/hz/technical values)</td></tr>
+<tr><td class='line'>781</td><td class='snippet'>.classify-btn { font-family: var(--font-pixel); font-size: 13px; letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Primary CTA button (classify)</td></tr>
+<tr><td class='line'>819</td><td class='snippet'>.result-rank { font-family: var(--font-pixel); font-size: 12px; color: dim; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Result rank number (#1, #2...)</td></tr>
+<tr><td class='line'>833</td><td class='snippet'>.result-label { font-family: var(--font-pixel); font-size: 13px; width: 120px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Class label in result row (class names like 'acoustic_guitar' - technical labels in fixed-width column)</td></tr>
+<tr><td class='line'>856</td><td class='snippet'>.result-pct { font-family: var(--font-pixel); font-size: 11px; width: 48px; text-align: right; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Percentage numeric readout</td></tr>
+<tr><td class='line'>932</td><td class='snippet'>.explainer-num { font-family: var(--font-pixel); font-size: 18px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Numbered explainer count</td></tr>
+<tr><td class='line'>981</td><td class='snippet'>.tech-val { font-family: var(--font-pixel); font-size: 12px; color: primary; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Technical detail value readout</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/machine-learning/round-1/+page.svelte <span style='color:#888;font-weight:400'>(12)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>761</td><td class='snippet'>.round-label { font-family: var(--font-pixel); … letter-spacing: 3px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hero caps round label chrome</td></tr>
+<tr><td class='line'>794</td><td class='snippet'>.station-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Station caps label chrome</td></tr>
+<tr><td class='line'>879</td><td class='snippet'>.selector-acc { font-family: var(--font-pixel); font-size: 15px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Model selector accuracy numeric</td></tr>
+<tr><td class='line'>899</td><td class='snippet'>.model-detail-label { font-family: var(--font-pixel); … letter-spacing: 2px; text-transform: uppercase; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps section label chrome</td></tr>
+<tr><td class='line'>930</td><td class='snippet'>.step-num { font-family: var(--font-pixel); font-size: 10px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Step number numeric</td></tr>
+<tr><td class='line'>959</td><td class='snippet'>.io-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps I/O label chrome</td></tr>
+<tr><td class='line'>974</td><td class='snippet'>.insight-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps insight-box label chrome</td></tr>
+<tr><td class='line'>1011</td><td class='snippet'>.tab-acc { font-family: var(--font-pixel); font-size: 14px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Tab accuracy numeric</td></tr>
+<tr><td class='line'>1054</td><td class='snippet'>.bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Accuracy bar value (numeric percent)</td></tr>
+<tr><td class='line'>1083</td><td class='snippet'>.finding-icon { font-family: var(--font-pixel); font-size: 8px; width: 24px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Finding list icon glyph (check/warn symbol chrome)</td></tr>
+<tr><td class='line'>1130</td><td class='snippet'>.hear-heading { font-family: var(--font-pixel); … letter-spacing: 2px; text-transform: uppercase; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps section heading chrome</td></tr>
+<tr><td class='line'>1155</td><td class='snippet'>.next-link a { font-family: var(--font-pixel); … color: cyan; padding: 12px 20px; border: 1px solid; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Button-like next link (CTA)</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/machine-learning/round-2/+page.svelte <span style='color:#888;font-weight:400'>(13)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>442</td><td class='snippet'>.round-label { font-family: var(--font-pixel); … letter-spacing: 3px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hero caps round label chrome</td></tr>
+<tr><td class='line'>495</td><td class='snippet'>.comp-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Comparison caps label chrome</td></tr>
+<tr><td class='line'>502</td><td class='snippet'>.comp-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Comparison numeric value</td></tr>
+<tr><td class='line'>518</td><td class='snippet'>.station-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Station caps label chrome</td></tr>
+<tr><td class='line'>551</td><td class='snippet'>.process-steps li::marker { … font-family: var(--font-pixel); font-size: 10px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>List marker glyph for numeric process steps</td></tr>
+<tr><td class='line'>579</td><td class='snippet'>.tab-acc { font-family: var(--font-pixel); font-size: 14px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Tab accuracy numeric</td></tr>
+<tr><td class='line'>595</td><td class='snippet'>.mc-header .mc-col { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Model-compare table header caps</td></tr>
+<tr><td class='line'>672</td><td class='snippet'>.bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Accuracy bar value numeric</td></tr>
+<tr><td class='line'>686</td><td class='snippet'>.viz-label { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Viz caps label chrome</td></tr>
+<tr><td class='line'>715</td><td class='snippet'>.insight-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps insight-box label chrome</td></tr>
+<tr><td class='line'>751</td><td class='snippet'>.finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Finding list icon glyph chrome</td></tr>
+<tr><td class='line'>795</td><td class='snippet'>.takeaway-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps takeaway-box label chrome</td></tr>
+<tr><td class='line'>816</td><td class='snippet'>.nav-link { font-family: var(--font-pixel); … color: cyan; padding: 12px 20px; border: 1px solid; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Button-like nav link</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/machine-learning/round-3/+page.svelte <span style='color:#888;font-weight:400'>(11)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>388</td><td class='snippet'>.round-label { font-family: var(--font-pixel); … letter-spacing: 3px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hero caps round label chrome</td></tr>
+<tr><td class='line'>441</td><td class='snippet'>.comp-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Comparison caps label chrome</td></tr>
+<tr><td class='line'>448</td><td class='snippet'>.comp-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Comparison numeric value</td></tr>
+<tr><td class='line'>472</td><td class='snippet'>.removal-num { font-family: var(--font-pixel); font-size: 28px; color: magenta; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Removal-card large numeric</td></tr>
+<tr><td class='line'>495</td><td class='snippet'>.station-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Station caps label chrome</td></tr>
+<tr><td class='line'>542</td><td class='snippet'>.tab-acc { font-family: var(--font-pixel); font-size: 14px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Tab accuracy numeric</td></tr>
+<tr><td class='line'>558</td><td class='snippet'>.mc-header .mc-col { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Model-compare table header caps</td></tr>
+<tr><td class='line'>624</td><td class='snippet'>.bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Accuracy bar value numeric</td></tr>
+<tr><td class='line'>638</td><td class='snippet'>.viz-label { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Viz caps label chrome</td></tr>
+<tr><td class='line'>680</td><td class='snippet'>.finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Finding list icon glyph chrome</td></tr>
+<tr><td class='line'>723</td><td class='snippet'>.nav-link { font-family: var(--font-pixel); … color: cyan; padding: 12px 20px; border: 1px solid; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Button-like nav link</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/machine-learning/round-4/+page.svelte <span style='color:#888;font-weight:400'>(11)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>410</td><td class='snippet'>.round-label { font-family: var(--font-pixel); … letter-spacing: 3px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hero caps round label chrome</td></tr>
+<tr><td class='line'>463</td><td class='snippet'>.comp-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Comparison caps label chrome</td></tr>
+<tr><td class='line'>470</td><td class='snippet'>.comp-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Comparison numeric value</td></tr>
+<tr><td class='line'>494</td><td class='snippet'>.feature-num { font-family: var(--font-pixel); font-size: 28px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Feature-card large numeric</td></tr>
+<tr><td class='line'>517</td><td class='snippet'>.station-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Station caps label chrome</td></tr>
+<tr><td class='line'>564</td><td class='snippet'>.tab-acc { font-family: var(--font-pixel); font-size: 14px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Tab accuracy numeric</td></tr>
+<tr><td class='line'>580</td><td class='snippet'>.mc-header .mc-col { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Model-compare table header caps</td></tr>
+<tr><td class='line'>657</td><td class='snippet'>.bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Accuracy bar value numeric</td></tr>
+<tr><td class='line'>671</td><td class='snippet'>.viz-label { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Viz caps label chrome</td></tr>
+<tr><td class='line'>713</td><td class='snippet'>.finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Finding list icon glyph chrome</td></tr>
+<tr><td class='line'>756</td><td class='snippet'>.nav-link { font-family: var(--font-pixel); … color: cyan; padding: 12px 20px; border: 1px solid; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Button-like nav link</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/machine-learning/round-5/+page.svelte <span style='color:#888;font-weight:400'>(14)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>480</td><td class='snippet'>.round-label { font-family: var(--font-pixel); … letter-spacing: 3px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hero caps round label chrome</td></tr>
+<tr><td class='line'>533</td><td class='snippet'>.comp-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Comparison caps label chrome</td></tr>
+<tr><td class='line'>540</td><td class='snippet'>.comp-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Comparison numeric value</td></tr>
+<tr><td class='line'>563</td><td class='snippet'>.aug-name { font-family: var(--font-pixel); font-size: 11px; letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Augmentation name caps label chrome</td></tr>
+<tr><td class='line'>597</td><td class='snippet'>.ds-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Dataset numeric value</td></tr>
+<tr><td class='line'>607</td><td class='snippet'>.ds-arrow { font-family: var(--font-pixel); font-size: 16px; color: dim; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Arrow glyph between dataset values (decorative chrome)</td></tr>
+<tr><td class='line'>623</td><td class='snippet'>.insight-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps insight-box label chrome</td></tr>
+<tr><td class='line'>645</td><td class='snippet'>.station-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Station caps label chrome</td></tr>
+<tr><td class='line'>692</td><td class='snippet'>.tab-acc { font-family: var(--font-pixel); font-size: 14px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Tab accuracy numeric</td></tr>
+<tr><td class='line'>708</td><td class='snippet'>.mc-header .mc-col { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Model-compare table header caps</td></tr>
+<tr><td class='line'>785</td><td class='snippet'>.bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Accuracy bar value numeric</td></tr>
+<tr><td class='line'>799</td><td class='snippet'>.viz-label { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Viz caps label chrome</td></tr>
+<tr><td class='line'>841</td><td class='snippet'>.finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Finding list icon glyph chrome</td></tr>
+<tr><td class='line'>902</td><td class='snippet'>.nav-link { font-family: var(--font-pixel); … color: cyan; padding: 12px 20px; border: 1px solid; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Button-like nav link</td></tr>
+</tbody></table>
+<h2>ui/src/routes/diary/machine-learning/the-pivot/+page.svelte <span style='color:#888;font-weight:400'>(11)</span></h2>
+<table>
+<thead><tr><th>Line</th><th>Snippet</th><th>Target</th><th>Reason</th></tr></thead><tbody>
+<tr><td class='line'>370</td><td class='snippet'>.section-label { font-family: var(--font-pixel); … letter-spacing: 3px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Hero caps section label chrome</td></tr>
+<tr><td class='line'>401</td><td class='snippet'>.station-label { font-family: var(--font-pixel); … letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Station caps label chrome</td></tr>
+<tr><td class='line'>447</td><td class='snippet'>.journey-table th { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Table header caps label</td></tr>
+<tr><td class='line'>463</td><td class='snippet'>.journey-table .round-num { font-family: var(--font-pixel); color: cyan; width: 48px; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Round-number cell (integer stat)</td></tr>
+<tr><td class='line'>468</td><td class='snippet'>.journey-table .acc { font-family: var(--font-pixel); color: cyan; }</td><td class='target'><span class='tag' style='background:#00ccaa'>font-code</span></td><td class='reason'>Accuracy cell (numeric stat)</td></tr>
+<tr><td class='line'>502</td><td class='snippet'>.finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Finding list icon glyph chrome</td></tr>
+<tr><td class='line'>524</td><td class='snippet'>.equation-label { font-family: var(--font-pixel); font-size: 9px; letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps equation-box label chrome</td></tr>
+<tr><td class='line'>571</td><td class='snippet'>.compare-table th { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Table header caps label</td></tr>
+<tr><td class='line'>614</td><td class='snippet'>.arch-label { font-family: var(--font-pixel); font-size: 9px; letter-spacing: 2px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps architecture-box label chrome</td></tr>
+<tr><td class='line'>660</td><td class='snippet'>.arch-branch-label { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Caps branch label chrome</td></tr>
+<tr><td class='line'>706</td><td class='snippet'>.nav-link { font-family: var(--font-pixel); … color: cyan; padding: 12px 20px; border: 1px solid; }</td><td class='target'><span class='tag' style='background:#3399ff'>font-ui</span></td><td class='reason'>Button-like nav link (CTA)</td></tr>
+</tbody></table>
+</body></html>

@@ -230,20 +230,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async setPatternEnabled(_enabled: boolean): Promise<void> {
-		// Pattern feature is Tauri-only for now (router-thread driven).
-	}
-
-	async setPatternConfig(_args: {
-		cells: boolean[];
-		subdivision: number;
-		length: number;
-		beatsPerBar: number;
-		inputMode: 'live' | 'quantized' | 'gated';
-	}): Promise<void> {
-		// Pattern feature is Tauri-only for now.
-	}
-
 	/** Current MIDI permission state. */
 	get midiPermissionState(): MidiPermissionState {
 		return this._midiPermissionState;

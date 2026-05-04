@@ -217,34 +217,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async setPatternEnabled(enabled: boolean): Promise<void> {
-		try {
-			await invoke('set_pattern_enabled', { enabled });
-		} catch (e) {
-			throw new Error(`Failed to set pattern enabled: ${e}`);
-		}
-	}
-
-	async setPatternConfig(args: {
-		cells: boolean[];
-		subdivision: number;
-		length: number;
-		beatsPerBar: number;
-		inputMode: 'live' | 'quantized' | 'gated';
-	}): Promise<void> {
-		try {
-			await invoke('set_pattern_config', {
-				cells: args.cells,
-				subdivision: args.subdivision,
-				length: args.length,
-				beatsPerBar: args.beatsPerBar,
-				inputMode: args.inputMode
-			});
-		} catch (e) {
-			throw new Error(`Failed to set pattern config: ${e}`);
-		}
-	}
-
 	/** Tauri uses native OS MIDI APIs; no browser-style permission gate. */
 	readonly midiPermissionState: MidiPermissionState = 'granted';
 

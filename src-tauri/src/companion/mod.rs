@@ -16,14 +16,11 @@
 use crate::state::VoiceOutputTarget;
 
 pub mod loops;
-pub mod pattern;
 
 // Re-exports — used as the public companion surface. Allow dead_code
 // during the multi-increment migration; subsequent phases consume these.
 #[allow(unused_imports)]
 pub use loops::{LoopBuffer, LoopEvent, LoopEventKind, LoopSlot, LoopSource, LoopState};
-#[allow(unused_imports)]
-pub use pattern::CompanionPattern;
 
 /// One unit of work emitted by `Companion::tick()` for the router thread
 /// to execute. The router converts these into `dispatch_voice` /
