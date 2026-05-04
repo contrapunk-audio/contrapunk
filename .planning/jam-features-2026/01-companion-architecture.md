@@ -22,6 +22,9 @@ Every feature in the 9-week jam pipeline that emits MIDI in time fits as a Lane.
 - `Mixer` Nodes sum sources and feed into FX chains.
 - Routes have first-class gain/pan/mute. Sub-buses, parallel sends, sidechaining all expressible.
 - `MidiRouter` matrix maps MIDI sources (router thread, BeatMachineLane, etc.) to Instrument destinations — no more broadcast.
+- **`AudioGraphCommander`** with batched **transactions** — atomic multi-edge mutations applied at one block boundary. `insert_between`, `swap_nodes`, `move_node_in_chain` operations make the graph reorderable from the UI without code changes.
+- **Sidechaining is first-class** — typed sidechain input ports on Compressor/Gate/Multiband, plus a dedicated `SidechainSense` envelope-follower Node. Standard patterns (kick→bass duck, vocal duck, multiband sidechain) ship as rig templates.
+- **Elixir replaces BasicSynth** as the tonal Instrument over time. Wavetable + multisample + sample + granular + spectral hybrid; deep modulation; harmony-aware mod sources (`HarmonyDegree`/`Tension`/`Key`/`Mode`); shared `@elixir/ui` Svelte component library. Elixir is its own phase track, runs in parallel with Companion phases. BasicSynth is transitional until Elixir Phase E11 lands.
 
 **Part 3 — Rig saving** (first-class persistence of the entire performance setup):
 - Versioned JSON schema. Audio graph topology + Instrument states + Companion config + MIDI Learn map + engine state.
@@ -771,11 +774,199 @@ impl MidiRouter {
 pub type InstrumentId = String;  // stable across rig saves: "main_synth", "drum_kit", "drone_synth", ...
 ```
 
+---
+
+## AudioGraph mutation API
+
+The graph is *data*, not code — `nodes: Vec<NodeEntry>` + `routes: Vec<Route>`. Mutability is first-class. Reordering, inserting between, swapping FX positions are all data edits, not code rebuilds.
+
+### `AudioGraphCommander`
+
+Analogue of today's `ChainCommander`. Main-thread handle that pushes mutations onto a lock-free SPSC queue consumed by the audio thread.
+
+```rust
+pub struct AudioGraphCommander { /* ... */ }
+
+impl AudioGraphCommander {
+    // Node lifecycle
+    pub fn add_node(&self, node: Box<dyn Node>) -> Result<NodeId, GraphError>;
+    pub fn remove_node(&self, id: NodeId) -> Result<(), GraphError>;
+    pub fn replace_node(&self, id: NodeId, new: Box<dyn Node>) -> Result<(), GraphError>;
+    pub fn bypass_node(&self, id: NodeId, bypass: bool) -> Result<(), GraphError>;
+
+    // Route lifecycle
+    pub fn connect(
+        &self,
+        from: (NodeId, usize),
+        to: (NodeId, usize),
+        gain: f32,
+    ) -> Result<RouteId, GraphError>;
+    pub fn disconnect(&self, route: RouteId) -> Result<(), GraphError>;
+    pub fn set_gain(&self, route: RouteId, gain: f32);
+    pub fn set_mute(&self, route: RouteId, mute: bool);
+    pub fn set_pan(&self, route: RouteId, pan: f32);
+
+    // Convenience operations (compositions, sent atomically)
+    pub fn insert_between(&self, edge: RouteId, new_node: Box<dyn Node>) -> Result<NodeId, GraphError>;
+    pub fn move_node_in_chain(&self, id: NodeId, new_position: usize) -> Result<(), GraphError>;
+    pub fn swap_nodes(&self, a: NodeId, b: NodeId) -> Result<(), GraphError>;
+
+    // Transactions
+    pub fn transaction(&self) -> GraphTransaction<'_>;
+}
+```
+
+`insert_between` is the killer move: you have `Synth → Reverb → Output`, you grab the route between Reverb and Output, drop a Delay onto it, and it becomes `Synth → Reverb → Delay → Output` with no manual edge surgery.
+
+### Transactions — atomic multi-edge mutations
+
+A single reorder ("put the delay before the reverb instead of after") is multiple edge ops. Applied one-at-a-time on the audio thread, there's a brief moment where audio routes through nothing. The fix:
+
+```rust
+commander
+    .transaction()
+    .disconnect(synth_to_reverb_route)
+    .disconnect(reverb_to_delay_route)
+    .disconnect(delay_to_output_route)
+    .connect((synth, 0), (delay, 0), 1.0)
+    .connect((delay, 0), (reverb, 0), 1.0)
+    .connect((reverb, 0), (output, 0), 1.0)
+    .commit()?;
+```
+
+`commit()` packages all six ops into one `Vec<GraphMutation>` message sent over the SPSC queue. The audio thread applies them as a single batch at the next block boundary. No intermediate state; no audio glitch from a half-rerouted graph.
+
+### Validation rules at insert time
+
+`connect` returns `Err` if any of:
+
+- Source node's `output_count <= from_port` (port doesn't exist)
+- Target node's `input_count <= to_port`
+- Either node doesn't exist (was removed)
+- Target is the Output node and already has an input on that port (Output is a sink — exactly one input)
+- New edge creates a cycle (DAG enforcement — runs a tarjan/khan check on the proposed graph)
+- Sample-rate mismatch (Output node's rate vs source — currently single-rate, future-proofing the API)
+
+UI surfaces validation errors so the user sees "can't connect this — would create a feedback loop" instead of silent failure.
+
+### Live-edit safety (v1: brief mute; v2: gain ramps)
+
+V1 (good enough for occasional rig-edit, NOT for live performance edits):
+- Audio thread applies the transaction's mutations between two block callbacks.
+- Output buffer briefly silences during the swap (~5-20ms). Audible click possible if there were sustained voices through the removed route.
+- Acceptable for "stop, edit my rig, restart playing" workflow.
+
+V2 (deferred to v0.2-ish):
+- On `disconnect`: gain ramps from current value to 0 over 5ms, then route detaches.
+- On `connect`: gain starts at 0, ramps to target over 5ms.
+- Click-free live editing during performance.
+- Adds 5ms latency to all mutations and ~10 LOC of state per route.
+
+### UI implications
+
+The AudioGraphCommander surface maps directly to user gestures:
+
+| User gesture | Commander call(s) |
+|---|---|
+| Drag instrument from sidebar onto canvas | `add_node` |
+| Right-click node → Delete | `remove_node` |
+| Drag from one port to another | `connect` |
+| Click-and-drag on edge to detach | `disconnect` |
+| Drop new effect on existing edge | `insert_between` |
+| Drag node onto another to swap chain position | `swap_nodes` |
+| Right-click node → Bypass | `bypass_node` (toggle internal flag; route stays) |
+| Multi-select edits (cut+paste a sub-graph) | `transaction()` batched |
+
+---
+
+## Sidechaining (first-class)
+
+A real audio rig has signal flowing through **and** signal flowing alongside-but-not-summed (control signals). Sidechain compression, ducking, gating, multiband side processing — all of these need a route that taps a signal's *envelope* without summing it into the audible mix.
+
+### Architecture
+
+Sidechaining lives at the audio-graph level, not inside any one Node. Three primitives:
+
+#### 1. Typed audio-rate input ports on relevant Nodes
+
+Compressor, Gate, Multiband, Vocoder, Ducker — each has a dedicated `Sidechain` input port in addition to its main audio inputs. The port count is part of the Node's contract:
+
+```rust
+impl Node for Compressor {
+    fn input_count(&self) -> usize { 2 }   // 0=main audio, 1=sidechain key
+    fn output_count(&self) -> usize { 1 }  // 0=compressed audio
+    fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize, channels: usize) {
+        let main = &inputs[0];
+        let key  = &inputs[1];
+        // Compute level from the key, apply gain reduction to main, write to outputs[0].
+        ...
+    }
+}
+```
+
+If no sidechain route is connected, port 1 receives a silent buffer — compressor falls back to feed-forward (key = main).
+
+#### 2. `SidechainSense` Node — envelope follower
+
+For cases where the *level* is what matters (not the sample-accurate signal), a dedicated `SidechainSense` Node taps a route, computes a smoothed envelope (RMS or peak), and exposes that envelope as a control-rate output. Useful for routing one node's level to control another node's parameter:
+
+```rust
+pub struct SidechainSense {
+    pub attack_ms: AtomicU32,
+    pub release_ms: AtomicU32,
+    pub mode: SidechainMode,    // RMS | Peak
+}
+
+impl Node for SidechainSense {
+    fn input_count(&self) -> usize { 1 }
+    fn output_count(&self) -> usize { 1 }   // 0=envelope (audio-rate, but typically used as control)
+    ...
+}
+```
+
+The output is audio-rate (sample-by-sample envelope value 0..1), so it can drive any audio-rate input or be sub-sampled for control-rate use.
+
+#### 3. Documented patterns as rig templates
+
+```
+   Pattern 1 — Kick → bass duck (classic EDM):
+      DrumSampler ─→ DrumBus ──→ MainBus ──→ Output
+            │                       ▲
+            └─→ SidechainSense ──→  │
+                                    │
+            BassSynth ─→ Compressor─┘ (Compressor's sidechain input = SidechainSense out)
+
+   Pattern 2 — Multiband sidechain (only kick frequencies trigger comp):
+      DrumSampler[kick] → MultibandSplit[low only] → SidechainSense → Compressor.sc
+      BassSynth → Compressor → MainBus
+
+   Pattern 3 — Parallel sidechain (NY-style drum bus):
+      DrumSampler ─┬→ MainBus
+                   └→ Compressor (heavy GR) → MainBus (mixed in parallel)
+
+   Pattern 4 — Vocal duck (other tracks duck under vocals):
+      VocalIn → SidechainSense → Compressor.sc on InstrumentBus
+                              → Compressor.sc on PadBus
+```
+
+Patterns 1 and 4 are common enough that the rig editor should ship them as templates ("Add Kick Duck", "Add Vocal Duck") in the UI.
+
+### Rig saving + sidechain
+
+Sidechain edges are just routes with a typed source/destination. The route record (`from: (NodeId, port)`, `to: (NodeId, sidechain_port)`) serializes the same as audio routes — the typed port number captures the role. No special-case sidechain serialization needed.
+
+### Validation
+
+`connect` checks that the destination port accepts audio (most ports do). Sidechain ports specifically accept any audio source — no extra restriction. The Node's own `process` decides what to do with the sidechain signal.
+
+---
+
 ### Built-in instruments shipped in v1
 
 | Instrument | type_id | Role | Purpose |
 |---|---|---|---|
-| `BasicSynth` (refactored from current) | `builtin.basic_synth` | Source | Harmony voices |
+| `BasicSynth` (transitional — see Elixir section) | `builtin.basic_synth` | Source | Harmony voices, until Elixir replaces it |
+| `ElixirInstrument` (replaces BasicSynth long-term) | `elixir.synth` | Source | Tonal voices — wavetable + multisample + sample + granular + spectral hybrid |
 | `DrumSampler` | `builtin.drum_sampler` | Source | BeatMachine drum playback |
 | `Drone` (Wk 3) | `builtin.drone_synth` | Source | Sustained drone — single-voice synth optimized for hold-forever |
 | `Pad` (Wk 9) | `builtin.pad_synth` | Source | Slow-evolving polyphonic pad |
@@ -854,6 +1045,167 @@ impl Instrument for DrumSampler {
 - 8 elements ideal: + crash, tom, perc/clap
 - Sourced from CC0 / public domain libraries
 - Bundled at compile time via `include_bytes!` for native; downloaded once for WASM (cached via Service Worker)
+
+---
+
+## Tonal Instrument: Elixir (replacement for current synth)
+
+The current `src/synth/voice.rs::Synth` is a tier-1 placeholder — sine/saw/square/triangle osc, one filter, one ADSR, fixed 8-voice pool, all voices share global params. Sufficient for "hear harmony output of the box," insufficient for the product vision.
+
+The user-locked replacement is **Elixir**: a Rust-native, permissively-licensed, Serum-class wavetable synthesizer with multi-engine hybrid, deep modulation, and 3-bus parallel FX. Full design lives at [`/.planning/research/elixir/DESIGN.md`](../research/elixir/DESIGN.md). This section covers only the parts where Elixir intersects the contrapunk audio architecture.
+
+### Two-level audio architecture
+
+```
+   ╔══════════════════ Contrapunk audio graph (outer) ══════════════════╗
+   ║                                                                     ║
+   ║   Inputs ─→ MidiRouter ─→ ┌─────────────────┐                      ║
+   ║                            │ ELIXIR          │ ─→ MainBus ─→ FX ─→ ║─→ Output
+   ║                            │ (one Instrument │                      ║
+   ║                            │  Node from      │                      ║
+   ║                            │  outer's POV)   │                      ║
+   ║                            └────────┬────────┘                      ║
+   ║                                     │                                ║
+   ║   ╔══════ Elixir internal architecture (inner) ══════╗              ║
+   ║   ║                                                   ║              ║
+   ║   ║   note_on → VoiceManager (MPE, polyphony)        ║              ║
+   ║   ║              ↓                                    ║              ║
+   ║   ║   Per-voice: 3 oscs (Engine trait: WT/MS/Sample/  ║              ║
+   ║   ║              Gran/Spectral) + Sub + Noise + 2     ║              ║
+   ║   ║              filters → voice output               ║              ║
+   ║   ║              ↓                                    ║              ║
+   ║   ║   Sum voices → 3-bus parallel FxGraph            ║              ║
+   ║   ║              ↓                                    ║              ║
+   ║   ║   Master mix                                      ║              ║
+   ║   ║                                                   ║              ║
+   ║   ║   Modulation graph: 10 LFOs, 4 envs, 8 macros,   ║              ║
+   ║   ║   ≥64 mod slots feeds every parameter            ║              ║
+   ║   ╚═══════════════════════════════════════════════════╝              ║
+   ║                                                                     ║
+   ╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+The contrapunk audio graph treats Elixir as **one Instrument Node**. Elixir's internal complexity (voice manager, mod graph, internal FX buses) is opaque from outside. From outer's perspective: MIDI in via `Instrument::midi_event`, audio out via `Node::process`, params via `set_param`/`get_param`, preset via `serialize_state`/`deserialize_state`.
+
+### Mapping Elixir → contrapunk Instrument trait
+
+```rust
+// crates/contrapunk-elixir-bridge/src/lib.rs (or inside elixir-engine itself)
+pub struct ElixirInstrument {
+    synth: elixir_engine::Synth,
+}
+
+impl Node for ElixirInstrument {
+    fn type_id(&self) -> &str { "elixir.synth" }
+    fn role(&self) -> NodeRole { NodeRole::Source }
+    fn input_count(&self) -> usize { 0 }
+    fn output_count(&self) -> usize { 1 }  // stereo via channels
+    fn process(&mut self, _inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize, channels: usize) {
+        self.synth.process(outputs[0], channels);
+    }
+    fn reset(&mut self) { self.synth.reset(); }
+    fn set_sample_rate(&mut self, sr: u32) { self.synth.set_sample_rate(sr); }
+
+    fn serialize_state(&self) -> serde_json::Value {
+        // Elixir's native preset format is RON, but for rig-level consistency we
+        // wrap as JSON. The RON-ness lives at Elixir's standalone preset I/O layer.
+        let preset = self.synth.save_preset();
+        serde_json::to_value(preset).unwrap()
+    }
+    fn deserialize_state(&mut self, state: serde_json::Value) -> Result<(), String> {
+        let preset: elixir_engine::Preset = serde_json::from_value(state).map_err(|e| e.to_string())?;
+        self.synth.load_preset(&preset).map_err(|e| e.to_string())
+    }
+}
+
+impl Instrument for ElixirInstrument {
+    fn midi_event(&mut self, ev: MidiBlockEvent) {
+        match ev {
+            MidiBlockEvent::NoteOn { note, velocity } => self.synth.note_on(0, note, velocity),
+            MidiBlockEvent::NoteOff { note }          => self.synth.note_off(0, note),
+            MidiBlockEvent::AllNotesOff               => self.synth.all_notes_off(),
+        }
+    }
+    fn save_preset(&self) -> serde_json::Value { self.serialize_state() }
+    fn load_preset(&mut self, p: serde_json::Value) -> Result<(), String> { self.deserialize_state(p) }
+}
+```
+
+Note: MPE / poly pressure / pitch bend / CC pass-through requires extending `MidiBlockEvent` beyond today's `NoteOn/NoteOff/AllNotesOff` set. That's a small extension to the contrapunk MIDI types, made when the bridge lands.
+
+### BasicSynth deprecation timeline
+
+`BasicSynth` (current `src/synth/voice.rs`) stays in place as a transitional Instrument while Elixir builds out independently. Concretely:
+
+| Stage | Status |
+|---|---|
+| Today | `BasicSynth` is the only tonal Instrument. Used by harmony engine voices, drone (placeholder), pad (placeholder). |
+| **Elixir Phase E1-E7** ships | `BasicSynth` still default. Elixir runs as standalone app; not yet wired into contrapunk. |
+| **Elixir Phase E11** ships (contrapunk integration) | `ElixirInstrument` becomes available in contrapunk. New rigs default to it. Old rigs with BasicSynth nodes auto-migrate via rig-load schema migration. |
+| Elixir post-E11 stable | `BasicSynth` deleted. Migration shim in rig loader replaces any lingering `builtin.basic_synth` type_ids with `elixir.synth` + a default Elixir preset. |
+
+This is intentionally slow rollout — Elixir is a multi-month build. Pretending we'll have it ready in two weeks would lock companion work behind a synth that doesn't exist. BasicSynth carries the load until Elixir is actually proven.
+
+### Harmony-aware modulation bridge
+
+Elixir's mod matrix exposes contrapunk-specific `ModSource` variants:
+
+```rust
+// In elixir-engine — gated behind a `contrapunk-bridge` cargo feature so
+// standalone Elixir doesn't depend on contrapunk types at build time.
+#[cfg(feature = "contrapunk-bridge")]
+pub enum HarmonyModSource {
+    HarmonyDegree,    // current scale degree of incoming note (1..7)
+    HarmonyTension,   // dissonance score of current chord
+    HarmonyKey,       // key root, normalized 0..1 across the 12 keys
+    HarmonyMode,      // mode index normalized
+}
+```
+
+The bridge crate (or contrapunk's adapter) updates these mod source values per audio block from `WorldState.engine_snapshot` + `WorldState.current_chord`. Result:
+
+- **"Filter cutoff opens on tension chords"** — assign `HarmonyTension` → filter cutoff in the mod matrix.
+- **"Wavetable position morphs through mode changes"** — `HarmonyMode` → osc wt_pos.
+- **"Pad timbre shifts with key"** — `HarmonyKey` → reverb size or osc blend.
+
+This is the contrapunk-specific value Elixir delivers over generic synths. Sells the integration story.
+
+### `@elixir/ui` shared component package
+
+Elixir's standalone Svelte UI uses composable primitives: `Knob`, `EnvelopeEditor`, `ModMatrix`, `WavetableView`, `Oscilloscope`, `LfoEditor`, `FilterPanel`, etc. These are designed component-first per Elixir's design doc — props in, events out, no global stores.
+
+When contrapunk imports Elixir as an Instrument:
+
+- The component library is published as an internal workspace package: `@elixir/ui` in `elixir/ui/src/lib/components/`
+- Contrapunk's `ui/package.json` adds `"@elixir/ui": "workspace:*"`
+- Contrapunk's CompanionPanel imports Elixir components for any UI that controls Elixir parameters
+- `Knob`, `EnvelopeEditor` etc. become reusable across the whole app — same look, same feel
+
+This is upside that doesn't show up in the audio architecture but matters for product cohesion.
+
+### FX policy: Elixir-internal vs contrapunk-graph-level
+
+Elixir has its own internal 3-bus FX graph (Compressor / EQ / Reverb / Delay / Distortion / Chorus / Hyper / Dimension / etc.). Contrapunk's audio graph also has standalone FX Nodes (Reverb, Delay, Bitcrusher, Distortion). Overlap is intentional, not redundant:
+
+| Layer | Scope | Use case |
+|---|---|---|
+| **Elixir-internal FX** | Per-instrument, per-voice (mostly) | Each Elixir patch is a complete sound — a "preset" includes its own reverb, delay, modulation. Saving a patch saves its FX state too. |
+| **Contrapunk-graph-level FX** | Cross-instrument, post-mix, on buses | Master reverb across all instruments. A drum bus compressor. A side-chained ducker. Things that can't live inside one instrument because they span multiple. |
+
+Code sharing: where the DSP algorithms overlap (Reverb, Delay), the underlying impl lives in a shared crate (`contrapunk-dsp` or similar) so both `elixir-engine::FxModule::Reverb` and `contrapunk-audio::Reverb` Node use the same code path. Locked decision pending — this is recorded as an open question.
+
+### Elixir as its own phase track
+
+Per user direction: **Elixir is its own phase track**, not coupled to any specific jam-pipeline week. Elixir Phases E1-E11 (per Elixir DESIGN.md) run in parallel with the Companion phases:
+
+- E0 prereqs (spike work) — non-blocking, can happen any time
+- E1 hello-synth (standalone Tauri+Svelte minimal) — independent of Companion
+- E2-E10 (engines, modulation, FX, file formats) — independent of Companion
+- E11 contrapunk integration — when the user is ready to deprecate BasicSynth
+
+Companion work doesn't block on Elixir, and Elixir's standalone shell ships its own demos. The two converge at E11.
+
+The Elixir effort is real (~3-6 months part-time per the design doc's pacing). It is documented separately and tracked as its own track in the broader project plan, not interleaved into the day-by-day Companion phasing.
 
 ---
 
@@ -1354,6 +1706,28 @@ CLAP plugins are NOT supported in WASM. The loader detects `clap.*` type_ids in 
 - Phase 7 (DroneLane) needs G2 (Drone Instrument depends on Instrument trait)
 - Phase 11 (Pad) needs G2 same way
 
+### Elixir phase track (parallel to everything above)
+
+Elixir is its own phase track — runs independently of Companion / Audio / Rig work. The phases below come from Elixir's own [DESIGN.md §6](../research/elixir/DESIGN.md). Sized for solo part-time work; total ~3-6 months end to end.
+
+| Phase | What | Effort |
+|---|---|---|
+| **E0** | Prereqs (DSP reading, WT format docs, WebGL spike, cpal+midir Tauri spike) | 1-2 wk part-time |
+| **E1** | "Hello synth": minimal standalone Tauri+Svelte, sine osc + ADSR end-to-end | 2-3 wk |
+| **E2** | Wavetable engine v1 (mipmap antialias, Serum WAV reader/writer, OSC slot A) | 3-4 wk |
+| **E3** | Filters + ADSR + LFO (SVF filter, full DAHDSR, mod matrix v0) | 2-3 wk |
+| **E4** | Voice manager + MPE + microtuning (MTS-ESP FFI, SCL/KBM) | 3-4 wk |
+| **E5** | Three-osc graph + sub + noise + unison | 2-3 wk |
+| **E6** | FX rack v1 (Comp, EQ, Reverb, Delay — single bus) | 2-3 wk |
+| **E7** | Full modulation system (10 LFOs, 4 envs, 8 macros, ≥64 mod slots, drag-and-drop) | 3-4 wk |
+| **E8** | 3-bus parallel FX graph (more FX modules, sidechain, multiband) | 2-3 wk |
+| **E9** | Wavetable editor in Svelte (draw/formula/FFT-import) | 4-5 wk |
+| **E10** | Additional engines (Multisample → Sample → Granular → Spectral) | 8-12 wk |
+| **E11** | **Contrapunk integration** — `ElixirInstrument` Node, `@elixir/ui` workspace package, harmony-aware mod sources, BasicSynth deprecation | 2-3 wk |
+| **E12+** | Plugin shells (CLAP/VST3/AU) — deferred indefinitely; design pass needed | TBD |
+
+**Where E11 sits in the contrapunk plan:** scheduled as its own phase, after the Companion + Audio + Rig foundations are stable. The user's stance: "Elixir is its own phase" — not gated on or by any specific jam-pipeline week. Any contrapunk feature week that wants tonal voices (Wk 3 Drone, Wk 9 Pad, ambient pad in general) uses BasicSynth as the placeholder Instrument until E11; rigs migrate automatically when Elixir lands.
+
 ---
 
 ## Decisions locked
@@ -1377,6 +1751,15 @@ CLAP plugins are NOT supported in WASM. The loader detects `clap.*` type_ids in 
 17. ✅ Component registry pattern for type_id → factory
 18. ✅ Full rename (Tauri commands + types + storage keys + files), no backwards-compat shim except one-shot localStorage migration
 19. ✅ Audio FX framework refactored into Processor Nodes (was: stays separate). FX still extend `src/fx/` but become Nodes in the graph.
+20. ✅ AudioGraph mutation API with batched transactions (atomic multi-edge changes). UI gestures map directly to commander calls.
+21. ✅ Validation-at-insert-time for routes (port existence, cycle detection, sink rules).
+22. ✅ Sidechaining as a first-class concern — typed sidechain input ports + `SidechainSense` envelope-follower Node.
+23. ✅ Standard sidechain patterns ship as rig templates (kick→bass duck, vocal duck, multiband, parallel comp).
+24. ✅ Elixir replaces BasicSynth as Contrapunk's tonal Instrument over time. Multi-engine hybrid synth, harmony-aware mod sources.
+25. ✅ BasicSynth stays as transitional placeholder until Elixir Phase E11. Auto-migration in rig loader at deprecation time.
+26. ✅ Elixir is its own phase track — runs in parallel with Companion phases, not gated on or by jam-pipeline weeks.
+27. ✅ Two-level audio architecture: contrapunk graph (outer) + Elixir's internal voice/mod/FX graph (inner). Outer treats Elixir as one Instrument Node.
+28. ✅ `@elixir/ui` workspace package — Elixir's Svelte components reused by contrapunk UI for any Elixir-controlling panels.
 
 ---
 
@@ -1393,6 +1776,11 @@ CLAP plugins are NOT supported in WASM. The loader detects `clap.*` type_ids in 
 9. **Rig auto-save**: opt-in setting (recommend off), opt-out (recommend on), or always-on?
 10. **Rig sharing**: should rigs be shareable URLs (`app.contrapunk.com/?rig=base64...`) for the jam? Future feature; not v1.
 11. **Plugin scan caching**: rigs reference CLAP plugins by id. If user moves plugins after saving a rig, fallback handling? Recommend: warn-and-continue with placeholder Node.
+12. **Live-edit gain ramping**: V1 brief mute is acceptable, V2 5ms ramps deferred. Move V2 forward if user does live rig editing during performance? Pick when first user-tested.
+13. **FX DSP code sharing between Elixir-internal and contrapunk-graph**: Reverb/Delay overlap. Extract to a shared `contrapunk-dsp` crate consumed by both, OR keep separate impls (Elixir's quality bar may diverge)?
+14. **Elixir license**: MIT vs Apache-2.0 vs dual MIT/Apache. Decide before first push of `crates/elixir-engine`.
+15. **Standalone Elixir vs contrapunk-first**: Elixir DESIGN.md commits to standalone-first. Worth re-confirming once Companion + Audio + Rig foundations are in place — does standalone shell still earn its keep, or fold into contrapunk earlier?
+16. **MidiBlockEvent extension for MPE**: Elixir wants pitch_bend/poly_pressure/cc through. Extend `MidiBlockEvent` enum (small refactor) when bridging.
 
 ---
 
@@ -1412,9 +1800,17 @@ CLAP plugins are NOT supported in WASM. The loader detects `clap.*` type_ids in 
 
 7. **Audio graph live editing safety** — adding/removing a Node mid-playback can cause clicks if not handled gracefully. Initial v1: pause audio briefly during graph mutations (acceptable for occasional rig-edit, not for live performance). Crossfade-on-mutation deferred.
 
+8. **Elixir Phase E12+ (plugin shells: CLAP/VST3/AU)** — out of scope. Will need a dedicated design pass on webview-in-plugin tradeoffs (latency, resize, hi-DPI, multi-instance state) vs falling back to vizia native UI for plugin shells. Tracked separately in Elixir DESIGN.md.
+
+9. **DSP code reuse between Elixir-internal FX and contrapunk-graph FX** — Reverb/Delay overlap. Possible extract to a shared `contrapunk-dsp` crate. Open question (#13). Decide when Elixir Phase E6 lands or when contrapunk's FX nodes start diverging meaningfully.
+
+10. **Standalone Elixir vs early contrapunk integration** — Elixir DESIGN.md commits to standalone-first (Phase E1) with contrapunk integration at E11. Worth re-evaluating after Companion + Audio + Rig land; might fold integration earlier if the standalone shell isn't earning its keep.
+
 ---
 
 ## Acceptance criteria (Phase end-state)
+
+### Companion + Audio + Rig (this doc's primary scope)
 
 - [ ] All planned Lanes shipped (Pattern, Looper × N, BeatMachine, ChordSeq, Drone, Pad, Arp, AutoKey, MotifTransposer)
 - [ ] Audio graph runs the full instrument set (BasicSynth, DrumSampler, Drone, Pad, CLAP plugin)
@@ -1428,11 +1824,23 @@ CLAP plugins are NOT supported in WASM. The loader detects `clap.*` type_ids in 
 - [ ] Companion master toggle in StatusBar replaces panel-pip pattern
 - [ ] AutoKey functionality preserved + improved with Krumhansl-style detection
 - [ ] All Lane invariants (P1, F2-H3, L1-L5, B1-B4) covered by unit tests
+- [ ] AudioGraph mutation API supports `add_node`, `remove_node`, `connect`, `disconnect`, `insert_between`, `swap_nodes`, transactions
+- [ ] Validation rejects cycles, port mismatches, output-as-source
+- [ ] At least one sidechain template (kick→bass duck) ships as a default rig action
+- [ ] Sidechain input ports work end-to-end on Compressor
 - [ ] **Save / Load rigs from native filesystem**
 - [ ] **Save / Load rigs from browser IndexedDB**
 - [ ] **Import / Export rigs as JSON files** (cross-platform)
 - [ ] **At least one schema migration written + tested** (proves the framework)
 - [ ] **CLAP plugin missing-bundle case handled gracefully on rig load**
+- [ ] **BasicSynth → Elixir migration path tested** (rig with `builtin.basic_synth` loads after Elixir lands without user intervention)
+
+### Elixir track (separate, deeper criteria in `.planning/research/elixir/DESIGN.md`)
+
+- [ ] E1 ships: standalone Elixir Tauri+Svelte app plays sine osc + ADSR end-to-end
+- [ ] E2 ships: wavetable engine renders Serum-format WAVs without audible aliasing
+- [ ] E11 ships: `ElixirInstrument` lands as a Node in contrapunk's audio graph; harmony-aware mod sources work; `@elixir/ui` consumed by contrapunk's UI; new rigs default to Elixir; old rigs auto-migrate
+- [ ] Acceptance criteria for individual Elixir phases (E0-E11) tracked in Elixir DESIGN.md, not duplicated here
 
 ---
 
@@ -1449,6 +1857,13 @@ CLAP plugins are NOT supported in WASM. The loader detects `clap.*` type_ids in 
 - PR #87 (PerformanceView), PR #88 (MIDI Learn), PR #89 (BPM-clock + Pattern programmer)
 - Logic Pro Drummer (Apple) — reference behavior for the BeatMachine
 - Reaper / Ableton / Bitwig — reference inspirations for the audio graph + rig model
+- `.planning/research/elixir/DESIGN.md` — full Elixir wavetable synth design (replacement for current src/synth/voice.rs)
+- `.planning/notes/elixir-design-decisions.md` — Elixir's six load-bearing decisions
+- `.planning/research/elixir/serum-features.md` — feature inventory for the Elixir reference design
+- `.planning/research/elixir/oss-prior-art.md` — OSS prior art + Rust plugin ecosystem
+- `.planning/seeds/elixir-serum-preset-re-gate.md` — gated future Serum preset import (post-MVP)
+- `.planning/todos/pending/elixir-prereqs.md` — Elixir Phase 0 reading list and spike work
+- Serum (Xfer Records) — reference workflow for Elixir's wavetable engine
 
 ---
 
