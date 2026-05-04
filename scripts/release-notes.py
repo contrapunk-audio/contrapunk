@@ -201,20 +201,67 @@ def render(categorized, uncategorized, commits):
         lines.append(f"# Contrapunk {VERSION}")
     lines.append("")
 
+    # Optional curated header sections (env-driven so weekly auto-release
+    # stays terse but tagged releases can prepend a pitch / TL;DR / try-it
+    # block matching the Tekton-style hand-curated release format).
+    pitch = os.environ.get("PITCH", "").strip()
+    tldr = os.environ.get("TLDR", "").strip()  # newline-separated bullets
+    try_it = os.environ.get("TRY_IT", "").strip()
+    breaking = os.environ.get("BREAKING", "").strip()
+
+    if pitch:
+        lines.append(f"**{pitch}**")
+        lines.append("")
+    if try_it:
+        lines.append(f"Try it now: **{try_it}**")
+        lines.append("")
+    if tldr:
+        lines.append("---")
+        lines.append("")
+        lines.append("## TL;DR")
+        lines.append("")
+        for bullet in tldr.splitlines():
+            bullet = bullet.strip()
+            if bullet:
+                lines.append(f"- {bullet}")
+        lines.append("")
+    if breaking:
+        lines.append("---")
+        lines.append("")
+        lines.append("## ⚠️ Breaking changes")
+        lines.append("")
+        for line in breaking.splitlines():
+            lines.append(line)
+        lines.append("")
+    if pitch or tldr or try_it or breaking:
+        lines.append("---")
+        lines.append("")
+
     # Categorized sections (sorted by priority)
     sorted_cats = sorted(
         categorized.items(),
         key=lambda kv: CATEGORIES.get(kv[0], ("", "", 50))[2]
     )
 
+    # Dedupe a trailing "(#N)" already present in commit/PR title so we
+    # don't render "(#88) (#88)" — common when the commit message included
+    # the PR number AND we append it from PR metadata.
+    pr_suffix_re = re.compile(r"\s*\(#\d+\)\s*$")
+
     for prefix, items in sorted_cats:
         emoji, display_name, _ = CATEGORIES.get(prefix, ("📦", prefix.title(), 50))
         lines.append(f"## {emoji} {display_name}")
         lines.append("")
+        seen = set()  # dedupe by (description, pr_number) so split commits don't double-list
         for item in items:
             scope_str = f"**{item['scope']}**: " if item.get("scope") else ""
+            description = pr_suffix_re.sub("", item["description"])
             pr_ref = f" (#{item['pr_number']})" if item.get("pr_number") else f" ({item['hash']})"
-            lines.append(f"- {scope_str}{item['description']}{pr_ref}")
+            key = (description.strip().lower(), item.get("pr_number"))
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(f"- {scope_str}{description}{pr_ref}")
             # Include PR release note if present
             if item.get("release_note"):
                 for note_line in item["release_note"].splitlines():
@@ -245,9 +292,19 @@ def render(categorized, uncategorized, commits):
         lines.append(f"`{stats}`")
         lines.append("")
 
-    # Footer
-    lines.append("---")
-    lines.append("*Automated weekly release. Only created when source changes are detected.*")
+    # Compare link
+    if LAST_TAG:
+        lines.append("## 📋 Full changelog")
+        lines.append("")
+        lines.append(
+            f"https://github.com/contrapunk-audio/contrapunk/compare/{LAST_TAG}...v{VERSION}"
+        )
+        lines.append("")
+
+    # Footer — only the auto-release banner if no curated header was given
+    if not (pitch or tldr or try_it or breaking):
+        lines.append("---")
+        lines.append("*Automated weekly release. Only created when source changes are detected.*")
 
     return "\n".join(lines)
 
