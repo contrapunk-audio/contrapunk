@@ -15,7 +15,7 @@ Three intertwined architecture pieces, designed together:
 - `Lane` — a trait. The unit of decision-making. Each Lane declares an `input_filter`, runs in one of three phases (Sense / Mutate / Decide), reads `WorldState`, and emits `Vec<DispatchOp>`.
 - `Companion` — the orchestrator. Holds the WorldState, owns a `Vec<Box<dyn Lane>>`, runs them in phase order on every router-loop tick and on every input event.
 
-Every feature in the 9-week jam pipeline that emits MIDI in time fits as a Lane. Pattern (existing PR #89) becomes the first Lane impl. Looper, BeatMachine (Logic Drummer-style), Arpeggiator, Drone, Pad, ChordSeq, AutoKey all follow the same shape.
+Every feature in the 9-week jam pipeline that emits MIDI in time fits as a Lane. **The pattern programmer (cell-grid mask on held inputs from PR #89) was deleted (commit `1376c4c`) — wrong abstraction.** The companion's actual shape is **capture-and-replay**: LooperLane is the primary Lane impl, BeatMachine (Logic Drummer-style), Arpeggiator, Drone, Pad, ChordSeq, AutoKey all follow the same Lane shape.
 
 **Part 2 — Audio architecture** (replaces today's linear chain). Audio graph (DAG) of typed Nodes:
 - `Instrument` trait separates sources from processors. Multiple parallel instruments (synth, drum sampler, plugins, drone) coexist.
@@ -229,12 +229,11 @@ pub enum InputEvent {
                                     ▼
    PHASE 3: DECIDE       ─→ emits dispatch ops
    ─────────────────       (NoteOn, NoteOff, AllNotesOff)
-   Pattern Lane
-   LoopSlot Lane × N
+   LoopSlot Lane × N      ← primary companion abstraction (capture+replay)
+   BeatMachine Lane
    Arpeggiator Lane
    Drone Lane
    AmbientPad Lane
-   BeatMachine Lane
 ```
 
 **Concrete example:** AutoKey detects you're vibing in D minor (Sense). Engine snapshot now reflects the new key. ChordSeq's "next chord" lookup uses the updated key (Mutate). Drone Lane reads the new tonic from the engine snapshot and emits a low D drone (Decide). Each lane sees a coherent world.
@@ -243,11 +242,10 @@ Without phase ordering: Drone might read stale key while AutoKey is mid-update; 
 
 ### Input filter — split keyboard / live channel
 
-The user wants to play live melody while pattern + loops + drone + beats run in the background. Without `input_filter`, every Lane sees every press, and Pattern Lane will try to gate the live melody just like the chord-register inputs.
+The user wants to play live melody while loops + drone + beats run in the background. Without `input_filter`, every Lane sees every press, and Lanes that capture (LooperLane) or transform (ArpeggiatorLane) live input would interfere with melody-register notes meant to fly free.
 
 Default Lane filters:
-- **PatternLane**: `All` (today's behavior). User can configure to `NoteRange(C2..B3)` for split-keyboard.
-- **LooperLane (Input source)**: `All` (records anything user plays).
+- **LooperLane (Input source)**: `All` (records anything user plays). Configurable to `NoteRange` for chord-only capture.
 - **LooperLane (Output source)**: `None` (taps engine output, not input).
 - **ArpLane**: `NoteRange(C2..B3)` default (chord register).
 - **DroneLane / PadLane / BeatMachineLane**: `None` (tick-only).
@@ -389,14 +387,12 @@ This fixes:
 
 ## Lane catalog
 
-### PatternLane (Phase 1 — refactor of existing PR #89 logic)
-**Phase**: Decide. **Filter**: `All` default; configurable to `NoteRange(C2..B3)` for split-keyboard.
-- Reads: transport.totalBeat, sounding_voices, current_cell index
-- Emits: NoteOn/NoteOff per held harmony voice on cell boundaries
-- Modes: Live (staccato retrigger), Gated (legato, edges only)
-- F2/F4/F5/M3/H3 invariants port over; new P1 invariant added.
+### LooperLane × N (Phase 2 — Wk 1) — **the primary companion abstraction**
 
-### LooperLane × N (Phase 2 — Wk 1)
+The pattern programmer (cell-grid mask on held inputs) was tried and removed
+(commit `1376c4c`); it was the wrong shape. The companion's actual unit is
+**capture-and-replay**: the user plays, a slot records, the slot loops back
+through the harmony engine. Loops are how the companion "plays alongside" you.
 **Phase**: Decide. **Filter** depends on source: `All` for Input source, `None` for Output source.
 - Slot lifecycle: Empty → Armed → Recording → Playing / Stopped
 - Replay paths: Input source re-enters via MidiRouter → harmony engine; Output source emits direct dispatch ops bypassing harmony
@@ -558,17 +554,13 @@ pub struct DrumCell { pub on: bool, pub velocity: u8, pub accent: bool }
 
 ## Pure-function contracts (Lane invariants)
 
-### Pattern invariants (existing, ported from PR #89)
-
-- **F2**: ops emitted by pattern lane do not double-fire when polyphonic input produces overlapping harmonies.
-- **F4**: when pattern lane re-fires a held voice with new routing, the old voice gets a NoteOff op before the new voice's NoteOn op.
-- **F5**: when a setter raises `panic_pending` and pattern was about to fire on this tick, the panic-replay's `to_release` set covers the pattern-attacked notes; pattern lane skips this tick.
-- **M3**: the first tick after `companion.enabled` flips true seeds `last_pattern_cell` without firing.
-- **H3**: pattern lane skipped when `panic_pending` on this tick.
+The pattern-specific F2/F4/F5/M3/H3 + P1 invariants from PR #89 were retired
+along with the pattern programmer (commit `1376c4c`). The remaining invariants
+are looper- and beat-machine-specific.
 
 ### Input pipeline
 
-- **P1**: `handle_note_on` consults Companion before default harmonize. If a Lane returns `suppress_default=true`, default `harmonize_note_on` does not fire. PatternLane.on_input returns suppress_default=true when current cell is off in Live or Gated mode.
+- **P1 (still relevant for future Lanes)**: `handle_note_on` consults Companion before default harmonize. If a Lane returns `suppress_default=true`, default `harmonize_note_on` does not fire. Used by ArpeggiatorLane (suppresses input, emits arp pattern instead) and LooperLane Input source (captures press; harmony also fires through default).
 
 ### Looper
 
@@ -1853,12 +1845,13 @@ Loading a rig with stuck notes from the previous setup is handled by the panic_p
 
 | Old | New |
 |---|---|
-| `state.rs::PatternConfig` | `companion/pattern.rs::CompanionPattern` ✅ done in 1.2 |
-| `state.rs::PatternInputMode` | `companion/pattern.rs::CompanionInputMode` ✅ done in 1.2 |
-| `AppState::pattern_config` | `AppState::companion: Arc<Companion>` (Phase 1) |
-| `AppState::pattern_enabled: AtomicBool` | `Companion::enabled: AtomicBool` (Phase 1) |
-| `commands/engine.rs::set_pattern_enabled` | `commands/companion.rs::set_companion_enabled` |
-| `commands/engine.rs::set_pattern_config` | `commands/companion.rs::set_companion_pattern` |
+| ~~`state.rs::PatternConfig`~~ | DELETED (commit `1376c4c`) — pattern programmer removed entirely |
+| ~~`state.rs::PatternInputMode`~~ | DELETED |
+| ~~`AppState::pattern_config`~~ | DELETED |
+| ~~`AppState::pattern_enabled`~~ | DELETED |
+| ~~`commands::set_pattern_enabled` / `set_pattern_config`~~ | DELETED |
+| (new) | `AppState::companion: Arc<Companion>` (Phase 1.4) |
+| (new) | `Companion::enabled: AtomicBool` (Phase 1.4) |
 | `commands/engine.rs::set_auto_key` | `commands/companion.rs::set_companion_auto_key` |
 | (new) | `commands/companion.rs::set_companion_loop_arm` |
 | (new) | `commands/companion.rs::set_companion_loop_stop` |
@@ -1884,15 +1877,15 @@ Loading a rig with stuck notes from the previous setup is handled by the panic_p
 | (new) | `audio/plugin/au/instance.rs::AuInstance` + `host.rs::AuHost` (macOS only) |
 | (new) | `audio/plugin/lv2/instance.rs::Lv2Instance` + `host.rs::Lv2Host` |
 | (new) | `crates/contrapunk-dsp/` — shared DSP algorithms (Reverb FDN, Delay, Compressor, EQ, etc.) |
-| `pattern_config_tests` | `companion_pattern_tests` ✅ done in 1.2 |
+| ~~`pattern_config_tests`~~ | DELETED with pattern (commit `1376c4c`) |
 
 ### TS
 
 | Old | New |
 |---|---|
-| `lib/stores/pattern.svelte.ts::PatternStore` | `lib/stores/companion.svelte.ts::CompanionStore` (umbrella) |
+| ~~`lib/stores/pattern.svelte.ts::PatternStore`~~ | DELETED (commit `1376c4c`) — replaced by upcoming `companion.svelte.ts::CompanionStore` (umbrella) |
 | `lib/components/PatternPanel.svelte` | `lib/components/companion/CompanionPanel.svelte` (umbrella) + tabs |
-| Adapter `setPatternConfig` | `setCompanionPattern` |
+| ~~Adapter `setPatternConfig` / `setPatternEnabled`~~ | DELETED (commit `1376c4c`) |
 | Adapter `setPatternEnabled` | `setCompanionEnabled` |
 | Adapter (new) | `armCompanionLoop`, `setCompanionBeatIntensity`, `saveRig`, `loadRig`, etc. |
 
@@ -2063,7 +2056,7 @@ Plugins (CLAP / VST3 / AU / LV2) do not run in WASM regardless of format — no 
 | **1.3** | Update consumers, drop migration aliases | 30 min | ✅ done (`b4f8940`) |
 | **1.4** | `WorldState` struct, move held trackers from router thread | 1 d | next |
 | **1.5** | `Lane` trait + `Companion` orchestrator + phase ordering | 1 d | |
-| **1.6** | PatternLane impl wrapping existing logic + tests | 1 d | |
+| **1.6** | ~~PatternLane refactor~~ — pattern was deleted; first concrete Lane impl moves to Phase 2 (LooperLane) | — | superseded |
 | **1.7** | Companion-mediated input pipeline (P1 fix) | 0.5 d | |
 | **1.8** | TS adapter rename + frontend store split (CompanionStore umbrella) | 1 d | |
 | **1.9** | localStorage migration shim, Tauri command rename | 0.5 d | |
@@ -2132,7 +2125,7 @@ Elixir is its own phase track — runs independently of Companion / Audio / Rig 
 
 ## Decisions locked
 
-1. ✅ Companion as umbrella concept (pattern + loops + auto-key + beats as limbs)
+1. ✅ Companion as umbrella concept (loops + auto-key + beats as limbs; pattern programmer deleted in commit `1376c4c` — wrong abstraction)
 2. ✅ Both Input + Output loop sources, per-slot toggle
 3. ✅ N configurable slots
 4. ✅ Pre-flight gate before Phase 1
@@ -2298,54 +2291,32 @@ Elixir is its own phase track — runs independently of Companion / Audio / Rig 
 
 ## Pre-flight gate manual UAT checklist
 
-Run this in `cargo tauri dev` before Phase 1.4 starts. If items 1, 3, or 5 fail, stop the gate and we fix the underlying pattern bug first.
+Pattern-specific UAT items are RETIRED — the pattern programmer was deleted in commit `1376c4c`. The pre-flight gate going forward is the simpler "metronome + harmony engine still work" smoke test.
 
 ### Setup
 - [ ] `cargo tauri dev` launches, app window opens
 - [ ] No errors in browser DevTools console at app startup
-- [ ] PatternPanel pip visible in StatusBar
-- [ ] Click pip → PatternPanel opens
+- [ ] StatusBar visible, transport controls work
 
-### 1. Pattern fires correctly in 'live' mode (CRITICAL)
-- [ ] Default 16 cells all on
-- [ ] Toggle off cells 2, 6, 10, 14
-- [ ] Press transport play
-- [ ] Hold middle C
-- [ ] Audible: harmony fires only on cells 0, 1, 3, 4, 5, 7, 8, 9, 11, 12, 13, 15
-- [ ] Visual: highlighted cell matches audible cell
+### 1. Metronome click (CRITICAL — only thing left from "pattern stuff")
+- [ ] Toggle metronome on
+- [ ] Press play
+- [ ] Audible click on each beat at the configured BPM
+- [ ] Click stops cleanly on transport stop
 
-### 2. Pattern fires correctly in 'gated' mode
-- [ ] Switch input mode to 'gated'
-- [ ] Hold middle C continuously through 1 full bar
-- [ ] Audible: harmony NoteOff fires when entering an off-cell, NoteOn fires when entering an on-cell
+### 2. Basic harmony still works
+- [ ] Pick a key + harmony mode
+- [ ] Hold middle C → harmony voices fire immediately and audibly
+- [ ] Release C → all harmony notes release cleanly
 
-### 3. Stop/start mid-pattern doesn't stick notes (CRITICAL)
-- [ ] With pattern playing, hold middle C, let it run for 4 bars
-- [ ] Press transport stop
-- [ ] Wait 2 seconds — visual: piano UI shows no held harmony notes; audible: nothing ringing
-- [ ] Press transport play again — pattern resumes correctly
-
-### 4. Long-running drift check (5 min @ 120 BPM, 8-bar pattern)
-- [ ] Set length to 8 bars, BPM to 120
-- [ ] Hold middle C, let pattern run for 5 minutes
-- [ ] At 5-min mark: no audible drift, console clean of warnings, beat counter aligned
-
-### 5. Per-voice routing (CRITICAL)
+### 3. Per-voice routing (CRITICAL — companion will inherit this)
 - [ ] Configure: voice 0 → MIDI port 1, voice 1 → synth, voice 2 → off
 - [ ] Hold middle C → only voice 0 (port 1) and voice 1 (synth) audible
-- [ ] Stopped pattern → no stuck notes on port 1 or in synth
-
-### 6. Press during off-cell (P1 — KNOWN CURRENT BUG)
-- [ ] Pattern: only cells 0, 4, 8, 12 on (downbeats only)
-- [ ] Press middle C during cell 1 (off)
-- [ ] Currently: harmony fires immediately. **This is the bug Phase 1.7 fixes.**
-- [ ] Document current behavior; do not fail the gate on this.
 
 ### Cleanup
-- [ ] Close PatternPanel → pattern disables → all held harmony released
-- [ ] Press transport stop → all notes released
+- [ ] Transport stop → all notes released
 - [ ] App can be closed cleanly with no errors
 
 ---
 
-**End of architecture document. Phase 1.4 (WorldState + Lane trait) is next after pre-flight UAT passes (manual UAT items 1, 3, 5).**
+**End of architecture document. Phase 1.4 (WorldState + Lane trait + Companion orchestrator) is next; first concrete Lane impl is LooperLane in Phase 2.**
