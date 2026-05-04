@@ -1,48 +1,74 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-03T20:31:11Z",
+  "timestamp": "2026-05-04T17:05:00Z",
   "phase": null,
-  "phase_name": "UI polish + jam-prep session (no active phase)",
+  "phase_name": "Companion architecture session — paused after v1.1.0 (Kondo KITT) release",
   "phase_dir": null,
   "branch": "main",
+  "last_commit": "b58c294",
   "status": "paused",
   "completed_tasks": [
-    {"id": 1, "name": "PR #92 — UI polish bundle (layout stability + HLD afterimage + music notation + chord_name on note-off + partial-chord (no X) fallback + grid-template-columns lock + no auto-pattern-start + force metronome OFF on init)", "status": "done", "commit": "9b2834f"},
-    {"id": 2, "name": "PR #88 — MIDI Learn for Performance view knobs + MPK Mini preset, rebased onto main", "status": "done", "commit": "7e6b436"},
-    {"id": 3, "name": "Strip roman-numeral analysis suffix from ActiveNotes chord readout (preserves partial-chord parens like '(no 5)')", "status": "done", "commit": "81a8e9d"},
-    {"id": 4, "name": "Set WEBSITE_REPO_TOKEN secret + made website-compat workflow non-blocking", "status": "done", "commit": "e82c773 + secret added 2026-05-03T20:08:58Z"}
+    {"id": 1, "name": "Phase 1.1 — companion module skeleton", "status": "done", "commit": "2ca0291"},
+    {"id": 2, "name": "Phase 1.2 — move PatternConfig to companion/pattern.rs (later removed)", "status": "done", "commit": "19053a6"},
+    {"id": 3, "name": "Phase 1.3 — update consumers, drop migration aliases", "status": "done", "commit": "b4f8940"},
+    {"id": 4, "name": "Architecture doc — state machine + Lane abstraction", "status": "done", "commit": "7c7a921"},
+    {"id": 5, "name": "Architecture doc — audio graph + rig saving", "status": "done", "commit": "c3b9066"},
+    {"id": 6, "name": "Architecture doc — mutation API + sidechain + Elixir track", "status": "done", "commit": "0f36be7"},
+    {"id": 7, "name": "Architecture doc — 11 architectural decisions + multi-format plugins", "status": "done", "commit": "8bb8d7e"},
+    {"id": 8, "name": "Pattern programmer DELETED entirely (~600 LOC)", "status": "done", "commit": "1376c4c"},
+    {"id": 9, "name": "Architecture doc trimmed of pattern references", "status": "done", "commit": "386446d"},
+    {"id": 10, "name": "StatusBar chord-info display removed", "status": "done", "commit": "71921b9"},
+    {"id": 11, "name": "Squash-merge feat/companion → main", "status": "done", "commit": "9d50b25"},
+    {"id": 12, "name": "Old v1.1.0 'Fela FRIDAY' release + tag deleted (zero-asset placeholder)", "status": "done"},
+    {"id": 13, "name": "v1.1.0 'Kondo KITT' tag + release created with curated Tekton-style notes", "status": "done"},
+    {"id": 14, "name": "release-notes.py improved (PITCH/TLDR/TRY_IT/BREAKING + dedupe + compare link)", "status": "done", "commit": "b58c294"},
+    {"id": 15, "name": "Windows binaries (.exe + NSIS installer) attached to release", "status": "done"},
+    {"id": 16, "name": "macOS .app.zip (Apple Silicon) built locally + attached to release", "status": "done"}
   ],
   "remaining_tasks": [
-    {"id": 5, "name": "Wk 1 Looper feature for jam — fully scoped at .planning/jam-features-2026/01-looper.md", "status": "not_started", "deadline": "Thu 2026-05-07 (jam launches)"},
-    {"id": 6, "name": "Pattern + Looper integration design — both share transport timeline, need to spec how they coexist", "status": "not_started", "blocking": "needs design before implementation"},
-    {"id": 7, "name": "Simple ↔ Advanced view-mode mismatch audit — some controls don't round-trip cleanly between PerformanceView and ControlPanel", "status": "not_started"},
-    {"id": 8, "name": "Knob color blending fix — track ring stroke + indicator line stroke share accent color, blend visually", "status": "not_started", "estimate": "5min CSS"},
-    {"id": 9, "name": "Responsive sizing for top header + knobs + inputs/outputs (kill fixed pixel widths, use 1fr/minmax(0,1fr)/clamp/container queries — same architectural pattern as the .app-layout grid lock)", "status": "not_started"},
-    {"id": 10, "name": "Piano coloring audit — user reported (resolved: their scaleMode was wrong; .scale-overlay rgba(255,253,140,0.3) may still be too subtle, candidate to bump to 0.5-0.6 if desired)", "status": "deferred"},
-    {"id": 11, "name": "Local cleanup: git fetch && git branch -D feat/ui-polish-jam-prep feat/midi-learn (both squash-merged, branches deleted on remote)", "status": "not_started", "estimate": "1min"},
-    {"id": 12, "name": "ROTATE the WEBSITE_REPO_TOKEN PAT — was pasted in plaintext during the session", "status": "not_started", "blocking": "security"}
+    {"id": 17, "name": "Phase 1.4 — WorldState + Lane trait + Companion orchestrator", "status": "not_started", "estimate": "1 day", "priority": "high — next code work"},
+    {"id": 18, "name": "Phase 2 — LooperLane (single + multi-slot, Input + Output sources)", "status": "not_started", "estimate": "2-3 days", "priority": "high — blocks Wk 1 jam"},
+    {"id": 19, "name": "Patch windows-build.yml to auto-attach on release: published", "status": "not_started", "estimate": "30 min", "priority": "low"},
+    {"id": 20, "name": "Add macos-build.yml workflow (aarch64 + x86_64; brew install create-dmg)", "status": "not_started", "estimate": "30 min", "priority": "low"},
+    {"id": 21, "name": "Show HN draft + 30-60s demo video", "status": "not_started", "estimate": "2-3 hours", "priority": "high — for jam launch Fri 2026-05-08"},
+    {"id": 22, "name": "Website updates (private contrapunk-audio/website repo)", "status": "not_started", "estimate": "1-2 hours", "priority": "medium", "details": "Version badge bump, /news/ entry, /jam/ index, /jam/1 (Kondo) landing page, fresh screenshots"},
+    {"id": 23, "name": "Wk 1 jam launch decision (Mon 2026-05-05)", "status": "deadline_bound", "deadline": "Mon 2026-05-05", "details": "Decide: ship LooperLane (Phases 1.4 + 2), or pivot to plugin-curation only per discipline rules in jam-features-2026/README.md"},
+    {"id": 24, "name": "Close issue #91 (subsumed by Phase 1.4 Lane trait)", "status": "not_started", "priority": "low"},
+    {"id": 25, "name": "Close issue #90 if held_harmonies removal made it moot (verify first)", "status": "not_started", "priority": "low"}
   ],
   "blockers": [],
   "human_actions_pending": [
-    {"action": "Rotate the WEBSITE_REPO_TOKEN PAT (github_pat_11AC3K5...) — pasted in plaintext during this session, conversation logs preserve it. Generate new fine-grained PAT (Contents:Read on contrapunk-audio/website only), then `gh secret set WEBSITE_REPO_TOKEN --repo contrapunk-audio/contrapunk` with new value.", "context": "Security hygiene", "blocking": false}
+    {"action": "Run /gsd-resume-work in fresh session to load this state", "context": "context exhausted at 97% in current session", "blocking": false},
+    {"action": "Decide Mon 2026-05-05: Wk 1 ships LooperLane or pivots to plugin-curation only", "context": "jam launches Thu 2026-05-07 / Fri 2026-05-08; LooperLane requires Phases 1.4 + 2 (~3-4 days work)", "blocking": false}
   ],
   "decisions": [
-    {"decision": "Three-tier chord_display chain: detect_chord → detect_partial_chord (up to 2 missing tones, jazz lead-sheet '(no X)' notation) → notes_as_intervals fallback", "rationale": "Empty-string fallback was hiding meaningful info; '+'-joined was non-music notation. Partial detection captures shell voicings."},
-    {"decision": "Padding-bottom percentage trick (14.4231% = 150/1040) for fretboard aspect lock instead of CSS aspect-ratio + contain", "rationale": "Engine-agnostic, works in every browser including older WebKit; aspect-ratio is Safari 15.4+ only and contain may not honor SVG layout in WebKit."},
-    {"decision": ".app-layout `grid-template-columns: minmax(0, 1fr)` instead of relying on implicit auto column", "rationale": "Auto column = max-content; ActiveNotes' nowrap note-list could push the column past viewport, propagating to fretboard width. Architectural lock against any conditional content pushing layout."},
-    {"decision": "ActiveNotes strips trailing '(... in <Key>)' analysis suffix using `lastIndexOf(' (')` + regex check, NOT split on first ' ('", "rationale": "Splitting on first ' (' mangles partial chord names like 'Cmaj7(no 5)'. Last-pair-only stripping preserves them."},
-    {"decision": "PatternPanel.onMount no longer auto-starts the transport", "rationale": "Panel visibility persists in localStorage; auto-start fired on every fresh launch where user previously toggled the panel on, producing surprise click. User must press transport ▶ explicitly."},
-    {"decision": "Force metronome OFF in +page.svelte init effect after sync completes", "rationale": "Defends against any startup race where audio thread fires a beat crossing before UI's syncFromBackend completes."},
-    {"decision": "website-compat job is non-blocking via continue-on-error + token fallback to GITHUB_TOKEN", "rationale": "contrapunk-audio/website is private; default GITHUB_TOKEN can't clone it from PR contexts. Job still runs and surfaces failures but doesn't gate merge."}
+    {"decision": "Pattern programmer (PR #89) removed entirely — wrong abstraction", "rationale": "Companion's true shape is capture-and-replay (looper-style), not rhythmic-mask-on-held-inputs. Pattern was an awkward intermediate.", "phase": "post-v1.1.0"},
+    {"decision": "LooperLane is the primary companion abstraction — first concrete Lane impl in Phase 2", "rationale": "Captures user's played notes, replays through harmony engine. Maps to user's vision of 'companion that plays alongside you'."},
+    {"decision": "State machine architecture: Lane trait + WorldState + 3-phase orchestration", "rationale": "Six of nine jam-pipeline weeks fit cleanly as Lane impls; phase ordering (Sense → Mutate → Decide) makes feedback loops well-defined."},
+    {"decision": "Audio graph (DAG) replaces linear chain in src/chain/", "rationale": "Linear chain can't express multiple sources mixed before FX, sidechaining, parallel sends. BeatMachine + DrumSampler need parallel sources immediately."},
+    {"decision": "Plugin support: PluginNode wrapping Box<dyn PluginInstance>; CLAP/VST3/AU/LV2 adapters", "rationale": "Plugins can be effects too — 'ClapInstrument' was wrong naming. Format-agnostic Node wrapper, role determined at instantiation."},
+    {"decision": "Sidechaining first-class — typed sidechain ports + SidechainSense Node", "rationale": "Real audio rigs need ducking, parallel compression, multiband sidechain. Architecture supports it from day 1."},
+    {"decision": "Rig saving: versioned JSON schema with migration framework", "rationale": "User explicitly elevated rig saving as first-class feature. Native filesystem + WASM IndexedDB + import/export interop."},
+    {"decision": "Elixir wavetable synth (Serum-class) replaces BasicSynth long-term", "rationale": "BasicSynth was placeholder. Elixir is its own phase track (E0-E12), parallel to Companion phases."},
+    {"decision": "BeatMachine = Logic Pro Drummer-style smart drummer (not basic step sequencer)", "rationale": "User vision: drummer presets, X/Y intensity, auto-fills, internal Rust drum sampler, per-element overrides."},
+    {"decision": "Three-thread architecture: audio (RT lock-free) / router (companion + WorldState) / main (Tauri/UI)", "rationale": "Audio thread MUST be lock-free; companion runs on router thread; main thread handles UI commands."},
+    {"decision": "Standardized Node::params() -> &dyn ParamStore", "rationale": "Uniform parameter interface for UI, MIDI Learn, mod matrix, rig save. Atomic-backed default impl with per-param 5ms smoothing."},
+    {"decision": "Elixir license: dual MIT / Apache-2.0", "rationale": "Standard Rust ecosystem default; Apache patent grant; MIT for adoption."},
+    {"decision": "Standalone Elixir first per Elixir DESIGN.md (re-eval gate after E5-E7)", "rationale": "Elixir is its own product. Contrapunk integration at E11."},
+    {"decision": "v1.1.0 named 'Kondo KITT' (Koji Kondo + Knight Rider's KITT)", "rationale": "Wk 1 jam composer + recognizable robot; cohesive marketing for May 1 jam launch. Formula from scripts/release-name.py."},
+    {"decision": "v1.1.0 'Fela FRIDAY' release deleted (zero-asset placeholder, no real adoption); v1.1.0 re-tagged at new HEAD", "rationale": "User confirmed prior v1.1.0 had no public adoption; safe to re-use version number."},
+    {"decision": "release-notes.py extended with curated header env vars", "rationale": "Tekton-style PITCH/TLDR/TRY_IT/BREAKING produces HN-ready release notes; auto-mode unchanged for weekly releases."}
   ],
   "uncommitted_files": [
-    "Various ui/build/ deletions (build output, gitignored)",
-    "Various ui/node_modules/ modifications (dep cache, gitignored)",
-    ".planning/STATE.md (auto-bumped date — noise, not committed)"
+    "Various ui/build/ regenerated files (gitignored noise)",
+    "Various ui/node_modules/ (gitignored)",
+    "graphify-out/ (gitignored)",
+    ".wrangler/ (gitignored)",
+    "Tauri build output: target/release/bundle/macos/Contrapunk.app + rw.Contrapunk_1.1.0_aarch64.dmg (gitignored)"
   ],
   "background_processes": [
-    {"task_id": "b7aypx29l", "command": "cargo tauri dev (running from .claude/worktrees/agent-a331e492aba54583c/src-tauri)", "note": "Built from feat/midi-learn branch BEFORE the chord-strip commits 8a5c788 + 81a8e9d landed. HMR may or may not have caught those — recommend kill + rebuild from main when resuming."}
+    {"task_id": "bs7r8yoih", "command": "cargo tauri build", "status": "completed (failed at bundle_dmg step, .app produced + uploaded to release)", "note": "macOS .app.zip is on the v1.1.0 release. Future: brew install create-dmg + add macos-build.yml workflow"}
   ],
-  "next_action": "Resume by killing the stale Tauri (TaskStop b7aypx29l), `git fetch`, delete merged local branches (feat/ui-polish-jam-prep, feat/midi-learn), then choose: (a) Wk 1 Looper feature work — 3-day deadline, brief at .planning/jam-features-2026/01-looper.md ready to execute; (b) Pattern + Looper integration design — needed before Looper if both must share transport; (c) Quick wins first: knob color fix (5min) + Simple/Advanced parity audit. Recommend (b) as design pre-req for (a).",
-  "context_notes": "Long polish session: 12 commits across 2 PRs, both merged. User was iterating fast on UI polish, repeatedly course-correcting (e.g. discovered the 'click on launch' was actually pattern-auto-starting transport, not metronome). Context budget got tight near the end — chord-name strip fix needed two iterations because first version mangled '(no 5)' partial chords. WEBSITE_REPO_TOKEN was pasted in plaintext (handled, but rotation pending). Tauri running from a worktree path, not main — clean up before resuming. Next session should /clear immediately to recover full context budget for the bigger Pattern+Looper design work."
+  "next_action": "In fresh session: /gsd-resume-work to reload state. Then decide priority: (a) Phase 1.4 (WorldState + Lane trait) — blocks Wk 1 jam, (b) Show HN draft + demo media — for jam launch, (c) Website updates (different repo: contrapunk-audio/website). Recommend (a) since the Mon 2026-05-05 decision on Wk 1 jam scope depends on Phase 1.4 progress.",
+  "context_notes": "Long architectural session — significant pivot away from pattern programmer (PR #89's main feature) toward looper-style capture-and-replay companion. v1.1.0 ships with the architectural foundation but no user-facing companion features yet. v1.2.0+ starts building actual Lanes. The architecture doc at .planning/jam-features-2026/01-companion-architecture.md (1900+ lines) is the canonical living spec covering Companion + Audio graph + Rig saving + Multi-format plugins + Elixir wavetable synth integration plan. User stance: 'no shortcuts, all phases' — full architecture build planned over 6-8 weeks. Today is 2026-05-04 (Sunday); jam launches Thu 2026-05-07 / Fri 2026-05-08."
 }
