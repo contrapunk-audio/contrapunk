@@ -14,7 +14,6 @@
 	import { engine } from '$lib/stores/engine.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
-	import { pattern } from '$lib/stores/pattern.svelte';
 	import BeatGrid from './BeatGrid.svelte';
 	import { Renderer, Stave, StaveNote, Formatter, Accidental, Voice } from 'vexflow';
 
@@ -249,9 +248,8 @@
 </script>
 
 <div class="history-strip" aria-label="Recent notes — grand staff memory">
-	<!-- Beat-aligned header: shows bar/beat from transport + currently-
-	     playing cell when pattern is enabled. Provides timing context for
-	     the chord moments rendered on the staff below. -->
+	<!-- Beat-aligned header: shows bar/beat from transport. Provides
+	     timing context for the chord moments rendered on the staff below. -->
 	<div class="beat-header font-ui">
 		<span class="bar-readout">
 			Bar <span class="bar-num">{Math.floor(transport.totalBeat / Math.max(1, transport.beatsPerBar)) + 1}</span>.<span
@@ -263,15 +261,6 @@
 			variant="pip"
 			ariaLabel="Beat indicator"
 		/>
-		{#if pattern.cells.length > 0}
-			<BeatGrid
-				count={pattern.cells.length}
-				cellOn={(i) => !!pattern.cells[i]}
-				currentIndex={transport.running ? pattern.cellIndexAt(transport.totalBeat) : null}
-				variant="mini"
-				ariaLabel="Pattern preview"
-			/>
-		{/if}
 	</div>
 	<!-- Fixed-aspect SVG host sized to match the Fretboard (1040 × 150).
 	     VexFlow renders its SVG inside at that exact pixel size; the outer

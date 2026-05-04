@@ -62,18 +62,6 @@
 	<!-- Transport: play/stop + BPM + beat pips -->
 	<TransportBar />
 
-	<!-- Chord display -->
-	<div class="chord-info">
-		{#if engine.chordName}
-			<span class="chord-name font-code">{chordDisplay}</span>
-		{:else}
-			<span class="chord-name font-code dim">---</span>
-		{/if}
-		{#if engine.interchangeEnabled && engine.lastBorrowedFrom}
-			<span class="borrowed-label font-code">from {borrowedDisplay}</span>
-		{/if}
-	</div>
-
 	<!-- Spacer -->
 	<div class="spacer"></div>
 

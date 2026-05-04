@@ -1,0 +1,2002 @@
+[
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 25,
+    "snippet": "<div class=\"card-header font-pixel\">Notes</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header - UI chrome"
+  },
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 29,
+    "snippet": "<div class=\"chord-name font-pixel\">{engine.chordName}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Chord name readout (e.g. Cmaj7) - technical"
+  },
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 34,
+    "snippet": "<div class=\"borrowed-from font-pixel\">from {engine.lastBorrowedFrom}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Borrowed-chord readout (mode/chord name technical)"
+  },
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 39,
+    "snippet": "<span class=\"section-label font-pixel\">INPUT</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Section label (UI caps chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 41,
+    "snippet": "<span class=\"note-list input-notes font-pixel\">{inputNames.join(\u2026)}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Comma-separated list of MIDI note names (C4, D5\u2026)"
+  },
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 45,
+    "snippet": "<span class=\"note-none font-pixel\">(none)</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Placeholder stands in for the note-list - same visual slot"
+  },
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 51,
+    "snippet": "<span class=\"section-label font-pixel\">HARMONY</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Section label"
+  },
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 53,
+    "snippet": "<span class=\"note-list harmony-notes font-pixel\">{harmonyNames.join(\u2026)}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Harmony note-names list"
+  },
+  {
+    "file": "ui/src/lib/components/ActiveNotes.svelte",
+    "line": 57,
+    "snippet": "<span class=\"note-none font-pixel\">(none)</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Placeholder for harmony list"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 28,
+    "snippet": "<div class=\"chain-header font-pixel\">Audio chain</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Panel header"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 29,
+    "snippet": "<button class=\"pixel-btn font-pixel add-plugin-btn\" \u2026>+ Plugin</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Add-plugin button"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 36,
+    "snippet": "<div class=\"flow-node source font-pixel\"><Harmony/MIDI></div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Signal-flow node label (Harmony/MIDI) - UI chrome"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 41,
+    "snippet": "<div class=\"flow-arrow font-pixel\">\u2501\u2501\u25b6</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Flow arrow glyph - decorative chrome"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 43,
+    "snippet": "<div class=\"flow-node synth-node font-pixel\"><Synth/8-voice></div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Signal-flow node label"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 48,
+    "snippet": "<div class=\"flow-node delay-node font-pixel\" \u2026><Delay/on|bypass></div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Signal-flow node label"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 53,
+    "snippet": "<div class=\"flow-node reverb-node font-pixel\" \u2026><Reverb/on|bypass></div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Signal-flow node label"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 59,
+    "snippet": "<div class=\"flow-node plugin-node font-pixel\" title={b.typeId}><name/CLAP></div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Signal-flow plugin node - UI chrome (name is short label, not a data readout)"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 65,
+    "snippet": "<div class=\"flow-arrow font-pixel\">\u2501\u2501\u25b6</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Flow arrow glyph"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 66,
+    "snippet": "<div class=\"flow-node sink font-pixel\"><Output/Speakers></div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Signal-flow sink node"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 75,
+    "snippet": "<span class=\"rack-title font-pixel\">Synth</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Rack title - panel chrome"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 77,
+    "snippet": "<button class=\"pixel-btn power-btn font-pixel\" class:active={synth.enabled} \u2026>{ON|OFF}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Power toggle button"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 89,
+    "snippet": "<div class=\"section-label font-pixel\">Osc</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Rack-section label"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 101,
+    "snippet": "<div class=\"section-label font-pixel\">Filter</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Rack-section label"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 132,
+    "snippet": "<div class=\"section-label font-pixel\">Env</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Rack-section label"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 194,
+    "snippet": "<div class=\"section-label font-pixel\">Amp</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Rack-section label"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 212,
+    "snippet": "<div class=\"rack-footer font-pixel\">Drag knobs \u2195 \u2022 Shift = fine \u2022 Double-click = reset</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Rack hint/chrome caption"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 222,
+    "snippet": "<span class=\"rack-title delay-title font-pixel\">Delay</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Rack title"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 224,
+    "snippet": "<button class=\"pixel-btn power-btn font-pixel\" \u2026>{ON|OFF}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Power toggle button"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 276,
+    "snippet": "<span class=\"rack-title reverb-title font-pixel\">Reverb</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Rack title"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 278,
+    "snippet": "<button class=\"pixel-btn power-btn font-pixel\" \u2026>{ON|OFF}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Power toggle button"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 333,
+    "snippet": "<span class=\"rack-title plugin-title font-pixel\">{b.name}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Plugin rack title"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 336,
+    "snippet": "<button class=\"pixel-btn font-pixel plugin-open-btn\" \u2026>Open UI</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Open UI button"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 344,
+    "snippet": "<button class=\"pixel-btn font-pixel plugin-remove-btn\" \u2026>Remove</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Remove button"
+  },
+  {
+    "file": "ui/src/lib/components/ChainPanel.svelte",
+    "line": 352,
+    "snippet": "<div class=\"plugin-body font-pixel\"><Type:CLAP / Plugin ID: b.typeId></div>",
+    "current_class": "font-pixel",
+    "target_class": "ambiguous",
+    "reason": "Parent wraps a Type:CLAP label (UI) + plugin-id value (code). Split: labels -> font-ui, .plugin-value.plugin-id -> font-code"
+  },
+  {
+    "file": "ui/src/lib/components/ClapPluginPicker.svelte",
+    "line": 46,
+    "snippet": "<div class=\"modal-header font-pixel\">\u2026Add CLAP plugin\u2026</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Modal header - UI chrome"
+  },
+  {
+    "file": "ui/src/lib/components/ClapPluginPicker.svelte",
+    "line": 48,
+    "snippet": "<button class=\"pixel-btn font-pixel\" onclick={() => (open = false)}>X</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Modal close button"
+  },
+  {
+    "file": "ui/src/lib/components/ClapPluginPicker.svelte",
+    "line": 52,
+    "snippet": "<input class=\"search font-pixel\" type=\"text\" placeholder=\"Search\u2026\" \u2026 />",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Search input field"
+  },
+  {
+    "file": "ui/src/lib/components/ClapPluginPicker.svelte",
+    "line": 59,
+    "snippet": "<div class=\"status font-pixel\">Scanning\u2026</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Status chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/ClapPluginPicker.svelte",
+    "line": 61,
+    "snippet": "<div class=\"status font-pixel\">No .clap plugins found\u2026</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Status chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/ClapPluginPicker.svelte",
+    "line": 68,
+    "snippet": "<button class=\"plugin-row font-pixel\" \u2026>name/vendor/path</button>",
+    "current_class": "font-pixel",
+    "target_class": "ambiguous",
+    "reason": "Row contains plugin-name (UI) + path (code). Needs splitting \u2014 child spans should get font-ui / font-code per role"
+  },
+  {
+    "file": "ui/src/lib/components/ClapPluginPicker.svelte",
+    "line": 82,
+    "snippet": "<div class=\"error font-pixel\">{error}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Error chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/ClapPluginPicker.svelte",
+    "line": 85,
+    "snippet": "<div class=\"modal-footer font-pixel\">\u2026Rescan\u2026</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Modal footer - UI chrome"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 114,
+    "snippet": "<div class=\"card-header font-pixel\">\u2026Key\u2026</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 131,
+    "snippet": "<div class=\"card-header font-pixel\">Mode</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 140,
+    "snippet": "<div class=\"card-header font-pixel\">Octave</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 154,
+    "snippet": "<div class=\"card-header font-pixel\">Species</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 163,
+    "snippet": "<div class=\"card-header font-pixel\">Strictness</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 177,
+    "snippet": "<div class=\"card-header font-pixel\">Family</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 186,
+    "snippet": "<div class=\"card-header font-pixel\">Scale</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 199,
+    "snippet": "<div class=\"card-header font-pixel\">Voices</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 208,
+    "snippet": "<div class=\"card-header font-pixel\">You play</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 217,
+    "snippet": "<span class=\"inline-note font-pixel\">Solo melody</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Inline note/label in card, UI chrome"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 225,
+    "snippet": "<div class=\"card-header font-pixel\">\u2026Voice Leading\u2026</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 245,
+    "snippet": "<div class=\"card-header font-pixel\">\u2026Interchange\u2026</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 257,
+    "snippet": "<span class=\"range-label font-pixel\">Rng</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Range control label ('Rng') - UI chrome"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 267,
+    "snippet": "<span class=\"range-label font-pixel\">{engine.interchangeRange}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Numeric range value readout (1..5)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 275,
+    "snippet": "<div class=\"card-header font-pixel\">Detune</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Card header label (UI chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/ControlPanel.svelte",
+    "line": 277,
+    "snippet": "<span class=\"range-label font-pixel\">{engine.detuneCents > 0 ? '+' : ''}{engine.detuneCents}\u00a2</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Numeric cents readout (technical value)"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 99,
+    "snippet": "<div class=\"panel-header font-pixel\">GUITAR INPUT</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Panel header (caps chrome label)"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 103,
+    "snippet": "<div class=\"tuner-title font-pixel\">CALIBRATING</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner status title"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 105,
+    "snippet": "<div class=\"tuner-instruction font-pixel\">Measuring noise floor...</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner instruction - UI caption"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 106,
+    "snippet": "<div class=\"tuner-instruction font-pixel\">Keep quiet for 3 seconds</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner instruction - UI caption"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 117,
+    "snippet": "<div class=\"tuner-title font-pixel\">TUNING -- String {n} of 6</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner status title"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 120,
+    "snippet": "<div class=\"tuner-target font-pixel\">Pluck {tunerTarget.name} ({tunerTarget.note})</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Displays target note name + pitch - technical readout"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 125,
+    "snippet": "<div class=\"tuner-detected font-pixel tuner-dim\">Waiting for signal...</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Placeholder/status caption"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 126,
+    "snippet": "<div class=\"tuner-meter font-pixel tuner-dim\">{buildMeter(0)}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "ASCII meter bar - fixed-width technical visualization"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 128,
+    "snippet": "<div class=\"tuner-detected font-pixel\"><note/cents></div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Detected note + cents readout - technical"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 134,
+    "snippet": "<div class=\"tuner-meter font-pixel\" \u2026>{buildMeter(\u2026)}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "ASCII meter bar"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 139,
+    "snippet": "<div class=\"tuner-advice font-pixel tuner-amber\">SHARP -- tune down</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner advice label"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 141,
+    "snippet": "<div class=\"tuner-advice font-pixel tuner-amber\">FLAT -- tune up</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner advice label"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 143,
+    "snippet": "<div class=\"tuner-advice font-pixel tuner-cyan\">IN TUNE</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner advice label"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 144,
+    "snippet": "<div class=\"tuner-hold font-pixel tuner-cyan\">{buildHoldBar(\u2026)} holding...</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "ASCII progress bar - fixed-width technical"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 158,
+    "snippet": "<div class=\"tuner-title font-pixel tuner-cyan\">TUNING COMPLETE</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner status title"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 160,
+    "snippet": "<div class=\"tuner-instruction font-pixel tuner-cyan\">All 6 strings tuned!</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tuner instruction"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 171,
+    "snippet": "<div class=\"panel-header font-pixel\">GUITAR INPUT</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Panel header"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 175,
+    "snippet": "<span class=\"device-label font-pixel\">DEVICE</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Field label (caps chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 177,
+    "snippet": "<div class=\"device-error font-pixel\">{guitar.audioDeviceError}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Error status caption"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 189,
+    "snippet": "<span class=\"device-label font-pixel channel-label\">CHANNEL</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Field label (caps chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 190,
+    "snippet": "<label class=\"channel-override font-pixel\">CH# <input \u2026/></label>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Form label wrapping number input"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 194,
+    "snippet": "<input type=\"number\" class=\"channel-count-input font-pixel\" \u2026 />",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Numeric channel-count input field - technical value"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 209,
+    "snippet": "<button class=\"channel-btn font-pixel\" \u2026>{ch}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Channel-number button (integer readout)"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 224,
+    "snippet": "<button class=\"dial-arrow dial-up font-pixel\" \u2026>+</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial increment button glyph"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 226,
+    "snippet": "<button class=\"dial-arrow dial-down font-pixel\" \u2026>-</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial decrement button glyph"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 228,
+    "snippet": "<span class=\"dial-label font-pixel\">LATENCY</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial label"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 233,
+    "snippet": "<button class=\"dial-arrow dial-up font-pixel\" \u2026>+</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial increment button glyph"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 235,
+    "snippet": "<button class=\"dial-arrow dial-down font-pixel\" \u2026>-</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial decrement button glyph"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 237,
+    "snippet": "<span class=\"dial-label font-pixel\">GAIN</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial label"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 242,
+    "snippet": "<button class=\"dial-arrow dial-up font-pixel\" \u2026>+</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial increment button glyph"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 244,
+    "snippet": "<button class=\"dial-arrow dial-down font-pixel\" \u2026>-</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial decrement button glyph"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 246,
+    "snippet": "<span class=\"dial-label font-pixel\">CONFIDENCE</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dial label"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 273,
+    "snippet": "<div class=\"calibration-status font-pixel\" class:calibrated={\u2026}>{status}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Status caption"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 279,
+    "snippet": "<div class=\"detection-status font-pixel\" class:detecting={\u2026}>{detectionLine}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Status caption (could be borderline code; detectionLine is human-readable status string)"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 283,
+    "snippet": "<div class=\"channel-warning font-pixel\">Using ch{n} (wanted ch{n} \u2014 restart to change)</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Warning caption"
+  },
+  {
+    "file": "ui/src/lib/components/GuitarInputPanel.svelte",
+    "line": 385,
+    "snippet": "font-family: var(--font-pixel);  /* .channel-max-input */",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "CSS: numeric channel-count input field"
+  },
+  {
+    "file": "ui/src/lib/components/Knob.svelte",
+    "line": 167,
+    "snippet": "<div class=\"knob-value font-pixel\" class:dragging>{displayValue(value)}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Knob numeric value readout (e.g. '120ms', '75%')"
+  },
+  {
+    "file": "ui/src/lib/components/Knob.svelte",
+    "line": 171,
+    "snippet": "<div class=\"knob-label font-pixel\">{label}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Knob label under the dial (e.g. 'Cutoff')"
+  },
+  {
+    "file": "ui/src/lib/components/MidiDevices.svelte",
+    "line": 82,
+    "snippet": "<div class=\"section-header font-pixel\">INPUT</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Panel section header / chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/MidiDevices.svelte",
+    "line": 103,
+    "snippet": "<div class=\"keyboard-hint font-pixel\">Z-M: C3-B3, Q-U: C4-C5</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Keyboard-shortcut readout (maps keys to MIDI notes) - technical/monospace"
+  },
+  {
+    "file": "ui/src/lib/components/MidiDevices.svelte",
+    "line": 107,
+    "snippet": "<div class=\"error-text font-pixel\">{midi.error}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Short status/error chrome label, not a paragraph"
+  },
+  {
+    "file": "ui/src/lib/components/MidiDevices.svelte",
+    "line": 116,
+    "snippet": "<div class=\"section-header font-pixel\">OUTPUTS</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Panel section header / chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/MidiDevices.svelte",
+    "line": 121,
+    "snippet": "<span class=\"slot-label font-pixel\">{slotLabel(slotIdx)}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Output slot label (e.g. 'Voice 1 (melody)') - UI chrome"
+  },
+  {
+    "file": "ui/src/lib/components/Piano.svelte",
+    "line": 175,
+    "snippet": "<div class=\"chord-display font-pixel\">{engine.chordName}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Chord name readout (e.g. Cmaj7) - technical/pitch readout"
+  },
+  {
+    "file": "ui/src/lib/components/Piano.svelte",
+    "line": 206,
+    "snippet": "<span class=\"key-label font-pixel\" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "MIDI note name on white key label (e.g. C4)"
+  },
+  {
+    "file": "ui/src/lib/components/Piano.svelte",
+    "line": 240,
+    "snippet": "<span class=\"key-label font-pixel\" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "MIDI note name on black key label (e.g. C#4)"
+  },
+  {
+    "file": "ui/src/lib/components/PixelSelect.svelte",
+    "line": 56,
+    "snippet": "<button class=\"pixel-select-trigger font-pixel\" \u2026>{selectedLabel}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dropdown trigger (select element)"
+  },
+  {
+    "file": "ui/src/lib/components/PixelSelect.svelte",
+    "line": 69,
+    "snippet": "<button class=\"pixel-select-option font-pixel\" \u2026>{placeholder}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dropdown placeholder option"
+  },
+  {
+    "file": "ui/src/lib/components/PixelSelect.svelte",
+    "line": 78,
+    "snippet": "<button class=\"pixel-select-option font-pixel\" \u2026>{opt.label}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Dropdown option item"
+  },
+  {
+    "file": "ui/src/lib/components/PresetManager.svelte",
+    "line": 104,
+    "snippet": "<div class=\"section-header font-pixel\">PRESETS</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Panel section header"
+  },
+  {
+    "file": "ui/src/lib/components/PresetManager.svelte",
+    "line": 107,
+    "snippet": "<div class=\"loading-text font-pixel\">Loading...</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Loading chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/PresetManager.svelte",
+    "line": 109,
+    "snippet": "<div class=\"error-text font-pixel\">{error}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Error chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/PresetManager.svelte",
+    "line": 116,
+    "snippet": "<div class=\"preset-item font-pixel\" \u2026>\u2026preset name\u2026</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "List-item with preset name + meta - chrome row"
+  },
+  {
+    "file": "ui/src/lib/components/PresetManager.svelte",
+    "line": 130,
+    "snippet": "<button class=\"delete-btn font-pixel\" \u2026>{X|?}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Delete button glyph - chrome"
+  },
+  {
+    "file": "ui/src/lib/components/PresetManager.svelte",
+    "line": 155,
+    "snippet": "<input type=\"text\" class=\"save-input font-pixel\" bind:value={saveName} \u2026 />",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Text input (form field)"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 82,
+    "snippet": "<span class=\"title font-pixel\">Settings</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Modal title - UI chrome"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 83,
+    "snippet": "<button class=\"close-btn pixel-btn font-pixel\" \u2026>\u00d7</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Close button"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 91,
+    "snippet": "<h3 class=\"section-title font-pixel\">Appearance</h3>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Settings section title (small caps panel header, not page H1)"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 94,
+    "snippet": "<label class=\"row-label font-pixel\" for=\"settings-ui-scale\">UI scale</label>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Form label"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 107,
+    "snippet": "<span class=\"value font-pixel\">{previewPercent}%\u2026</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Numeric percentage readout"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 116,
+    "snippet": "<label class=\"row-label font-pixel\" for=\"settings-font-scale\">Font size</label>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Form label"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 129,
+    "snippet": "<span class=\"value font-pixel\">{previewFontPercent}%\u2026</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Numeric percentage readout"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 138,
+    "snippet": "<span class=\"row-label font-pixel\">Note labels</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Form label"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 141,
+    "snippet": "<button class=\"pixel-btn font-pixel\" class:active={ui.showNoteLabels} \u2026>{On|Off}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Toggle button"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 148,
+    "snippet": "<span class=\"hint font-pixel\">{C4, D#5 on active keys|Keys + frets only}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hint/help text adjacent to toggle - UI caption (short)"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 157,
+    "snippet": "<h3 class=\"section-title font-pixel\">Effects</h3>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Settings section title"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 160,
+    "snippet": "<span class=\"row-label font-pixel\">Visual FX</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Form label"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 163,
+    "snippet": "<button class=\"pixel-btn font-pixel\" class:active={ui.animationsEnabled} \u2026>{On|Off}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Toggle button"
+  },
+  {
+    "file": "ui/src/lib/components/SettingsModal.svelte",
+    "line": 169,
+    "snippet": "<span class=\"hint font-pixel\">{Glows + particles|Reduced motion}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hint/help caption - UI"
+  },
+  {
+    "file": "ui/src/lib/components/SignalGraphs.svelte",
+    "line": 88,
+    "snippet": "<span class=\"graph-label font-pixel\">AMP</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Graph axis/chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/SignalGraphs.svelte",
+    "line": 92,
+    "snippet": "<button class=\"gate-btn font-pixel\" class:gate-on={guitar.noiseGateEnabled} \u2026>NG</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Noise-gate toggle button label"
+  },
+  {
+    "file": "ui/src/lib/components/StatusBar.svelte",
+    "line": 41,
+    "snippet": "<button class=\"transport-btn font-pixel\" \u2026>{Start|Stop}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Transport Start/Stop button"
+  },
+  {
+    "file": "ui/src/lib/components/StatusBar.svelte",
+    "line": 52,
+    "snippet": "<span class=\"status-indicator font-pixel\" \u2026>{ACTIVE|STOPPED}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Status indicator pill label"
+  },
+  {
+    "file": "ui/src/lib/components/StatusBar.svelte",
+    "line": 64,
+    "snippet": "<span class=\"chord-name font-pixel\">{engine.chordName}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Chord name readout (Cmaj7) - technical readout"
+  },
+  {
+    "file": "ui/src/lib/components/StatusBar.svelte",
+    "line": 66,
+    "snippet": "<span class=\"chord-name font-pixel dim\">---</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Chord slot placeholder - matches chord-name rule"
+  },
+  {
+    "file": "ui/src/lib/components/StatusBar.svelte",
+    "line": 69,
+    "snippet": "<span class=\"borrowed-label font-pixel\">from {engine.lastBorrowedFrom}</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Borrowed-chord readout - small technical label alongside chord-name"
+  },
+  {
+    "file": "ui/src/lib/components/StatusBar.svelte",
+    "line": 78,
+    "snippet": "<button class=\"settings-btn pixel-btn font-pixel\" \u2026>Settings</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Settings button (chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/StatusBar.svelte",
+    "line": 88,
+    "snippet": "<span class=\"brand font-pixel\">Contrapunk</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Brand wordmark in top bar - chrome label"
+  },
+  {
+    "file": "ui/src/lib/components/TransportBar.svelte",
+    "line": 40,
+    "snippet": "<button class=\"play-btn font-pixel\" \u2026>{\u25a0|\u25b6}</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Transport play/stop button glyph"
+  },
+  {
+    "file": "ui/src/lib/components/TransportBar.svelte",
+    "line": 49,
+    "snippet": "<span class=\"bpm-label font-pixel\">BPM</span>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Form field label"
+  },
+  {
+    "file": "ui/src/lib/components/TransportBar.svelte",
+    "line": 51,
+    "snippet": "<input class=\"bpm-input font-pixel\" type=\"number\" \u2026 />",
+    "current_class": "font-pixel",
+    "target_class": "font-code",
+    "reason": "Numeric BPM input (technical value)"
+  },
+  {
+    "file": "ui/src/lib/components/TransportBar.svelte",
+    "line": 73,
+    "snippet": "<button class=\"click-btn font-pixel\" \u2026>Click</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Metronome toggle button"
+  },
+  {
+    "file": "ui/src/lib/components/diary/AudioComparison.svelte",
+    "line": 104,
+    "snippet": ".side-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "A/B comparison side label (caps chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/diary/AudioComparison.svelte",
+    "line": 122,
+    "snippet": ".vs-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "'VS' divider label (caps chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/diary/AudioPlayer.svelte",
+    "line": 151,
+    "snippet": ".time { font-family: var(--font-pixel); font-size: 8px; \u2026 }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Time-code readout on audio player (mm:ss technical)"
+  },
+  {
+    "file": "ui/src/lib/components/diary/DemoAnimation.svelte",
+    "line": 191,
+    "snippet": ".stage-label { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps stage label chrome"
+  },
+  {
+    "file": "ui/src/lib/components/diary/DemoAnimation.svelte",
+    "line": 229,
+    "snippet": ".result-note { font-family: var(--font-pixel); font-size: 16px; \u2026 }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Note-name result (e.g. 'E4' after classification)"
+  },
+  {
+    "file": "ui/src/lib/components/diary/DemoAnimation.svelte",
+    "line": 286,
+    "snippet": ".selector-label { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps string-selector label chrome"
+  },
+  {
+    "file": "ui/src/lib/components/diary/DiaryNav.svelte",
+    "line": 32,
+    "snippet": ".brand { font-family: var(--font-pixel); color: var(--color-accent-magenta); }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Diary brand wordmark in sticky nav"
+  },
+  {
+    "file": "ui/src/lib/components/diary/RoundCard.svelte",
+    "line": 80,
+    "snippet": ".circle { font-family: var(--font-pixel); font-size: 16px; color: var(--color-text-dim); }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Round number inside circular badge (integer stat)"
+  },
+  {
+    "file": "ui/src/lib/components/diary/RoundCard.svelte",
+    "line": 118,
+    "snippet": ".round-accuracy { font-family: var(--font-pixel); font-size: 16px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Accuracy percentage numeric"
+  },
+  {
+    "file": "ui/src/lib/components/diary/SpectrogramComparison.svelte",
+    "line": 122,
+    "snippet": ".spec-loading, .spec-error { font-family: var(--font-pixel); \u2026 }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Loading/error caption chrome"
+  },
+  {
+    "file": "ui/src/lib/components/diary/SpectrogramComparison.svelte",
+    "line": 154,
+    "snippet": ".spec-vs { font-family: var(--font-pixel); \u2026 }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "'VS' divider label"
+  },
+  {
+    "file": "ui/src/lib/components/diary/SpectrogramViewer.svelte",
+    "line": 187,
+    "snippet": ".spectrogram-label { font-family: var(--font-pixel); letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Panel label (caps chrome)"
+  },
+  {
+    "file": "ui/src/lib/components/diary/SpectrogramViewer.svelte",
+    "line": 213,
+    "snippet": ".axis-label { font-family: var(--font-pixel); \u2026 letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Axis tick labels (frequency/time numerics)"
+  },
+  {
+    "file": "ui/src/lib/components/diary/StatBar.svelte",
+    "line": 33,
+    "snippet": ".stat-value { font-family: var(--font-pixel); font-size: 22px; font-weight: 700; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Large stat numeric value"
+  },
+  {
+    "file": "ui/src/lib/components/diary/WaveformDisplay.svelte",
+    "line": 121,
+    "snippet": ".waveform-loading { font-family: var(--font-pixel); \u2026 }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Loading placeholder caption inside waveform component"
+  },
+  {
+    "file": "ui/src/routes/+page.svelte",
+    "line": 173,
+    "snippet": "<div class=\"init-error font-pixel\">{initError}</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Init error chrome caption"
+  },
+  {
+    "file": "ui/src/routes/+page.svelte",
+    "line": 186,
+    "snippet": "<button class=\"tab-btn font-pixel\" \u2026>Play</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Main-tab button (UI chrome)"
+  },
+  {
+    "file": "ui/src/routes/+page.svelte",
+    "line": 193,
+    "snippet": "<button class=\"tab-btn font-pixel\" \u2026>Chain</button>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Main-tab button"
+  },
+  {
+    "file": "ui/src/routes/+page.svelte",
+    "line": 238,
+    "snippet": "<div class=\"init-loading font-pixel\">Initializing engine...</div>",
+    "current_class": "font-pixel",
+    "target_class": "font-ui",
+    "reason": "Loading status chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/+page.svelte",
+    "line": 84,
+    "snippet": ".tagline-label { font-family: var(--font-pixel); \u2026 letter-spacing: 4px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hero tagline caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/+page.svelte",
+    "line": 113,
+    "snippet": ".section-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Chapters section caps label"
+  },
+  {
+    "file": "ui/src/routes/diary/+page.svelte",
+    "line": 143,
+    "snippet": ".chapter-phase { font-family: var(--font-pixel); font-size: 9px; \u2026 }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Phase indicator on chapter card (e.g. 'PHASE 37' - metadata stat)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/+page.svelte",
+    "line": 193,
+    "snippet": ".label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hero caps chapter label"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/+page.svelte",
+    "line": 230,
+    "snippet": ".step-num { font-family: var(--font-pixel); font-size: 18px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Step number numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/+page.svelte",
+    "line": 268,
+    "snippet": ".tool-label { font-family: var(--font-pixel); font-size: 11px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Tool card label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/+page.svelte",
+    "line": 306,
+    "snippet": ".pivot-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Pivot card caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 517,
+    "snippet": ".label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Page caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 601,
+    "snippet": ".input-title { font-family: var(--font-pixel); font-size: 12px; \u2026 }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Input-card title label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 616,
+    "snippet": ".input-file-name { font-family: var(--font-pixel); font-size: 10px; \u2026 }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "File name readout (technical/path-like)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 626,
+    "snippet": ".input-badge { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Pill/badge caps chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 688,
+    "snippet": ".step-num { font-family: var(--font-pixel); font-size: 12px; color: dim; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Step number numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 749,
+    "snippet": ".viz-meta { font-family: var(--font-pixel); font-size: 11px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Visualization meta readout (size/hz/technical values)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 781,
+    "snippet": ".classify-btn { font-family: var(--font-pixel); font-size: 13px; letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Primary CTA button (classify)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 819,
+    "snippet": ".result-rank { font-family: var(--font-pixel); font-size: 12px; color: dim; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Result rank number (#1, #2...)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 833,
+    "snippet": ".result-label { font-family: var(--font-pixel); font-size: 13px; width: 120px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Class label in result row (class names like 'acoustic_guitar' - technical labels in fixed-width column)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 856,
+    "snippet": ".result-pct { font-family: var(--font-pixel); font-size: 11px; width: 48px; text-align: right; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Percentage numeric readout"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 932,
+    "snippet": ".explainer-num { font-family: var(--font-pixel); font-size: 18px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Numbered explainer count"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/playground/+page.svelte",
+    "line": 981,
+    "snippet": ".tech-val { font-family: var(--font-pixel); font-size: 12px; color: primary; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Technical detail value readout"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 761,
+    "snippet": ".round-label { font-family: var(--font-pixel); \u2026 letter-spacing: 3px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hero caps round label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 794,
+    "snippet": ".station-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Station caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 879,
+    "snippet": ".selector-acc { font-family: var(--font-pixel); font-size: 15px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Model selector accuracy numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 899,
+    "snippet": ".model-detail-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; text-transform: uppercase; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps section label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 930,
+    "snippet": ".step-num { font-family: var(--font-pixel); font-size: 10px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Step number numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 959,
+    "snippet": ".io-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps I/O label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 974,
+    "snippet": ".insight-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps insight-box label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 1011,
+    "snippet": ".tab-acc { font-family: var(--font-pixel); font-size: 14px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Tab accuracy numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 1054,
+    "snippet": ".bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Accuracy bar value (numeric percent)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 1083,
+    "snippet": ".finding-icon { font-family: var(--font-pixel); font-size: 8px; width: 24px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Finding list icon glyph (check/warn symbol chrome)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 1130,
+    "snippet": ".hear-heading { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; text-transform: uppercase; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps section heading chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-1/+page.svelte",
+    "line": 1155,
+    "snippet": ".next-link a { font-family: var(--font-pixel); \u2026 color: cyan; padding: 12px 20px; border: 1px solid; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Button-like next link (CTA)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 442,
+    "snippet": ".round-label { font-family: var(--font-pixel); \u2026 letter-spacing: 3px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hero caps round label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 495,
+    "snippet": ".comp-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Comparison caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 502,
+    "snippet": ".comp-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Comparison numeric value"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 518,
+    "snippet": ".station-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Station caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 551,
+    "snippet": ".process-steps li::marker { \u2026 font-family: var(--font-pixel); font-size: 10px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "List marker glyph for numeric process steps"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 579,
+    "snippet": ".tab-acc { font-family: var(--font-pixel); font-size: 14px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Tab accuracy numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 595,
+    "snippet": ".mc-header .mc-col { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Model-compare table header caps"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 672,
+    "snippet": ".bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Accuracy bar value numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 686,
+    "snippet": ".viz-label { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Viz caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 715,
+    "snippet": ".insight-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps insight-box label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 751,
+    "snippet": ".finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Finding list icon glyph chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 795,
+    "snippet": ".takeaway-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps takeaway-box label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-2/+page.svelte",
+    "line": 816,
+    "snippet": ".nav-link { font-family: var(--font-pixel); \u2026 color: cyan; padding: 12px 20px; border: 1px solid; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Button-like nav link"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 388,
+    "snippet": ".round-label { font-family: var(--font-pixel); \u2026 letter-spacing: 3px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hero caps round label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 441,
+    "snippet": ".comp-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Comparison caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 448,
+    "snippet": ".comp-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Comparison numeric value"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 472,
+    "snippet": ".removal-num { font-family: var(--font-pixel); font-size: 28px; color: magenta; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Removal-card large numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 495,
+    "snippet": ".station-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Station caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 542,
+    "snippet": ".tab-acc { font-family: var(--font-pixel); font-size: 14px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Tab accuracy numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 558,
+    "snippet": ".mc-header .mc-col { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Model-compare table header caps"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 624,
+    "snippet": ".bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Accuracy bar value numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 638,
+    "snippet": ".viz-label { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Viz caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 680,
+    "snippet": ".finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Finding list icon glyph chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-3/+page.svelte",
+    "line": 723,
+    "snippet": ".nav-link { font-family: var(--font-pixel); \u2026 color: cyan; padding: 12px 20px; border: 1px solid; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Button-like nav link"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 410,
+    "snippet": ".round-label { font-family: var(--font-pixel); \u2026 letter-spacing: 3px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hero caps round label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 463,
+    "snippet": ".comp-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Comparison caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 470,
+    "snippet": ".comp-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Comparison numeric value"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 494,
+    "snippet": ".feature-num { font-family: var(--font-pixel); font-size: 28px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Feature-card large numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 517,
+    "snippet": ".station-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Station caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 564,
+    "snippet": ".tab-acc { font-family: var(--font-pixel); font-size: 14px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Tab accuracy numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 580,
+    "snippet": ".mc-header .mc-col { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Model-compare table header caps"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 657,
+    "snippet": ".bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Accuracy bar value numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 671,
+    "snippet": ".viz-label { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Viz caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 713,
+    "snippet": ".finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Finding list icon glyph chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-4/+page.svelte",
+    "line": 756,
+    "snippet": ".nav-link { font-family: var(--font-pixel); \u2026 color: cyan; padding: 12px 20px; border: 1px solid; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Button-like nav link"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 480,
+    "snippet": ".round-label { font-family: var(--font-pixel); \u2026 letter-spacing: 3px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hero caps round label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 533,
+    "snippet": ".comp-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Comparison caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 540,
+    "snippet": ".comp-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Comparison numeric value"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 563,
+    "snippet": ".aug-name { font-family: var(--font-pixel); font-size: 11px; letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Augmentation name caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 597,
+    "snippet": ".ds-value { font-family: var(--font-pixel); font-size: 22px; color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Dataset numeric value"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 607,
+    "snippet": ".ds-arrow { font-family: var(--font-pixel); font-size: 16px; color: dim; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Arrow glyph between dataset values (decorative chrome)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 623,
+    "snippet": ".insight-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps insight-box label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 645,
+    "snippet": ".station-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Station caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 692,
+    "snippet": ".tab-acc { font-family: var(--font-pixel); font-size: 14px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Tab accuracy numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 708,
+    "snippet": ".mc-header .mc-col { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Model-compare table header caps"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 785,
+    "snippet": ".bar-value { font-family: var(--font-pixel); font-size: 11px; text-align: right; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Accuracy bar value numeric"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 799,
+    "snippet": ".viz-label { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Viz caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 841,
+    "snippet": ".finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Finding list icon glyph chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/round-5/+page.svelte",
+    "line": 902,
+    "snippet": ".nav-link { font-family: var(--font-pixel); \u2026 color: cyan; padding: 12px 20px; border: 1px solid; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Button-like nav link"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 370,
+    "snippet": ".section-label { font-family: var(--font-pixel); \u2026 letter-spacing: 3px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Hero caps section label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 401,
+    "snippet": ".station-label { font-family: var(--font-pixel); \u2026 letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Station caps label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 447,
+    "snippet": ".journey-table th { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Table header caps label"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 463,
+    "snippet": ".journey-table .round-num { font-family: var(--font-pixel); color: cyan; width: 48px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Round-number cell (integer stat)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 468,
+    "snippet": ".journey-table .acc { font-family: var(--font-pixel); color: cyan; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-code",
+    "reason": "Accuracy cell (numeric stat)"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 502,
+    "snippet": ".finding-icon { font-family: var(--font-pixel); font-size: 10px; width: 24px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Finding list icon glyph chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 524,
+    "snippet": ".equation-label { font-family: var(--font-pixel); font-size: 9px; letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps equation-box label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 571,
+    "snippet": ".compare-table th { font-family: var(--font-pixel); font-size: 9px; text-transform: uppercase; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Table header caps label"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 614,
+    "snippet": ".arch-label { font-family: var(--font-pixel); font-size: 9px; letter-spacing: 2px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps architecture-box label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 660,
+    "snippet": ".arch-branch-label { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 1px; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Caps branch label chrome"
+  },
+  {
+    "file": "ui/src/routes/diary/machine-learning/the-pivot/+page.svelte",
+    "line": 706,
+    "snippet": ".nav-link { font-family: var(--font-pixel); \u2026 color: cyan; padding: 12px 20px; border: 1px solid; }",
+    "current_class": "--font-pixel",
+    "target_class": "font-ui",
+    "reason": "Button-like nav link (CTA)"
+  }
+]
