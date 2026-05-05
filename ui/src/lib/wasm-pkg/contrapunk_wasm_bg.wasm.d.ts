@@ -22,6 +22,7 @@ export const engine_set_counterpoint_strictness: (a: number, b: number, c: numbe
 export const engine_set_interchange: (a: number, b: number, c: number, d: number) => void;
 export const engine_set_key: (a: number, b: number, c: number, d: number) => void;
 export const engine_set_mode: (a: number, b: number, c: number, d: number) => void;
+export const engine_set_octave_intensity: (a: number, b: number) => void;
 export const engine_set_octave_mode: (a: number, b: number, c: number, d: number) => void;
 export const engine_set_scale_mode: (a: number, b: number, c: number, d: number) => void;
 export const engine_set_voice_count: (a: number, b: number, c: number) => void;

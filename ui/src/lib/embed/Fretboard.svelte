@@ -48,7 +48,7 @@
 		borrowedNotes = [],
 		onNoteOn,
 		onNoteOff,
-		frets = 24,
+		frets: fretsProp,
 		interactive = true,
 		showLabels = true,
 		lingering = true
@@ -58,6 +58,10 @@
 		borrowedNotes?: number[];
 		onNoteOn?: (midi: number) => void;
 		onNoteOff?: (midi: number) => void;
+		/** When omitted, fret count adapts to viewport width:
+		 *  desktop = 24, tablet = 17, phone = 12. Pass an explicit
+		 *  number to override (the contrapunk app overrides to 24 in
+		 *  its full-width performance view). */
 		frets?: number;
 		interactive?: boolean;
 		showLabels?: boolean;
@@ -65,6 +69,24 @@
 		 *  When false, cells unmount instantly. */
 		lingering?: boolean;
 	} = $props();
+
+	// Viewport-driven default fret count. 12 frets = first hand position
+	// for guitarists; 24 = full neck. Tap targets stay legible by
+	// dropping fret count rather than shrinking cells.
+	let viewportWidth = $state(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const onResize = () => {
+			viewportWidth = window.innerWidth;
+		};
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	});
+
+	const frets = $derived(
+		fretsProp !== undefined ? fretsProp : viewportWidth < 600 ? 6 : viewportWidth < 900 ? 12 : 24
+	);
 
 	// Duration to feed the ghostFade out-transition. Setting it to 0
 	// makes Svelte unmount the rect/text immediately, no fade.

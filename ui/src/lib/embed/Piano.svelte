@@ -26,7 +26,8 @@
 		onNoteOn,
 		onNoteOff,
 		interactive = true,
-		showLabels = true
+		showLabels = true,
+		keyRange
 	}: {
 		inputNotes: number[];
 		harmonyNotes: number[];
@@ -35,15 +36,48 @@
 		onNoteOff?: (midi: number) => void;
 		interactive?: boolean;
 		showLabels?: boolean;
+		/** Override the viewport-derived key range. When set, the piano
+		 *  shows exactly `[start..end]` regardless of viewport width.
+		 *  Useful for embeds whose audio register doesn't match the
+		 *  default soprano-centered defaults. */
+		keyRange?: { start: number; end: number };
 	} = $props();
 
-	const allMidi = Array.from({ length: PIANO_END - PIANO_START + 1 }, (_, i) => i + PIANO_START);
-	const whiteKeys = allMidi.filter((n) => !isBlackKey(n));
-	const blackKeys = allMidi.filter((n) => isBlackKey(n));
-	const NUM_WHITE_KEYS = whiteKeys.length; // 52
+	// Viewport-driven key range. Full 88 (A0-C8) on desktop, 5 octaves
+	// (C2-C7) on tablet, 2 octaves (C3-C5) on phone — keeps each white
+	// key wide enough to tap without aim. Recomputes on resize.
+	let viewportWidth = $state(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
-	const whiteKeyIndex = new Map<number, number>();
-	whiteKeys.forEach((midi, i) => whiteKeyIndex.set(midi, i));
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const onResize = () => {
+			viewportWidth = window.innerWidth;
+		};
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	});
+
+	const range = $derived.by(() => {
+		if (keyRange) return keyRange;
+		// Centered on middle C so soprano-register demos (MIDI 65-79) and
+		// a typical user tap range both stay visible by default.
+		if (viewportWidth < 600) return { start: 60, end: 84 }; // C4-C6 (2 octaves)
+		if (viewportWidth < 900) return { start: 48, end: 96 }; // C3-C7 (4 octaves)
+		return { start: PIANO_START, end: PIANO_END }; // full 88
+	});
+
+	const allMidi = $derived(
+		Array.from({ length: range.end - range.start + 1 }, (_, i) => i + range.start)
+	);
+	const whiteKeys = $derived(allMidi.filter((n) => !isBlackKey(n)));
+	const blackKeys = $derived(allMidi.filter((n) => isBlackKey(n)));
+	const NUM_WHITE_KEYS = $derived(whiteKeys.length);
+
+	const whiteKeyIndex = $derived.by(() => {
+		const m = new Map<number, number>();
+		whiteKeys.forEach((midi, i) => m.set(midi, i));
+		return m;
+	});
 
 	function getBlackKeyPosition(midi: number, whiteKeyWidthPx: number): number {
 		const prevWhite = midi - 1;

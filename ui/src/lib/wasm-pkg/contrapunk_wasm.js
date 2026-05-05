@@ -358,6 +358,14 @@ export class Engine {
         }
     }
     /**
+     * Continuous octave-spread coefficient. Range [0.0, 1.0]; 0 = no
+     * displacement, 1 = full-octave (legacy) per-voice displacement.
+     * @param {number} amount
+     */
+    set_octave_intensity(amount) {
+        wasm.engine_set_octave_intensity(this.__wbg_ptr, amount);
+    }
+    /**
      * Set the octave mode (e.g. "None", "Spread", "Mirror").
      * @param {string} mode
      */

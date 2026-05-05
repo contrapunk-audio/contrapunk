@@ -91,6 +91,11 @@ export class Engine {
      */
     set_mode(mode: string): void;
     /**
+     * Continuous octave-spread coefficient. Range [0.0, 1.0]; 0 = no
+     * displacement, 1 = full-octave (legacy) per-voice displacement.
+     */
+    set_octave_intensity(amount: number): void;
+    /**
      * Set the octave mode (e.g. "None", "Spread", "Mirror").
      */
     set_octave_mode(mode: string): void;
@@ -191,6 +196,7 @@ export interface InitOutput {
     readonly engine_set_interchange: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_key: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_mode: (a: number, b: number, c: number, d: number) => void;
+    readonly engine_set_octave_intensity: (a: number, b: number) => void;
     readonly engine_set_octave_mode: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_scale_mode: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_voice_count: (a: number, b: number, c: number) => void;

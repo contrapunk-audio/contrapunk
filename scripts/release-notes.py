@@ -68,6 +68,7 @@ def get_commits():
                 commit["release_note"] = pr.get("release_note", "")
                 commit["pr_labels"] = pr.get("labels", [])
                 commit["pr_number"] = pr.get("number")
+                commit["author_login"] = pr.get("author_login", "")
             commits.append(commit)
     return commits
 
@@ -80,7 +81,7 @@ def get_pr_data():
             "--repo", "contrapunk-audio/contrapunk",
             "--state", "merged",
             "--limit", "100",
-            "--json", "number,title,body,labels,mergeCommit",
+            "--json", "number,title,body,labels,mergeCommit,author",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if result.returncode != 0:
@@ -112,6 +113,7 @@ def get_pr_data():
                 "number": pr["number"],
                 "release_note": note,
                 "labels": labels,
+                "author_login": (pr.get("author") or {}).get("login", "") or "",
             }
         return data
     except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
@@ -168,15 +170,27 @@ def categorize(commits):
 
 
 def get_contributors(commits):
-    """Get unique contributor names."""
-    authors = set()
+    """Get unique GitHub handles from PR authors, Tekton-style.
+
+    Sources logins from PR metadata (`gh pr list ... --json author`),
+    skips any AI / Claude attributions, and rewrites `name[bot]`
+    accounts to `app/name` per Tekton convention.
+    """
+    handles = set()
     for c in commits:
-        name = c["author"]
-        # Skip bot authors
-        if "bot" in name.lower() or "noreply" in name.lower():
+        login = c.get("author_login", "")
+        if not login:
             continue
-        authors.add(name)
-    return sorted(authors)
+        # Filter AI co-author / Claude attributions entirely.
+        lower = login.lower()
+        if "claude" in lower or "anthropic" in lower:
+            continue
+        # Tekton convention: GitHub Apps render as "app/<name>".
+        if login.endswith("[bot]"):
+            handles.add(f"app/{login[:-5]}")
+        else:
+            handles.add(login)
+    return sorted(handles)
 
 
 def get_stats():
@@ -276,12 +290,15 @@ def render(categorized, uncategorized, commits):
             lines.append(f"- {item['message']} ({item['hash']})")
         lines.append("")
 
-    # Contributors
+    # Thanks (Tekton-style)
     contributors = get_contributors(commits)
     if contributors:
-        lines.append("## 🙏 Contributors")
+        ver = VERSION if VERSION.startswith("v") else f"v{VERSION}"
+        lines.append("## Thanks")
         lines.append("")
-        lines.append(", ".join(contributors))
+        lines.append(f"Thanks to these contributors who contributed to {ver}!")
+        for handle in contributors:
+            lines.append(f"* :heart: @{handle}")
         lines.append("")
 
     # Stats
