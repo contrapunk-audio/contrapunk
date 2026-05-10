@@ -3,6 +3,7 @@ name: macOS Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
     paths:
@@ -20,6 +21,8 @@ jobs:
     name: Build macOS universal .dmg (Monterey 12.0+ compatible)
     runs-on: macos-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
     env:
       MACOSX_DEPLOYMENT_TARGET: "11.0"
 
@@ -85,3 +88,10 @@ jobs:
           path: target/universal-apple-darwin/release/bundle/macos/*.app
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Attach .dmg to GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          fail_on_unmatched_files: true

@@ -16,7 +16,7 @@ resolver = "2"
 
 [package]
 name = "contrapunk"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 description = "Real-time MIDI harmony generation"
 authors = ["Contrapunk Team"]
