@@ -25,7 +25,13 @@ ui/src/lib/wasm-pkg/
 
 # AU wrapper build artifacts
 au-wrapper/build/
-.claude/worktrees/
 
-# Claude agent local state
-.claude/
+# Claude agent harness — committed bits (CLAUDE.md, settings.json,
+# hooks/, skills/, agents/) are shareable; everything else under
+# .claude/ is local-only runtime state (settings.local.json,
+# scheduled_tasks.lock, worktrees/, etc.) and stays ignored.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/skills/
+!.claude/agents/
