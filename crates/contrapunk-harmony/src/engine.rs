@@ -298,6 +298,18 @@ pub struct HarmonyEngine {
     /// `NoteOn`. The user's held input never gets interrupted —
     /// transitions between knob positions are seamless.
     pending_reharm_inputs: Vec<u8>,
+    /// When true, input notes below `bass_register_threshold` pass
+    /// through without producing harmony — the user is assumed to be
+    /// playing the bass line themselves, and added harmonies would
+    /// clash with their voicing decisions. Default off so existing
+    /// users see no behavior change. (Issue #100.)
+    suppress_bass_register: bool,
+    /// MIDI note number at and above which harmony is generated; below
+    /// this, only the input passes through when `suppress_bass_register`
+    /// is true. Default 48 (C3) — roughly the top of a guitar's E-string
+    /// fifth fret, where bass-line playing typically ends and chord
+    /// work begins.
+    bass_register_threshold: u8,
 }
 
 impl HarmonyEngine {
@@ -347,6 +359,8 @@ impl HarmonyEngine {
             pending_releases: Vec::new(),
             pending_reharm_inputs: Vec::new(),
             harmonic_context: None,
+            suppress_bass_register: false,
+            bass_register_threshold: 48, // C3 — see field docs.
         }
     }
 
@@ -674,6 +688,32 @@ impl HarmonyEngine {
         self.synthetic_beat_counter = 0.0;
     }
 
+    /// Returns whether bass-register suppression is active. (Issue #100.)
+    pub fn suppress_bass_register(&self) -> bool {
+        self.suppress_bass_register
+    }
+
+    /// Enable or disable bass-register suppression. When enabled, input
+    /// notes below `bass_register_threshold` pass through without
+    /// producing harmony — for users who play the bass line themselves
+    /// and don't want added voicings to clash.
+    pub fn set_suppress_bass_register(&mut self, enabled: bool) {
+        self.suppress_bass_register = enabled;
+        self.clear_active_for_reharm();
+    }
+
+    /// Returns the bass-register threshold MIDI note number.
+    pub fn bass_register_threshold(&self) -> u8 {
+        self.bass_register_threshold
+    }
+
+    /// Sets the bass-register threshold MIDI note (notes below pass through
+    /// when `suppress_bass_register` is true). Clamped to 0..=127.
+    pub fn set_bass_register_threshold(&mut self, midi: u8) {
+        self.bass_register_threshold = midi.min(127);
+        self.clear_active_for_reharm();
+    }
+
     /// Returns the active counterpoint strictness (Relaxed vs Strict).
     pub fn counterpoint_strictness(&self) -> CounterpointStrictness {
         self.counterpoint_strictness
@@ -705,6 +745,18 @@ impl HarmonyEngine {
     /// Note-Off handling (critical for random modes).
     pub fn harmonize(&mut self, note: Note) -> Vec<Note> {
         if self.mode == HarmonyMode::PassThrough || self.voice_count <= 1 {
+            self.last_arrangement_indices = vec![0];
+            self.last_port_map = vec![0];
+            return vec![note];
+        }
+
+        // Issue #100: bass-register suppression. When the input is
+        // below the configured threshold, the user is presumed to be
+        // playing the bass line themselves — adding harmony notes
+        // would muddy the voicing. Pass the input through unchanged.
+        // Default off (threshold 48 = C3); enabled per-session via
+        // `set_suppress_bass_register(true)`.
+        if self.suppress_bass_register && u8::from(note) < self.bass_register_threshold {
             self.last_arrangement_indices = vec![0];
             self.last_port_map = vec![0];
             return vec![note];
@@ -2525,6 +2577,71 @@ mod tests {
             }
         }
         assert!(diverged, "Species 2 must diverge from Species 1 even without an external transport — synthetic beat fallback is not active");
+    }
+
+    // --- Issue #100: bass-register suppression ---
+
+    /// Default state: suppression is OFF, bass notes get full harmony.
+    /// Regression guard — flipping the default to ON would silently
+    /// remove harmony for existing users of low-register input.
+    #[test]
+    fn test_bass_register_off_by_default() {
+        let mut e = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        assert!(!e.suppress_bass_register(), "default should be off");
+        let result = e.harmonize_note_on(Note::C2); // MIDI 36, well below threshold
+        assert!(result.len() > 1, "default-off should still produce harmony");
+    }
+
+    /// With suppression on, a note below the threshold passes through
+    /// unchanged (just the input, no harmony).
+    #[test]
+    fn test_bass_register_suppresses_below_threshold() {
+        let mut e = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        e.set_suppress_bass_register(true);
+        let result = e.harmonize_note_on(Note::C2); // MIDI 36, threshold 48
+        assert_eq!(
+            result,
+            vec![Note::C2],
+            "below threshold should pass through alone"
+        );
+    }
+
+    /// With suppression on, a note at or above the threshold still gets
+    /// the full harmony.
+    #[test]
+    fn test_bass_register_allows_at_threshold() {
+        let mut e = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        e.set_suppress_bass_register(true);
+        // C3 = MIDI 48 = exactly threshold; treat as "not bass anymore".
+        let result = e.harmonize_note_on(Note::C3);
+        assert!(result.len() > 1, "at threshold should produce harmony");
+    }
+
+    /// Custom threshold: setting it higher should suppress more notes.
+    #[test]
+    fn test_bass_register_custom_threshold() {
+        let mut e = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        e.set_suppress_bass_register(true);
+        e.set_bass_register_threshold(60); // raise to C4
+        let result_below = e.harmonize_note_on(Note::B3); // MIDI 59
+        assert_eq!(
+            result_below,
+            vec![Note::B3],
+            "raised threshold should suppress B3"
+        );
+        let result_at = e.harmonize_note_on(Note::C4);
+        assert!(
+            result_at.len() > 1,
+            "C4 at the new threshold should produce harmony"
+        );
+    }
+
+    /// Threshold setter clamps to MIDI's valid range (0..=127).
+    #[test]
+    fn test_bass_register_threshold_clamps() {
+        let mut e = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        e.set_bass_register_threshold(200);
+        assert_eq!(e.bass_register_threshold(), 127);
     }
 
     /// External transport, when set, must take precedence over the
