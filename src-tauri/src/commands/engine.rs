@@ -529,6 +529,27 @@ fn run_tauri_router(
                 if message.len() >= 3 && (message[0] & 0xF0) == 0xB0 {
                     let cc_number = message[1];
                     let cc_value = message[2];
+
+                    // Issue #90 fast-path: CC 123 = All Notes Off (MIDI
+                    // standard panic). Drain every tracked note and send
+                    // NoteOff downstream so the user can recover from
+                    // dropped Note-Offs / MPE channel rotation / device
+                    // disconnect mid-phrase without restarting routing.
+                    // The full reconcile-against-engine.active_notes
+                    // story is deferred — this gives users a one-button
+                    // escape today.
+                    if cc_number == 123 {
+                        let notes_to_release =
+                            drain_all_tracked_notes(&input_notes, &harmony_notes, &borrowed_notes);
+                        let num_ports = output_router.connection_count();
+                        for n in notes_to_release {
+                            broadcast_note_off(n, num_ports, &synth_tx, &mut output_router);
+                        }
+                        eprintln!("[router] CC 123 panic: cleared all tracked notes");
+                        // Continue to also forward to UI below so the
+                        // Performance view's CC mapping still sees it.
+                    }
+
                     let value = (cc_value as f32) / 127.0;
                     let _ = app_handle.emit(
                         "knob-cc-raw",
@@ -1022,6 +1043,44 @@ fn broadcast_note_off(
     }
 }
 
+/// Drain every tracked note from the three router HashSets and return
+/// the union so the caller can dispatch NoteOff for each. Handles the
+/// CC 123 (All Notes Off) panic path in run_tauri_router.
+///
+/// Acquires the three locks in a fixed order (input → harmony →
+/// borrowed) to avoid deadlock with the rest of the router which
+/// also reads them in similar order. Recovers from poisoned mutexes
+/// rather than panicking — matches the convention in the router's
+/// emit loop.
+fn drain_all_tracked_notes(
+    input_notes: &Arc<Mutex<HashSet<u8>>>,
+    harmony_notes: &Arc<Mutex<HashSet<u8>>>,
+    borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
+) -> HashSet<u8> {
+    let union: HashSet<u8> = {
+        let in_n = input_notes.lock().unwrap_or_else(|e| e.into_inner());
+        let harm = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
+        let borr = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
+        in_n.iter()
+            .chain(harm.iter())
+            .chain(borr.iter())
+            .copied()
+            .collect()
+    };
+    // Now clear each set (separate scope so the prior read locks
+    // are dropped before we acquire write locks).
+    if let Ok(mut s) = input_notes.lock() {
+        s.clear();
+    }
+    if let Ok(mut s) = harmony_notes.lock() {
+        s.clear();
+    }
+    if let Ok(mut s) = borrowed_notes.lock() {
+        s.clear();
+    }
+    union
+}
+
 /// Detect the issue #14 silent-no-output condition: user selected one
 /// or more external MIDI ports for routing, but no voice in the
 /// per-voice routing table actually points at an external port. The
@@ -1236,6 +1295,51 @@ mod tests {
         let p2 = build_guitar_signal_payload(noisy);
         assert_eq!(p2.note_name, "");
         assert_eq!(p2.midi_note, 0);
+    }
+
+    /// CC 123 panic must drain ALL three tracked sets — input, harmony,
+    /// and borrowed. The function returns the union so callers can fan
+    /// NoteOff to every downstream port.
+    #[test]
+    fn test_drain_all_tracked_notes_collects_union_and_clears() {
+        let input = Arc::new(Mutex::new(
+            [60u8, 64].iter().copied().collect::<HashSet<u8>>(),
+        ));
+        let harmony = Arc::new(Mutex::new(
+            [67u8, 71].iter().copied().collect::<HashSet<u8>>(),
+        ));
+        let borrowed = Arc::new(Mutex::new([70u8].iter().copied().collect::<HashSet<u8>>()));
+        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
+        let expected: HashSet<u8> = [60, 64, 67, 70, 71].iter().copied().collect();
+        assert_eq!(drained, expected);
+        // All three sets must be empty after the drain.
+        assert!(input.lock().unwrap().is_empty());
+        assert!(harmony.lock().unwrap().is_empty());
+        assert!(borrowed.lock().unwrap().is_empty());
+    }
+
+    /// Empty sets must produce an empty union without panicking.
+    #[test]
+    fn test_drain_all_tracked_notes_empty_returns_empty() {
+        let input = Arc::new(Mutex::new(HashSet::<u8>::new()));
+        let harmony = Arc::new(Mutex::new(HashSet::<u8>::new()));
+        let borrowed = Arc::new(Mutex::new(HashSet::<u8>::new()));
+        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
+        assert!(drained.is_empty());
+    }
+
+    /// Overlapping notes across sets must dedupe in the union (HashSet
+    /// semantics) so the caller doesn't fire duplicate NoteOffs.
+    #[test]
+    fn test_drain_all_tracked_notes_dedups_overlaps() {
+        let input = Arc::new(Mutex::new([60u8].iter().copied().collect::<HashSet<u8>>()));
+        let harmony = Arc::new(Mutex::new(
+            [60u8, 64].iter().copied().collect::<HashSet<u8>>(),
+        ));
+        let borrowed = Arc::new(Mutex::new(HashSet::<u8>::new()));
+        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
+        let expected: HashSet<u8> = [60, 64].iter().copied().collect();
+        assert_eq!(drained, expected);
     }
 
     /// Issue #14 detection: external ports selected + all voices Synth →
