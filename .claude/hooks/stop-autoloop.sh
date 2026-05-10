@@ -92,16 +92,51 @@ do
 done
 
 # Progress check — only meaningful when has_pending is true.
-recent_commits=0
+# Wall-clock windows don't help when autoloop fires arrive back-to-
+# back (each fire is bounded by the model's response time, not real
+# time). So we ALSO track consecutive no-commit fires via a state
+# file. Two consecutive fires that see the same HEAD = the model
+# isn't producing work anymore. Allow the stop.
+STUCK_FIRES_LIMIT=2
+state_file="$repo_root/.claude/.stop-autoloop-state"
+current_head=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo "unknown")
+
 if [ "$has_pending" = "true" ]; then
+  # Wall-clock signal (kept as a faster path).
   recent_commits=$(git -C "$repo_root" log --since="${STUCK_WINDOW_SECS} seconds ago" --oneline 2>/dev/null | wc -l | tr -d ' ')
-  # If no commits landed in the stuck window, downgrade has_pending.
-  # The model has had at least one full autoloop turn to commit
-  # something; if nothing landed it means concrete work is exhausted.
   if [ "$recent_commits" -eq 0 ]; then
     has_pending="stuck"
   fi
 fi
+
+# Consecutive-fire signal — separate from wall-clock. Read the prior
+# state, decide what to write back. Format: "<head_sha> <stuck_count>".
+prior_head=""
+prior_count=0
+if [ -f "$state_file" ]; then
+  prior_head=$(awk 'NR==1 {print $1}' "$state_file" 2>/dev/null)
+  prior_count=$(awk 'NR==1 {print $2}' "$state_file" 2>/dev/null)
+  [ -z "$prior_count" ] && prior_count=0
+fi
+
+if [ "$has_pending" = "true" ]; then
+  if [ "$current_head" = "$prior_head" ]; then
+    # Same HEAD as last fire = no new commits since then.
+    new_count=$((prior_count + 1))
+    if [ "$new_count" -ge "$STUCK_FIRES_LIMIT" ]; then
+      has_pending="stuck-consecutive"
+    fi
+  else
+    # New commit landed — reset the counter.
+    new_count=0
+  fi
+else
+  new_count=0
+fi
+
+# Persist state for the next fire.
+mkdir -p "$(dirname "$state_file")"
+printf '%s %d\n' "$current_head" "$new_count" > "$state_file" 2>/dev/null || true
 
 # 6. Decision.
 #    - At/above 90% budget → allow stop (context exhausted).
@@ -113,6 +148,8 @@ if [ "$percent" -ge 90 ] || [ "$has_pending" != "true" ]; then
     echo "[stop-autoloop] context at ${percent}% of 1M budget — allowing stop" >&2
   elif [ "$has_pending" = "stuck" ]; then
     echo "[stop-autoloop] no commits in last ${STUCK_WINDOW_SECS}s — concrete work exhausted, allowing stop" >&2
+  elif [ "$has_pending" = "stuck-consecutive" ]; then
+    echo "[stop-autoloop] HEAD unchanged across ${STUCK_FIRES_LIMIT} consecutive fires — model produced no work, allowing stop" >&2
   fi
   exit 0
 fi

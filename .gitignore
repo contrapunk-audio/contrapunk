@@ -35,3 +35,4 @@ au-wrapper/build/
 !.claude/hooks/
 !.claude/skills/
 !.claude/agents/
+.claude/.stop-autoloop-state
