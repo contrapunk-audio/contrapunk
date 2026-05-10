@@ -25,5 +25,15 @@ if [ -f .continue-here.md ]; then
   echo "--- .continue-here.md (session handoff) ---"
   head -40 .continue-here.md
 fi
+echo
+
+# Entropy snapshot — surfaces where to refactor next without the model
+# having to ask. See .claude/skills/code-entropy/SKILL.md for the full
+# methodology + the four entropy axes (structural / behavioral / test /
+# dependency).
+if [ -x .claude/hooks/entropy-snapshot.sh ]; then
+  echo "=== Code entropy snapshot ==="
+  .claude/hooks/entropy-snapshot.sh
+fi
 
 exit 0

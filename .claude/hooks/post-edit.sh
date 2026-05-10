@@ -26,6 +26,23 @@ case "$rel" in
     cd "$repo_root" || exit 0
     echo "[hook] cargo check after Rust edit: $rel"
     cargo check --workspace --message-format=short --quiet 2>&1 | grep -E '(error|warning:)' | head -15 || true
+
+    # TDD discipline check — if this edit added a new `pub fn` and the same
+    # diff doesn't add a matching `#[test]`, flag the gap. Not a gate; just
+    # a nudge so untested public surface area gets caught at commit time
+    # rather than in code review. See .claude/skills/tdd-workflow/SKILL.md.
+    if git diff -- "$file" 2>/dev/null | grep -E '^\+\s*pub fn ' | grep -qv '#\[' ; then
+      new_pubs=$(git diff -- "$file" 2>/dev/null | grep -E '^\+\s*pub fn ' | sed -E 's/^\+\s*pub (async )?(unsafe )?fn ([a-z_][a-zA-Z0-9_]+).*/\3/' | sort -u)
+      if [ -n "$new_pubs" ]; then
+        # Check if the diff also added any tests for those fns (loose match
+        # on function name appearing inside an added `#[test]` block).
+        for fn in $new_pubs; do
+          if ! git diff -- "$file" 2>/dev/null | grep -A 20 '^\+.*#\[test\]' | grep -q "$fn"; then
+            echo "[tdd-hook] new public fn '$fn' has no matching test in this diff — consider /tdd-workflow"
+          fi
+        done
+      fi
+    fi
     ;;
   # UI source — Svelte type-check.
   ui/src/*.svelte|ui/src/**/*.svelte|ui/src/*.ts|ui/src/**/*.ts)
