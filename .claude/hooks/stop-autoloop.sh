@@ -56,10 +56,25 @@ fi
 context_limit=1000000
 percent=$(( total_tokens * 100 / context_limit ))
 
-# 5. Decide whether there's pending work to keep working on. We look
-# for the most-recent roadmap file in .planning/research/ROADMAP-*.md
-# (or the canonical .planning/ROADMAP.md). If one exists and references
-# "Phase" markers, assume work is in flight.
+# 5. Decide whether there's pending work. The OLD logic just grepped
+# for `## Phase` headers in any roadmap file, which loops forever once
+# all the phase work is done (the headers stay in the doc). The NEW
+# logic combines two signals:
+#
+#   (a) A roadmap with `## Phase` markers exists (necessary, not
+#       sufficient).
+#   (b) The model is actually making progress — at least one commit
+#       has landed in the last `STUCK_WINDOW_SECS` seconds.
+#
+# If (a) is true but (b) is false, the model is firing autoloop turns
+# without producing work — usually because all the concrete tasks are
+# done and only ambiguous / blocked items remain. Allow the stop.
+#
+# This catches the "I keep saying 'nothing concrete left' but the hook
+# keeps firing" loop without requiring the user to touch the kill
+# switch or edit the roadmap.
+STUCK_WINDOW_SECS=180
+
 has_pending="false"
 roadmap=""
 for candidate in \
@@ -76,15 +91,28 @@ do
   fi
 done
 
+# Progress check — only meaningful when has_pending is true.
+recent_commits=0
+if [ "$has_pending" = "true" ]; then
+  recent_commits=$(git -C "$repo_root" log --since="${STUCK_WINDOW_SECS} seconds ago" --oneline 2>/dev/null | wc -l | tr -d ' ')
+  # If no commits landed in the stuck window, downgrade has_pending.
+  # The model has had at least one full autoloop turn to commit
+  # something; if nothing landed it means concrete work is exhausted.
+  if [ "$recent_commits" -eq 0 ]; then
+    has_pending="stuck"
+  fi
+fi
+
 # 6. Decision.
-#    - At/above 90% budget OR no pending work signal → allow stop.
+#    - At/above 90% budget → allow stop (context exhausted).
+#    - No pending work signal at all → allow stop.
+#    - has_pending="stuck" (no commits in stuck window) → allow stop.
 #    - Otherwise → block with a continue instruction.
 if [ "$percent" -ge 90 ] || [ "$has_pending" != "true" ]; then
-  # Allow normal exit. Log to stderr for the model's awareness (stderr
-  # goes back to the model via the harness on exit code 0 too, but only
-  # when there's specific signal — keep it terse).
   if [ "$percent" -ge 90 ]; then
     echo "[stop-autoloop] context at ${percent}% of 1M budget — allowing stop" >&2
+  elif [ "$has_pending" = "stuck" ]; then
+    echo "[stop-autoloop] no commits in last ${STUCK_WINDOW_SECS}s — concrete work exhausted, allowing stop" >&2
   fi
   exit 0
 fi
