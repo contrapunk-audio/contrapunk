@@ -16,9 +16,23 @@ use contrapunk::harmony::{
 };
 use contrapunk::preset::PresetManager;
 
-/// Log to browser console from Rust WASM.
+/// Log to browser console from Rust WASM. Debug-only — release builds
+/// expand to a no-op so the per-block guitar-DSP traces at lines 716+
+/// don't burn frame budget or flood DevTools when users have the app
+/// open. CONCERNS.md flagged this as a measurable jank source under
+/// DevTools-open conditions; gating at the macro level keeps all
+/// existing call sites working transparently. Use `web_sys::console::
+/// error_1` directly for errors that must survive release builds.
+#[cfg(debug_assertions)]
 macro_rules! console_log {
     ($($t:tt)*) => (web_sys::console::log_1(&format!($($t)*).into()))
+}
+
+#[cfg(not(debug_assertions))]
+macro_rules! console_log {
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 // Initialize panic hook for better error messages in the browser console.
@@ -735,8 +749,13 @@ impl WasmGuitarInput {
 
         self.frame_count += 1;
 
-        // Log internal DSP state every 20 frames
-        if self.frame_count % 20 == 0 {
+        // Log internal DSP state every 20 frames — gated on debug builds
+        // so release WASM doesn't waste audio-block budget on RMS, state-
+        // lookup, and pitch-formatting computations whose output is then
+        // thrown away by the no-op console_log! macro in release.
+        // CONCERNS.md flagged the per-frame log path as a measurable jank
+        // source; this gate removes both the log AND its computation.
+        if cfg!(debug_assertions) && self.frame_count % 20 == 0 {
             let rms: f32 =
                 (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
             let state = match self.inner.note_state_name() {
@@ -761,7 +780,7 @@ impl WasmGuitarInput {
                 state
             );
         }
-        if !events.is_empty() {
+        if cfg!(debug_assertions) && !events.is_empty() {
             console_log!(
                 "[wasm-guitar] {} events at frame {}",
                 events.len(),
