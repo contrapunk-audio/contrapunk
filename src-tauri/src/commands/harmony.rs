@@ -206,6 +206,31 @@ pub fn set_counterpoint_strictness(
     Ok(())
 }
 
+/// Toggle bass-register suppression (#100). When enabled, input notes
+/// below `bass_register_threshold` pass through without producing
+/// harmony — for users who play the bass line themselves.
+#[tauri::command]
+pub fn set_suppress_bass_register(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_suppress_bass_register(enabled);
+    }
+    raise_panic(&state);
+    Ok(())
+}
+
+/// Set the MIDI note number at and above which harmony is generated
+/// (bass-register threshold). Default 48 (C3). Clamped to 0..=127.
+#[tauri::command]
+pub fn set_bass_register_threshold(midi: u8, state: State<AppState>) -> Result<(), String> {
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_bass_register_threshold(midi);
+    }
+    raise_panic(&state);
+    Ok(())
+}
+
 /// Set the MIDI routing mode (channel-based MPE or port-based).
 #[tauri::command]
 pub fn set_routing_mode(mode: String, state: State<AppState>) -> Result<(), String> {

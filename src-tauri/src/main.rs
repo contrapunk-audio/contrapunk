@@ -74,6 +74,8 @@ fn main() {
             commands::harmony::set_counterpoint_species,
             commands::harmony::set_voice_count,
             commands::harmony::set_counterpoint_strictness,
+            commands::harmony::set_suppress_bass_register,
+            commands::harmony::set_bass_register_threshold,
             commands::harmony::set_detune,
             commands::harmony::get_detune,
             // MIDI device management

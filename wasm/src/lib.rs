@@ -214,6 +214,32 @@ impl Engine {
         self.inner.set_counterpoint_beat_phase(phase);
     }
 
+    /// Returns whether bass-register suppression is active. Issue #100.
+    pub fn suppress_bass_register(&self) -> bool {
+        self.inner.suppress_bass_register()
+    }
+
+    /// Enable or disable bass-register suppression. When on, input
+    /// notes below the threshold pass through without producing
+    /// harmony — for users who play the bass line themselves.
+    pub fn set_suppress_bass_register(&mut self, enabled: bool) {
+        self.inner.set_suppress_bass_register(enabled);
+        self.clear_notes();
+    }
+
+    /// Returns the bass-register threshold MIDI note number.
+    pub fn bass_register_threshold(&self) -> u8 {
+        self.inner.bass_register_threshold()
+    }
+
+    /// Sets the bass-register threshold MIDI note (notes below pass
+    /// through when `suppress_bass_register` is true). Clamped to
+    /// 0..=127.
+    pub fn set_bass_register_threshold(&mut self, midi: u8) {
+        self.inner.set_bass_register_threshold(midi);
+        self.clear_notes();
+    }
+
     /// Returns the current key as a string (for UI to update after auto-detection).
     pub fn current_key(&self) -> String {
         format!("{}", self.inner.key())
