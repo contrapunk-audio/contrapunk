@@ -569,20 +569,14 @@ fn run_tauri_router(
                 let harm_notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
                 let borr_notes = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
                 let ch_name = chord_name.lock().unwrap_or_else(|e| e.into_inner());
-                let mut in_vec: Vec<u8> = in_notes.iter().copied().collect();
-                let mut harm_vec: Vec<u8> = harm_notes.iter().copied().collect();
-                let mut borr_vec: Vec<u8> = borr_notes.iter().copied().collect();
-                in_vec.sort_unstable();
-                harm_vec.sort_unstable();
-                borr_vec.sort_unstable();
-                NoteUpdatePayload {
-                    input_notes: in_vec,
-                    harmony_notes: harm_vec,
-                    borrowed_notes: borr_vec,
-                    chord_name: ch_name.clone(),
+                build_note_update_payload(
+                    &in_notes,
+                    &harm_notes,
+                    &borr_notes,
+                    ch_name.clone(),
                     last_borrowed_from,
                     current_key,
-                }
+                )
             };
             let _ = app_handle.emit("note-update", payload);
 
@@ -593,33 +587,7 @@ fn run_tauri_router(
                     latest_signal = Some(sig);
                 }
                 if let Some(sig) = latest_signal {
-                    let note_names = [
-                        "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
-                    ];
-                    let (note_name, midi_note) = if let Some(freq) = sig.frequency {
-                        if freq > 20.0 && sig.clarity > 0.3 {
-                            let midi = (12.0 * (freq / 440.0).log2() + 69.0).round() as i32;
-                            let midi_u8 = midi.clamp(0, 127) as u8;
-                            let name_idx = (midi_u8 % 12) as usize;
-                            let octave = (midi_u8 as i32 / 12) - 1;
-                            (format!("{}{}", note_names[name_idx], octave), midi_u8)
-                        } else {
-                            (String::new(), 0)
-                        }
-                    } else {
-                        (String::new(), 0)
-                    };
-                    let _ = app_handle.emit(
-                        "guitar-signal",
-                        GuitarSignalPayload {
-                            rms: sig.rms,
-                            frequency: sig.frequency,
-                            clarity: sig.clarity,
-                            note_state: sig.note_state,
-                            note_name,
-                            midi_note,
-                        },
-                    );
+                    let _ = app_handle.emit("guitar-signal", build_guitar_signal_payload(sig));
                 }
             }
         }
@@ -1037,5 +1005,176 @@ fn broadcast_note_off(
             synth_tx,
             output,
         );
+    }
+}
+
+/// Build the payload sent on the "note-update" Tauri event.
+///
+/// Pure function: takes references to the three note sets + the
+/// strings already extracted from the engine, returns the payload.
+/// The router holds the locks; this function never blocks on I/O.
+///
+/// Sorts each note vector for stable UI rendering — without sorting,
+/// HashSet iteration order would cause the piano-roll display to
+/// shuffle pips between frames.
+fn build_note_update_payload(
+    input_notes: &HashSet<u8>,
+    harmony_notes: &HashSet<u8>,
+    borrowed_notes: &HashSet<u8>,
+    chord_name: String,
+    last_borrowed_from: String,
+    current_key: String,
+) -> NoteUpdatePayload {
+    let mut in_vec: Vec<u8> = input_notes.iter().copied().collect();
+    let mut harm_vec: Vec<u8> = harmony_notes.iter().copied().collect();
+    let mut borr_vec: Vec<u8> = borrowed_notes.iter().copied().collect();
+    in_vec.sort_unstable();
+    harm_vec.sort_unstable();
+    borr_vec.sort_unstable();
+    NoteUpdatePayload {
+        input_notes: in_vec,
+        harmony_notes: harm_vec,
+        borrowed_notes: borr_vec,
+        chord_name,
+        last_borrowed_from,
+        current_key,
+    }
+}
+
+/// Build the payload sent on the "guitar-signal" Tauri event.
+///
+/// Pure function: converts a `GuitarSignalInfo` from the audio
+/// pipeline into the UI-facing payload, applying the standard
+/// frequency-to-note mapping with two thresholds (frequency > 20 Hz
+/// AND clarity > 0.3) to avoid surfacing noise as fake note
+/// detections in the readout strip.
+fn build_guitar_signal_payload(sig: crate::guitar_bridge::GuitarSignalInfo) -> GuitarSignalPayload {
+    const NOTE_NAMES: [&str; 12] = [
+        "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
+    ];
+    let (note_name, midi_note) = if let Some(freq) = sig.frequency {
+        if freq > 20.0 && sig.clarity > 0.3 {
+            let midi = (12.0 * (freq / 440.0).log2() + 69.0).round() as i32;
+            let midi_u8 = midi.clamp(0, 127) as u8;
+            let name_idx = (midi_u8 % 12) as usize;
+            let octave = (midi_u8 as i32 / 12) - 1;
+            (format!("{}{}", NOTE_NAMES[name_idx], octave), midi_u8)
+        } else {
+            (String::new(), 0)
+        }
+    } else {
+        (String::new(), 0)
+    };
+    GuitarSignalPayload {
+        rms: sig.rms,
+        frequency: sig.frequency,
+        clarity: sig.clarity,
+        note_state: sig.note_state,
+        note_name,
+        midi_note,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::guitar_bridge::GuitarSignalInfo;
+    use std::collections::HashSet;
+
+    /// Note vectors must come out sorted ascending so the UI piano-roll
+    /// renders pips in a stable order across frames. Without sorting,
+    /// HashSet iteration order would shuffle the display.
+    #[test]
+    fn test_build_note_update_payload_sorts_notes() {
+        let input: HashSet<u8> = [67u8, 60, 64].iter().copied().collect();
+        let harmony: HashSet<u8> = [55u8, 71, 60].iter().copied().collect();
+        let borrowed: HashSet<u8> = [70u8].iter().copied().collect();
+        let payload = build_note_update_payload(
+            &input,
+            &harmony,
+            &borrowed,
+            "Cmaj7".into(),
+            "Aeolian".into(),
+            "C".into(),
+        );
+        assert_eq!(payload.input_notes, vec![60, 64, 67]);
+        assert_eq!(payload.harmony_notes, vec![55, 60, 71]);
+        assert_eq!(payload.borrowed_notes, vec![70]);
+        assert_eq!(payload.chord_name, "Cmaj7");
+        assert_eq!(payload.last_borrowed_from, "Aeolian");
+        assert_eq!(payload.current_key, "C");
+    }
+
+    #[test]
+    fn test_build_note_update_payload_empty_state() {
+        let empty: HashSet<u8> = HashSet::new();
+        let payload = build_note_update_payload(
+            &empty,
+            &empty,
+            &empty,
+            String::new(),
+            String::new(),
+            "C".into(),
+        );
+        assert!(payload.input_notes.is_empty());
+        assert!(payload.harmony_notes.is_empty());
+        assert!(payload.borrowed_notes.is_empty());
+        assert!(payload.chord_name.is_empty());
+        assert_eq!(payload.current_key, "C");
+    }
+
+    /// A clean signal at A4 (440 Hz) above the clarity threshold must
+    /// produce the canonical name + MIDI number.
+    #[test]
+    fn test_build_guitar_signal_payload_a4() {
+        let sig = GuitarSignalInfo {
+            rms: 0.1,
+            frequency: Some(440.0),
+            clarity: 0.8,
+            note_state: 2,
+        };
+        let payload = build_guitar_signal_payload(sig);
+        assert_eq!(payload.note_name, "A4");
+        assert_eq!(payload.midi_note, 69);
+        assert_eq!(payload.note_state, 2);
+    }
+
+    /// Frequency below 20 Hz must NOT produce a note — that's
+    /// sub-audible noise. The clarity threshold should also gate.
+    #[test]
+    fn test_build_guitar_signal_payload_rejects_subaudible_and_low_clarity() {
+        let subaudible = GuitarSignalInfo {
+            rms: 0.05,
+            frequency: Some(10.0),
+            clarity: 0.9,
+            note_state: 0,
+        };
+        let p1 = build_guitar_signal_payload(subaudible);
+        assert_eq!(p1.note_name, "");
+        assert_eq!(p1.midi_note, 0);
+
+        let noisy = GuitarSignalInfo {
+            rms: 0.05,
+            frequency: Some(440.0),
+            clarity: 0.2,
+            note_state: 0,
+        };
+        let p2 = build_guitar_signal_payload(noisy);
+        assert_eq!(p2.note_name, "");
+        assert_eq!(p2.midi_note, 0);
+    }
+
+    /// No frequency at all (idle / silence) must produce an empty name.
+    #[test]
+    fn test_build_guitar_signal_payload_no_frequency() {
+        let silent = GuitarSignalInfo {
+            rms: 0.001,
+            frequency: None,
+            clarity: 0.0,
+            note_state: 0,
+        };
+        let payload = build_guitar_signal_payload(silent);
+        assert_eq!(payload.note_name, "");
+        assert_eq!(payload.midi_note, 0);
     }
 }
