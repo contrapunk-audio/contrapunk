@@ -35,7 +35,8 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "entitlements": null
+      "entitlements": null,
+      "minimumSystemVersion": "11.0"
     },
     "windows": {
       "webviewInstallMode": {
