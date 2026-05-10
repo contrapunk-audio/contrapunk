@@ -12,6 +12,20 @@ This is a fourth architectural verdict beyond the three in `issue-researcher.md`
 
 Clean-room is expensive — each entry below is a multi-month effort. It's the right move only when (a) the functionality is strategic enough to be worth a dedicated repo and (b) the upstream's license would taint Contrapunk's MIT posture. For one-off integrations that fail those tests, defer indefinitely instead.
 
+## Stack: Rust-first, even for browser targets
+
+All four candidates default to **Rust core + WASM bindings + thin JS host surface**, not JS-native rebuilds. Reasoning:
+
+- Contrapunk's harmony engine is already Rust → WASM (via `wasm-bindgen`). The same toolchain, the same release pattern, the same testing posture, the same author skill set.
+- Performance: GLSL chain generation, pattern scheduling, jitter buffers, NTP-style sync — all CPU-bound work that Rust does better than JS even compiled to WASM.
+- Type safety carries through. A pattern combinator written in Rust gets compile-time guarantees the equivalent TypeScript would shrug at.
+- Shared primitives. A future `contrapunk-livecode` pattern combinator that takes a `HarmonyMode` doesn't need to redefine that enum — it depends on `contrapunk-harmony`, same as the main app.
+- Native+web parity for free. A Rust core can power a Tauri-embedded visualizer (no browser at all) AND the `app.contrapunk.com` browser bundle from one source.
+
+The JS surface is just the user-facing API for livecoders — a thin layer that calls into WASM-exposed Rust functions. The user writes `osc(20).modulate(noise(3)).out()` in JS; Rust generates the GLSL, manages WebGL state, and runs the scheduler.
+
+For native-only projects (`contrapunk-net`, `contrapunk-link`), no JS surface at all — pure Rust crates / binaries.
+
 ---
 
 ## The four candidates
@@ -22,17 +36,17 @@ Clean-room is expensive — each entry below is a multi-month effort. It's the r
 
 **Functionality:** Functional WebGL visualizer driven by audio FFT. Live-coded chains like `osc(20).modulate(noise(3)).out()`.
 
-**What we build:**
-- Functional API surface (`osc`, `noise`, `modulate`, `kaleid`, `rotate`, `out`).
-- GLSL shader generator from JS chain (chain-of-transformations compiled to a single fragment shader).
-- WebGL2 renderer with double-buffered framebuffers.
-- Web Audio AnalyserNode input → uniform binding for shader.
-- Live-reload code editor pane.
+**What we build (Rust-first):**
+- **Rust crate** (`contrapunk-viz`): GLSL shader generator (the chain → single-fragment-shader compiler), uniform binding logic, AnalyserNode FFT processing. Compiles to WASM via `wasm-bindgen`.
+- **WebGL2 renderer**: Rust calls into `web-sys::WebGl2RenderingContext`, OR a `wgpu` backend that targets WebGL2/WebGPU/native (one renderer, three targets).
+- **Thin JS surface** (`@contrapunk/viz`): user-facing chain API (`osc(20).modulate(noise(3)).out()`) that calls into the WASM module. ~200-400 LOC of JS, the rest is Rust.
+- **Live-reload code editor pane**: SvelteKit-side, integrated into the Contrapunk UI or hosted standalone at `viz.contrapunk.com`.
+- **Native variant**: same Rust crate, plus a `wgpu` native renderer, runs inside Tauri without a browser at all. Bonus surface that JS-based Hydra physically can't do.
 
-**Effort:** L (3-6 weeks for v1; Hydra itself is ~15k LOC including legacy).
+**Effort:** L (3-6 weeks for v1; the Rust GLSL-generator is more work upfront than a JS one, but the shared rendering across web/native pays it back).
 **License:** MIT.
-**Repo:** `contrapunk-audio/viz` (new, public).
-**Integration with Contrapunk:** consumed by the main Contrapunk web app via `<script type="module">` from the viz repo's published bundle. The viz repo can publish to npm under `@contrapunk/viz` once stable.
+**Repo:** `contrapunk-audio/viz` (new, public). Cargo crate + npm wrapper.
+**Integration with Contrapunk:** consumed by the main Contrapunk web app via `import * as viz from '@contrapunk/viz'`, OR as a Cargo dependency in `src-tauri/` for the native-embedded variant. The Rust core can also live as a workspace member if release cadence stays in lockstep.
 
 **Why worth doing:** visualizer is a genuine product moat for an audio tool — users screenshot/share the visuals. Hydra-style livecoding-of-visuals fits Contrapunk's livecoder energy. The AGPL alternative would force `app.contrapunk.com`'s entire shell to AGPL.
 
@@ -46,17 +60,17 @@ Clean-room is expensive — each entry below is a multi-month effort. It's the r
 
 **Functionality:** Browser-based livecoding pattern language. TidalCycles-derived mini-notation. Generates MIDI events at musical time.
 
-**What we build:**
-- Mini-notation parser (the `"bd sd [bd bd] sd"` DSL). TidalCycles' parser grammar is documented; we re-implement from spec, not from Tidal/Strudel source.
-- Pattern combinators (`stack`, `cat`, `fast`, `slow`, `every`, `chunk`, `degradeBy`, etc.) — these are functions over time-indexed `Pattern<T>` values. The math is in the published TidalCycles papers (McLean 2010, Magnusson 2014).
-- Web Audio lookahead scheduler (separate from pattern library).
-- Web MIDI output (already exists in Contrapunk's adapter layer — reuse).
-- Live-reload code editor with CodeMirror.
+**What we build (Rust-first):**
+- **Rust crate** (`contrapunk-livecode`): mini-notation parser (using `nom` or `chumsky`), pattern combinator core (`Pattern<T>` as a function `f: Time -> Vec<Event<T>>`), lookahead scheduler. Compiles to WASM via `wasm-bindgen`. Also runs native for non-browser livecoding hosts (a CLI player, plugin integration, etc.).
+- **Pattern combinator API**: `stack`, `cat`, `fast`, `slow`, `every`, `chunk`, `degradeBy`, etc. as Rust functions. Cleanly typed (`Pattern<Note>`, `Pattern<Velocity>`, `Pattern<HarmonyMode>` — leveraging Contrapunk's harmony types).
+- **Thin JS surface** (`@contrapunk/livecode`): the user-facing DSL host. Users write JS-flavored code that calls into WASM. Reuses the existing Web MIDI adapter from Contrapunk.
+- **CodeMirror editor pane**: SvelteKit-side, deployed at `livecode.contrapunk.com` (separate origin keeps any future legal questions clean, but is no longer required since we're not bundling AGPL code).
+- **Harmony-aware primitives** (the strategic moat): `chord("Cmaj7")`, `harmonize(degree)`, `modeBorrow(scale)` — these only work because the pattern engine has direct compile-time access to `contrapunk-harmony` types. JS-based Strudel cannot do this without bridging.
 
-**Effort:** XL (3-6 months for a v1 that's usable; full Strudel is ~50k LOC).
+**Effort:** XL (3-6 months for a v1 that's usable; Strudel itself is ~50k LOC of TS). Rust mini-notation parser is comparable effort to TS; the win is on combinators (where Rust's type system actually carries value) and integration (where shared types with `contrapunk-harmony` save the bridging tax forever).
 **License:** MIT.
-**Repo:** `contrapunk-audio/livecode` (new, public).
-**Integration with Contrapunk:** consumed via npm publish `@contrapunk/livecode` OR hosted at `livecode.contrapunk.com` and integrated by message-passing to the main app. Critically: the boundary keeps Contrapunk's MIT shell uncontaminated.
+**Repo:** `contrapunk-audio/livecode` (new, public). Cargo crate + npm wrapper.
+**Integration with Contrapunk:** depends on `contrapunk-harmony` as a Cargo dep. JS host consumed by the Contrapunk web app as `@contrapunk/livecode` OR hosted standalone.
 
 **Why worth doing:** the livecoding audience overlaps with Contrapunk's target users. Building our own DSL puts us in a strong position long-term — we can extend the pattern language with harmony-aware primitives (`chord("Cmaj7")`, `harmonize(degree)`) that Strudel can't because it doesn't know about Contrapunk's harmony engine.
 
