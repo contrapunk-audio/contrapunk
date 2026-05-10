@@ -113,6 +113,26 @@ pub fn start_routing(
     // at least one external MIDI port; that constraint is gone now
     // that per-voice routing is the source of truth.
 
+    // Issue #14: if the user selected external MIDI ports but all
+    // voices route to the internal synth, the per-voice routing
+    // table (`VoiceOutputTarget::default() = Synth`) silently swallows
+    // their harmonies. Surface a one-time warning so this isn't a
+    // mystery support thread — both to the desktop log and to the
+    // frontend so the UI can show it.
+    {
+        let voice_outputs_snapshot = state
+            .voice_outputs
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone();
+        if let Some(warning) =
+            detect_no_external_output_warning(&voice_outputs_snapshot, &output_indices)
+        {
+            eprintln!("[start_routing] {}", warning);
+            let _ = app_handle.emit("routing-warning", warning);
+        }
+    }
+
     // Share the engine across the router thread and command handlers.
     // Without this clone, the router would run on its own private engine
     // instance and would never see param changes (set_key, set_auto_key,
@@ -1002,6 +1022,40 @@ fn broadcast_note_off(
     }
 }
 
+/// Detect the issue #14 silent-no-output condition: user selected one
+/// or more external MIDI ports for routing, but no voice in the
+/// per-voice routing table actually points at an external port. The
+/// engine's per-voice routing (`VoiceOutputTarget::default() = Synth`)
+/// will silently swallow every harmony into the internal synth, which
+/// looks like "MIDI out broken" to the user.
+///
+/// Returns `Some(message)` describing the problem when the bad state
+/// is detected, or `None` when configuration is consistent.
+///
+/// Pure: takes slices, returns Option<String>. No I/O, no locks.
+fn detect_no_external_output_warning(
+    voice_outputs: &[crate::state::VoiceOutputTarget],
+    output_indices: &[usize],
+) -> Option<String> {
+    if output_indices.is_empty() {
+        // No external ports selected at all — synth-only is what the
+        // user picked. Don't warn.
+        return None;
+    }
+    let any_external = voice_outputs
+        .iter()
+        .any(|t| matches!(t, crate::state::VoiceOutputTarget::MidiPort { .. }));
+    if any_external {
+        return None;
+    }
+    Some(format!(
+        "Routing started with {} external MIDI port(s) selected, but no voice is routed to an external port. \
+         All voices currently route to the internal synth; external instruments will receive nothing. \
+         Open Voice Routing in the UI to send harmonies to your external port(s).",
+        output_indices.len()
+    ))
+}
+
 /// Encode a detune-in-cents value as a 3-byte MIDI pitch-bend message
 /// on channel 0. Pure: takes cents (any i32), returns [status, LSB, MSB].
 ///
@@ -1182,6 +1236,65 @@ mod tests {
         let p2 = build_guitar_signal_payload(noisy);
         assert_eq!(p2.note_name, "");
         assert_eq!(p2.midi_note, 0);
+    }
+
+    /// Issue #14 detection: external ports selected + all voices Synth →
+    /// the warning must fire. This is the support-thread case ("MIDI out
+    /// not producing messages for some users").
+    #[test]
+    fn test_detect_no_external_output_warning_fires_when_all_synth() {
+        use crate::state::VoiceOutputTarget;
+        let voices = vec![VoiceOutputTarget::Synth; 8];
+        let result = detect_no_external_output_warning(&voices, &[0, 1]);
+        assert!(
+            result.is_some(),
+            "expected a warning when no voice routes to an external port"
+        );
+        let msg = result.unwrap();
+        assert!(
+            msg.contains("external MIDI port"),
+            "msg should mention external MIDI: {}",
+            msg
+        );
+        assert!(
+            msg.contains("internal synth"),
+            "msg should explain where it's going: {}",
+            msg
+        );
+    }
+
+    /// At least one voice routed to an external MIDI port is the
+    /// happy path — no warning even if other voices stay on Synth.
+    #[test]
+    fn test_detect_no_external_output_warning_silent_when_any_external() {
+        use crate::state::VoiceOutputTarget;
+        let voices = vec![
+            VoiceOutputTarget::Synth,
+            VoiceOutputTarget::MidiPort { port: 0 },
+            VoiceOutputTarget::Synth,
+            VoiceOutputTarget::Synth,
+        ];
+        assert!(detect_no_external_output_warning(&voices, &[0]).is_none());
+    }
+
+    /// User chose synth-only (no external ports selected) → never warn.
+    /// They explicitly opted out of MIDI; the bug doesn't apply.
+    #[test]
+    fn test_detect_no_external_output_warning_silent_when_no_external_ports_selected() {
+        use crate::state::VoiceOutputTarget;
+        let voices = vec![VoiceOutputTarget::Synth; 8];
+        assert!(detect_no_external_output_warning(&voices, &[]).is_none());
+    }
+
+    /// All voices set to `Off` is a legitimate user choice (mute) — the
+    /// warning logic only cares about MidiPort presence, so Off-only
+    /// still warns since external ports were selected but nothing
+    /// reaches them. That matches user intent: "I wanted MIDI out".
+    #[test]
+    fn test_detect_no_external_output_warning_fires_when_all_off() {
+        use crate::state::VoiceOutputTarget;
+        let voices = vec![VoiceOutputTarget::Off; 8];
+        assert!(detect_no_external_output_warning(&voices, &[0]).is_some());
     }
 
     /// Zero detune must produce the canonical center pitch-bend: status
