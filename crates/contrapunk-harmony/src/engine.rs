@@ -270,6 +270,12 @@ pub struct HarmonyEngine {
     /// Beat-phase position in [0, beats_per_bar) used by Species 2-4 counterpoint.
     /// `None` means "no beat clock running" — Species 2-4 fall back to Species 1 behavior.
     counterpoint_beat_phase: Option<f64>,
+    /// Internal beat counter that advances on every harmonize_note_on.
+    /// Used as a fallback phase for Species 2-4 when no external
+    /// transport is driving `counterpoint_beat_phase`. Without this,
+    /// Species 2-4 silently fall back to Species 1 whenever the user
+    /// hasn't pressed Play on the transport.
+    synthetic_beat_counter: f64,
     /// Active species applied to all counterpoint states.
     counterpoint_species: CounterpointSpecies,
     /// Active strictness applied to all counterpoint states.
@@ -334,6 +340,7 @@ impl HarmonyEngine {
             key_detector: super::key_detect::KeyDetector::new(ScaleMode::Ionian),
             beat_phase: BeatPhase::default(),
             counterpoint_beat_phase: None,
+            synthetic_beat_counter: 0.0,
             counterpoint_species: CounterpointSpecies::default(),
             counterpoint_strictness: CounterpointStrictness::default(),
             saved_scale_mode: None,
@@ -471,6 +478,7 @@ impl HarmonyEngine {
         self.voice_leading.reset();
         // Clear cached beat-phase; router will push a fresh value next cycle.
         self.counterpoint_beat_phase = None;
+        self.synthetic_beat_counter = 0.0;
     }
 
     /// Returns whether auto-key detection is enabled.
@@ -516,6 +524,7 @@ impl HarmonyEngine {
         self.voice_leading.reset();
         // Clear cached beat-phase; router pushes a fresh value on next cycle.
         self.counterpoint_beat_phase = None;
+        self.synthetic_beat_counter = 0.0;
 
         if mode == HarmonyMode::BarryHarris {
             match super::barry_harris::validate_scale(self.scale_mode) {
@@ -557,6 +566,7 @@ impl HarmonyEngine {
         self.voice_leading.reset();
         // Clear cached beat-phase; router pushes a fresh value on next cycle.
         self.counterpoint_beat_phase = None;
+        self.synthetic_beat_counter = 0.0;
     }
 
     /// Returns whether modal interchange is enabled.
@@ -660,6 +670,8 @@ impl HarmonyEngine {
             state.set_species(species);
         }
         self.clear_active_for_reharm();
+        self.counterpoint_beat_phase = None;
+        self.synthetic_beat_counter = 0.0;
     }
 
     /// Returns the active counterpoint strictness (Relaxed vs Strict).
@@ -1104,6 +1116,23 @@ impl HarmonyEngine {
         result
     }
 
+    /// Returns the beat phase to use for Species 2-4 dispatch.
+    /// Prefers the externally-set transport phase; falls back to the
+    /// internal synthetic counter so Species 2-4 work without a
+    /// running transport. Returns None unconditionally for any mode
+    /// other than StrictCounterpoint, or for Species1 (which ignores
+    /// phase entirely), so other code paths see no behavior change.
+    fn effective_counterpoint_beat_phase(&self) -> Option<f64> {
+        if !matches!(self.mode, HarmonyMode::StrictCounterpoint) {
+            return self.counterpoint_beat_phase;
+        }
+        if matches!(self.counterpoint_species, CounterpointSpecies::Species1) {
+            return self.counterpoint_beat_phase;
+        }
+        self.counterpoint_beat_phase
+            .or(Some(self.synthetic_beat_counter))
+    }
+
     /// Harmonizes a single note in a specific direction using the mode's algorithm.
     /// `above`: if true, generate harmony above; if false, generate below.
     /// Used for bidirectional voice position generation.
@@ -1138,7 +1167,7 @@ impl HarmonyEngine {
                 // `above` — we octave-shift the result post-hoc to honor the
                 // chain's direction request.
                 let species = self.counterpoint_species;
-                let beat_phase = self.counterpoint_beat_phase;
+                let beat_phase = self.effective_counterpoint_beat_phase();
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
                     let result = if matches!(species, CounterpointSpecies::Species1) {
                         state.process_directed(&mut self.scale, note, above)
@@ -1185,7 +1214,7 @@ impl HarmonyEngine {
             HarmonyMode::StrictCounterpoint => {
                 // Dispatch to process_with_beat so Species 2-4 get beat awareness.
                 // Species 1 + beat_phase=None is exactly equivalent to process().
-                let beat_phase = self.counterpoint_beat_phase;
+                let beat_phase = self.effective_counterpoint_beat_phase();
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
                     state.process_with_beat(&mut self.scale, note, beat_phase)
                 } else {
@@ -1241,6 +1270,8 @@ impl HarmonyEngine {
                 }
             }
         }
+
+        self.synthetic_beat_counter = (self.synthetic_beat_counter + 1.0) % 4.0;
 
         let result = self.harmonize(note);
         // Copy last_borrowed_from from scale for UI access
@@ -2467,6 +2498,51 @@ mod tests {
             result.len() >= 2,
             "chain at register edge produced only {} note(s); expected the wrap fallback to keep voices, full result={result:?}",
             result.len()
+        );
+    }
+
+    /// Regression: without an external transport, Species 2 must still
+    /// produce different output from Species 1 across a melody. Before
+    /// the synthetic-beat fix, `counterpoint_beat_phase = None` made
+    /// every species fall back to Species 1 in `process_with_beat`.
+    #[test]
+    fn test_species2_differs_from_species1_without_transport() {
+        let melody: Vec<Note> = (0..8)
+            .map(|_| Note::C4)
+            .chain((0..8).map(|_| Note::D4))
+            .collect();
+        // identical engines, no set_counterpoint_beat_phase calls — pure synthetic.
+        let mut e1 = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
+        let mut e2 = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
+        e1.set_counterpoint_species(CounterpointSpecies::Species1);
+        e2.set_counterpoint_species(CounterpointSpecies::Species2);
+        let mut diverged = false;
+        for &n in &melody {
+            let r1 = e1.harmonize_note_on(n);
+            let r2 = e2.harmonize_note_on(n);
+            if r1 != r2 {
+                diverged = true;
+            }
+        }
+        assert!(diverged, "Species 2 must diverge from Species 1 even without an external transport — synthetic beat fallback is not active");
+    }
+
+    /// External transport, when set, must take precedence over the
+    /// internal synthetic counter. Sanity check that the synthetic
+    /// fallback doesn't override an explicitly-driven phase.
+    #[test]
+    fn test_external_phase_wins_over_synthetic() {
+        let mut e = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
+        e.set_counterpoint_species(CounterpointSpecies::Species2);
+        e.set_counterpoint_beat_phase(Some(0.0)); // explicit strong beat
+        let with_external = e.harmonize_note_on(Note::E4);
+        let mut e2 = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
+        e2.set_counterpoint_species(CounterpointSpecies::Species2);
+        e2.set_counterpoint_beat_phase(Some(0.0));
+        let again = e2.harmonize_note_on(Note::E4);
+        assert_eq!(
+            with_external, again,
+            "External phase should be deterministic and not perturbed by the synthetic counter"
         );
     }
 }
