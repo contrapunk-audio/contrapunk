@@ -491,13 +491,7 @@ fn run_tauri_router(
         let current_detune = detune_cents.load(Ordering::Relaxed);
         if current_detune != prev_detune_cents {
             prev_detune_cents = current_detune;
-            // Convert cents to 14-bit pitch bend (center = 8192, ±2 semitones = ±200 cents)
-            let max_cents = 200i32; // standard ±2 semitone range
-            let bend_14bit = ((current_detune as f64 / max_cents as f64) * 8192.0 + 8192.0) as u16;
-            let bend_clamped = bend_14bit.clamp(0, 16383);
-            let lsb = (bend_clamped & 0x7F) as u8;
-            let msb = ((bend_clamped >> 7) & 0x7F) as u8;
-            let pitch_bend_msg = [0xE0, lsb, msb]; // channel 0
+            let pitch_bend_msg = cents_to_pitch_bend_msg(current_detune);
             let num_ports = output_router.connection_count();
             for p in 0..num_ports {
                 let _ = output_router.send_to_port(p, &pitch_bend_msg);
@@ -1008,6 +1002,32 @@ fn broadcast_note_off(
     }
 }
 
+/// Encode a detune-in-cents value as a 3-byte MIDI pitch-bend message
+/// on channel 0. Pure: takes cents (any i32), returns [status, LSB, MSB].
+///
+/// Conventions:
+/// - Pitch bend range is ±2 semitones (±200 cents) per General MIDI default.
+/// - Center (no bend) is 14-bit value 8192 (0x2000) → bytes [0xE0, 0x00, 0x40].
+/// - The 14-bit value is clamped to [0, 16383]; out-of-range inputs (beyond
+///   ±200 cents) saturate at the endpoints rather than wrapping or panicking.
+/// - Channel bits in the status byte are zero (channel 1 in 1-indexed MIDI).
+///
+/// Extracted from the inline detune-tick block in run_tauri_router so the
+/// 14-bit packing is independently testable. The send-to-all-ports loop
+/// stays at the call site since it's pure I/O.
+fn cents_to_pitch_bend_msg(cents: i32) -> [u8; 3] {
+    const MAX_CENTS: i32 = 200; // ±2 semitones
+    let bend_f = (cents as f64 / MAX_CENTS as f64) * 8192.0 + 8192.0;
+    // Clamp BEFORE the cast — Rust's f64-to-u16 saturating cast clamps to
+    // [0, 65535], but we need clamping to the MIDI [0, 16383] range. A
+    // pre-clamp on the i32-equivalent avoids both negative-saturation
+    // surprises and the >16383 overshoot.
+    let bend_clamped = bend_f.round().clamp(0.0, 16383.0) as u16;
+    let lsb = (bend_clamped & 0x7F) as u8;
+    let msb = ((bend_clamped >> 7) & 0x7F) as u8;
+    [0xE0, lsb, msb]
+}
+
 /// Build the payload sent on the "note-update" Tauri event.
 ///
 /// Pure function: takes references to the three note sets + the
@@ -1162,6 +1182,42 @@ mod tests {
         let p2 = build_guitar_signal_payload(noisy);
         assert_eq!(p2.note_name, "");
         assert_eq!(p2.midi_note, 0);
+    }
+
+    /// Zero detune must produce the canonical center pitch-bend: status
+    /// 0xE0, LSB=0x00, MSB=0x40 (14-bit value 8192).
+    #[test]
+    fn test_cents_to_pitch_bend_msg_zero_is_center() {
+        assert_eq!(cents_to_pitch_bend_msg(0), [0xE0, 0x00, 0x40]);
+    }
+
+    /// +200 cents (max upward bend) must produce the 14-bit max 16383.
+    #[test]
+    fn test_cents_to_pitch_bend_msg_max_up() {
+        assert_eq!(cents_to_pitch_bend_msg(200), [0xE0, 0x7F, 0x7F]);
+    }
+
+    /// -200 cents (max downward bend) must produce 14-bit 0.
+    #[test]
+    fn test_cents_to_pitch_bend_msg_max_down() {
+        assert_eq!(cents_to_pitch_bend_msg(-200), [0xE0, 0x00, 0x00]);
+    }
+
+    /// Out-of-range inputs must clamp at the endpoints (no panic, no wrap).
+    /// Especially important for negative inputs — f64-to-u16 saturating
+    /// casts in older Rust versions clamped negatives to 0, which we want,
+    /// but the explicit pre-clamp here makes it robust across compilers.
+    #[test]
+    fn test_cents_to_pitch_bend_msg_clamps_out_of_range() {
+        assert_eq!(cents_to_pitch_bend_msg(10_000), [0xE0, 0x7F, 0x7F]);
+        assert_eq!(cents_to_pitch_bend_msg(-10_000), [0xE0, 0x00, 0x00]);
+    }
+
+    /// +100 cents = halfway up = 14-bit 12288 (0x3000): LSB=0, MSB=0x60.
+    /// Regression guard: an off-by-one or wrong-shift bug would catch here.
+    #[test]
+    fn test_cents_to_pitch_bend_msg_half_up() {
+        assert_eq!(cents_to_pitch_bend_msg(100), [0xE0, 0x00, 0x60]);
     }
 
     /// No frequency at all (idle / silence) must produce an empty name.
