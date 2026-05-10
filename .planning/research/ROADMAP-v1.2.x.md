@@ -1,7 +1,28 @@
-# v1.2.x Milestone Roadmap (Recommendation)
+# v1.2.x Milestone Roadmap (LOCKED)
 
 **Date:** 2026-05-11
-**Status:** Recommendation for user approval — not yet locked in `.planning/ROADMAP.md`
+**Status:** All five open questions answered 2026-05-11. Locked. Phase 1 in progress.
+
+## Locked decisions
+
+| Q | Decision | Impact |
+|---|---|---|
+| 1 | Defer plugin signing — ship unsigned for v1.2.x; revisit if user pull demands it | Plugin Phase doesn't carry $400+/yr cert burden |
+| 2 | #82 guitar pipeline rewrite gets its own milestone (v1.3.x+) | Out of v1.2.x scope entirely |
+| 3 | Jam dropped — #106 and #105 deferred indefinitely | Phase 2 of original plan collapses |
+| 4 | **Zero AGPL/GPL stance for everything** including the main app | #15 deferred, #101 → Butterchurn or clean-room, **#98 dropped** (rusty_link is GPLv2+, contaminates the binary) |
+| 5 | Companion architecture ready to absorb new code as Lanes | Phase 2's #91 successor wiring proceeds |
+
+## License posture (CRITICAL — applies repo-wide)
+
+**Zero GPL of any kind in `contrapunk-audio/contrapunk` or any binary it links.** This includes:
+- GPLv2, GPLv2+, GPLv3, AGPL — all rejected
+- LGPL is acceptable only via dynamic linking with documented load path
+- MIT, Apache-2.0, ISC, BSD-2/3, MPL-2.0 — all fine
+
+License audits become a pre-commit consideration. Any new Cargo or npm dep must show its license. The license verdicts table in `CLEAN-ROOM-CANDIDATES.md` is authoritative.
+
+Implications for the four clean-room candidates: they remain MIT, in their own repos. Their presence is now a hard requirement (not optional) for the features they cover, because the alternative is "drop the feature entirely."
 **Inputs:**
 - `.planning/research/issue-triage.md` — all 37 open issues categorized
 - `.planning/research/group-{a..i}-*.md` — 9 parallel research docs
@@ -47,26 +68,14 @@ Acceptance criteria: tests still pass, no regressions in `app.contrapunk.com`, h
 
 ---
 
-## Phase 2 — Ship-fast for May 14 (1 week, deadline-driven)
+## Phase 2 — Bugs + small features (2 weeks)
 
-Goal: hit the Wk3 jam ship deadline. Architectural pristineness gives way to user-visible value.
-
-| Task | Issue | Verdict | Effort | Notes |
-|---|---|---|---|---|
-| Drone + Bitcrusher AudioBlocks | #106 | in-repo core (v0) | S | **Desktop-only**, drop the WASM acceptance criterion |
-| MIDI-out routing default fix (UI heuristic + log warning) | #14 | bug | XS | Root cause: `VoiceOutputTarget::default() = Synth` |
-
-Phase 2 v0s are explicitly throwaway-able: when the audio-graph / Lane abstraction lands in v1.3.x, #106 refactors into DroneLane.
-
----
-
-## Phase 3 — Bugs + small features (2 weeks)
-
-The bulk of v1.2.x's user-visible work.
+The bulk of v1.2.x's user-visible work. Phase 2 of the original recommendation (jam ship-fast) collapsed into here after the jam was dropped.
 
 | Task | Issue | Verdict | Effort | Notes |
 |---|---|---|---|---|
-| #79 patch path only (1-line gate on initial bend) | #79 | bug | XS | Skip the debug window — #82 owns that |
+| MIDI-out routing default fix (UI heuristic + log warning) | #14 | bug | XS | Promoted to top — high user impact. Root cause: `VoiceOutputTarget::default() = Synth` |
+| #79 patch path only (1-line gate on initial bend) | #79 | bug | XS | Skip the debug window — owned by future #82 milestone |
 | CC 123 + companion-vs-engine reconcile | #90 | bug | S | Cross-ref `WorldState` ↔ `engine.active_notes` |
 | Wire `Companion::tick()` into router; defer concrete Lanes | #91 successor | refactor | M | Foundation for Canon/BeatMachine later |
 | Bass register suppression (velocity API + early-return) | #100 | in-repo core | M | Cross-surface API break — coordinate with website submodule bump |
@@ -74,23 +83,30 @@ The bulk of v1.2.x's user-visible work.
 | Presets UI redesign — pill-row pattern | #65 | in-repo core | S | No cmd-K palette debate |
 | Canonical embed wave 3+4 (Piano wrapper + ChordReadout) | #66 | in-repo core | S | Prereq closure of #70 |
 | Krumhansl auto-key detector | #81 | in-repo core | M | Pure-math rewrite of `key_detect.rs` for 21 modes |
-| Ableton Link (Tauri-only, feature-flagged) | #98 | in-repo core | S | `rusty_link` (GPLv2+), license-quarantined |
 | DAW side-by-side docs + InputRouter (Phases 1-4 only) | #99 | mixed | M | Skip audio-rate sidechain |
 | Per-voice phase offset slider only | #8b | in-repo core | S | Defer #8a (TempoEstimator), #8c (pattern detection) |
+| Chord mini app | #12 | in-repo UI | XS | Three Svelte files + Playwright spec — trivial |
+
+**Removed from Phase 2** (had been planned, deferred by locked decisions):
+- **#98 Ableton Link** — `rusty_link` is GPLv2+, contaminates binary. Either commit to clean-room `contrapunk-link` as a side project or skip Link sync entirely.
 
 Acceptance: all features land with tests written first (`.claude/skills/tdd-workflow/`). The TDD-discipline hook flags any new pub fn shipped without a test in the same diff.
 
 ---
 
-## Phase 4 — Plugin spike + conditional ship (2-3 weeks)
+## Phase 3 — Plugin spike + conditional ship, unsigned (2 weeks)
+
+Per locked decision #1: ship unsigned for v1.2.x. Code signing deferred to v1.3.x if plugin has real user pull.
 
 | Task | Issue | Verdict | Effort | Notes |
 |---|---|---|---|---|
 | **Spike Day 1**: VIZIA UI for 8 plugin params, load in Logic Pro | #9 | spike | XS | Pass/fail decides whether to invest |
-| If spike passes: drop webview path, rebase onto `BillyDM/nih-plug`, build signed bundles for macOS + Windows, 5-DAW UAT matrix | #9 Path B | in-repo | L | `robbert-vdh/nih-plug` upstream is dead — must rebase |
-| If spike fails: Path C (parameters-only generic UI) | #9 Path C | in-repo | M | Don't reinvest in webview |
+| If spike passes: drop webview path, rebase onto `BillyDM/nih-plug`, build **unsigned** bundles for macOS + Windows, 3-DAW UAT matrix | #9 Path B | in-repo | M | `robbert-vdh/nih-plug` upstream is dead — must rebase. Users see Gatekeeper warnings — document the bypass |
+| If spike fails: Path C (parameters-only generic UI) | #9 Path C | in-repo | S | Don't reinvest in webview |
 
-Phase 4 has an explicit kill switch: if the spike fails on day 1, drop the path-B commitment. Don't sink M+ effort into webview-based plugin work that the dead-upstream + 4-fork stack can't sustain.
+Phase 3 has an explicit kill switch: if the spike fails on day 1, drop the path-B commitment. Don't sink effort into webview-based plugin work that the dead-upstream + 4-fork stack can't sustain.
+
+Effort dropped from L→M because the signing/notarization ordeal is off the critical path for v1.2.x.
 
 ---
 
@@ -106,7 +122,10 @@ These are not lost. They're recorded as `.planning/seeds/` or as backlog items w
 | #29 polyphonic pitch research | Closed as "research output captured in group-b doc" | — |
 | #3 Canon mode | Build as Decide-phase Lane after #91 successor wiring lands | v1.3.x |
 | #97 SamplerAudioBlock | Build as module in `crates/contrapunk-audio/`, NOT new crate | v1.3.x |
-| #103 BeatMachineLane | Needs LooperLane (jam calendar) + #97 before the abstraction is validated | v1.3.x |
+| #103 BeatMachineLane | Needs LooperLane + #97 before the abstraction is validated | v1.3.x |
+| #98 Ableton Link | rusty_link is GPLv2+, contaminates the MIT binary. Needs clean-room `contrapunk-link` (separate side project) | When `contrapunk-link` clean-room ships |
+| #106 Drone + Bitcrusher | Jam dropped (decision #3); no longer deadline-pressured. Rebuild as DroneLane after audio-graph lands | v1.3.x |
+| #105 TextureFX | Same as #106 | v1.3.x |
 | #102 ListenLane | Spike-only this milestone (htdemucs RTF on M-series) | Full feature out-of-milestone |
 | #104 DDSP | External sub-project planning only | Separate repo, separate cadence |
 | #10 openDAW | XS velocity-export tweak in this repo; bridge is external | External sub-project |
