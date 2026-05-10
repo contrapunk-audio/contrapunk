@@ -738,9 +738,23 @@ impl GuitarInput {
                                 bend_cents: cents as i16,
                             };
 
-                            // Fix 1: Send PitchBend BEFORE NoteOn
+                            // Fix 1: Send PitchBend BEFORE NoteOn.
+                            //
+                            // Issue #79 stop-gap: gate the initial-bend emit
+                            // on a 10-cent threshold so transient attack
+                            // deviations don't produce the audible wobble
+                            // some users have reported. A perfectly-tuned
+                            // guitar attacks within ±5-10 cents of nominal
+                            // pitch during the first ~50ms; intentional
+                            // bends and out-of-tune playing exceed 10 cents
+                            // easily. The previous `> 0` gate fired on every
+                            // single-cycle measurement, which propagated
+                            // McLeod's onset-window noise into MPE pitch
+                            // bends downstream. Owned by #82's full guitar-
+                            // pipeline rewrite once it lands.
+                            const INITIAL_BEND_THRESHOLD_CENTS: i16 = 10;
                             let initial_bend = cents as i16;
-                            if initial_bend.abs() > 0 {
+                            if initial_bend.abs() >= INITIAL_BEND_THRESHOLD_CENTS {
                                 events.push(MidiEvent::PitchBend {
                                     channel,
                                     cents: initial_bend,
