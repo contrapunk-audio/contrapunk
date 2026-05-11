@@ -701,14 +701,54 @@
 		</button>
 	</header>
 
-	<!-- BODY: templates left, visual + voices right -->
-	<div class="body">
-		<!-- LEFT: forms rail. Flat list — the underlying family
-		     (harmonic vs reactive) is implicit in what each form does;
-		     the user said the labels were noise. Reactive forms
-		     populate the timeline + voice cards on the right; harmonic
-		     forms reconfigure the engine and don't surface here. -->
-		<aside class="templates">
+	<!-- BODY: vertical stack of Lane cards. Each lane is a self-
+	     contained module — header (name + enable toggle), body
+	     (lane-specific controls). The engine-status pill sits above
+	     the lanes since it reflects global Harmony-tab state, not a
+	     per-lane concern. -->
+	<div class="body-stack">
+		<!-- ENGINE STATUS — global Harmony-tab snapshot, shared by all
+		     lanes that inherit. Placed above the lane cards so it reads
+		     as context, not as a lane-specific control. -->
+		<div
+			class="engine-status"
+			title={`Global engine state — what each Companion voice inherits when its Mode is set to "Inherit global". Change these on the Harmony tab.\n\nKey: ${engine.key}\nMode: ${engine.mode}\nVoices: ${engine.voiceCount}${engine.voiceLeadingEnabled ? `\nVoice-leading: ${engine.voiceLeadingStyle}` : ''}`}
+		>
+			<span class="status-label font-ui">ENGINE</span>
+			<span class="status-pill font-code">
+				<span class="pill-key">{engine.key}</span> ·
+				<span class="pill-mode">{engine.mode}</span> ·
+				{engine.voiceCount} voice{engine.voiceCount === 1 ? '' : 's'}{#if engine.voiceLeadingEnabled} · VL {engine.voiceLeadingStyle}{/if}
+			</span>
+		</div>
+
+		<!-- CANON LANE card. Delayed-echo voices that mirror the player
+		     with configurable delay, transpose, and per-voice harmony.
+		     Forms rail lives inside this card now so the FORMS belong
+		     to the canon, not a global concern. -->
+		<div
+			class="lane-card canon-lane-card"
+			class:lane-active={engine.canonEnabled}
+		>
+			<div class="lane-header">
+				<span class="lane-title font-ui">CANON</span>
+				<span class="lane-subtitle font-code">delayed echoes · cascaded voices</span>
+				<span class="lane-actions">
+					<button
+						class="pixel-btn"
+						class:toggle-on={engine.canonEnabled}
+						onclick={() => engine.setCanonEnabled(!engine.canonEnabled)}
+						title={engine.canonEnabled
+							? 'Canon Lane is ON — delayed voices fire on every player note.'
+							: 'Canon Lane is OFF. Click to enable.'}
+					>
+						{engine.canonEnabled ? 'ON' : 'OFF'}
+					</button>
+				</span>
+			</div>
+
+			<div class="lane-body canon-lane-body">
+			<aside class="templates">
 			<div
 				class="section-header font-ui"
 				title="Forms are voice presets. Built-ins showcase Contrapunk's harmony engine; you can save your own with +Save."
@@ -772,108 +812,10 @@
 			{/each}
 		</aside>
 
-		<!-- RIGHT: visualization + voice cards. Always renders the same
-		     layout so the UI doesn't lurch when no voices are
-		     configured — the empty case just has zero voice tracks /
-		     zero voice cards and the Add Voice button stays prominent. -->
-		<section class="right">
-			<!-- ENGINE STATUS — gives harmonic forms a visible effect.
-			     Reactive forms only change canon voices (timeline below);
-			     harmonic forms change engine.mode / voiceCount /
-			     voiceLeading globally, which without this row would be
-			     invisible on the Companion tab. -->
-			<div
-				class="engine-status"
-				title={`Global engine state — what each Companion voice inherits when its Mode is set to "Inherit global". Change these on the Harmony tab.\n\nKey: ${engine.key}\nMode: ${engine.mode}\nVoices: ${engine.voiceCount}${engine.voiceLeadingEnabled ? `\nVoice-leading: ${engine.voiceLeadingStyle}` : ''}`}
-			>
-				<span class="status-label font-ui">ENGINE</span>
-				<span class="status-pill font-code">
-					<span class="pill-key">{engine.key}</span> ·
-					<span class="pill-mode">{engine.mode}</span> ·
-					{engine.voiceCount} voice{engine.voiceCount === 1 ? '' : 's'}{#if engine.voiceLeadingEnabled} · VL {engine.voiceLeadingStyle}{/if}
-				</span>
-			</div>
-
-			<!-- COUNTERPOINT LANE — promoted to the top of the right
-			     column so it's immediately discoverable. Independent of
-			     the canon voices below; subdivides time per Fux species
-			     and emits its own pitched line through CounterpointState. -->
-			<div
-				class="counterpoint-card"
-				class:cp-active={cp.enabled}
-				title="Counterpoint Lane — a dedicated species-counterpoint voice running alongside the canon. Subdivides time per Fux species: Species 2 = 2 notes per cantus, Species 3 = 4 notes, Species 4 = syncopated entry. Picks pitches via the same CounterpointState rules (no parallel 5ths/8ves, stepwise preferred)."
-			>
-				<div class="section-header font-ui">
-					COUNTERPOINT LANE
-					<button
-						class="pixel-btn"
-						class:toggle-on={cp.enabled}
-						onclick={() => {
-							cp.enabled = !cp.enabled;
-							adapter.counterpointSetConfig({ enabled: cp.enabled });
-						}}
-						title="Toggle the counterpoint lane on/off independently from the canon"
-					>
-						{cp.enabled ? 'ON' : 'OFF'}
-					</button>
-				</div>
-
-				<div class="cp-controls">
-					<label class="cp-row">
-						<span class="param-label font-ui">Species</span>
-						<PixelSelect
-							options={[
-								{ value: 'Species1', label: 'Species 1 (1:1 note-against-note)' },
-								{ value: 'Species2', label: 'Species 2 (2:1 strong + passing)' },
-								{ value: 'Species3', label: 'Species 3 (4:1 four notes per cantus)' },
-								{ value: 'Species4', label: 'Species 4 (syncopated, suspensions)' }
-							]}
-							value={cp.species}
-							small={true}
-							onchange={(v) => {
-								cp.species = v;
-								adapter.counterpointSetConfig({ species: v });
-							}}
-						/>
-					</label>
-
-					<label class="cp-row">
-						<span class="param-label font-ui">Direction</span>
-						<PixelSelect
-							options={[
-								{ value: 'above', label: 'Above the player' },
-								{ value: 'below', label: 'Below the player' }
-							]}
-							value={cp.prefer_above ? 'above' : 'below'}
-							small={true}
-							onchange={(v) => {
-								cp.prefer_above = v === 'above';
-								adapter.counterpointSetConfig({ prefer_above: cp.prefer_above });
-							}}
-						/>
-					</label>
-
-					<div class="cp-row cp-knob-row">
-						<span class="param-label font-ui">Interval</span>
-						<Knob
-							value={cp.transpose_degrees}
-							min={-7}
-							max={7}
-							step={1}
-							defaultValue={2}
-							label="Interval"
-							accent="var(--color-accent-magenta, #ff33aa)"
-							size={48}
-							format={(v) => (v === 0 ? 'unison' : `${v > 0 ? '+' : ''}${v}°`)}
-							onchange={(v) => {
-								cp.transpose_degrees = Math.round(v);
-								adapter.counterpointSetConfig({ transpose_degrees: cp.transpose_degrees });
-							}}
-						/>
-					</div>
-				</div>
-			</div>
-
+		<!-- CANON RIGHT — timeline + voice cards. Lives inside the
+		     canon-lane-body alongside the forms rail. Empty state still
+		     renders the layout so the UI doesn't lurch. -->
+		<section class="canon-right">
 			<!-- TIMELINE VISUALIZATION -->
 			<div
 				class="timeline-card"
@@ -1120,14 +1062,100 @@
 				</div>
 			</div>
 
-			<!-- FOOTER HINT -->
-			<div class="footer-hint font-code">
-				Voices fire relative to a phrase anchor. Phrase resets after 2 beats of silence.
-				Interval uses the engine's modal-interchange logic when enabled — out-of-scale input borrows
-				from a parallel mode rather than emitting bare unison. Transport must be playing for voices
-				to fire.
-			</div>
 		</section>
+		</div>
+		</div>
+
+		<!-- COUNTERPOINT LANE — sibling Lane card, peer to the canon
+		     above. Subdivides time per Fux species. Independent of the
+		     canon: its own toggle, its own cantus history, its own
+		     CounterpointState. -->
+		<div
+			class="lane-card counterpoint-lane-card"
+			class:lane-active={cp.enabled}
+			title="Counterpoint Lane — a dedicated species-counterpoint voice running alongside the canon. Subdivides time per Fux species: Species 2 = 2 notes per cantus, Species 3 = 4 notes, Species 4 = syncopated entry. Picks pitches via the same CounterpointState rules (no parallel 5ths/8ves, stepwise preferred)."
+		>
+			<div class="lane-header">
+				<span class="lane-title font-ui">COUNTERPOINT</span>
+				<span class="lane-subtitle font-code">Fux species · subdivided emissions</span>
+				<span class="lane-actions">
+					<button
+						class="pixel-btn"
+						class:toggle-on={cp.enabled}
+						onclick={() => {
+							cp.enabled = !cp.enabled;
+							adapter.counterpointSetConfig({ enabled: cp.enabled });
+						}}
+						title={cp.enabled
+							? 'Counterpoint Lane is ON — emits a subdivided counterpoint line.'
+							: 'Counterpoint Lane is OFF. Click to enable.'}
+					>
+						{cp.enabled ? 'ON' : 'OFF'}
+					</button>
+				</span>
+			</div>
+
+			<div class="lane-body cp-lane-body">
+				<label class="cp-row">
+					<span class="param-label font-ui">Species</span>
+					<PixelSelect
+						options={[
+							{ value: 'Species1', label: 'Species 1 (1:1 note-against-note)' },
+							{ value: 'Species2', label: 'Species 2 (2:1 strong + passing)' },
+							{ value: 'Species3', label: 'Species 3 (4:1 four notes per cantus)' },
+							{ value: 'Species4', label: 'Species 4 (syncopated, suspensions)' }
+						]}
+						value={cp.species}
+						small={true}
+						onchange={(v) => {
+							cp.species = v;
+							adapter.counterpointSetConfig({ species: v });
+						}}
+					/>
+				</label>
+
+				<label class="cp-row">
+					<span class="param-label font-ui">Direction</span>
+					<PixelSelect
+						options={[
+							{ value: 'above', label: 'Above the player' },
+							{ value: 'below', label: 'Below the player' }
+						]}
+						value={cp.prefer_above ? 'above' : 'below'}
+						small={true}
+						onchange={(v) => {
+							cp.prefer_above = v === 'above';
+							adapter.counterpointSetConfig({ prefer_above: cp.prefer_above });
+						}}
+					/>
+				</label>
+
+				<div class="cp-row cp-knob-row">
+					<span class="param-label font-ui">Interval</span>
+					<Knob
+						value={cp.transpose_degrees}
+						min={-7}
+						max={7}
+						step={1}
+						defaultValue={2}
+						label="Interval"
+						accent="var(--color-accent-magenta, #ff33aa)"
+						size={48}
+						format={(v) => (v === 0 ? 'unison' : `${v > 0 ? '+' : ''}${v}°`)}
+						onchange={(v) => {
+							cp.transpose_degrees = Math.round(v);
+							adapter.counterpointSetConfig({ transpose_degrees: cp.transpose_degrees });
+						}}
+					/>
+				</div>
+			</div>
+		</div>
+
+		<!-- FOOTER HINT -->
+		<div class="footer-hint font-code">
+			Each Lane runs independently — toggle them on or off above. Voices fire relative to a phrase
+			anchor; the canon resets after 2 beats of silence. Transport must be playing.
+		</div>
 	</div>
 </div>
 
@@ -1169,12 +1197,81 @@
 		min-width: 70px;
 	}
 
-	.body {
-		display: grid;
-		grid-template-columns: 220px 1fr;
+	.body-stack {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 8px;
 		flex: 1;
 		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.lane-card {
+		display: flex;
+		flex-direction: column;
+		background: var(--color-widget-bg);
+		border: 1px solid var(--color-border);
+	}
+
+	.lane-card.lane-active {
+		border-color: var(--color-accent-magenta, #ff33aa);
+		box-shadow: 0 0 8px rgba(255, 51, 170, 0.12) inset;
+	}
+
+	.lane-header {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: center;
+		gap: 12px;
+		padding: 6px 10px;
+		border-bottom: 1px solid var(--color-border);
+		background: rgba(255, 255, 255, 0.02);
+	}
+
+	.lane-title {
+		font-size: var(--font-size-md);
+		color: var(--color-accent-cyan, #33ddff);
+		letter-spacing: 0.1em;
+	}
+
+	.lane-card.lane-active .lane-title {
+		color: var(--color-accent-magenta, #ff33aa);
+	}
+
+	.lane-subtitle {
+		font-size: var(--font-size-xs);
+		opacity: 0.55;
+	}
+
+	.lane-actions {
+		display: flex;
+		gap: 6px;
+		justify-self: end;
+	}
+
+	.lane-body {
+		flex: 1;
+		min-height: 0;
+	}
+
+	.canon-lane-body {
+		display: grid;
+		grid-template-columns: 220px 1fr;
+		min-height: 0;
 		overflow: hidden;
+	}
+
+	.canon-right {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 8px;
+		overflow-y: auto;
+	}
+
+	.cp-lane-body {
+		padding: 8px;
 	}
 
 	.templates {
@@ -1274,14 +1371,6 @@
 		font-size: var(--font-size-xs);
 		opacity: 0.6;
 		line-height: 1.3;
-	}
-
-	.right {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 8px;
-		overflow-y: auto;
 	}
 
 	.engine-status {
@@ -1496,17 +1585,6 @@
 
 	.voice-param-mode {
 		grid-template-columns: 4.5em 1fr;
-	}
-
-	.counterpoint-card {
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
-		padding: 8px;
-	}
-
-	.counterpoint-card.cp-active {
-		border-color: var(--color-accent-magenta, #ff33aa);
-		box-shadow: 0 0 8px rgba(255, 51, 170, 0.15) inset;
 	}
 
 	.cp-controls {
