@@ -31,7 +31,7 @@ use std::collections::{HashMap, VecDeque};
 
 use wmidi::Note;
 
-use contrapunk::harmony::HarmonyMode;
+use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, ScaleMode};
 
 use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
 use super::world::WorldState;
@@ -72,6 +72,17 @@ pub struct CanonVoice {
     /// stateful machinery is the follow-up that adds independent
     /// state per voice rather than thrashing global state.
     pub harmony_mode: Option<HarmonyMode>,
+    /// Cascade reference. `None` = harmonize against the player's
+    /// input note (default canon behavior — every voice mirrors the
+    /// player). `Some(idx)` = harmonize against canon voice `idx`'s
+    /// subject pitch instead, enabling fugal cascade where V2
+    /// follows V1, V3 follows V2, etc.
+    ///
+    /// Required invariant: `idx < self.index_in_lane` to avoid
+    /// circular references. The lane enforces this at apply time;
+    /// out-of-range or self-referential values silently fall back
+    /// to the player as the reference.
+    pub reference_voice: Option<usize>,
 }
 
 impl CanonVoice {
@@ -85,6 +96,7 @@ impl CanonVoice {
             transpose_degrees: transpose_degrees.clamp(-7, 7),
             time_ratio: time_ratio.clamp(0.25, 4.0),
             harmony_mode: None,
+            reference_voice: None,
         }
     }
 }
@@ -96,6 +108,7 @@ impl Default for CanonVoice {
             transpose_degrees: 0,
             time_ratio: 1.0,
             harmony_mode: None,
+            reference_voice: None,
         }
     }
 }
@@ -235,6 +248,25 @@ pub struct CanonLane {
     /// anchor resets to the new input's beat (the user has started
     /// a fresh phrase).
     last_input_beat: Option<f64>,
+
+    /// Per-voice mini HarmonyEngine. Index-parallel with `voices`:
+    /// `voice_engines[i]` is the engine that harmonizes for
+    /// `voices[i]`. Per-voice instances are needed for stateful
+    /// modes (StrictCounterpoint, ContraryMotion, BachChorale) so
+    /// each voice can accumulate its own contour / suspension /
+    /// last-harmony history without stomping on the global engine
+    /// or each other. Stateless modes get the same correctness for
+    /// free.
+    ///
+    /// Sync invariants — enforced lazily in `sync_voice_engines`:
+    /// - len == voices.len()
+    /// - key + scale_mode mirror the global engine (so canon stays
+    ///   in the song's key)
+    /// - mode = voice's `harmony_mode.unwrap_or(global.mode())`
+    /// - voice_count = 2 (subject + one harmony pitch is the canon
+    ///   contract — multi-pitch stacks come from cascading
+    ///   `reference_voice`, not from intra-voice fan-out)
+    voice_engines: Vec<HarmonyEngine>,
 }
 
 impl CanonLane {
@@ -248,6 +280,54 @@ impl CanonLane {
             held: HashMap::new(),
             sequence_anchor: None,
             last_input_beat: None,
+            voice_engines: Vec::new(),
+        }
+    }
+
+    /// Bring `voice_engines` into sync with `voices` and the global
+    /// engine. Lazy — called from `compute_voice_stack` so the
+    /// per-voice engines reflect the latest key / scale / mode at
+    /// emission time. Cost: one short global-engine lock per canon
+    /// note, plus per-voice setter calls when something has actually
+    /// drifted. Setter calls inside HarmonyEngine clear stateful
+    /// history only when the value actually changes, so a steady-
+    /// state canon doesn't thrash.
+    fn sync_voice_engines(&mut self, world: &WorldState) {
+        // Snapshot global state under one brief lock.
+        let (global_key, global_mode, global_scale_mode) =
+            if let Ok(g) = world.engine_snapshot.lock() {
+                (g.key(), g.mode(), g.scale_mode())
+            } else {
+                (Key::C, HarmonyMode::PassThrough, ScaleMode::Ionian)
+            };
+
+        // Resize: grow with newly-constructed engines, shrink by drop.
+        while self.voice_engines.len() < self.voices.len() {
+            // voice_count=2 is the canon contract: subject + one
+            // harmony pitch. Multi-pitch stacks come from cascading
+            // reference_voice, not intra-voice fan-out.
+            self.voice_engines
+                .push(HarmonyEngine::with_voices(global_key, global_mode, 2));
+        }
+        self.voice_engines.truncate(self.voices.len());
+
+        // Sync per-voice engine config. set_* methods on
+        // HarmonyEngine are no-ops when the value matches, so stateful
+        // history only resets on real change.
+        for (i, voice) in self.voices.iter().enumerate() {
+            let Some(ve) = self.voice_engines.get_mut(i) else {
+                continue;
+            };
+            if ve.key() != global_key {
+                ve.set_key(global_key);
+            }
+            if ve.scale_mode() != global_scale_mode {
+                ve.set_scale_mode(global_scale_mode);
+            }
+            let target_mode = voice.harmony_mode.unwrap_or(global_mode);
+            if ve.mode() != target_mode {
+                ve.set_mode(target_mode);
+            }
         }
     }
 
@@ -345,48 +425,48 @@ impl CanonLane {
     /// HarmonyMode) is the next slice. Falls back to a single-note
     /// vec on lock failure / MIDI conversion failure / empty stack.
     fn compute_voice_stack(
-        &self,
+        &mut self,
         input_note: u8,
-        voice: &CanonVoice,
+        voice_idx: usize,
         world: &WorldState,
     ) -> Vec<u8> {
-        let Ok(mut engine) = world.engine_snapshot.lock() else {
+        // Ensure per-voice engines are sized + synced with the global.
+        self.sync_voice_engines(world);
+
+        let Some(voice) = self.voices.get(voice_idx).copied() else {
             return vec![input_note];
         };
+
+        // Stage 1: subject pitch = input + transpose. Diatonic shift
+        // uses the per-voice engine's scale so interchange / chromatic
+        // fallback honor the voice's own state.
         let subject_midi: u8 = if voice.transpose_degrees == 0 {
             input_note
-        } else if let Ok(note) = Note::try_from(input_note) {
+        } else if let (Ok(note), Some(ve)) = (
+            Note::try_from(input_note),
+            self.voice_engines.get_mut(voice_idx),
+        ) {
             let prefer_above = voice.transpose_degrees > 0;
-            engine
-                .scale_mut()
+            ve.scale_mut()
                 .harmonize_smart(note, voice.transpose_degrees, prefer_above)
                 .map(u8::from)
                 .unwrap_or(input_note)
         } else {
             input_note
         };
+
+        // Stage 2: harmony stack via per-voice engine. Each voice's
+        // engine carries its own CounterpointState / contour /
+        // suspension history — stateful modes accumulate per voice
+        // rather than thrashing a shared global. v1 used the global
+        // engine; this is the slice that fixes that.
         let Ok(subject_note) = Note::try_from(subject_midi) else {
             return vec![subject_midi];
         };
-        // Per-voice harmony mode override (#3 slice G v2):
-        // swap the engine's mode to the voice's choice, harmonize,
-        // restore. Stateless modes (PassThrough, DiatonicThirds,
-        // DiatonicFourths) work cleanly. Stateful modes
-        // (StrictCounterpoint, ContraryMotion) lose their accumulated
-        // history on each mode switch — v1 limitation; the follow-up
-        // gives each canon voice its own state machinery.
-        let saved_mode = engine.mode();
-        let did_override = match voice.harmony_mode {
-            Some(m) if m != saved_mode => {
-                engine.set_mode(m);
-                true
-            }
-            _ => false,
+        let Some(ve) = self.voice_engines.get_mut(voice_idx) else {
+            return vec![subject_midi];
         };
-        let stack = engine.harmonize(subject_note);
-        if did_override {
-            engine.set_mode(saved_mode);
-        }
+        let stack = ve.harmonize(subject_note);
         if stack.is_empty() {
             vec![subject_midi]
         } else {
@@ -478,7 +558,7 @@ impl Lane for CanonLane {
                     // voice canon where each entry isn't just one
                     // delayed line but a 2+ note chord. Interpretation B
                     // confirmed by the user 2026-05-12.
-                    let stack = self.compute_voice_stack(note, &voice, world);
+                    let stack = self.compute_voice_stack(note, voice_idx, world);
                     // Per-voice fire time is anchor-relative and scaled
                     // by this voice's time_ratio. Voice with ratio 2.0
                     // (augmentation) plays at half speed.
