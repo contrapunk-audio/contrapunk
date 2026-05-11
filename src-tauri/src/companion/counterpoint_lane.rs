@@ -327,13 +327,24 @@ impl Lane for CounterpointLane {
                 );
             }
             InputEvent::NoteOff { note, channel: _ } => {
-                if let Some(held) = self.held.remove(&note) {
-                    // Off-time per emitted note: hold each emission for
-                    // the same duration the cantus note was held,
-                    // shifted forward from its scheduled on-time. We
-                    // don't know the cantus duration until NoteOff so
-                    // approximate by firing all offs at `now` (the
-                    // cantus release moment).
+                // Cancel any pending NoteOns for this player note that
+                // haven't fired yet — otherwise we'd schedule their
+                // NoteOff at `now` (a no-op since the NoteOn comes
+                // later), and the orphan NoteOn would hang the synth.
+                // Common case: Species 2/3 passing tones scheduled at
+                // now + 0.25 / 0.5 / 0.75; the user releases the
+                // cantus before they fire.
+                let mut canceled_pitches: Vec<u8> = Vec::new();
+                self.pending_on.retain(|p| {
+                    if p.player_note == note {
+                        canceled_pitches.push(p.note);
+                        false
+                    } else {
+                        true
+                    }
+                });
+                if let Some(mut held) = self.held.remove(&note) {
+                    held.emitted_notes.retain(|n| !canceled_pitches.contains(n));
                     for n in held.emitted_notes {
                         self.pending_off.push_back(PendingCpOff {
                             fire_at: now,
