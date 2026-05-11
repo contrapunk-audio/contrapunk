@@ -88,6 +88,8 @@ fn main() {
             commands::companion::canon_set_transpose,
             commands::companion::canon_set_voices,
             commands::companion::canon_state,
+            commands::companion::counterpoint_set_config,
+            commands::companion::counterpoint_state,
             commands::harmony::set_detune,
             commands::harmony::get_detune,
             // MIDI device management

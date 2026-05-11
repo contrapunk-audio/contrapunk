@@ -280,6 +280,39 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async counterpointSetConfig(config: {
+		enabled?: boolean;
+		species?: string;
+		transpose_degrees?: number;
+		prefer_above?: boolean;
+	}): Promise<void> {
+		try {
+			await invoke('counterpoint_set_config', config);
+		} catch (e) {
+			throw new Error(`Failed to set counterpoint config: ${e}`);
+		}
+	}
+
+	async counterpointState(): Promise<{
+		enabled: boolean;
+		species: string;
+		transpose_degrees: number;
+		prefer_above: boolean;
+	} | null> {
+		try {
+			const s = await invoke('counterpoint_state');
+			if (s === null || typeof s !== 'object') return null;
+			return s as {
+				enabled: boolean;
+				species: string;
+				transpose_degrees: number;
+				prefer_above: boolean;
+			};
+		} catch (e) {
+			throw new Error(`Failed to read counterpoint state: ${e}`);
+		}
+	}
+
 	async canonState(): Promise<{
 		enabled: boolean;
 		delay_beats: number;

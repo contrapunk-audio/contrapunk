@@ -108,10 +108,10 @@
 	const COMPOSITE_MODE_OPTIONS = ALL_MODES.flatMap((m) =>
 		m.name === 'StrictCounterpoint'
 			? [
-					{ value: 'StrictCounterpoint:Species1', label: `${m.label} · Species 1` },
-					{ value: 'StrictCounterpoint:Species2', label: `${m.label} · Species 2` },
-					{ value: 'StrictCounterpoint:Species3', label: `${m.label} · Species 3` },
-					{ value: 'StrictCounterpoint:Species4', label: `${m.label} · Species 4` }
+					{ value: 'StrictCounterpoint:Species1', label: `${m.label} (1:1)` },
+					{ value: 'StrictCounterpoint:Species2', label: `${m.label} (2:1 rules)` },
+					{ value: 'StrictCounterpoint:Species3', label: `${m.label} (4:1 rules)` },
+					{ value: 'StrictCounterpoint:Species4', label: `${m.label} (syncopated)` }
 				]
 			: [{ value: m.name, label: m.label }]
 	);

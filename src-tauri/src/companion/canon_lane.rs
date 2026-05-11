@@ -175,6 +175,11 @@ struct EngineSnapshot {
     voice_leading_style: VoiceLeadingStyle,
     counterpoint_species: CounterpointSpecies,
     counterpoint_strictness: CounterpointStrictness,
+    /// Latest counterpoint beat phase pushed onto the global engine
+    /// by the router thread. Mirrored onto each mini-engine so
+    /// stateful Species 2/3/4 logic actually fires; otherwise they
+    /// silently fall back to Species 1.
+    counterpoint_beat_phase: Option<f64>,
 }
 
 impl Default for EngineSnapshot {
@@ -190,6 +195,7 @@ impl Default for EngineSnapshot {
             voice_leading_style: VoiceLeadingStyle::Free,
             counterpoint_species: CounterpointSpecies::Species1,
             counterpoint_strictness: CounterpointStrictness::Strict,
+            counterpoint_beat_phase: None,
         }
     }
 }
@@ -457,6 +463,7 @@ impl CanonLane {
                 voice_leading_style: g.voice_leading_style(),
                 counterpoint_species: g.counterpoint_species(),
                 counterpoint_strictness: g.counterpoint_strictness(),
+                counterpoint_beat_phase: g.counterpoint_beat_phase(),
             }
         } else {
             EngineSnapshot::default()
@@ -532,6 +539,12 @@ impl CanonLane {
             if ve.counterpoint_strictness() != target_strictness {
                 ve.set_counterpoint_strictness(target_strictness);
             }
+            // Beat-phase wire — without this, Species 2/3/4 in canon
+            // voices silently collapse to Species 1 because the
+            // mini-engine's `effective_counterpoint_beat_phase()`
+            // returns None. Pushed every sync so the mini-engine
+            // tracks the live transport.
+            ve.set_counterpoint_beat_phase(snapshot.counterpoint_beat_phase);
         }
     }
 

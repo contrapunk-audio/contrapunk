@@ -17,12 +17,15 @@
 use crate::state::VoiceOutputTarget;
 
 pub mod canon_lane;
+pub mod counterpoint_lane;
 pub mod lane;
 pub mod loops;
 pub mod orchestrator;
 pub mod world;
 
 pub use canon_lane::CanonLane;
+#[allow(unused_imports)]
+pub use counterpoint_lane::CounterpointLane;
 
 #[allow(unused_imports)]
 pub use lane::{

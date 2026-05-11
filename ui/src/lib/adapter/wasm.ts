@@ -275,6 +275,24 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// No-op.
 	}
 
+	async counterpointSetConfig(_config: {
+		enabled?: boolean;
+		species?: string;
+		transpose_degrees?: number;
+		prefer_above?: boolean;
+	}): Promise<void> {
+		// No-op in browser.
+	}
+
+	async counterpointState(): Promise<{
+		enabled: boolean;
+		species: string;
+		transpose_degrees: number;
+		prefer_above: boolean;
+	} | null> {
+		return null;
+	}
+
 	async canonState(): Promise<{
 		enabled: boolean;
 		delay_beats: number;

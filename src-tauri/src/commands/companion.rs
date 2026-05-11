@@ -164,6 +164,48 @@ pub fn canon_set_voices(voices: Vec<CanonVoiceArg>, state: State<AppState>) -> R
     companion.configure_lane("canon", serde_json::json!({ "voices": voices_json }))
 }
 
+// === CounterpointLane commands ===
+
+/// Set the dedicated CounterpointLane's enabled + species + transpose
+/// + direction in one call. Pure JSON pass-through to
+/// `Companion::configure_lane("counterpoint", …)`. The Lane merges
+/// missing fields rather than fully replacing, so callers can send
+/// just the field they're updating.
+#[tauri::command]
+pub fn counterpoint_set_config(
+    enabled: Option<bool>,
+    species: Option<String>,
+    transpose_degrees: Option<i8>,
+    prefer_above: Option<bool>,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let mut payload = serde_json::Map::new();
+    if let Some(e) = enabled {
+        payload.insert("enabled".into(), serde_json::json!(e));
+    }
+    if let Some(s) = species {
+        payload.insert("species".into(), serde_json::json!(s));
+    }
+    if let Some(t) = transpose_degrees {
+        payload.insert("transpose_degrees".into(), serde_json::json!(t));
+    }
+    if let Some(p) = prefer_above {
+        payload.insert("prefer_above".into(), serde_json::json!(p));
+    }
+    let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.configure_lane("counterpoint", serde_json::Value::Object(payload))
+}
+
+/// Read the CounterpointLane's current state. Returns null if the lane
+/// isn't registered.
+#[tauri::command]
+pub fn counterpoint_state(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let companion = state.companion.lock().map_err(|e| e.to_string())?;
+    Ok(companion
+        .lane_state("counterpoint")
+        .unwrap_or(serde_json::Value::Null))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

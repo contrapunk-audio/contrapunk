@@ -175,6 +175,8 @@ impl Default for AppState {
         {
             let mut c = companion.lock().expect("companion mutex poisoned at init");
             c.lanes.push(Box::new(crate::companion::CanonLane::new()));
+            c.lanes
+                .push(Box::new(crate::companion::CounterpointLane::new()));
         }
         Self {
             engine,

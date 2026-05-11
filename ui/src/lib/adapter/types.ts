@@ -258,6 +258,23 @@ export interface ContrapunkAdapter {
 		}>
 	): Promise<void>;
 
+	/** Configure the dedicated CounterpointLane. Each field is
+	 *  optional — only the ones you pass are applied. */
+	counterpointSetConfig(config: {
+		enabled?: boolean;
+		species?: string;
+		transpose_degrees?: number;
+		prefer_above?: boolean;
+	}): Promise<void>;
+
+	/** Read the dedicated CounterpointLane's current state. */
+	counterpointState(): Promise<{
+		enabled: boolean;
+		species: string;
+		transpose_degrees: number;
+		prefer_above: boolean;
+	} | null>;
+
 	/** Read the canon lane's full config snapshot. */
 	canonState(): Promise<{
 		enabled: boolean;
