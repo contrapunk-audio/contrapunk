@@ -269,8 +269,9 @@
 					</div>
 				</div>
 			{:else}
-			<!-- TIMELINE VISUALIZATION -->
-			<div class="timeline-card">
+				<div class="canon-active">
+				<!-- TIMELINE VISUALIZATION -->
+				<div class="timeline-card">
 				<div class="section-header font-ui">
 					ENTRY TIMELINE
 					<span class="hint font-code">player → delayed voices (4-beat window)</span>
@@ -409,6 +410,7 @@
 				from a parallel mode rather than emitting bare unison. Transport must be playing for voices
 				to fire.
 			</div>
+				</div>
 			{/if}
 		</section>
 	</div>
