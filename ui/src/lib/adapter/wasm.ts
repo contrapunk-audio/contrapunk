@@ -257,7 +257,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async canonSetVoices(
-		_voices: Array<{ delay_beats: number; transpose_degrees: number }>
+		_voices: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>
 	): Promise<void> {
 		// No-op.
 	}
@@ -266,7 +271,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 		enabled: boolean;
 		delay_beats: number;
 		transpose_degrees: number;
-		voices?: Array<{ delay_beats: number; transpose_degrees: number; time_ratio?: number }>;
+		voices?: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>;
 	} | null> {
 		return null;
 	}

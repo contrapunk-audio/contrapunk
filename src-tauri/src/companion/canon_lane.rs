@@ -108,6 +108,44 @@ impl Default for CanonVoice {
 /// enough that legato playing doesn't accidentally reset.
 const PHRASE_SILENCE_THRESHOLD: f64 = 2.0;
 
+/// Convert a HarmonyMode to the canonical string the JS adapter sends.
+/// Matches the names accepted by `parse_harmony_mode` in
+/// `src-tauri/src/commands/harmony.rs:304` so round-tripping through
+/// the UI is symmetric.
+fn harmony_mode_to_str(m: HarmonyMode) -> &'static str {
+    match m {
+        HarmonyMode::PassThrough => "PassThrough",
+        HarmonyMode::DiatonicThirds => "DiatonicThirds",
+        HarmonyMode::DiatonicFourths => "DiatonicFourths",
+        HarmonyMode::RandomBelow => "RandomBelow",
+        HarmonyMode::RandomBelowNoSeconds => "RandomBelowNoSeconds",
+        HarmonyMode::ContraryMotion => "ContraryMotion",
+        HarmonyMode::StrictCounterpoint => "StrictCounterpoint",
+        HarmonyMode::BarryHarris => "BarryHarris",
+        HarmonyMode::FunctionalHarmony => "FunctionalHarmony",
+        HarmonyMode::BachChorale => "BachChorale",
+    }
+}
+
+/// Inverse of `harmony_mode_to_str`. Defensive: returns None for any
+/// string that isn't one of the canonical names so the lane silently
+/// falls back to "inherit global mode" if the wire format ever drifts.
+fn harmony_mode_from_str(s: &str) -> Option<HarmonyMode> {
+    Some(match s {
+        "PassThrough" => HarmonyMode::PassThrough,
+        "DiatonicThirds" => HarmonyMode::DiatonicThirds,
+        "DiatonicFourths" => HarmonyMode::DiatonicFourths,
+        "RandomBelow" => HarmonyMode::RandomBelow,
+        "RandomBelowNoSeconds" => HarmonyMode::RandomBelowNoSeconds,
+        "ContraryMotion" => HarmonyMode::ContraryMotion,
+        "StrictCounterpoint" => HarmonyMode::StrictCounterpoint,
+        "BarryHarris" => HarmonyMode::BarryHarris,
+        "FunctionalHarmony" => HarmonyMode::FunctionalHarmony,
+        "BachChorale" => HarmonyMode::BachChorale,
+        _ => return None,
+    })
+}
+
 /// One pending NoteOn that will fire at `fire_at` beats (transport
 /// total-beats coordinate).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -556,6 +594,7 @@ impl Lane for CanonLane {
                     "delay_beats": v.delay_beats,
                     "transpose_degrees": v.transpose_degrees,
                     "time_ratio": v.time_ratio,
+                    "harmony_mode": v.harmony_mode.map(harmony_mode_to_str),
                 })
             })
             .collect();
@@ -587,7 +626,15 @@ impl Lane for CanonLane {
                         .get("time_ratio")
                         .and_then(|v| v.as_f64())
                         .unwrap_or(1.0) as f32;
-                    Some(CanonVoice::with_time_ratio(delay, trans, ratio))
+                    let mut voice = CanonVoice::with_time_ratio(delay, trans, ratio);
+                    // harmony_mode is optional — older snapshots don't
+                    // carry it. Unknown / unrecognised strings fall back
+                    // to None (inherit global mode).
+                    voice.harmony_mode = item
+                        .get("harmony_mode")
+                        .and_then(|v| v.as_str())
+                        .and_then(harmony_mode_from_str);
+                    Some(voice)
                 })
                 .take(8)
                 .collect();

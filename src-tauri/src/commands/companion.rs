@@ -99,6 +99,13 @@ pub struct CanonVoiceArg {
     pub transpose_degrees: i8,
     #[serde(default = "default_time_ratio")]
     pub time_ratio: f32,
+    /// Optional per-voice harmony mode override. None = the voice
+    /// inherits the engine's global mode for its harmony stack.
+    /// Some(name) = the canon lane temporarily swaps to that mode
+    /// while harmonizing this voice's subject pitch. Canonical
+    /// names match `parse_harmony_mode` in commands/harmony.rs.
+    #[serde(default)]
+    pub harmony_mode: Option<String>,
 }
 
 fn default_time_ratio() -> f32 {
@@ -118,6 +125,7 @@ pub fn canon_set_voices(voices: Vec<CanonVoiceArg>, state: State<AppState>) -> R
                 "delay_beats": v.delay_beats,
                 "transpose_degrees": v.transpose_degrees,
                 "time_ratio": v.time_ratio,
+                "harmony_mode": v.harmony_mode,
             })
         })
         .collect();

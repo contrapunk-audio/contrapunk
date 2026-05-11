@@ -159,7 +159,12 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('canonSetTranspose', degrees);
 	}
 	async canonSetVoices(
-		voices: Array<{ delay_beats: number; transpose_degrees: number }>
+		voices: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>
 	): Promise<void> {
 		this.send('canonSetVoices', voices);
 	}
@@ -167,7 +172,12 @@ export class PluginAdapter implements ContrapunkAdapter {
 		enabled: boolean;
 		delay_beats: number;
 		transpose_degrees: number;
-		voices?: Array<{ delay_beats: number; transpose_degrees: number; time_ratio?: number }>;
+		voices?: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>;
 	} | null> {
 		return null;
 	}

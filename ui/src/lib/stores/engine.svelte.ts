@@ -535,7 +535,12 @@ interface PersistedSettings {
 	// Companion + Canon (#3) — persisted in version 3+.
 	companionEnabled: boolean;
 	canonEnabled: boolean;
-	canonVoices: Array<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>;
+	canonVoices: Array<{
+		delay_beats: number;
+		transpose_degrees: number;
+		time_ratio: number;
+		harmony_mode?: string | null | undefined;
+	}>;
 }
 
 const SETTINGS_DEFAULTS: PersistedSettings = {
@@ -555,7 +560,7 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	counterpointStrictness: 'Strict',
 	companionEnabled: false,
 	canonEnabled: false,
-	canonVoices: [{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 }]
+	canonVoices: [{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: null }]
 };
 
 // Enum validation sets
@@ -714,11 +719,18 @@ class EngineStore {
 	canonDelayBeats = $state(1.0);
 	canonTransposeDegrees = $state(0);
 	/** Multi-voice canon (#3). Each entry independently delays,
-	 *  transposes, and time-scales (augmentation/diminution).
-	 *  Mirrors the engine-side `voices` field. */
+	 *  transposes, time-scales (augmentation/diminution), and can
+	 *  override the engine's harmony mode for its own stack. Mirrors
+	 *  the engine-side `voices` field. `harmony_mode = null` means
+	 *  "inherit global mode". */
 	canonVoices = $state<
-		Array<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>
-	>([{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 }]);
+		Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio: number;
+			harmony_mode?: string | null;
+		}>
+	>([{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: null }]);
 
 	// -- Transport --
 	isRunning = $state(false);
@@ -757,7 +769,8 @@ class EngineStore {
 			canonVoices: this.canonVoices.map((v) => ({
 				delay_beats: v.delay_beats,
 				transpose_degrees: v.transpose_degrees,
-				time_ratio: v.time_ratio
+				time_ratio: v.time_ratio,
+				harmony_mode: v.harmony_mode ?? null
 			}))
 		});
 	}
@@ -1039,13 +1052,19 @@ class EngineStore {
 
 	/** Replace the multi-voice canon configuration. (#3) */
 	async setCanonVoices(
-		voices: Array<{ delay_beats: number; transpose_degrees: number; time_ratio?: number }>
+		voices: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>
 	) {
 		const prev = this.canonVoices;
 		const clamped = voices.slice(0, 8).map((v) => ({
 			delay_beats: Math.max(0, Math.min(8, v.delay_beats)),
 			transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
-			time_ratio: Math.max(0.25, Math.min(4, v.time_ratio ?? 1.0))
+			time_ratio: Math.max(0.25, Math.min(4, v.time_ratio ?? 1.0)),
+			harmony_mode: v.harmony_mode ?? null
 		}));
 		this.canonVoices = clamped;
 		try {
@@ -1061,7 +1080,7 @@ class EngineStore {
 	async addCanonVoice() {
 		const next = [
 			...this.canonVoices,
-			{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 }
+			{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: null }
 		];
 		await this.setCanonVoices(next);
 	}
@@ -1077,7 +1096,12 @@ class EngineStore {
 	/** Update a single voice in place. */
 	async updateCanonVoice(
 		idx: number,
-		patch: Partial<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>
+		patch: Partial<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio: number;
+			harmony_mode: string | null;
+		}>
 	) {
 		const next = this.canonVoices.map((v, i) => (i === idx ? { ...v, ...patch } : v));
 		await this.setCanonVoices(next);

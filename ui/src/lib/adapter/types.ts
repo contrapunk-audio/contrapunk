@@ -241,14 +241,26 @@ export interface ContrapunkAdapter {
 	/** Replace the canon voices array. Each voice has its own delay
 	 *  and transpose so callers can configure multi-entry canons
 	 *  (3-voice at +0/+2/+4 beats, etc). Clamped to 8 voices max. */
-	canonSetVoices(voices: Array<{ delay_beats: number; transpose_degrees: number }>): Promise<void>;
+	canonSetVoices(
+		voices: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>
+	): Promise<void>;
 
 	/** Read the canon lane's full config snapshot. */
 	canonState(): Promise<{
 		enabled: boolean;
 		delay_beats: number;
 		transpose_degrees: number;
-		voices?: Array<{ delay_beats: number; transpose_degrees: number; time_ratio?: number }>;
+		voices?: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>;
 	} | null>;
 
 	// -- MIDI devices --

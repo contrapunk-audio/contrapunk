@@ -258,7 +258,12 @@ export class TauriAdapter implements ContrapunkAdapter {
 	}
 
 	async canonSetVoices(
-		voices: Array<{ delay_beats: number; transpose_degrees: number }>
+		voices: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>
 	): Promise<void> {
 		try {
 			await invoke('canon_set_voices', { voices });
@@ -271,7 +276,12 @@ export class TauriAdapter implements ContrapunkAdapter {
 		enabled: boolean;
 		delay_beats: number;
 		transpose_degrees: number;
-		voices?: Array<{ delay_beats: number; transpose_degrees: number; time_ratio?: number }>;
+		voices?: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>;
 	} | null> {
 		try {
 			const s = await invoke('canon_state');
@@ -280,7 +290,12 @@ export class TauriAdapter implements ContrapunkAdapter {
 				enabled: boolean;
 				delay_beats: number;
 				transpose_degrees: number;
-				voices?: Array<{ delay_beats: number; transpose_degrees: number; time_ratio?: number }>;
+				voices?: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio?: number;
+			harmony_mode?: string | null;
+		}>;
 			};
 		} catch (e) {
 			throw new Error(`Failed to read canon state: ${e}`);

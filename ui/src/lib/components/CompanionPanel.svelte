@@ -228,44 +228,47 @@
 
 	<!-- BODY: templates left, visual + voices right -->
 	<div class="body">
-		<!-- LEFT: forms rail. Forms are split into two families:
-		     HARMONIC = synchronous accompaniment (engine config), and
-		     REACTIVE = delayed-voice canon. Future Lane types
-		     (Looper, Drone, Arpeggiator) appear here as additional
-		     family groups. -->
+		<!-- LEFT: forms rail. Flat list — the underlying family
+		     (harmonic vs reactive) is implicit in what each form does;
+		     the user said the labels were noise. Reactive forms
+		     populate the timeline + voice cards on the right; harmonic
+		     forms reconfigure the engine and don't surface here. -->
 		<aside class="templates">
-			<div class="family-group">
-				<div class="section-header font-ui">HARMONIC</div>
-				{#each TEMPLATES.filter((t) => t.family === 'harmonic') as t (t.id)}
-					<button
-						class="template-row"
-						class:active={selectedTemplate === t.id}
-						onclick={() => applyTemplate(t)}
-						title={t.desc}
-					>
-						<div class="template-name font-ui">{t.name}</div>
-						<div class="template-desc font-code">{t.desc}</div>
-					</button>
-				{/each}
-			</div>
-			<div class="family-group">
-				<div class="section-header font-ui">REACTIVE</div>
-				{#each TEMPLATES.filter((t) => t.family === 'reactive') as t (t.id)}
-					<button
-						class="template-row"
-						class:active={selectedTemplate === t.id}
-						onclick={() => applyTemplate(t)}
-						title={t.desc}
-					>
-						<div class="template-name font-ui">{t.name}</div>
-						<div class="template-desc font-code">{t.desc}</div>
-					</button>
-				{/each}
-			</div>
+			<div class="section-header font-ui">FORMS</div>
+			{#each TEMPLATES as t (t.id)}
+				<button
+					class="template-row"
+					class:active={selectedTemplate === t.id}
+					onclick={() => applyTemplate(t)}
+					title={t.desc}
+				>
+					<div class="template-name font-ui">{t.name}</div>
+					<div class="template-desc font-code">{t.desc}</div>
+				</button>
+			{/each}
 		</aside>
 
-		<!-- RIGHT: visualization + voice cards -->
+		<!-- RIGHT: visualization + voice cards. Only renders when there
+		     are canon voices to show. Harmonic-only forms configure the
+		     engine globally — that lives on the Harmony tab, not here.
+		     A small status pill confirms the harmonic form took effect. -->
 		<section class="right">
+			{#if !engine.canonEnabled || engine.canonVoices.length === 0}
+				<div class="empty-right">
+					<div class="empty-title font-ui">No reactive voices configured</div>
+					<div class="empty-desc font-code">
+						Pick a REACTIVE form from the left rail to add delayed canon voices,
+						or pick a HARMONIC form to configure synchronous accompaniment via
+						the engine. Harmonic forms set Key / Mode / Voice Count in the
+						Harmony tab — they don't surface delayed voices here.
+					</div>
+					<div class="empty-status font-code">
+						Engine: <span class="status-key">{engine.key}</span> ·
+						<span class="status-mode">{engine.mode}</span> ·
+						{engine.voiceCount} voice{engine.voiceCount === 1 ? '' : 's'}
+					</div>
+				</div>
+			{:else}
 			<!-- TIMELINE VISUALIZATION -->
 			<div class="timeline-card">
 				<div class="section-header font-ui">
@@ -406,6 +409,7 @@
 				from a parallel mode rather than emitting bare unison. Transport must be playing for voices
 				to fire.
 			</div>
+			{/if}
 		</section>
 	</div>
 </div>
@@ -516,6 +520,41 @@
 		gap: 8px;
 		padding: 8px;
 		overflow-y: auto;
+	}
+
+	.empty-right {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 24px;
+		background: var(--color-widget-bg);
+		border: 1px solid var(--color-border);
+		max-width: 540px;
+		margin: 16px auto 0;
+	}
+
+	.empty-title {
+		font-size: var(--font-size-md);
+		color: var(--color-accent-cyan, #33ddff);
+	}
+
+	.empty-desc {
+		font-size: var(--font-size-xs);
+		opacity: 0.7;
+		line-height: 1.5;
+	}
+
+	.empty-status {
+		font-size: var(--font-size-xs);
+		opacity: 0.6;
+		padding: 6px 8px;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+	}
+
+	.status-key,
+	.status-mode {
+		color: var(--color-accent-cyan, #33ddff);
 	}
 
 	.timeline-card,
