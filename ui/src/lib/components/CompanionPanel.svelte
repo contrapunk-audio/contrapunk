@@ -794,6 +794,86 @@
 				</span>
 			</div>
 
+			<!-- COUNTERPOINT LANE — promoted to the top of the right
+			     column so it's immediately discoverable. Independent of
+			     the canon voices below; subdivides time per Fux species
+			     and emits its own pitched line through CounterpointState. -->
+			<div
+				class="counterpoint-card"
+				class:cp-active={cp.enabled}
+				title="Counterpoint Lane — a dedicated species-counterpoint voice running alongside the canon. Subdivides time per Fux species: Species 2 = 2 notes per cantus, Species 3 = 4 notes, Species 4 = syncopated entry. Picks pitches via the same CounterpointState rules (no parallel 5ths/8ves, stepwise preferred)."
+			>
+				<div class="section-header font-ui">
+					COUNTERPOINT LANE
+					<button
+						class="pixel-btn"
+						class:toggle-on={cp.enabled}
+						onclick={() => {
+							cp.enabled = !cp.enabled;
+							adapter.counterpointSetConfig({ enabled: cp.enabled });
+						}}
+						title="Toggle the counterpoint lane on/off independently from the canon"
+					>
+						{cp.enabled ? 'ON' : 'OFF'}
+					</button>
+				</div>
+
+				<div class="cp-controls">
+					<label class="cp-row">
+						<span class="param-label font-ui">Species</span>
+						<PixelSelect
+							options={[
+								{ value: 'Species1', label: 'Species 1 (1:1 note-against-note)' },
+								{ value: 'Species2', label: 'Species 2 (2:1 strong + passing)' },
+								{ value: 'Species3', label: 'Species 3 (4:1 four notes per cantus)' },
+								{ value: 'Species4', label: 'Species 4 (syncopated, suspensions)' }
+							]}
+							value={cp.species}
+							small={true}
+							onchange={(v) => {
+								cp.species = v;
+								adapter.counterpointSetConfig({ species: v });
+							}}
+						/>
+					</label>
+
+					<label class="cp-row">
+						<span class="param-label font-ui">Direction</span>
+						<PixelSelect
+							options={[
+								{ value: 'above', label: 'Above the player' },
+								{ value: 'below', label: 'Below the player' }
+							]}
+							value={cp.prefer_above ? 'above' : 'below'}
+							small={true}
+							onchange={(v) => {
+								cp.prefer_above = v === 'above';
+								adapter.counterpointSetConfig({ prefer_above: cp.prefer_above });
+							}}
+						/>
+					</label>
+
+					<div class="cp-row cp-knob-row">
+						<span class="param-label font-ui">Interval</span>
+						<Knob
+							value={cp.transpose_degrees}
+							min={-7}
+							max={7}
+							step={1}
+							defaultValue={2}
+							label="Interval"
+							accent="var(--color-accent-magenta, #ff33aa)"
+							size={48}
+							format={(v) => (v === 0 ? 'unison' : `${v > 0 ? '+' : ''}${v}°`)}
+							onchange={(v) => {
+								cp.transpose_degrees = Math.round(v);
+								adapter.counterpointSetConfig({ transpose_degrees: cp.transpose_degrees });
+							}}
+						/>
+					</div>
+				</div>
+			</div>
+
 			<!-- TIMELINE VISUALIZATION -->
 			<div
 				class="timeline-card"
@@ -1037,90 +1117,6 @@
 							</div>
 						</div>
 					{/each}
-				</div>
-			</div>
-
-			<!-- COUNTERPOINT LANE — a dedicated Fux-style counterpoint
-			     voice with proper rhythmic subdivision (Species 2 emits
-			     2 notes per cantus note, Species 3 emits 4). Runs as a
-			     peer Lane to canon; both share the Companion master. -->
-			<div
-				class="counterpoint-card"
-				title="Counterpoint Lane — a dedicated species-counterpoint voice running alongside the canon. Subdivides time per Fux species: Species 2 = 2 notes per cantus, Species 3 = 4 notes, Species 4 = syncopated entry. Picks pitches via the same CounterpointState rules (no parallel 5ths/8ves, stepwise preferred)."
-			>
-				<div class="section-header font-ui">
-					COUNTERPOINT LANE
-					<button
-						class="pixel-btn"
-						class:toggle-on={cp.enabled}
-						onclick={() => {
-							cp.enabled = !cp.enabled;
-							adapter.counterpointSetConfig({ enabled: cp.enabled });
-						}}
-						title="Toggle the counterpoint lane on/off independently from the canon"
-					>
-						{cp.enabled ? 'ON' : 'OFF'}
-					</button>
-				</div>
-
-				<div class="cp-controls">
-					<label class="cp-row">
-						<span class="param-label font-ui">Species</span>
-						<PixelSelect
-							options={[
-								{ value: 'Species1', label: 'Species 1 (1:1 note-against-note)' },
-								{ value: 'Species2', label: 'Species 2 (2:1 strong + passing)' },
-								{ value: 'Species3', label: 'Species 3 (4:1 four notes per cantus)' },
-								{ value: 'Species4', label: 'Species 4 (syncopated, suspensions)' }
-							]}
-							value={cp.species}
-							small={true}
-							onchange={(v) => {
-								cp.species = v;
-								adapter.counterpointSetConfig({ species: v });
-							}}
-						/>
-					</label>
-
-					<label class="cp-row">
-						<span class="param-label font-ui">Direction</span>
-						<PixelSelect
-							options={[
-								{ value: 'above', label: 'Above the player' },
-								{ value: 'below', label: 'Below the player' }
-							]}
-							value={cp.prefer_above ? 'above' : 'below'}
-							small={true}
-							onchange={(v) => {
-								cp.prefer_above = v === 'above';
-								adapter.counterpointSetConfig({ prefer_above: cp.prefer_above });
-							}}
-						/>
-					</label>
-
-					<div class="cp-row">
-						<span class="param-label font-ui">Interval</span>
-						<Knob
-							value={cp.transpose_degrees}
-							min={-7}
-							max={7}
-							step={1}
-							defaultValue={2}
-							label="Interval"
-							accent="var(--color-accent-magenta, #ff33aa)"
-							size={56}
-							format={(v) => (v === 0 ? 'unison' : `${v > 0 ? '+' : ''}${v}°`)}
-							onchange={(v) => {
-								cp.transpose_degrees = Math.round(v);
-								adapter.counterpointSetConfig({ transpose_degrees: cp.transpose_degrees });
-							}}
-						/>
-					</div>
-				</div>
-
-				<div class="footer-hint font-code">
-					This Lane is independent of the canon voices above — it subscribes to player input directly,
-					maintains its own cantus-firmus history, and schedules emissions per the chosen species.
 				</div>
 			</div>
 
@@ -1506,13 +1502,17 @@
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
 		padding: 8px;
-		margin-top: 8px;
+	}
+
+	.counterpoint-card.cp-active {
+		border-color: var(--color-accent-magenta, #ff33aa);
+		box-shadow: 0 0 8px rgba(255, 51, 170, 0.15) inset;
 	}
 
 	.cp-controls {
 		display: grid;
 		grid-template-columns: 1fr 1fr auto;
-		gap: 8px;
+		gap: 10px;
 		align-items: center;
 		padding: 4px 0;
 	}
@@ -1522,6 +1522,11 @@
 		grid-template-columns: 5em 1fr;
 		align-items: center;
 		gap: 6px;
+	}
+
+	.cp-knob-row {
+		grid-template-columns: 4em auto;
+		justify-content: end;
 	}
 
 	.toggle-on {
