@@ -513,10 +513,10 @@ function computeScaleNotes(key: KeyName, scaleMode: ScaleModeName): number[] {
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
-// Version 7: default canon switched to the Pure Counterpoint form
-// (4 voices all in StrictCounterpoint mode, cascading 3rds). Older
-// payloads fall back to the new defaults on next launch.
-const SETTINGS_VERSION = 7;
+// Version 8: defaults switched to Palestrina voice-leading +
+// Octave Spread to match the Renaissance counterpoint style of
+// the StrictCounterpoint mode + Pure Counterpoint default form.
+const SETTINGS_VERSION = 8;
 
 interface PersistedSettings {
 	version: number;
@@ -554,12 +554,16 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	// stepwise motion preferred).
 	mode: 'StrictCounterpoint',
 	scaleMode: 'Ionian',
-	octaveMode: 'None',
-	// Bach voice-leading on top of counterpoint — pitch choices
-	// minimize voice crossings + parallel motion across the four
-	// voices, producing chorale-style stacks.
+	// Octave Spread — distributes the 4 generated voices across
+	// octaves above the bass so the chorale spans a real range
+	// rather than clustering tight.
+	octaveMode: 'Spread',
+	// Palestrina voice-leading — Renaissance species rules:
+	// stepwise lines, prepared dissonances, contrary motion
+	// preferred over parallel. The classical fit alongside
+	// StrictCounterpoint mode.
 	voiceLeadingEnabled: true,
-	voiceLeadingStyle: 'BachChorale',
+	voiceLeadingStyle: 'Palestrina',
 	// Modal interchange ON so out-of-scale input borrows from
 	// parallel modes instead of dropping back to bare unison.
 	interchangeEnabled: true,
