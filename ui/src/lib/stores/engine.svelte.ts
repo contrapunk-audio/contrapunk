@@ -875,8 +875,13 @@ class EngineStore {
 				'interchange',
 				() => adapter.setInterchange(saved.interchangeEnabled, saved.interchangeRange)
 			],
-			['voicePosition', () => adapter.setVoicePosition(saved.voicePosition)],
+			// Order matters: voiceCount must be set before voicePosition
+			// because the backend clamps position to count-1. Sending
+			// voicePosition=3 while the Rust-side default count=2 still
+			// applies would clamp position to 1 (Alto), leaving the UI
+			// store showing Bass while the engine runs as Alto.
 			['voiceCount', () => adapter.setVoiceCount(saved.voiceCount)],
+			['voicePosition', () => adapter.setVoicePosition(saved.voicePosition)],
 			['detune', () => { adapter.setDetune(saved.detuneCents); return Promise.resolve(); }],
 			[
 				'counterpointSpecies',
