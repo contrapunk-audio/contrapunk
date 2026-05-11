@@ -76,8 +76,6 @@ fn main() {
             commands::harmony::set_counterpoint_strictness,
             commands::harmony::set_suppress_bass_register,
             commands::harmony::set_bass_register_threshold,
-            commands::harmony::voice_offsets,
-            commands::harmony::set_voice_offset,
             commands::companion::companion_set_enabled,
             commands::companion::companion_is_enabled,
             commands::harmony::set_detune,

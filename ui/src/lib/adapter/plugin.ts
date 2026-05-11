@@ -143,17 +143,6 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('setCounterpointStrictness', strictness);
 	}
 
-	async voiceOffsets(): Promise<number[]> {
-		// nih-plug surface doesn't (yet) expose voice offsets; return empty
-		// so the UI gracefully degrades to "no sliders to render".
-		return [];
-	}
-
-	async setVoiceOffset(voiceIndex: number, offset: number): Promise<void> {
-		// Pass through; host wiring will pick this up when plugin params catch up.
-		this.send('setVoiceOffset', { voiceIndex, offset });
-	}
-
 	// -- MIDI devices (DAW handles routing in plugin mode) --
 
 	/** DAW manages MIDI for the plugin; no browser permission needed. */

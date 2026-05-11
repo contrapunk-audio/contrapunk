@@ -240,20 +240,6 @@ impl Engine {
         self.clear_notes();
     }
 
-    /// Returns the per-harmony-voice phase offsets (in beats).
-    /// Length = voice_count - 1. (Issue #8b.)
-    pub fn voice_offsets(&self) -> Vec<f32> {
-        self.inner.voice_offsets().to_vec()
-    }
-
-    /// Sets the phase offset (in beats) for the given harmony-voice
-    /// index. Clamped to [-0.5, 0.5]. Out-of-range index is a no-op.
-    /// Only Species 2-4 use the offset; Species 1 ignores phase.
-    /// (Issue #8b.)
-    pub fn set_voice_offset(&mut self, voice_index: usize, offset: f32) {
-        self.inner.set_voice_offset(voice_index, offset);
-    }
-
     /// Returns the current key as a string (for UI to update after auto-detection).
     pub fn current_key(&self) -> String {
         format!("{}", self.inner.key())

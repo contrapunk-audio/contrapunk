@@ -674,10 +674,6 @@ class EngineStore {
 	// -- Detune --
 	detuneCents = $state(0);
 
-	// -- Per-voice phase offset (issue #8b) — one entry per harmony voice.
-	// Length tracks voiceCount - 1; setVoiceCount keeps this in sync.
-	voiceOffsets = $state<number[]>([]);
-
 	// -- Transport --
 	isRunning = $state(false);
 
@@ -881,12 +877,6 @@ class EngineStore {
 			if (this.voicePosition >= count) {
 				this.voicePosition = Math.max(0, count - 1);
 			}
-			// Voice offsets resize to match harmony voice count = count - 1.
-			// Existing entries are preserved; new slots zero-fill (#8b).
-			const harmonyVoices = Math.max(0, count - 1);
-			const next = this.voiceOffsets.slice(0, harmonyVoices);
-			while (next.length < harmonyVoices) next.push(0);
-			this.voiceOffsets = next;
 			this.persist();
 		} catch (e) {
 			this.voiceCount = prev;
@@ -932,29 +922,6 @@ class EngineStore {
 		this.detuneCents = cents;
 		adapter.setDetune(cents);
 		this.persist();
-	}
-
-	/**
-	 * Set the phase offset (in beats, clamped engine-side to [-0.5, 0.5])
-	 * for a specific harmony-voice index. Index 0 = first harmony voice
-	 * above melody. Only Species 2-4 use the offset; Species 1 ignores
-	 * phase. (Issue #8b.)
-	 */
-	async setVoiceOffset(voiceIndex: number, offset: number) {
-		if (voiceIndex < 0 || voiceIndex >= this.voiceOffsets.length) return;
-		const prev = this.voiceOffsets[voiceIndex];
-		const clamped = Math.max(-0.5, Math.min(0.5, offset));
-		const next = this.voiceOffsets.slice();
-		next[voiceIndex] = clamped;
-		this.voiceOffsets = next;
-		try {
-			await adapter.setVoiceOffset(voiceIndex, clamped);
-		} catch (e) {
-			const rollback = this.voiceOffsets.slice();
-			rollback[voiceIndex] = prev;
-			this.voiceOffsets = rollback;
-			throw e;
-		}
 	}
 
 	/**
@@ -1017,20 +984,6 @@ class EngineStore {
 		) {
 			this.counterpointStrictness =
 				state.counterpointStrictness as CounterpointStrictnessName;
-		}
-		// Pull voice offsets from backend so the UI shows the engine's
-		// actual values, not whatever the local default was. (#8b)
-		try {
-			const offsets = await adapter.voiceOffsets();
-			if (Array.isArray(offsets)) {
-				this.voiceOffsets = offsets;
-			}
-		} catch {
-			// Adapter may not support voice offsets yet (older WASM, plugin
-			// host without param support). Fall back to zeros sized to the
-			// current harmony voice count.
-			const harmonyVoices = Math.max(0, this.voiceCount - 1);
-			this.voiceOffsets = new Array(harmonyVoices).fill(0);
 		}
 	}
 

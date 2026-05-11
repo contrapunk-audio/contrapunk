@@ -230,25 +230,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async voiceOffsets(): Promise<number[]> {
-		this.ensureInit();
-		try {
-			const offsets = engine.voice_offsets();
-			return Array.from(offsets);
-		} catch (e) {
-			throw new Error(`Failed to get voice offsets: ${e}`);
-		}
-	}
-
-	async setVoiceOffset(voiceIndex: number, offset: number): Promise<void> {
-		this.ensureInit();
-		try {
-			engine.set_voice_offset(voiceIndex, offset);
-		} catch (e) {
-			throw new Error(`Failed to set voice offset: ${e}`);
-		}
-	}
-
 	/** Current MIDI permission state. */
 	get midiPermissionState(): MidiPermissionState {
 		return this._midiPermissionState;
