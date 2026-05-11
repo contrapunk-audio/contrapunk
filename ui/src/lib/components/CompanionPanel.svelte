@@ -37,59 +37,6 @@
 	};
 
 	const TEMPLATES: Form[] = [
-		// Harmonic accompaniment — configures the engine's global
-		// mode + voice count so each input note gets a synchronous
-		// harmony stack. No delayed voices.
-		{
-			id: 'add-thirds',
-			name: 'Add Thirds',
-			desc: 'Synchronous: each input adds a diatonic 3rd',
-			family: 'harmonic',
-			harmonic: { mode: 'DiatonicThirds', voice_count: 2 }
-		},
-		{
-			id: 'add-fourths',
-			name: 'Add Fourths',
-			desc: 'Synchronous: each input adds a diatonic 4th',
-			family: 'harmonic',
-			harmonic: { mode: 'DiatonicFourths', voice_count: 2 }
-		},
-		{
-			id: 'satb-counterpoint',
-			name: 'SATB Counterpoint',
-			desc: '4 voices in strict species 1 counterpoint',
-			family: 'harmonic',
-			harmonic: {
-				mode: 'StrictCounterpoint',
-				voice_count: 4,
-				voice_leading_enabled: true,
-				voice_leading_style: 'Free'
-			}
-		},
-		{
-			id: 'bach-chorale-4',
-			name: 'Bach Chorale',
-			desc: '4-voice chorale with Bach-style voice leading',
-			family: 'harmonic',
-			harmonic: {
-				mode: 'BachChorale',
-				voice_count: 4,
-				voice_leading_enabled: true,
-				voice_leading_style: 'Bach'
-			}
-		},
-		{
-			id: 'functional-3',
-			name: 'Functional Trio',
-			desc: '3 voices with functional harmony',
-			family: 'harmonic',
-			harmonic: {
-				mode: 'FunctionalHarmony',
-				voice_count: 3,
-				voice_leading_enabled: true,
-				voice_leading_style: 'Free'
-			}
-		},
 		{
 			id: 'single-echo',
 			name: 'Single Echo',
@@ -166,27 +113,10 @@
 
 	async function applyTemplate(t: Form) {
 		selectedTemplate = t.id;
-
-		if (t.family === 'reactive' && t.voices) {
-			// Canon form: replace voices + enable canon.
-			await engine.setCanonVoices(t.voices);
-			if (!engine.companionEnabled) await engine.setCompanionEnabled(true);
-			if (!engine.canonEnabled) await engine.setCanonEnabled(true);
-		} else if (t.family === 'harmonic' && t.harmonic) {
-			// Accompaniment form: configures the engine's global mode +
-			// voice count to produce a synchronous harmony stack on each
-			// input. Disables Canon so the user hears the accompaniment
-			// alone (they can re-enable Canon manually to layer it).
-			await engine.setMode(t.harmonic.mode as never);
-			await engine.setVoiceCount(t.harmonic.voice_count);
-			if (t.harmonic.voice_leading_enabled !== undefined) {
-				await engine.setVoiceLeading(
-					t.harmonic.voice_leading_enabled,
-					(t.harmonic.voice_leading_style ?? 'Free') as never
-				);
-			}
-			if (engine.canonEnabled) await engine.setCanonEnabled(false);
-		}
+		if (!t.voices) return;
+		await engine.setCanonVoices(t.voices);
+		if (!engine.companionEnabled) await engine.setCompanionEnabled(true);
+		if (!engine.canonEnabled) await engine.setCanonEnabled(true);
 	}
 
 	async function toggleCompanion() {
@@ -231,7 +161,7 @@
 	<header class="header">
 		<div class="header-left">
 			<h2 class="title font-ui">Companion</h2>
-			<span class="subtitle font-code">delayed-voice generator</span>
+			<span class="subtitle font-code">reactive companions — canon today, more lanes incoming</span>
 		</div>
 		<button
 			class="pixel-btn toggle-btn master-toggle"
