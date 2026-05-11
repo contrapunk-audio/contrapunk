@@ -75,6 +75,10 @@ const INTERVAL_HISTORY_SIZE: usize = 4;
 const CONTOUR_HISTORY_SIZE: usize = 3;
 /// Range threshold below which harmony is considered "narrow" (perfect 5th in semitones).
 const NARROW_RANGE_THRESHOLD: u8 = 7;
+/// Sliding window size for harmony ambitus tracking (issue #113).
+/// R7 reads min/max over the last N harmony notes — not lifetime min/max —
+/// so an early wide note doesn't permanently bias every future candidate.
+const HARMONY_RANGE_WINDOW: usize = 16;
 
 /// State for Mode 6: Contrary Motion
 ///
@@ -247,10 +251,12 @@ pub struct CounterpointState {
     /// Melodic contour tracking (last N directions)
     melody_contour: VecDeque<MelodicDirection>,
 
-    /// Harmony range tracking (lowest note seen)
-    harmony_range_low: Option<u8>,
-    /// Harmony range tracking (highest note seen)
-    harmony_range_high: Option<u8>,
+    /// Sliding window of recent harmony MIDI pitches (cap
+    /// `HARMONY_RANGE_WINDOW`). R7 reads min/max over this window to
+    /// compute the *recent* ambitus, not a lifetime min/max ratchet.
+    /// An early wide leap doesn't permanently bias every future
+    /// candidate. (Issue #113.)
+    harmony_range_window: VecDeque<u8>,
 
     /// Signed semitone delta of most recent harmony motion (R4 leap recovery).
     last_harmony_move: Option<i8>,
@@ -290,8 +296,7 @@ impl CounterpointState {
             last_harmony: None,
             interval_history: VecDeque::with_capacity(INTERVAL_HISTORY_SIZE),
             melody_contour: VecDeque::with_capacity(CONTOUR_HISTORY_SIZE),
-            harmony_range_low: None,
-            harmony_range_high: None,
+            harmony_range_window: VecDeque::with_capacity(HARMONY_RANGE_WINDOW),
             last_harmony_move: None,
             harmony_pitch_buffer: VecDeque::with_capacity(5),
             species: CounterpointSpecies::Species1,
@@ -312,8 +317,7 @@ impl CounterpointState {
         self.last_harmony = None;
         self.interval_history.clear();
         self.melody_contour.clear();
-        self.harmony_range_low = None;
-        self.harmony_range_high = None;
+        self.harmony_range_window.clear();
         self.last_harmony_move = None;
         self.harmony_pitch_buffer.clear();
         self.prev_strong_beat_harmony = None;
@@ -424,19 +428,29 @@ impl CounterpointState {
 
     // --- Helper methods for harmony range ---
 
-    /// Updates the harmony range tracking with a new note.
+    /// Pushes a harmony note into the sliding ambitus window, evicting
+    /// the oldest if at capacity. Issue #113: tracking the recent window
+    /// (not lifetime min/max) keeps R7 perceptually correct and prevents
+    /// an early wide leap from permanently penalizing every future
+    /// candidate.
     fn update_harmony_range(&mut self, note: Note) {
-        let midi = u8::from(note);
-        self.harmony_range_low = Some(self.harmony_range_low.map_or(midi, |low| low.min(midi)));
-        self.harmony_range_high = Some(self.harmony_range_high.map_or(midi, |high| high.max(midi)));
+        if self.harmony_range_window.len() >= HARMONY_RANGE_WINDOW {
+            self.harmony_range_window.pop_front();
+        }
+        self.harmony_range_window.push_back(u8::from(note));
     }
 
-    /// Returns the current harmony range in semitones.
+    /// Returns the (low, high) MIDI pitches of the current recent
+    /// harmony window, or `None` if the window is empty.
+    fn harmony_range_bounds(&self) -> Option<(u8, u8)> {
+        let lo = *self.harmony_range_window.iter().min()?;
+        let hi = *self.harmony_range_window.iter().max()?;
+        Some((lo, hi))
+    }
+
+    /// Returns the current harmony range in semitones (window-derived).
     fn harmony_range(&self) -> Option<u8> {
-        match (self.harmony_range_low, self.harmony_range_high) {
-            (Some(low), Some(high)) => Some(high - low),
-            _ => None,
-        }
+        self.harmony_range_bounds().map(|(lo, hi)| hi - lo)
     }
 
     /// Returns true if the harmony range is narrow (<= 7 semitones).
@@ -526,10 +540,12 @@ impl CounterpointState {
 
         for &interval in &candidate_intervals {
             if let Some(candidate) = scale.transpose_diatonic(melody, interval) {
-                let score = self.score_candidate(melody, candidate, interval);
-                if score < 0 {
+                // Hard reject (parallel perfects, dissonance in strict mode, etc.)
+                // → None. Soft penalties accumulate as a negative score but the
+                // candidate is still valid — we pick the highest-scoring one.
+                let Some(score) = self.score_candidate(melody, candidate, interval) else {
                     continue;
-                }
+                };
                 // Direction bonus: prefer candidates in the requested direction
                 let dir_bonus = if (above && interval > 0) || (!above && interval < 0) {
                     2
@@ -571,7 +587,10 @@ impl CounterpointState {
             }
             if let Ok(candidate) = Note::try_from(candidate_midi as u8) {
                 let approx_interval = semitones / 2;
-                let mut score = self.score_candidate(melody, candidate, approx_interval);
+                let Some(mut score) = self.score_candidate(melody, candidate, approx_interval)
+                else {
+                    continue;
+                };
                 if scale.is_in_scale(candidate) {
                     score += 3;
                 }
@@ -581,9 +600,6 @@ impl CounterpointState {
                     0
                 };
                 score += dir_bonus;
-                if score < 0 {
-                    continue;
-                }
                 match best_candidate {
                     None => best_candidate = Some((candidate, score)),
                     Some((_, best_score)) if score > best_score => {
@@ -659,11 +675,12 @@ impl CounterpointState {
 
         for &interval in &candidate_intervals {
             if let Some(candidate) = scale.transpose_diatonic(melody, interval) {
-                let score = self.score_candidate(melody, candidate, interval);
-
-                if score < 0 {
+                // Hard reject (parallel perfects, dissonance in strict, etc.)
+                // → None. Soft penalties accumulate as a negative score but the
+                // candidate is still valid — we pick the highest-scoring one.
+                let Some(score) = self.score_candidate(melody, candidate, interval) else {
                     continue;
-                }
+                };
 
                 match best_candidate {
                     None => best_candidate = Some((candidate, score)),
@@ -696,15 +713,14 @@ impl CounterpointState {
             if let Ok(candidate) = Note::try_from(candidate_midi as u8) {
                 // Convert semitone interval to approximate diatonic for scoring
                 let approx_interval = semitones / 2; // Rough conversion
-                let mut score = self.score_candidate(melody, candidate, approx_interval);
+                let Some(mut score) = self.score_candidate(melody, candidate, approx_interval)
+                else {
+                    continue;
+                };
 
                 // Bonus if the chromatic harmony lands on a scale tone
                 if scale.is_in_scale(candidate) {
                     score += 3;
-                }
-
-                if score < 0 {
-                    continue;
                 }
 
                 match best_candidate {
@@ -721,7 +737,21 @@ impl CounterpointState {
     }
 
     /// Scores a harmony candidate with full Fux Species 1 rules.
-    fn score_candidate(&self, melody: Note, candidate: Note, interval: i8) -> i32 {
+    ///
+    /// Returns `None` for **hard rejections** — genuine musical errors
+    /// that violate species rules (parallel perfect intervals, hidden
+    /// fifths in similar motion, dissonance in strict mode, melody+
+    /// harmony both repeating, illegal melodic leaps in strict mode).
+    /// The candidate is unusable; the caller skips it.
+    ///
+    /// Returns `Some(score)` for acceptable candidates — `score` is the
+    /// ranked accumulated soft preferences (variety, contrary motion,
+    /// leap recovery, ambitus, stepwise motion). **A negative score is
+    /// still valid;** the caller picks the highest-scoring candidate
+    /// even if every candidate scored below zero. This prevents the
+    /// scorer from locking into melody-only output during long passages
+    /// where soft preferences accumulate (issue #113).
+    fn score_candidate(&self, melody: Note, candidate: Note, interval: i8) -> Option<i32> {
         let mut score: i32 = 0;
         let is_strict = self.strictness == CounterpointStrictness::Strict;
         let semitones = ((u8::from(candidate) as i16 - u8::from(melody) as i16).abs() % 12) as u8;
@@ -729,7 +759,7 @@ impl CounterpointState {
         // R1: Vertical consonance
         if is_strict {
             if matches!(semitones, 1 | 2 | 5 | 6 | 10 | 11) {
-                return -100;
+                return None;
             }
         } else if matches!(semitones, 1 | 2 | 5 | 6 | 10 | 11) {
             score -= 3;
@@ -740,7 +770,7 @@ impl CounterpointState {
             let prev_ic = self.interval_class(prev_m, prev_h);
             let new_ic = self.interval_class(melody, candidate);
             if self.is_perfect_interval(prev_ic) && prev_ic == new_ic {
-                return -100;
+                return None;
             }
         }
 
@@ -752,7 +782,7 @@ impl CounterpointState {
                 let similar = (m_dir > 0 && h_dir > 0) || (m_dir < 0 && h_dir < 0);
                 if similar && h_dir.abs() > 2 {
                     if is_strict {
-                        return -100;
+                        return None;
                     } else {
                         score -= 5;
                     }
@@ -763,7 +793,7 @@ impl CounterpointState {
         // Melody repeats -> harmony must move
         if let (Some(prev_m), Some(prev_h)) = (self.last_melody, self.last_harmony) {
             if u8::from(melody) == u8::from(prev_m) && u8::from(candidate) == u8::from(prev_h) {
-                return -100;
+                return None;
             }
         }
 
@@ -772,14 +802,14 @@ impl CounterpointState {
             let step = (u8::from(candidate) as i32 - u8::from(prev_h) as i32).abs();
             if step >= 10 {
                 if is_strict {
-                    return -100;
+                    return None;
                 } else {
                     score -= 3;
                 }
             }
             if step == 6 {
                 if is_strict {
-                    return -100;
+                    return None;
                 } else {
                     score -= 3;
                 }
@@ -856,8 +886,8 @@ impl CounterpointState {
             }
         }
 
-        // R7: Ambitus cap
-        if let (Some(low), Some(high)) = (self.harmony_range_low, self.harmony_range_high) {
+        // R7: Ambitus cap — read the *recent* window, not lifetime min/max.
+        if let Some((low, high)) = self.harmony_range_bounds() {
             let c = u8::from(candidate);
             if high.max(c) - low.min(c) > 16 {
                 if is_strict {
@@ -888,7 +918,7 @@ impl CounterpointState {
             score += 1;
         }
 
-        score
+        Some(score)
     }
 
     /// Returns the interval class (0-11) between two notes.
@@ -1341,18 +1371,36 @@ mod tests {
         let mut state = CounterpointState::new();
 
         state.update_harmony_range(Note::C4); // MIDI 60
-        assert_eq!(state.harmony_range_low, Some(60));
-        assert_eq!(state.harmony_range_high, Some(60));
+        assert_eq!(state.harmony_range_bounds(), Some((60, 60)));
 
         state.update_harmony_range(Note::G4); // MIDI 67
-        assert_eq!(state.harmony_range_low, Some(60));
-        assert_eq!(state.harmony_range_high, Some(67));
+        assert_eq!(state.harmony_range_bounds(), Some((60, 67)));
 
         state.update_harmony_range(Note::A3); // MIDI 57
-        assert_eq!(state.harmony_range_low, Some(57));
-        assert_eq!(state.harmony_range_high, Some(67));
+        assert_eq!(state.harmony_range_bounds(), Some((57, 67)));
 
         assert_eq!(state.harmony_range(), Some(10)); // 67 - 57
+    }
+
+    /// Sliding window: once `HARMONY_RANGE_WINDOW` notes have been
+    /// pushed, an old outlier slides out and the range reflects only
+    /// recent pitches. Regression net for issue #113 — without this,
+    /// an early wide leap would permanently bias R7 against every
+    /// future candidate.
+    #[test]
+    fn test_harmony_range_window_evicts_old_outliers() {
+        let mut state = CounterpointState::new();
+        state.update_harmony_range(Note::C2); // MIDI 36 — extreme low outlier
+        for _ in 0..HARMONY_RANGE_WINDOW {
+            state.update_harmony_range(Note::C4); // MIDI 60
+        }
+        // The C2 has been evicted by the C4 floods. Range now reflects
+        // only the recent C4 cluster.
+        assert_eq!(
+            state.harmony_range_bounds(),
+            Some((60, 60)),
+            "early outlier must be evicted from the sliding window"
+        );
     }
 
     #[test]
@@ -1386,7 +1434,7 @@ mod tests {
         assert!(state.last_harmony.is_some());
         assert!(!state.interval_history.is_empty());
         assert!(!state.melody_contour.is_empty());
-        assert!(state.harmony_range_low.is_some());
+        assert!(!state.harmony_range_window.is_empty());
 
         state.reset();
 
@@ -1394,8 +1442,7 @@ mod tests {
         assert!(state.last_harmony.is_none());
         assert!(state.interval_history.is_empty());
         assert!(state.melody_contour.is_empty());
-        assert!(state.harmony_range_low.is_none());
-        assert!(state.harmony_range_high.is_none());
+        assert!(state.harmony_range_window.is_empty());
     }
 
     #[test]
@@ -1488,7 +1535,10 @@ mod tests {
     fn test_rejects_perfect_fourth_vertical() {
         let state = CounterpointState::new();
         let score = state.score_candidate(Note::C4, Note::F4, 3);
-        assert!(score < 0, "P4 should be rejected, got {}", score);
+        assert_eq!(
+            score, None,
+            "P4 (semitones=5) is a strict-mode hard reject — should return None"
+        );
     }
 
     #[test]
@@ -1497,7 +1547,10 @@ mod tests {
         state.last_melody = Some(Note::C4);
         state.last_harmony = Some(Note::C3);
         let score = state.score_candidate(Note::D4, Note::G3, -5);
-        assert!(score < 0, "Hidden fifths should be rejected, got {}", score);
+        assert_eq!(
+            score, None,
+            "Hidden P5 in similar motion is a strict-mode hard reject"
+        );
     }
 
     #[test]
@@ -1506,16 +1559,27 @@ mod tests {
         state.last_melody = Some(Note::G4);
         state.last_harmony = Some(Note::E3);
         let score = state.score_candidate(Note::G4, Note::Bb3, -5);
-        assert!(score < 0, "Tritone leap should be rejected, got {}", score);
+        assert_eq!(
+            score, None,
+            "Tritone melodic leap in strict mode is a hard reject"
+        );
     }
 
     #[test]
     fn test_ambitus_cap_penalty() {
         let mut state = CounterpointState::new();
-        state.harmony_range_low = Some(48);
-        state.harmony_range_high = Some(64);
-        let within = state.score_candidate(Note::C4, Note::E4, 2);
-        let exceed = state.score_candidate(Note::C4, Note::A4, 5);
+        // Seed the sliding window with pitches 48 (C3) and 64 (E4) so
+        // the current ambitus is 16 semitones. A candidate landing
+        // inside is fine; one that grows the recent range past 16
+        // takes the R7 soft penalty.
+        state.harmony_range_window.push_back(48);
+        state.harmony_range_window.push_back(64);
+        let within = state
+            .score_candidate(Note::C4, Note::E4, 2)
+            .expect("M3 within ambitus is valid");
+        let exceed = state
+            .score_candidate(Note::C4, Note::A4, 5)
+            .expect("M6 exceeding ambitus is still valid (soft penalty, not hard reject)");
         assert!(
             within > exceed,
             "Ambitus exceeded should score lower: within={}, exceed={}",

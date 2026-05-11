@@ -2817,4 +2817,63 @@ mod tests {
              otherwise the offset is wired to nowhere"
         );
     }
+
+    // --- Issue #113: counterpoint scorer must not lock into melody-only ---
+
+    /// Regression net for #113. Feeds a long in-scale melody to a strict
+    /// Species 1 counterpoint engine and asserts that at least 90% of
+    /// inputs produce harmony. Before the score_candidate -> Option<i32>
+    /// refactor + sliding-window ambitus, accumulated soft preferences
+    /// (R4 leap-recovery, R7 ambitus on lifetime min/max, R8 tritone
+    /// outline, interval overuse) pushed every candidate below the
+    /// `score < 0` reject threshold past ~20-30 notes and the engine
+    /// emitted melody-only output thereafter.
+    ///
+    /// Uses a deterministic pseudo-random C-major walk (cycles through
+    /// the seven scale degrees across two octaves) — a more demanding
+    /// input than a pure scale because it forces the scorer through
+    /// large jumps, repeats, and contour reversals.
+    #[test]
+    fn test_strict_counterpoint_keeps_generating_through_long_passage() {
+        let scale_pitches: [u8; 14] = [
+            60, 62, 64, 65, 67, 69, 71, // C4..B4
+            72, 74, 76, 77, 79, 81, 83, // C5..B5
+        ];
+        // Walk the 14-element pitch set 4× in a non-trivial pattern so
+        // we hit jumps, repeats, and direction reversals. 56 notes total.
+        let melody: Vec<Note> = (0..56)
+            .map(|i| {
+                let idx = (i * 5 + (i / 3)) % scale_pitches.len();
+                Note::try_from(scale_pitches[idx]).unwrap()
+            })
+            .collect();
+
+        let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
+        engine.set_counterpoint_species(CounterpointSpecies::Species1);
+        engine.set_counterpoint_strictness(CounterpointStrictness::Strict);
+
+        let mut harmony_count = 0;
+        let mut melody_only_count = 0;
+        for &n in &melody {
+            let result = engine.harmonize_note_on(n);
+            if result.len() >= 2 {
+                harmony_count += 1;
+            } else {
+                melody_only_count += 1;
+            }
+        }
+
+        let ratio = harmony_count as f32 / melody.len() as f32;
+        assert!(
+            ratio >= 0.90,
+            "Strict counterpoint must keep producing harmony through long passages \
+             — got {}/{} notes harmonized ({:.0}%). Pre-fix this would tail off to \
+             melody-only after ~20-30 notes as soft penalties accumulated past the \
+             score < 0 reject threshold. Melody-only count: {}",
+            harmony_count,
+            melody.len(),
+            ratio * 100.0,
+            melody_only_count
+        );
+    }
 }
