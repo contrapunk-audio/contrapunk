@@ -750,17 +750,19 @@
 					</span>
 				</div>
 				<div class="timeline">
-					<!-- Beat / bar grid lines. Bar lines are brighter and
-					     labeled `1`, `2`, … (bar number). Beat ticks within
-					     a bar get a small subdivision label. -->
+					<!-- Beat / bar grid lines. Every beat is labeled with
+					     its beat-within-bar number (1..bpb). Bar boundaries
+					     are visually brighter; the label at a bar boundary
+					     is the bar number, otherwise the beat-within-bar. -->
 					{#each gridTicks as t (t.beat)}
+						{@const beatInBar = (t.beat % Math.max(1, transport.beatsPerBar)) + 1}
 						<div
 							class="grid-line"
 							class:bar-line={t.isBar}
 							style="left: {(t.beat / timelineBeats) * 100}%"
 						>
-							<span class="grid-label font-code">
-								{t.isBar ? t.barIdx + 1 : ''}
+							<span class="grid-label font-code" class:bar-label={t.isBar}>
+								{t.isBar ? `${t.barIdx + 1}` : beatInBar}
 							</span>
 						</div>
 					{/each}
@@ -1174,7 +1176,13 @@
 		transform: translateX(-50%);
 		font-size: 0.6em;
 		color: var(--color-text-secondary);
-		opacity: 0.6;
+		opacity: 0.4;
+	}
+
+	.grid-label.bar-label {
+		opacity: 0.95;
+		color: var(--color-accent-cyan, #33ddff);
+		font-size: 0.7em;
 	}
 
 	.track {
