@@ -113,6 +113,22 @@ pub struct CanonVoiceArg {
     /// the player.
     #[serde(default)]
     pub reference_voice: Option<usize>,
+    /// Per-voice harmony overrides. All optional — None means inherit
+    /// the corresponding global engine setting.
+    #[serde(default)]
+    pub voice_count: Option<u8>,
+    #[serde(default)]
+    pub voice_position: Option<u8>,
+    #[serde(default)]
+    pub voice_leading_enabled: Option<bool>,
+    #[serde(default)]
+    pub voice_leading_style: Option<String>,
+    #[serde(default)]
+    pub octave_mode: Option<String>,
+    #[serde(default)]
+    pub counterpoint_species: Option<String>,
+    #[serde(default)]
+    pub counterpoint_strictness: Option<String>,
 }
 
 fn default_time_ratio() -> f32 {
@@ -134,6 +150,13 @@ pub fn canon_set_voices(voices: Vec<CanonVoiceArg>, state: State<AppState>) -> R
                 "time_ratio": v.time_ratio,
                 "harmony_mode": v.harmony_mode,
                 "reference_voice": v.reference_voice,
+                "voice_count": v.voice_count,
+                "voice_position": v.voice_position,
+                "voice_leading_enabled": v.voice_leading_enabled,
+                "voice_leading_style": v.voice_leading_style,
+                "octave_mode": v.octave_mode,
+                "counterpoint_species": v.counterpoint_species,
+                "counterpoint_strictness": v.counterpoint_strictness,
             })
         })
         .collect();

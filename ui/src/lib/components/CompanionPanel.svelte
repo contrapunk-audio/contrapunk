@@ -901,7 +901,7 @@
 
 							<div
 								class="voice-param voice-param-mode"
-								title="Preset — copy a named voice-library configuration onto this voice. Manage presets in the Voices tab. Applying a preset sets this voice's harmony_mode (other preset fields are stored in the Voices library but not yet wired through to the canon backend)."
+								title="Preset — copy a named voice-library configuration onto this voice. Picks up harmony_mode, voice_count, voice_position, voice-leading, octave_mode, and counterpoint species/strictness. Manage presets in the Voices tab."
 							>
 								<span class="param-label font-ui">Preset</span>
 								<PixelSelect
@@ -920,7 +920,14 @@
 										const preset = voiceLibrary.byId(v);
 										if (!preset) return;
 										engine.updateCanonVoice(i, {
-											harmony_mode: preset.harmony_mode
+											harmony_mode: preset.harmony_mode,
+											voice_count: preset.voice_count,
+											voice_position: preset.voice_position,
+											voice_leading_enabled: preset.voice_leading_enabled,
+											voice_leading_style: preset.voice_leading_style,
+											octave_mode: preset.octave_mode,
+											counterpoint_species: preset.counterpoint_species,
+											counterpoint_strictness: preset.counterpoint_strictness
 										});
 									}}
 								/>

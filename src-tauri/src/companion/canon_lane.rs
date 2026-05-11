@@ -31,7 +31,10 @@ use std::collections::{HashMap, VecDeque};
 
 use wmidi::Note;
 
-use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, ScaleMode};
+use contrapunk::harmony::{
+    CounterpointSpecies, CounterpointStrictness, HarmonyEngine, HarmonyMode, Key, OctaveMode,
+    ScaleMode, VoiceLeadingStyle,
+};
 
 use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
 use super::world::WorldState;
@@ -83,6 +86,29 @@ pub struct CanonVoice {
     /// out-of-range or self-referential values silently fall back
     /// to the player as the reference.
     pub reference_voice: Option<usize>,
+    /// Per-voice override: sub-engine `voice_count` (1..=4). None =
+    /// inherit the lane's default 2 (subject + 1 harmony partner).
+    /// Higher values fan the mini-engine out into a 3- or 4-voice
+    /// chord stack for this voice.
+    pub voice_count: Option<u8>,
+    /// Per-voice override: sub-engine `voice_position` (the index
+    /// in the SATB stack where this voice's emitted line sits).
+    /// None = inherit (typically 0). Required: position < voice_count.
+    pub voice_position: Option<u8>,
+    /// Per-voice override: enable/disable voice-leading on this
+    /// voice's mini-engine.
+    pub voice_leading_enabled: Option<bool>,
+    /// Per-voice override: voice-leading style (Free / Palestrina /
+    /// BachChorale / Jazz).
+    pub voice_leading_style: Option<VoiceLeadingStyle>,
+    /// Per-voice override: octave-spread mode for the mini-engine's
+    /// emitted stack.
+    pub octave_mode: Option<OctaveMode>,
+    /// Per-voice override: counterpoint species (1-4) applied when
+    /// `harmony_mode = StrictCounterpoint`.
+    pub counterpoint_species: Option<CounterpointSpecies>,
+    /// Per-voice override: counterpoint strictness mode.
+    pub counterpoint_strictness: Option<CounterpointStrictness>,
 }
 
 impl CanonVoice {
@@ -97,6 +123,13 @@ impl CanonVoice {
             time_ratio: time_ratio.clamp(0.125, 8.0),
             harmony_mode: None,
             reference_voice: None,
+            voice_count: None,
+            voice_position: None,
+            voice_leading_enabled: None,
+            voice_leading_style: None,
+            octave_mode: None,
+            counterpoint_species: None,
+            counterpoint_strictness: None,
         }
     }
 }
@@ -109,6 +142,13 @@ impl Default for CanonVoice {
             time_ratio: 1.0,
             harmony_mode: None,
             reference_voice: None,
+            voice_count: None,
+            voice_position: None,
+            voice_leading_enabled: None,
+            voice_leading_style: None,
+            octave_mode: None,
+            counterpoint_species: None,
+            counterpoint_strictness: None,
         }
     }
 }
@@ -120,6 +160,116 @@ impl Default for CanonVoice {
 /// 2 beats is short enough to feel natural between phrases but long
 /// enough that legato playing doesn't accidentally reset.
 const PHRASE_SILENCE_THRESHOLD: f64 = 2.0;
+
+/// Snapshot of the global engine fields each mini-engine sync needs.
+/// Read once under the lock; used to fall back to global values for
+/// any per-voice override that's None.
+struct EngineSnapshot {
+    key: Key,
+    mode: HarmonyMode,
+    scale_mode: ScaleMode,
+    octave_mode: OctaveMode,
+    voice_count: usize,
+    voice_position: usize,
+    voice_leading_enabled: bool,
+    voice_leading_style: VoiceLeadingStyle,
+    counterpoint_species: CounterpointSpecies,
+    counterpoint_strictness: CounterpointStrictness,
+}
+
+impl Default for EngineSnapshot {
+    fn default() -> Self {
+        Self {
+            key: Key::C,
+            mode: HarmonyMode::PassThrough,
+            scale_mode: ScaleMode::Ionian,
+            octave_mode: OctaveMode::None,
+            voice_count: 2,
+            voice_position: 0,
+            voice_leading_enabled: false,
+            voice_leading_style: VoiceLeadingStyle::Free,
+            counterpoint_species: CounterpointSpecies::Species1,
+            counterpoint_strictness: CounterpointStrictness::Strict,
+        }
+    }
+}
+
+/// Canonical-name string helpers for the per-voice override enums.
+/// All match the names parsed by the corresponding `parse_*` functions
+/// in commands/harmony.rs so a string round-tripped through the UI is
+/// stable.
+
+fn voice_leading_style_to_str(s: VoiceLeadingStyle) -> &'static str {
+    match s {
+        VoiceLeadingStyle::Free => "Free",
+        VoiceLeadingStyle::Palestrina => "Palestrina",
+        VoiceLeadingStyle::BachChorale => "BachChorale",
+        VoiceLeadingStyle::Jazz => "Jazz",
+    }
+}
+
+fn voice_leading_style_from_str(s: &str) -> Option<VoiceLeadingStyle> {
+    Some(match s {
+        "Free" => VoiceLeadingStyle::Free,
+        "Palestrina" => VoiceLeadingStyle::Palestrina,
+        "BachChorale" => VoiceLeadingStyle::BachChorale,
+        "Jazz" => VoiceLeadingStyle::Jazz,
+        _ => return None,
+    })
+}
+
+fn octave_mode_to_str(m: OctaveMode) -> &'static str {
+    match m {
+        OctaveMode::None => "None",
+        OctaveMode::Spread => "Spread",
+        OctaveMode::BassTrebleSplit => "BassTrebleSplit",
+        OctaveMode::Mirror => "Mirror",
+    }
+}
+
+fn octave_mode_from_str(s: &str) -> Option<OctaveMode> {
+    Some(match s {
+        "None" => OctaveMode::None,
+        "Spread" => OctaveMode::Spread,
+        "BassTrebleSplit" => OctaveMode::BassTrebleSplit,
+        "Mirror" => OctaveMode::Mirror,
+        _ => return None,
+    })
+}
+
+fn counterpoint_species_to_str(s: CounterpointSpecies) -> &'static str {
+    match s {
+        CounterpointSpecies::Species1 => "Species1",
+        CounterpointSpecies::Species2 => "Species2",
+        CounterpointSpecies::Species3 => "Species3",
+        CounterpointSpecies::Species4 => "Species4",
+    }
+}
+
+fn counterpoint_species_from_str(s: &str) -> Option<CounterpointSpecies> {
+    Some(match s {
+        "Species1" => CounterpointSpecies::Species1,
+        "Species2" => CounterpointSpecies::Species2,
+        "Species3" => CounterpointSpecies::Species3,
+        "Species4" => CounterpointSpecies::Species4,
+        _ => return None,
+    })
+}
+
+fn counterpoint_strictness_to_str(s: CounterpointStrictness) -> &'static str {
+    match s {
+        CounterpointStrictness::Strict => "Strict",
+        CounterpointStrictness::Relaxed => "Relaxed",
+    }
+}
+
+fn counterpoint_strictness_from_str(s: &str) -> Option<CounterpointStrictness> {
+    Some(match s {
+        "Strict" => CounterpointStrictness::Strict,
+        "Relaxed" => CounterpointStrictness::Relaxed,
+        _ => return None,
+    })
+}
 
 /// Convert a HarmonyMode to the canonical string the JS adapter sends.
 /// Matches the names accepted by `parse_harmony_mode` in
@@ -293,40 +443,94 @@ impl CanonLane {
     /// history only when the value actually changes, so a steady-
     /// state canon doesn't thrash.
     fn sync_voice_engines(&mut self, world: &WorldState) {
-        // Snapshot global state under one brief lock.
-        let (global_key, global_mode, global_scale_mode) =
-            if let Ok(g) = world.engine_snapshot.lock() {
-                (g.key(), g.mode(), g.scale_mode())
-            } else {
-                (Key::C, HarmonyMode::PassThrough, ScaleMode::Ionian)
-            };
+        // Snapshot global state under one brief lock. Voices with
+        // None for an override field inherit the corresponding global.
+        let snapshot = if let Ok(g) = world.engine_snapshot.lock() {
+            EngineSnapshot {
+                key: g.key(),
+                mode: g.mode(),
+                scale_mode: g.scale_mode(),
+                octave_mode: g.octave_mode(),
+                voice_count: g.voice_count(),
+                voice_position: g.voice_position(),
+                voice_leading_enabled: g.voice_leading_enabled(),
+                voice_leading_style: g.voice_leading_style(),
+                counterpoint_species: g.counterpoint_species(),
+                counterpoint_strictness: g.counterpoint_strictness(),
+            }
+        } else {
+            EngineSnapshot::default()
+        };
 
         // Resize: grow with newly-constructed engines, shrink by drop.
         while self.voice_engines.len() < self.voices.len() {
-            // voice_count=2 is the canon contract: subject + one
-            // harmony pitch. Multi-pitch stacks come from cascading
-            // reference_voice, not intra-voice fan-out.
+            // Fresh engines default to the canon contract: 2 voices
+            // (subject + one harmony partner). Per-voice override
+            // applied immediately below.
             self.voice_engines
-                .push(HarmonyEngine::with_voices(global_key, global_mode, 2));
+                .push(HarmonyEngine::with_voices(snapshot.key, snapshot.mode, 2));
         }
         self.voice_engines.truncate(self.voices.len());
 
         // Sync per-voice engine config. set_* methods on
         // HarmonyEngine are no-ops when the value matches, so stateful
-        // history only resets on real change.
+        // history only resets on real change. Order matters: voice_count
+        // before voice_position (the latter is clamped to count-1).
         for (i, voice) in self.voices.iter().enumerate() {
             let Some(ve) = self.voice_engines.get_mut(i) else {
                 continue;
             };
-            if ve.key() != global_key {
-                ve.set_key(global_key);
+            if ve.key() != snapshot.key {
+                ve.set_key(snapshot.key);
             }
-            if ve.scale_mode() != global_scale_mode {
-                ve.set_scale_mode(global_scale_mode);
+            if ve.scale_mode() != snapshot.scale_mode {
+                ve.set_scale_mode(snapshot.scale_mode);
             }
-            let target_mode = voice.harmony_mode.unwrap_or(global_mode);
+            let target_mode = voice.harmony_mode.unwrap_or(snapshot.mode);
             if ve.mode() != target_mode {
                 ve.set_mode(target_mode);
+            }
+            let target_count = voice
+                .voice_count
+                .map(|c| (c as usize).clamp(1, 8))
+                .unwrap_or(2);
+            if ve.voice_count() != target_count {
+                ve.set_voice_count(target_count);
+            }
+            let target_position = voice
+                .voice_position
+                .map(|p| (p as usize).min(target_count.saturating_sub(1)))
+                .unwrap_or_else(|| snapshot.voice_position.min(target_count.saturating_sub(1)));
+            if ve.voice_position() != target_position {
+                ve.set_voice_position(target_position);
+            }
+            let target_vl_enabled = voice
+                .voice_leading_enabled
+                .unwrap_or(snapshot.voice_leading_enabled);
+            if ve.voice_leading_enabled() != target_vl_enabled {
+                ve.set_voice_leading_enabled(target_vl_enabled);
+            }
+            let target_vl_style = voice
+                .voice_leading_style
+                .unwrap_or(snapshot.voice_leading_style);
+            if ve.voice_leading_style() != target_vl_style {
+                ve.set_voice_leading_style(target_vl_style);
+            }
+            let target_octave = voice.octave_mode.unwrap_or(snapshot.octave_mode);
+            if ve.octave_mode() != target_octave {
+                ve.set_octave_mode(target_octave);
+            }
+            let target_species = voice
+                .counterpoint_species
+                .unwrap_or(snapshot.counterpoint_species);
+            if ve.counterpoint_species() != target_species {
+                ve.set_counterpoint_species(target_species);
+            }
+            let target_strictness = voice
+                .counterpoint_strictness
+                .unwrap_or(snapshot.counterpoint_strictness);
+            if ve.counterpoint_strictness() != target_strictness {
+                ve.set_counterpoint_strictness(target_strictness);
             }
         }
     }
@@ -696,6 +900,13 @@ impl Lane for CanonLane {
                     "time_ratio": v.time_ratio,
                     "harmony_mode": v.harmony_mode.map(harmony_mode_to_str),
                     "reference_voice": v.reference_voice,
+                    "voice_count": v.voice_count,
+                    "voice_position": v.voice_position,
+                    "voice_leading_enabled": v.voice_leading_enabled,
+                    "voice_leading_style": v.voice_leading_style.map(voice_leading_style_to_str),
+                    "octave_mode": v.octave_mode.map(octave_mode_to_str),
+                    "counterpoint_species": v.counterpoint_species.map(counterpoint_species_to_str),
+                    "counterpoint_strictness": v.counterpoint_strictness.map(counterpoint_strictness_to_str),
                 })
             })
             .collect();
@@ -751,6 +962,33 @@ impl Lane for CanonLane {
                                 None
                             }
                         });
+                    // Per-voice harmony overrides — all optional.
+                    voice.voice_count = item
+                        .get("voice_count")
+                        .and_then(|v| v.as_u64())
+                        .map(|n| (n as u8).clamp(1, 4));
+                    voice.voice_position = item
+                        .get("voice_position")
+                        .and_then(|v| v.as_u64())
+                        .map(|n| (n as u8).min(3));
+                    voice.voice_leading_enabled =
+                        item.get("voice_leading_enabled").and_then(|v| v.as_bool());
+                    voice.voice_leading_style = item
+                        .get("voice_leading_style")
+                        .and_then(|v| v.as_str())
+                        .and_then(voice_leading_style_from_str);
+                    voice.octave_mode = item
+                        .get("octave_mode")
+                        .and_then(|v| v.as_str())
+                        .and_then(octave_mode_from_str);
+                    voice.counterpoint_species = item
+                        .get("counterpoint_species")
+                        .and_then(|v| v.as_str())
+                        .and_then(counterpoint_species_from_str);
+                    voice.counterpoint_strictness = item
+                        .get("counterpoint_strictness")
+                        .and_then(|v| v.as_str())
+                        .and_then(counterpoint_strictness_from_str);
                     Some(voice)
                 })
                 .take(8)

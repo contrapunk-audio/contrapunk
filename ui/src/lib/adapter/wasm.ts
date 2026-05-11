@@ -263,6 +263,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 			time_ratio?: number;
 			harmony_mode?: string | null;
 			reference_voice?: number | null;
+			voice_count?: number | null;
+			voice_position?: number | null;
+			voice_leading_enabled?: boolean | null;
+			voice_leading_style?: string | null;
+			octave_mode?: string | null;
+			counterpoint_species?: string | null;
+			counterpoint_strictness?: string | null;
 		}>
 	): Promise<void> {
 		// No-op.

@@ -795,6 +795,13 @@ class EngineStore {
 			time_ratio: number;
 			harmony_mode?: string | null;
 			reference_voice?: number | null;
+			voice_count?: number | null;
+			voice_position?: number | null;
+			voice_leading_enabled?: boolean | null;
+			voice_leading_style?: string | null;
+			octave_mode?: string | null;
+			counterpoint_species?: string | null;
+			counterpoint_strictness?: string | null;
 		}>
 	>([
 		{
@@ -1158,6 +1165,13 @@ class EngineStore {
 			time_ratio?: number;
 			harmony_mode?: string | null;
 			reference_voice?: number | null;
+			voice_count?: number | null;
+			voice_position?: number | null;
+			voice_leading_enabled?: boolean | null;
+			voice_leading_style?: string | null;
+			octave_mode?: string | null;
+			counterpoint_species?: string | null;
+			counterpoint_strictness?: string | null;
 		}>
 	) {
 		const prev = this.canonVoices;
@@ -1169,12 +1183,28 @@ class EngineStore {
 			if (typeof v.reference_voice === 'number' && v.reference_voice >= 0 && v.reference_voice < idx) {
 				ref = v.reference_voice;
 			}
+			const vc =
+				typeof v.voice_count === 'number'
+					? Math.max(1, Math.min(4, Math.round(v.voice_count)))
+					: null;
+			const vp =
+				typeof v.voice_position === 'number'
+					? Math.max(0, Math.min(3, Math.round(v.voice_position)))
+					: null;
 			return {
 				delay_beats: Math.max(0, Math.min(16, v.delay_beats)),
 				transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
 				time_ratio: Math.max(0.125, Math.min(8, v.time_ratio ?? 1.0)),
 				harmony_mode: v.harmony_mode ?? null,
-				reference_voice: ref
+				reference_voice: ref,
+				voice_count: vc,
+				voice_position: vp,
+				voice_leading_enabled:
+					typeof v.voice_leading_enabled === 'boolean' ? v.voice_leading_enabled : null,
+				voice_leading_style: v.voice_leading_style ?? null,
+				octave_mode: v.octave_mode ?? null,
+				counterpoint_species: v.counterpoint_species ?? null,
+				counterpoint_strictness: v.counterpoint_strictness ?? null
 			};
 		});
 		this.canonVoices = clamped;
@@ -1219,6 +1249,13 @@ class EngineStore {
 			time_ratio: number;
 			harmony_mode: string | null;
 			reference_voice: number | null;
+			voice_count: number | null;
+			voice_position: number | null;
+			voice_leading_enabled: boolean | null;
+			voice_leading_style: string | null;
+			octave_mode: string | null;
+			counterpoint_species: string | null;
+			counterpoint_strictness: string | null;
 		}>
 	) {
 		const next = this.canonVoices.map((v, i) => (i === idx ? { ...v, ...patch } : v));
