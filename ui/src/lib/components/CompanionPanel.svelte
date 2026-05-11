@@ -255,15 +255,9 @@
 		<section class="right">
 			{#if !engine.canonEnabled || engine.canonVoices.length === 0}
 				<div class="empty-right">
-					<div class="empty-title font-ui">No reactive voices configured</div>
-					<div class="empty-desc font-code">
-						Pick a REACTIVE form from the left rail to add delayed canon voices,
-						or pick a HARMONIC form to configure synchronous accompaniment via
-						the engine. Harmonic forms set Key / Mode / Voice Count in the
-						Harmony tab — they don't surface delayed voices here.
-					</div>
+					<div class="empty-title font-ui">No reactive voices</div>
 					<div class="empty-status font-code">
-						Engine: <span class="status-key">{engine.key}</span> ·
+						<span class="status-key">{engine.key}</span> ·
 						<span class="status-mode">{engine.mode}</span> ·
 						{engine.voiceCount} voice{engine.voiceCount === 1 ? '' : 's'}
 					</div>
@@ -396,6 +390,28 @@
 									class="pixel-range"
 								/>
 								<span class="param-readout font-code">{ratioLabel(voice.time_ratio)}</span>
+							</div>
+
+							<div class="voice-param voice-param-mode">
+								<span class="param-label font-ui">Mode</span>
+								<select
+									class="pixel-select"
+									value={voice.harmony_mode ?? ''}
+									onchange={(e) => {
+										const v = (e.target as HTMLSelectElement).value;
+										engine.updateCanonVoice(i, { harmony_mode: v === '' ? null : v });
+									}}
+								>
+									<option value="">Inherit global</option>
+									<option value="PassThrough">Pass-Through</option>
+									<option value="DiatonicThirds">Diatonic Thirds</option>
+									<option value="DiatonicFourths">Diatonic Fourths</option>
+									<option value="ContraryMotion">Contrary Motion</option>
+									<option value="StrictCounterpoint">Counterpoint</option>
+									<option value="FunctionalHarmony">Functional</option>
+									<option value="BachChorale">Bach Chorale</option>
+									<option value="BarryHarris">Barry Harris</option>
+								</select>
 							</div>
 						</div>
 					{/each}
@@ -706,6 +722,24 @@
 	.pixel-range {
 		width: 100%;
 		height: 4px;
+	}
+
+	.voice-param-mode {
+		grid-template-columns: 4.5em 1fr;
+	}
+
+	.pixel-select {
+		font-family: inherit;
+		font-size: var(--font-size-xs);
+		padding: 2px 4px;
+		background: var(--color-bg);
+		color: var(--color-text);
+		border: 1px solid var(--color-border);
+		cursor: pointer;
+	}
+
+	.pixel-select:focus {
+		outline: 1px solid var(--color-accent-cyan, #33ddff);
 	}
 
 	.footer-hint {
