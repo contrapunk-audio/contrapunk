@@ -3,7 +3,7 @@
 	import { adapter } from '$lib/adapter';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { getPianoKeyColor } from '$lib/theme/colors';
-	import { formatMusicalString } from '$lib/embed/music-utils';
+	import ChordReadout from '$lib/embed/ChordReadout.svelte';
 
 	/** Contrast text color for a key based on which state is driving its fill.
 	 *  Input (teal) + default-cream fills are light → dark label.
@@ -206,9 +206,7 @@
 	     name and a non-breaking space so the line-box never collapses,
 	     which would otherwise mount/unmount this div on every silence↔
 	     playing boundary and shift .piano-wrapper height by ~24px. -->
-	<div class="chord-display font-code" class:empty={!engine.chordName}>
-		{engine.chordName ? formatMusicalString(engine.chordName) : ' '}
-	</div>
+	<ChordReadout chordName={engine.chordName} variant="inline" />
 	<div class="piano-container" style="--num-white-keys: {NUM_WHITE_KEYS};">
 		<!-- White keys -->
 		{#each whiteKeys as midi}
@@ -291,21 +289,9 @@
 		position: relative;
 	}
 
-	.chord-display {
-		text-align: center;
-		color: var(--color-accent-cyan);
-		font-size: var(--font-size-xs);
-		padding: 2px 0;
-		background: var(--color-bg-deep);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	/* Empty state: keep the box (and therefore .piano-wrapper height)
-	   stable but make it visually inert. visibility:hidden preserves
-	   layout box, removes paint. */
-	.chord-display.empty {
-		visibility: hidden;
-	}
+	/* .chord-display styles moved to embed/ChordReadout.svelte
+	   (variant="inline"). Kept the same colors, padding, and
+	   visibility:hidden empty-state trick so layout is unchanged. */
 
 	.piano-container {
 		position: relative;

@@ -18,6 +18,7 @@
 	 */
 	import { onMount } from 'svelte';
 	import Piano from '$lib/embed/Piano.svelte';
+	import ChordReadout from '$lib/embed/ChordReadout.svelte';
 	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 
@@ -67,9 +68,9 @@
 		</div>
 	{:else}
 		<section class="readout">
-			<div class="chord-name" data-testid="chord-name">
-				{engine.chordName || ' '}
-			</div>
+			<div data-testid="chord-name">
+					<ChordReadout chordName={engine.chordName} variant="display" />
+				</div>
 			<div class="active-notes" data-testid="active-notes">
 				{#if engine.inputNotes.length === 0}
 					<span class="hint">(no notes held)</span>
@@ -127,14 +128,8 @@
 		border: 1px solid var(--color-border);
 	}
 
-	.chord-name {
-		font-size: 2.5rem;
-		font-weight: 600;
-		min-height: 3rem;
-		color: var(--color-accent-cyan);
-		font-family: var(--font-code), monospace;
-		letter-spacing: 0.02em;
-	}
+	/* .chord-name styles moved into embed/ChordReadout.svelte
+	   variant="display". Same font-size, color, font-family. */
 
 	.active-notes {
 		font-size: 0.9rem;
