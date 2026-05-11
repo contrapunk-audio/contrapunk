@@ -37,8 +37,8 @@ use super::DispatchOp;
 use crate::state::VoiceOutputTarget;
 
 /// Configuration for one canon voice. The lane can hold any number
-/// of these; each one independently delays and transposes the
-/// player's input.
+/// of these; each one independently delays, transposes, and time-
+/// scales the player's input.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CanonVoice {
     /// Beats to wait between the player's NoteOn and this voice's
@@ -47,13 +47,27 @@ pub struct CanonVoice {
     /// Diatonic transpose for this voice's emissions. Clamped to
     /// [-7, 7] degrees.
     pub transpose_degrees: i8,
+    /// Time-ratio (augmentation / diminution). 1.0 = strict imitation;
+    /// 2.0 = augmentation (canon plays at half speed, notes twice as
+    /// long); 0.5 = diminution (canon plays at double speed, notes
+    /// half as long). Classical canons: Bach uses both. Each canon
+    /// voice's relative-to-phrase-anchor timing is multiplied by this
+    /// ratio, so the whole sequence stretches or compresses
+    /// proportionally — not just individual notes. Clamped to
+    /// [0.25, 4.0] (two octaves of speed, useful range).
+    pub time_ratio: f32,
 }
 
 impl CanonVoice {
     pub fn new(delay_beats: f32, transpose_degrees: i8) -> Self {
+        Self::with_time_ratio(delay_beats, transpose_degrees, 1.0)
+    }
+
+    pub fn with_time_ratio(delay_beats: f32, transpose_degrees: i8, time_ratio: f32) -> Self {
         Self {
             delay_beats: delay_beats.clamp(0.0, 8.0),
             transpose_degrees: transpose_degrees.clamp(-7, 7),
+            time_ratio: time_ratio.clamp(0.25, 4.0),
         }
     }
 }
@@ -63,9 +77,18 @@ impl Default for CanonVoice {
         Self {
             delay_beats: 1.0,
             transpose_degrees: 0,
+            time_ratio: 1.0,
         }
     }
 }
+
+/// After this many beats of silence, the next input note starts a
+/// new "phrase" — sequence anchor resets to that note's beat. This
+/// keeps augmentation / diminution sane across natural musical pauses:
+/// the anchor doesn't drift arbitrarily far back from current play.
+/// 2 beats is short enough to feel natural between phrases but long
+/// enough that legato playing doesn't accidentally reset.
+const PHRASE_SILENCE_THRESHOLD: f64 = 2.0;
 
 /// One pending NoteOn that will fire at `fire_at` beats (transport
 /// total-beats coordinate).
@@ -97,10 +120,15 @@ struct HeldVoiceFire {
 }
 
 /// Tracked per held input. `on_beat` is shared across all canon
-/// voices for that input; `voices` records what each voice scheduled.
+/// voices for that input; `anchor` captures the phrase anchor in
+/// effect when the input arrived (needed at NoteOff time to compute
+/// the canon off-fire correctly even if the anchor has since reset
+/// due to a phrase boundary); `voices` records what each voice
+/// scheduled.
 #[derive(Clone, Debug, PartialEq)]
 struct HeldEntry {
     on_beat: f64,
+    anchor: f64,
     voices: Vec<HeldVoiceFire>,
 }
 
@@ -134,6 +162,20 @@ pub struct CanonLane {
     /// each entry's `voices` vec records the per-voice fire info
     /// the lane will need at NoteOff time.
     held: HashMap<u8, HeldEntry>,
+
+    /// Beat at which the current phrase started. All canon voice
+    /// emissions for this phrase are computed relative to this
+    /// anchor so augmentation / diminution stretches the whole
+    /// sequence proportionally instead of just individual notes.
+    /// `None` before any input has arrived.
+    sequence_anchor: Option<f64>,
+
+    /// Beat of the most recent input event. Used to detect phrase
+    /// boundaries: if a new input arrives more than
+    /// `PHRASE_SILENCE_THRESHOLD` beats after the last input, the
+    /// anchor resets to the new input's beat (the user has started
+    /// a fresh phrase).
+    last_input_beat: Option<f64>,
 }
 
 impl CanonLane {
@@ -145,6 +187,8 @@ impl CanonLane {
             pending_on: VecDeque::new(),
             pending_off: Vec::new(),
             held: HashMap::new(),
+            sequence_anchor: None,
+            last_input_beat: None,
         }
     }
 
@@ -154,6 +198,8 @@ impl CanonLane {
             self.pending_on.clear();
             self.pending_off.clear();
             self.held.clear();
+            self.sequence_anchor = None;
+            self.last_input_beat = None;
         }
     }
 
@@ -165,7 +211,7 @@ impl CanonLane {
         let clamped: Vec<CanonVoice> = voices
             .into_iter()
             .take(8)
-            .map(|v| CanonVoice::new(v.delay_beats, v.transpose_degrees))
+            .map(|v| CanonVoice::with_time_ratio(v.delay_beats, v.transpose_degrees, v.time_ratio))
             .collect();
         self.voices = clamped;
         // Drop any in-flight emissions targeting voices that may no
@@ -270,19 +316,44 @@ impl Lane for CanonLane {
             return LaneOutput::default();
         }
         let now = world.transport.total_beats();
+
+        // Phrase-anchor housekeeping: if no anchor yet, or if silence
+        // since last input has exceeded PHRASE_SILENCE_THRESHOLD beats,
+        // start a new phrase from `now`. Augmentation / diminution
+        // computes relative-to-anchor offsets, so stale anchors would
+        // produce wildly stretched fire times.
+        let needs_reset = match self.last_input_beat {
+            None => true,
+            Some(last) => (now - last) > PHRASE_SILENCE_THRESHOLD,
+        };
+        if needs_reset || self.sequence_anchor.is_none() {
+            self.sequence_anchor = Some(now);
+        }
+        let anchor = self
+            .sequence_anchor
+            .expect("anchor must be Some after housekeeping");
+
         match ev {
             InputEvent::NoteOn {
                 note,
                 velocity,
                 channel,
             } => {
+                let relative_on = (now - anchor).max(0.0);
                 let voices_snapshot: Vec<(usize, CanonVoice)> =
                     self.voices.iter().copied().enumerate().collect();
                 let mut held_voices: Vec<HeldVoiceFire> = Vec::with_capacity(voices_snapshot.len());
                 for (voice_idx, voice) in voices_snapshot {
                     let canon_note = self.transpose(note, voice.transpose_degrees, world);
+                    // Per-voice fire time is anchor-relative and scaled
+                    // by this voice's time_ratio. Voice with ratio 2.0
+                    // (augmentation) plays at half speed: a note 1 beat
+                    // into the phrase fires 2 beats into the canon
+                    // sequence (after the delay offset).
+                    let fire_at =
+                        anchor + voice.delay_beats as f64 + relative_on * voice.time_ratio as f64;
                     self.insert_sorted(PendingOn {
-                        fire_at: now + voice.delay_beats as f64,
+                        fire_at,
                         canon_note,
                         velocity,
                         channel,
@@ -297,9 +368,11 @@ impl Lane for CanonLane {
                     note,
                     HeldEntry {
                         on_beat: now,
+                        anchor,
                         voices: held_voices,
                     },
                 );
+                self.last_input_beat = Some(now);
             }
             InputEvent::NoteOff { note, channel: _ } => {
                 if let Some(held) = self.held.remove(&note) {
@@ -308,13 +381,25 @@ impl Lane for CanonLane {
                         let Some(voice) = self.voices.get(fire.voice_idx) else {
                             continue; // voice removed mid-flight — drop the off
                         };
+                        // Recompute the canon NoteOn fire time from the
+                        // anchor that was in effect at NoteOn (cached in
+                        // HeldEntry), then add the duration scaled by the
+                        // voice's time_ratio. Anchor may have since reset
+                        // due to a new phrase; using the captured value
+                        // keeps off-fires consistent with the on-fires.
+                        let voice_on_relative = (held.on_beat - held.anchor).max(0.0);
+                        let voice_on_fire = held.anchor
+                            + voice.delay_beats as f64
+                            + voice_on_relative * voice.time_ratio as f64;
+                        let voice_off_fire = voice_on_fire + duration * voice.time_ratio as f64;
                         self.pending_off.push(PendingOff {
-                            fire_at: held.on_beat + voice.delay_beats as f64 + duration,
+                            fire_at: voice_off_fire,
                             canon_note: fire.canon_note,
                             channel: fire.channel,
                         });
                     }
                 }
+                self.last_input_beat = Some(now);
             }
             InputEvent::Cc { .. } => {
                 // Canon ignores CCs in v1; future could honor sustain
@@ -374,6 +459,7 @@ impl Lane for CanonLane {
                 serde_json::json!({
                     "delay_beats": v.delay_beats,
                     "transpose_degrees": v.transpose_degrees,
+                    "time_ratio": v.time_ratio,
                 })
             })
             .collect();
@@ -399,7 +485,13 @@ impl Lane for CanonLane {
                 .filter_map(|item| {
                     let delay = item.get("delay_beats").and_then(|v| v.as_f64())? as f32;
                     let trans = item.get("transpose_degrees").and_then(|v| v.as_i64())? as i8;
-                    Some(CanonVoice::new(delay, trans))
+                    // time_ratio is optional in the wire format so old
+                    // snapshots without it default to strict (1.0).
+                    let ratio = item
+                        .get("time_ratio")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(1.0) as f32;
+                    Some(CanonVoice::with_time_ratio(delay, trans, ratio))
                 })
                 .take(8)
                 .collect();
@@ -749,5 +841,166 @@ mod tests {
         assert_eq!(lane.voices.len(), 1);
         assert!((lane.voices[0].delay_beats - 2.5).abs() < 1e-6);
         assert_eq!(lane.voices[0].transpose_degrees, 4);
+        assert!((lane.voices[0].time_ratio - 1.0).abs() < 1e-6);
+    }
+
+    /// Diminution: voice with time_ratio=0.5 plays the input sequence
+    /// at *double* speed. Two input notes a beat apart fire from the
+    /// canon half a beat apart.
+    #[test]
+    fn diminution_voice_plays_at_double_speed() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_voices(vec![CanonVoice::with_time_ratio(0.0, 0, 0.5)]);
+
+        // Input 1 at beat 0 (also anchors the phrase).
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        // Input 2 at beat 1 (relative_on = 1.0). With ratio 0.5,
+        // canon fire = anchor (0) + delay (0) + 1 * 0.5 = 0.5.
+        advance_to_beat(&transport, 1.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 62,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+
+        // At beat 0.6, voice's emissions for both inputs have matured
+        // (fire times 0.0 and 0.5).
+        advance_to_beat(&transport, 0.6);
+        let out = lane.tick(&world);
+        let notes: Vec<u8> = out
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DispatchOp::NoteOn { note, .. } => Some(*note),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            notes,
+            vec![60, 62],
+            "both diminution emissions should have fired by beat 0.6, got {:?}",
+            notes
+        );
+    }
+
+    /// Augmentation: voice with time_ratio=2.0 plays at half speed.
+    /// Two input notes a beat apart fire from the canon two beats
+    /// apart.
+    #[test]
+    fn augmentation_voice_plays_at_half_speed() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_voices(vec![CanonVoice::with_time_ratio(0.0, 0, 2.0)]);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 1.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 62,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+
+        // Note 1 fires at anchor (0) + delay (0) + 0 * 2 = 0.
+        // Note 2 fires at anchor (0) + delay (0) + 1 * 2 = 2.
+        // At beat 0.5, only the first canon emission has fired.
+        advance_to_beat(&transport, 0.5);
+        let out_early = lane.tick(&world);
+        assert_eq!(out_early.ops.len(), 1, "only note 1 should have fired");
+        match &out_early.ops[0] {
+            DispatchOp::NoteOn { note, .. } => assert_eq!(*note, 60),
+            _ => panic!("expected NoteOn"),
+        }
+
+        // At beat 2.5, the second emission has matured.
+        advance_to_beat(&transport, 2.5);
+        let out_late = lane.tick(&world);
+        assert_eq!(out_late.ops.len(), 1, "note 2 should have fired by 2.5");
+        match &out_late.ops[0] {
+            DispatchOp::NoteOn { note, .. } => assert_eq!(*note, 62),
+            _ => panic!("expected NoteOn"),
+        }
+    }
+
+    /// Phrase anchor resets after silence exceeding the threshold.
+    /// Without this, an augmentation voice would stretch the entire
+    /// performance history into the future. Test: two inputs separated
+    /// by 3 beats of silence (> threshold). Second input should
+    /// anchor a fresh phrase, not extend the original.
+    #[test]
+    fn phrase_anchor_resets_after_silence() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        // 2x augmentation so anchor drift would be obvious.
+        lane.set_voices(vec![CanonVoice::with_time_ratio(0.0, 0, 2.0)]);
+
+        // Input 1 at beat 0 — anchors phrase 1.
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+
+        // Skip past the silence threshold (default 2.0 beats).
+        // Input 2 at beat 5 should reset the anchor to beat 5, NOT
+        // schedule the canon at beat 0 + (5 - 0) * 2 = 10.
+        advance_to_beat(&transport, 5.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 62,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+
+        // Voice 2's canon emission should fire near beat 5 (new phrase
+        // anchor at 5, relative_on = 0, fire_at = 5 + 0 + 0 * 2 = 5).
+        // Drain at beat 5.1.
+        advance_to_beat(&transport, 5.1);
+        let out = lane.tick(&world);
+        // Both note 60 (from phrase 1) AND note 62 (from phrase 2)
+        // should have fired by now. Note 60 fired at beat 0 already;
+        // note 62 fired at 5.0. Check both came through.
+        let notes: Vec<u8> = out
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DispatchOp::NoteOn { note, .. } => Some(*note),
+                _ => None,
+            })
+            .collect();
+        // Note 62 must be in the output, NOT scheduled at beat 10.
+        assert!(
+            notes.contains(&62),
+            "phrase 2 emission should have fired by 5.1; got {:?}",
+            notes
+        );
     }
 }

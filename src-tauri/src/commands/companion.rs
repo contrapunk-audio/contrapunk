@@ -90,10 +90,19 @@ pub fn canon_state(state: State<AppState>) -> Result<serde_json::Value, String> 
 /// One canon voice config from the UI. Mirrors `CanonVoice` in
 /// `src-tauri/src/companion/canon_lane.rs`. Tauri's command codegen
 /// deserializes this from the JS side automatically.
+///
+/// `time_ratio` defaults to 1.0 if the JS side hasn't been updated
+/// to carry it yet — old UIs keep working as strict-imitation canons.
 #[derive(serde::Deserialize)]
 pub struct CanonVoiceArg {
     pub delay_beats: f32,
     pub transpose_degrees: i8,
+    #[serde(default = "default_time_ratio")]
+    pub time_ratio: f32,
+}
+
+fn default_time_ratio() -> f32 {
+    1.0
 }
 
 /// Replace the entire canon voices array. Clamped to 8 voices max
@@ -108,6 +117,7 @@ pub fn canon_set_voices(voices: Vec<CanonVoiceArg>, state: State<AppState>) -> R
             serde_json::json!({
                 "delay_beats": v.delay_beats,
                 "transpose_degrees": v.transpose_degrees,
+                "time_ratio": v.time_ratio,
             })
         })
         .collect();
