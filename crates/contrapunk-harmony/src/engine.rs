@@ -310,6 +310,15 @@ pub struct HarmonyEngine {
     /// fifth fret, where bass-line playing typically ends and chord
     /// work begins.
     bass_register_threshold: u8,
+    /// Per-harmony-voice phase offset, in beats. Added to the effective
+    /// counterpoint beat phase before each voice's `process_with_beat`
+    /// call so different harmony voices can sit ahead/behind the beat
+    /// (real ensemble feel). Length always matches `counterpoint_states`
+    /// — one entry per harmony voice (melody is voice 0 and is not
+    /// offset). All zeros by default — existing users see no change.
+    /// Clamped to [-0.5, 0.5] at the setter so offsets cannot wrap past
+    /// the synthetic-counter's beats-per-bar boundary. (Issue #8b.)
+    voice_offsets: Vec<f32>,
 }
 
 impl HarmonyEngine {
@@ -361,6 +370,7 @@ impl HarmonyEngine {
             harmonic_context: None,
             suppress_bass_register: false,
             bass_register_threshold: 48, // C3 — see field docs.
+            voice_offsets: vec![0.0; harmony_voices],
         }
     }
 
@@ -464,6 +474,7 @@ impl HarmonyEngine {
                 s
             })
             .collect();
+        self.voice_offsets.resize(harmony_voices, 0.0);
         self.clear_active_for_reharm();
         self.voice_leading
             .rebuild_for_voices(count, self.voice_position);
@@ -712,6 +723,36 @@ impl HarmonyEngine {
     pub fn set_bass_register_threshold(&mut self, midi: u8) {
         self.bass_register_threshold = midi.min(127);
         self.clear_active_for_reharm();
+    }
+
+    /// Returns the slice of per-harmony-voice phase offsets, in beats.
+    /// Length equals `voice_count - 1` (one per harmony voice; melody
+    /// has no offset). Indexing: 0 = first harmony voice (above melody),
+    /// 1 = second harmony voice, etc. (Issue #8b.)
+    pub fn voice_offsets(&self) -> &[f32] {
+        &self.voice_offsets
+    }
+
+    /// Returns the phase offset (in beats) for the given harmony-voice
+    /// index, or 0.0 if the index is out of range. Harmony-voice index
+    /// is 0-based, NOT counting the melody voice. (Issue #8b.)
+    pub fn voice_offset(&self, harmony_voice_index: usize) -> f32 {
+        self.voice_offsets
+            .get(harmony_voice_index)
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    /// Sets the phase offset (in beats) for the given harmony-voice
+    /// index. Offset is clamped to [-0.5, 0.5] beats so the resulting
+    /// adjusted phase cannot wrap past the synthetic beat counter's
+    /// beats-per-bar boundary. Out-of-range indices are a no-op.
+    /// Only Species 2-4 use the offset; Species 1 ignores phase.
+    /// (Issue #8b.)
+    pub fn set_voice_offset(&mut self, harmony_voice_index: usize, offset: f32) {
+        if let Some(slot) = self.voice_offsets.get_mut(harmony_voice_index) {
+            *slot = offset.clamp(-0.5, 0.5);
+        }
     }
 
     /// Returns the active counterpoint strictness (Relaxed vs Strict).
@@ -1220,11 +1261,13 @@ impl HarmonyEngine {
                 // chain's direction request.
                 let species = self.counterpoint_species;
                 let beat_phase = self.effective_counterpoint_beat_phase();
+                let voice_offset = self.voice_offsets.get(state_index).copied().unwrap_or(0.0);
+                let voice_phase = beat_phase.map(|p| p + voice_offset as f64);
                 if let Some(state) = self.counterpoint_states.get_mut(state_index) {
                     let result = if matches!(species, CounterpointSpecies::Species1) {
                         state.process_directed(&mut self.scale, note, above)
                     } else {
-                        state.process_with_beat(&mut self.scale, note, beat_phase)
+                        state.process_with_beat(&mut self.scale, note, voice_phase)
                     };
                     if !matches!(species, CounterpointSpecies::Species1) && result.len() > 1 {
                         if let Some(shifted) = Self::octave_shift_to_side(result[1], note, above) {
@@ -2660,6 +2703,118 @@ mod tests {
         assert_eq!(
             with_external, again,
             "External phase should be deterministic and not perturbed by the synthetic counter"
+        );
+    }
+
+    // --- Issue #8b: per-voice phase offset ---
+
+    /// Default state: every harmony voice has a zero offset. Existing
+    /// users must see no behavior change from this slice landing.
+    #[test]
+    fn test_voice_offsets_default_to_zero() {
+        let e = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 3);
+        let offsets = e.voice_offsets();
+        assert_eq!(offsets.len(), 2, "3 voices → 2 harmony voices → 2 offsets");
+        assert!(
+            offsets.iter().all(|&o| o == 0.0),
+            "defaults must be zero so existing output is unchanged"
+        );
+    }
+
+    /// Setter writes round-trip via the getter, including via the
+    /// indexed accessor. Out-of-range indices are a silent no-op
+    /// rather than a panic.
+    #[test]
+    fn test_voice_offset_set_get_roundtrip() {
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 3);
+        e.set_voice_offset(0, 0.25);
+        e.set_voice_offset(1, -0.1);
+        assert_eq!(e.voice_offset(0), 0.25);
+        assert_eq!(e.voice_offset(1), -0.1);
+        // Out-of-range index: no-op, no panic.
+        e.set_voice_offset(99, 0.3);
+        assert_eq!(e.voice_offset(99), 0.0, "out-of-range read returns 0.0");
+    }
+
+    /// Setter clamps offsets to [-0.5, 0.5] beats so callers cannot
+    /// push the effective phase past the synthetic counter's beats-
+    /// per-bar boundary in one call. Future windowing work may relax
+    /// this, but until then the clamp guards against UI bugs feeding
+    /// runaway values.
+    #[test]
+    fn test_voice_offset_clamps_to_half_beat() {
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
+        e.set_voice_offset(0, 3.0);
+        assert_eq!(e.voice_offset(0), 0.5);
+        e.set_voice_offset(0, -3.0);
+        assert_eq!(e.voice_offset(0), -0.5);
+    }
+
+    /// Calling `set_voice_count` after seeding offsets resizes the
+    /// offset vector without panicking. Newly-added voices start at
+    /// zero; removed voices' offsets are dropped (lengths must stay
+    /// aligned with `counterpoint_states` so the per-voice indexing
+    /// in `harmonize_single_directed` stays in range).
+    #[test]
+    fn test_voice_offsets_resize_with_voice_count() {
+        let mut e = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 3);
+        e.set_voice_offset(0, 0.2);
+        e.set_voice_offset(1, -0.2);
+        e.set_voice_count(5);
+        assert_eq!(e.voice_offsets().len(), 4, "5 voices → 4 harmony offsets");
+        assert_eq!(e.voice_offset(0), 0.2, "existing offset preserved");
+        assert_eq!(e.voice_offset(1), -0.2, "existing offset preserved");
+        assert_eq!(e.voice_offset(2), 0.0, "new voice starts at zero");
+        assert_eq!(e.voice_offset(3), 0.0, "new voice starts at zero");
+        e.set_voice_count(2);
+        assert_eq!(e.voice_offsets().len(), 1, "2 voices → 1 harmony offset");
+        assert_eq!(e.voice_offset(0), 0.2, "first offset still preserved");
+    }
+
+    /// Setting a non-zero offset must actually plumb through to
+    /// `process_with_beat` — proven by comparing harmonization output
+    /// against the zero-offset baseline.
+    ///
+    /// Uses Species4 (suspension-based) because its branch logic
+    /// depends on `is_strong = Downbeat | Medium` and threads
+    /// suspension state across beats. Species2's offbeat branch
+    /// falls back to `process()` when that succeeds (which it does
+    /// for diatonic input), so a diatonic Species2 test wouldn't
+    /// catch wiring breaks. A 0.5-beat offset flips every on-beat
+    /// reading to an offbeat reading, which Species4 sees as a
+    /// completely different suspension trajectory.
+    #[test]
+    fn test_voice_offset_changes_species4_output() {
+        let melody = [
+            Note::C4,
+            Note::D4,
+            Note::E4,
+            Note::F4,
+            Note::G4,
+            Note::A4,
+            Note::B4,
+            Note::C5,
+        ];
+
+        let mut baseline = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
+        baseline.set_counterpoint_species(CounterpointSpecies::Species4);
+        let baseline_out: Vec<Vec<Note>> = melody
+            .iter()
+            .map(|&n| baseline.harmonize_note_on(n))
+            .collect();
+
+        let mut shifted = HarmonyEngine::new(Key::C, HarmonyMode::StrictCounterpoint);
+        shifted.set_counterpoint_species(CounterpointSpecies::Species4);
+        shifted.set_voice_offset(0, 0.5); // shift every beat to its offbeat
+        let shifted_out: Vec<Vec<Note>> = melody
+            .iter()
+            .map(|&n| shifted.harmonize_note_on(n))
+            .collect();
+
+        assert_ne!(
+            baseline_out, shifted_out,
+            "0.5-beat offset must change Species4 output vs zero-offset baseline — \
+             otherwise the offset is wired to nowhere"
         );
     }
 }
