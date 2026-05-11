@@ -247,6 +247,7 @@ export interface ContrapunkAdapter {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>
 	): Promise<void>;
 
@@ -260,6 +261,7 @@ export interface ContrapunkAdapter {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>;
 	} | null>;
 

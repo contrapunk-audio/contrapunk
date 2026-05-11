@@ -262,6 +262,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>
 	): Promise<void> {
 		// No-op.
@@ -276,6 +277,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>;
 	} | null> {
 		return null;

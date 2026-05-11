@@ -164,6 +164,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>
 	): Promise<void> {
 		this.send('canonSetVoices', voices);
@@ -177,6 +178,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>;
 	} | null> {
 		return null;

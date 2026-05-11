@@ -106,6 +106,13 @@ pub struct CanonVoiceArg {
     /// names match `parse_harmony_mode` in commands/harmony.rs.
     #[serde(default)]
     pub harmony_mode: Option<String>,
+    /// Cascade reference. None = the voice harmonizes against the
+    /// player's input note. Some(idx) = the voice harmonizes against
+    /// canon voice `idx`'s subject pitch instead. The lane validates
+    /// `idx < self_index` server-side; out-of-range falls back to
+    /// the player.
+    #[serde(default)]
+    pub reference_voice: Option<usize>,
 }
 
 fn default_time_ratio() -> f32 {
@@ -126,6 +133,7 @@ pub fn canon_set_voices(voices: Vec<CanonVoiceArg>, state: State<AppState>) -> R
                 "transpose_degrees": v.transpose_degrees,
                 "time_ratio": v.time_ratio,
                 "harmony_mode": v.harmony_mode,
+                "reference_voice": v.reference_voice,
             })
         })
         .collect();

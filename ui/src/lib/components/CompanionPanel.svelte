@@ -1,28 +1,8 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
+	import { transport } from '$lib/stores/transport.svelte';
 	import PixelSelect from './PixelSelect.svelte';
-
-	// Named-interval options for the Interval dropdown. Maps to
-	// transpose_degrees ∈ [-7, +7] (the diatonic-degree count fed
-	// to Scale::harmonize_smart). UI shows musical names; engine
-	// still operates on degrees.
-	const INTERVAL_OPTIONS: Array<{ value: string; label: string }> = [
-		{ value: '-7', label: 'Octave ↓' },
-		{ value: '-6', label: '7th ↓' },
-		{ value: '-5', label: '6th ↓' },
-		{ value: '-4', label: '5th ↓' },
-		{ value: '-3', label: '4th ↓' },
-		{ value: '-2', label: '3rd ↓' },
-		{ value: '-1', label: '2nd ↓' },
-		{ value: '0', label: 'Unison' },
-		{ value: '1', label: '2nd ↑' },
-		{ value: '2', label: '3rd ↑' },
-		{ value: '3', label: '4th ↑' },
-		{ value: '4', label: '5th ↑' },
-		{ value: '5', label: '6th ↑' },
-		{ value: '6', label: '7th ↑' },
-		{ value: '7', label: 'Octave ↑' }
-	];
+	import Knob from './Knob.svelte';
 
 	// Per-voice harmony mode options (slice G dropdown). Empty value =
 	// inherit the engine's global mode. Names match
@@ -39,6 +19,16 @@
 		{ value: 'BarryHarris', label: 'Barry Harris' }
 	];
 
+	// Knob bounds match canon_lane.rs (delay_beats clamp + time_ratio
+	// clamp). 16 beats covers long delays; 0.125 / 8 time-ratio covers
+	// extreme augmentation / diminution.
+	const DELAY_MIN = 0;
+	const DELAY_MAX = 16;
+	const DELAY_STEP = 0.125;
+	const SPEED_MIN = 0.125;
+	const SPEED_MAX = 8;
+	const SPEED_STEP = 0.125;
+
 	// --- Forms: each is one preset the user picks from the left rail.
 	// Two families today: REACTIVE (canon-style delayed voices) and
 	// HARMONIC (synchronous accompaniment via engine config). Future
@@ -48,7 +38,12 @@
 		name: string;
 		desc: string;
 		family: 'reactive' | 'harmonic';
-		voices?: Array<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>;
+		voices?: Array<{
+			delay_beats: number;
+			transpose_degrees: number;
+			time_ratio: number;
+			harmony_mode?: string | null;
+		}>;
 		harmonic?: {
 			mode: string;
 			scale_mode?: string;
@@ -58,80 +53,158 @@
 		};
 	};
 
-	const TEMPLATES: Form[] = [
+	// Built-in templates showcase the harmony engine. Each one assigns
+	// per-voice harmony_mode so the voices route through Contrapunk's
+	// stateful modes (Counterpoint, BachChorale, ContraryMotion, etc.)
+	// rather than just transposing — that's the point of the engine.
+	const BUILTIN_TEMPLATES: Form[] = [
 		{
-			id: 'single-echo',
-			name: 'Single Echo',
-			desc: '1 voice, +1 beat unison',
-			family: 'reactive',
-			voices: [{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 }]
-		},
-		{
-			id: 'round-3',
-			name: '3-Voice Round',
-			desc: 'Frère Jacques — 3 voices, unison, staggered',
+			id: 'bach-fugue',
+			name: 'Bach Fugue',
+			desc: '3 voices · subject + tonal answer + countersubject (BachChorale × Counterpoint)',
 			family: 'reactive',
 			voices: [
-				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
-				{ delay_beats: 2.0, transpose_degrees: 0, time_ratio: 1.0 },
-				{ delay_beats: 3.0, transpose_degrees: 0, time_ratio: 1.0 }
+				{ delay_beats: 0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: 'BachChorale' },
+				{ delay_beats: 4, transpose_degrees: 4, time_ratio: 1.0, harmony_mode: 'StrictCounterpoint' },
+				{ delay_beats: 8, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: 'BachChorale' }
 			]
 		},
 		{
-			id: 'canon-5th',
-			name: 'Canon at 5th',
-			desc: '2 voices, unison + a fifth above',
+			id: 'modal-cascade',
+			name: 'Modal Cascade',
+			desc: '3 voices · Thirds → Fourths → Counterpoint, each mode stacks',
 			family: 'reactive',
 			voices: [
-				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
-				{ delay_beats: 2.0, transpose_degrees: 4, time_ratio: 1.0 }
+				{ delay_beats: 1, transpose_degrees: 2, time_ratio: 1.0, harmony_mode: 'DiatonicThirds' },
+				{ delay_beats: 2, transpose_degrees: 3, time_ratio: 1.0, harmony_mode: 'DiatonicFourths' },
+				{ delay_beats: 3, transpose_degrees: 4, time_ratio: 1.0, harmony_mode: 'StrictCounterpoint' }
 			]
 		},
 		{
-			id: 'triad-stack',
-			name: 'Triad Stack',
-			desc: '3 voices simultaneously at unison/third/fifth',
+			id: 'contrary-mirror',
+			name: 'Contrary Mirror',
+			desc: '2 voices · ContraryMotion above + below — opposing line motion',
 			family: 'reactive',
 			voices: [
-				{ delay_beats: 0.5, transpose_degrees: 0, time_ratio: 1.0 },
-				{ delay_beats: 0.5, transpose_degrees: 2, time_ratio: 1.0 },
-				{ delay_beats: 0.5, transpose_degrees: 4, time_ratio: 1.0 }
+				{ delay_beats: 1, transpose_degrees: 4, time_ratio: 1.0, harmony_mode: 'ContraryMotion' },
+				{ delay_beats: 2, transpose_degrees: -4, time_ratio: 1.0, harmony_mode: 'ContraryMotion' }
 			]
 		},
 		{
-			id: 'augment',
+			id: 'augmentation-canon',
 			name: 'Augmentation Canon',
-			desc: '2 voices: unison + a 2× slower copy',
+			desc: 'Subject + 2× slower answer · Bach mensuration trick',
 			family: 'reactive',
 			voices: [
-				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
-				{ delay_beats: 1.0, transpose_degrees: -7, time_ratio: 2.0 }
+				{ delay_beats: 0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: 'StrictCounterpoint' },
+				{ delay_beats: 1, transpose_degrees: 4, time_ratio: 2.0, harmony_mode: 'BachChorale' }
 			]
 		},
 		{
-			id: 'dimin',
-			name: 'Diminution Canon',
-			desc: '2 voices: unison + a 2× faster copy',
+			id: 'diminution-fugue',
+			name: 'Diminution Fugue',
+			desc: 'Subject + 2× faster stretto · counter-running imitation',
 			family: 'reactive',
 			voices: [
-				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
-				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 0.5 }
+				{ delay_beats: 0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: 'StrictCounterpoint' },
+				{ delay_beats: 1, transpose_degrees: 4, time_ratio: 0.5, harmony_mode: 'StrictCounterpoint' }
 			]
 		},
 		{
-			id: 'bach-3',
-			name: 'Bach 3-Voice',
-			desc: '3 voices at unison/fifth/octave, +1/+2/+3 beats',
+			id: 'functional-pillar',
+			name: 'Functional Pillar',
+			desc: '3 voices · I–IV–V driven harmony · root + third + fifth via FunctionalHarmony',
 			family: 'reactive',
 			voices: [
-				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
-				{ delay_beats: 2.0, transpose_degrees: 4, time_ratio: 1.0 },
-				{ delay_beats: 3.0, transpose_degrees: 7, time_ratio: 1.0 }
+				{ delay_beats: 0.5, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: 'FunctionalHarmony' },
+				{ delay_beats: 0.5, transpose_degrees: 2, time_ratio: 1.0, harmony_mode: 'FunctionalHarmony' },
+				{ delay_beats: 0.5, transpose_degrees: 4, time_ratio: 1.0, harmony_mode: 'FunctionalHarmony' }
+			]
+		},
+		{
+			id: 'barry-harris',
+			name: 'Barry Harris Stack',
+			desc: '3 voices · 6th-diminished system · jazz tertian harmony',
+			family: 'reactive',
+			voices: [
+				{ delay_beats: 0.5, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: 'BarryHarris' },
+				{ delay_beats: 0.5, transpose_degrees: 2, time_ratio: 1.0, harmony_mode: 'BarryHarris' },
+				{ delay_beats: 0.5, transpose_degrees: 5, time_ratio: 1.0, harmony_mode: 'BarryHarris' }
+			]
+		},
+		{
+			id: 'mensuration-trinity',
+			name: 'Mensuration Trinity',
+			desc: '3 voices · 1× / 2× / 0.5× speeds — Ockeghem-style proportional canon',
+			family: 'reactive',
+			voices: [
+				{ delay_beats: 0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: 'StrictCounterpoint' },
+				{ delay_beats: 2, transpose_degrees: 4, time_ratio: 2.0, harmony_mode: 'BachChorale' },
+				{ delay_beats: 1, transpose_degrees: -7, time_ratio: 0.5, harmony_mode: 'ContraryMotion' }
 			]
 		}
 	];
 
 	let selectedTemplate = $state<string | null>(null);
+
+	// User-defined forms — saved snapshots of the current voice config.
+	// Stored separately from the main settings so they survive schema
+	// migrations and a stale Form payload can't break the engine.
+	const USER_FORMS_KEY = 'contrapunk-companion-user-forms';
+	let userForms = $state<Form[]>(loadUserForms());
+	let showSaveForm = $state(false);
+	let newFormName = $state('');
+
+	function loadUserForms(): Form[] {
+		try {
+			const raw = localStorage.getItem(USER_FORMS_KEY);
+			if (!raw) return [];
+			const parsed = JSON.parse(raw);
+			if (!Array.isArray(parsed)) return [];
+			return parsed.filter(
+				(f): f is Form =>
+					f &&
+					typeof f.id === 'string' &&
+					typeof f.name === 'string' &&
+					Array.isArray(f.voices)
+			);
+		} catch {
+			return [];
+		}
+	}
+
+	function persistUserForms() {
+		try {
+			localStorage.setItem(USER_FORMS_KEY, JSON.stringify(userForms));
+		} catch {
+			/* localStorage full / unavailable — ignore */
+		}
+	}
+
+	function saveCurrentAsForm() {
+		const name = newFormName.trim();
+		if (!name) return;
+		const voices = engine.canonVoices.map((v) => ({
+			delay_beats: v.delay_beats,
+			transpose_degrees: v.transpose_degrees,
+			time_ratio: v.time_ratio
+		}));
+		const id = `user-${Date.now()}`;
+		const desc = `${voices.length} voice${voices.length === 1 ? '' : 's'} — custom`;
+		userForms = [...userForms, { id, name, desc, family: 'reactive', voices }];
+		persistUserForms();
+		newFormName = '';
+		showSaveForm = false;
+		selectedTemplate = id;
+	}
+
+	function deleteUserForm(id: string) {
+		userForms = userForms.filter((f) => f.id !== id);
+		persistUserForms();
+		if (selectedTemplate === id) selectedTemplate = null;
+	}
+
+	let TEMPLATES = $derived([...BUILTIN_TEMPLATES, ...userForms]);
 
 	async function applyTemplate(t: Form) {
 		selectedTemplate = t.id;
@@ -165,16 +238,37 @@
 	}
 
 	// --- Timeline geometry ---
-	// Show a 4-beat window. Each voice gets a horizontal track. The
-	// player melody is track 0 (always at beat 0). Each canon voice
-	// shows its entry as a dot at its delay offset. Diminution /
-	// augmentation are hinted by a trailing arrow on the dot.
-	const TIMELINE_BEATS = 4;
+	// Timeline window auto-fits the longest voice delay; minimum window
+	// is 2 bars at the active transport time signature, so the grid
+	// reflects the actual meter (no hardcoded 4/4 assumption). Each
+	// voice gets a horizontal track. Player melody is track 0
+	// (always at beat 0). Diminution / augmentation are hinted by a
+	// trailing arrow on the dot.
+	let timelineBeats = $derived.by(() => {
+		const bpb = Math.max(1, transport.beatsPerBar);
+		const minWindow = bpb * 2; // 2 bars at current meter
+		const maxDelay = engine.canonVoices.reduce(
+			(acc, v) => Math.max(acc, v.delay_beats),
+			0
+		);
+		// Round up to the next bar so the rightmost grid line is a bar line.
+		const padded = Math.max(minWindow, Math.ceil((maxDelay + 0.5) / bpb) * bpb);
+		return padded;
+	});
+
+	let gridTicks = $derived.by(() => {
+		const bpb = Math.max(1, transport.beatsPerBar);
+		const total = timelineBeats;
+		return Array.from({ length: total + 1 }, (_, i) => ({
+			beat: i,
+			isBar: i % bpb === 0,
+			barIdx: Math.floor(i / bpb)
+		}));
+	});
 
 	function entryX(beats: number): number {
-		// Map 0..TIMELINE_BEATS into 0..100% of timeline width.
-		const clamped = Math.max(0, Math.min(TIMELINE_BEATS, beats));
-		return (clamped / TIMELINE_BEATS) * 100;
+		const clamped = Math.max(0, Math.min(timelineBeats, beats));
+		return (clamped / timelineBeats) * 100;
 	}
 </script>
 
@@ -202,17 +296,63 @@
 		     populate the timeline + voice cards on the right; harmonic
 		     forms reconfigure the engine and don't surface here. -->
 		<aside class="templates">
-			<div class="section-header font-ui">FORMS</div>
-			{#each TEMPLATES as t (t.id)}
+			<div class="section-header font-ui">
+				FORMS
 				<button
-					class="template-row"
-					class:active={selectedTemplate === t.id}
-					onclick={() => applyTemplate(t)}
-					title={t.desc}
+					class="pixel-btn"
+					onclick={() => {
+						showSaveForm = !showSaveForm;
+						newFormName = '';
+					}}
+					title="Save current voice configuration as a new form"
 				>
-					<div class="template-name font-ui">{t.name}</div>
-					<div class="template-desc font-code">{t.desc}</div>
+					+ Save
 				</button>
+			</div>
+
+			{#if showSaveForm}
+				<div class="save-form font-code">
+					<input
+						type="text"
+						bind:value={newFormName}
+						placeholder="Form name…"
+						class="pixel-input"
+						onkeydown={(e) => {
+							if (e.key === 'Enter') saveCurrentAsForm();
+							if (e.key === 'Escape') showSaveForm = false;
+						}}
+					/>
+					<button class="pixel-btn" onclick={saveCurrentAsForm} disabled={!newFormName.trim()}>
+						Save
+					</button>
+				</div>
+			{/if}
+
+			{#each TEMPLATES as t (t.id)}
+				{@const isUser = t.id.startsWith('user-')}
+				<div class="template-row-wrap" class:user-form={isUser}>
+					<button
+						class="template-row"
+						class:active={selectedTemplate === t.id}
+						onclick={() => applyTemplate(t)}
+						title={t.desc}
+					>
+						<div class="template-name font-ui">
+							{t.name}
+							{#if isUser}<span class="user-badge font-code">USER</span>{/if}
+						</div>
+						<div class="template-desc font-code">{t.desc}</div>
+					</button>
+					{#if isUser}
+						<button
+							class="pixel-btn delete-form"
+							onclick={() => deleteUserForm(t.id)}
+							title="Delete this form"
+						>
+							×
+						</button>
+					{/if}
+				</div>
 			{/each}
 		</aside>
 
@@ -239,13 +379,23 @@
 			<div class="timeline-card">
 				<div class="section-header font-ui">
 					ENTRY TIMELINE
-					<span class="hint font-code">player → delayed voices (4-beat window)</span>
+					<span class="hint font-code">
+						player → delayed voices ({timelineBeats} beat{timelineBeats === 1 ? '' : 's'} · {transport.beatsPerBar}/{transport.beatUnit})
+					</span>
 				</div>
 				<div class="timeline">
-					<!-- Beat grid lines -->
-					{#each Array(TIMELINE_BEATS + 1) as _, i (i)}
-						<div class="grid-line" style="left: {(i / TIMELINE_BEATS) * 100}%">
-							<span class="grid-label font-code">{i}</span>
+					<!-- Beat / bar grid lines. Bar lines are brighter and
+					     labeled `1`, `2`, … (bar number). Beat ticks within
+					     a bar get a small subdivision label. -->
+					{#each gridTicks as t (t.beat)}
+						<div
+							class="grid-line"
+							class:bar-line={t.isBar}
+							style="left: {(t.beat / timelineBeats) * 100}%"
+						>
+							<span class="grid-label font-code">
+								{t.isBar ? t.barIdx + 1 : ''}
+							</span>
 						</div>
 					{/each}
 
@@ -311,54 +461,37 @@
 								</button>
 							</div>
 
-							<div class="voice-param">
-								<span class="param-label font-ui">Delay</span>
-								<input
-									type="range"
-									min="0.25"
-									max="4"
-									step="0.25"
+							<div class="voice-knobs">
+								<Knob
 									value={voice.delay_beats}
-									oninput={(e) =>
-										engine.updateCanonVoice(i, {
-											delay_beats: parseFloat((e.target as HTMLInputElement).value)
-										})}
-									class="pixel-range"
+									min={DELAY_MIN}
+									max={DELAY_MAX}
+									step={DELAY_STEP}
+									defaultValue={1}
+									label="Delay"
+									accent="var(--color-accent-magenta, #ff33aa)"
+									size={56}
+									format={(v) =>
+										v < 1 ? `${v.toFixed(2)}b` : `${v.toFixed(2)}b`}
+									onchange={(v) => engine.updateCanonVoice(i, { delay_beats: v })}
 								/>
-								<span class="param-readout font-code">
-									{voice.delay_beats.toFixed(2)} beat{voice.delay_beats === 1 ? '' : 's'}
-								</span>
-							</div>
-
-							<div class="voice-param voice-param-mode">
-								<span class="param-label font-ui">Interval</span>
-								<PixelSelect
-									options={INTERVAL_OPTIONS}
-									value={String(voice.transpose_degrees)}
-									placeholder="Unison"
-									small={true}
-									onchange={(v) =>
-										engine.updateCanonVoice(i, {
-											transpose_degrees: parseInt(v, 10)
-										})}
-								/>
-							</div>
-
-							<div class="voice-param">
-								<span class="param-label font-ui">Speed</span>
-								<input
-									type="range"
-									min="0.25"
-									max="4"
-									step="0.25"
+								<Knob
 									value={voice.time_ratio}
-									oninput={(e) =>
-										engine.updateCanonVoice(i, {
-											time_ratio: parseFloat((e.target as HTMLInputElement).value)
-										})}
-									class="pixel-range"
+									min={SPEED_MIN}
+									max={SPEED_MAX}
+									step={SPEED_STEP}
+									defaultValue={1}
+									label="Speed"
+									accent="var(--color-accent-cyan, #33ddff)"
+									size={56}
+									format={(v) =>
+										Math.abs(v - 1) < 0.01
+											? '1×'
+											: v < 1
+												? `${(1 / v).toFixed(2)}×↑`
+												: `${v.toFixed(2)}×↓`}
+									onchange={(v) => engine.updateCanonVoice(i, { time_ratio: v })}
 								/>
-								<span class="param-readout font-code">{ratioLabel(voice.time_ratio)}</span>
 							</div>
 
 							<div class="voice-param voice-param-mode">
@@ -371,6 +504,26 @@
 									onchange={(v) =>
 										engine.updateCanonVoice(i, {
 											harmony_mode: v === '' ? null : v
+										})}
+								/>
+							</div>
+
+							<div class="voice-param voice-param-mode">
+								<span class="param-label font-ui">Relative</span>
+								<PixelSelect
+									options={[
+										{ value: '', label: 'Player' },
+										...Array.from({ length: i }, (_, k) => ({
+											value: String(k),
+											label: `V${k + 1}`
+										}))
+									]}
+									value={voice.reference_voice != null ? String(voice.reference_voice) : ''}
+									placeholder="Player"
+									small={true}
+									onchange={(v) =>
+										engine.updateCanonVoice(i, {
+											reference_voice: v === '' ? null : parseInt(v, 10)
 										})}
 								/>
 							</div>
@@ -457,6 +610,13 @@
 		margin-bottom: 6px;
 	}
 
+	.template-row-wrap {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 2px;
+		align-items: stretch;
+	}
+
 	.template-row {
 		display: flex;
 		flex-direction: column;
@@ -468,6 +628,7 @@
 		text-align: left;
 		cursor: pointer;
 		color: inherit;
+		min-width: 0;
 	}
 
 	.template-row:hover {
@@ -477,6 +638,43 @@
 	.template-row.active {
 		border-color: var(--color-accent-magenta, #ff33aa);
 		background: rgba(255, 51, 170, 0.1);
+	}
+
+	.user-badge {
+		font-size: 0.6em;
+		color: var(--color-accent-cyan, #33ddff);
+		opacity: 0.8;
+		letter-spacing: 0.1em;
+		margin-left: 4px;
+	}
+
+	.delete-form {
+		font-size: var(--font-size-sm);
+		padding: 2px 6px;
+		min-width: 0;
+		align-self: center;
+	}
+
+	.save-form {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 4px;
+		padding: 4px 0 6px;
+		border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+		margin-bottom: 4px;
+	}
+
+	.pixel-input {
+		background: var(--color-widget-bg);
+		border: 1px solid var(--color-border);
+		color: var(--color-text);
+		padding: 4px 6px;
+		font-size: var(--font-size-xs);
+		font-family: inherit;
+	}
+	.pixel-input:focus {
+		outline: none;
+		border-color: var(--color-accent-cyan, #33ddff);
 	}
 
 	.template-name {
@@ -555,6 +753,11 @@
 		width: 1px;
 		background: rgba(255, 255, 255, 0.06);
 		pointer-events: none;
+	}
+
+	.grid-line.bar-line {
+		background: rgba(255, 255, 255, 0.18);
+		width: 1px;
 	}
 
 	.grid-label {
@@ -651,6 +854,14 @@
 		padding: 2px 6px;
 	}
 
+	.voice-knobs {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		justify-items: center;
+		padding: 4px 0 6px;
+	}
+
 	.voice-param {
 		display: grid;
 		grid-template-columns: 4.5em 1fr 5.5em;
@@ -661,17 +872,6 @@
 	.param-label {
 		color: var(--color-text-secondary);
 		font-size: var(--font-size-xs);
-	}
-
-	.param-readout {
-		font-size: var(--font-size-xs);
-		text-align: right;
-		opacity: 0.8;
-	}
-
-	.pixel-range {
-		width: 100%;
-		height: 4px;
 	}
 
 	.voice-param-mode {

@@ -513,9 +513,9 @@ function computeScaleNotes(key: KeyName, scaleMode: ScaleModeName): number[] {
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
-// Version 3: companion + canon state (canonEnabled, companionEnabled,
-// canonVoices). Older payloads fall back to defaults on migration.
-const SETTINGS_VERSION = 3;
+// Version 4: canon voices grew reference_voice (cascade) and per-voice
+// harmony_mode is now persisted. Older payloads fall back to defaults.
+const SETTINGS_VERSION = 4;
 
 interface PersistedSettings {
 	version: number;
@@ -540,6 +540,7 @@ interface PersistedSettings {
 		transpose_degrees: number;
 		time_ratio: number;
 		harmony_mode?: string | null | undefined;
+		reference_voice?: number | null | undefined;
 	}>;
 }
 
@@ -560,7 +561,15 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	counterpointStrictness: 'Strict',
 	companionEnabled: false,
 	canonEnabled: false,
-	canonVoices: [{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: null }]
+	canonVoices: [
+		{
+			delay_beats: 1.0,
+			transpose_degrees: 0,
+			time_ratio: 1.0,
+			harmony_mode: null,
+			reference_voice: null
+		}
+	]
 };
 
 // Enum validation sets
@@ -656,14 +665,25 @@ function loadSettings(): PersistedSettings | null {
 								typeof (v as Record<string, unknown>).delay_beats === 'number' &&
 								typeof (v as Record<string, unknown>).transpose_degrees === 'number'
 						)
-						.map((v: { delay_beats: number; transpose_degrees: number; time_ratio?: number }) => ({
-							delay_beats: Math.max(0, Math.min(8, v.delay_beats)),
-							transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
-							time_ratio:
-								typeof v.time_ratio === 'number'
-									? Math.max(0.25, Math.min(4, v.time_ratio))
-									: 1.0
-						}))
+						.map(
+							(v: {
+								delay_beats: number;
+								transpose_degrees: number;
+								time_ratio?: number;
+								harmony_mode?: string | null;
+								reference_voice?: number | null;
+							}) => ({
+								delay_beats: Math.max(0, Math.min(16, v.delay_beats)),
+								transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
+								time_ratio:
+									typeof v.time_ratio === 'number'
+										? Math.max(0.125, Math.min(8, v.time_ratio))
+										: 1.0,
+								harmony_mode: typeof v.harmony_mode === 'string' ? v.harmony_mode : null,
+								reference_voice:
+									typeof v.reference_voice === 'number' ? v.reference_voice : null
+							})
+						)
 				: SETTINGS_DEFAULTS.canonVoices
 		};
 	} catch {
@@ -729,8 +749,17 @@ class EngineStore {
 			transpose_degrees: number;
 			time_ratio: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>
-	>([{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: null }]);
+	>([
+		{
+			delay_beats: 1.0,
+			transpose_degrees: 0,
+			time_ratio: 1.0,
+			harmony_mode: null,
+			reference_voice: null
+		}
+	]);
 
 	// -- Transport --
 	isRunning = $state(false);
@@ -770,7 +799,8 @@ class EngineStore {
 				delay_beats: v.delay_beats,
 				transpose_degrees: v.transpose_degrees,
 				time_ratio: v.time_ratio,
-				harmony_mode: v.harmony_mode ?? null
+				harmony_mode: v.harmony_mode ?? null,
+				reference_voice: v.reference_voice ?? null
 			}))
 		});
 	}
@@ -1057,15 +1087,26 @@ class EngineStore {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>
 	) {
 		const prev = this.canonVoices;
-		const clamped = voices.slice(0, 8).map((v) => ({
-			delay_beats: Math.max(0, Math.min(8, v.delay_beats)),
-			transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
-			time_ratio: Math.max(0.25, Math.min(4, v.time_ratio ?? 1.0)),
-			harmony_mode: v.harmony_mode ?? null
-		}));
+		const clamped = voices.slice(0, 8).map((v, idx) => {
+			// reference_voice must be < this voice's own index to avoid
+			// circular cascades. Out-of-range or self-referential values
+			// fall back to Player.
+			let ref: number | null = null;
+			if (typeof v.reference_voice === 'number' && v.reference_voice >= 0 && v.reference_voice < idx) {
+				ref = v.reference_voice;
+			}
+			return {
+				delay_beats: Math.max(0, Math.min(16, v.delay_beats)),
+				transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
+				time_ratio: Math.max(0.125, Math.min(8, v.time_ratio ?? 1.0)),
+				harmony_mode: v.harmony_mode ?? null,
+				reference_voice: ref
+			};
+		});
 		this.canonVoices = clamped;
 		try {
 			await adapter.canonSetVoices(clamped);
@@ -1080,7 +1121,13 @@ class EngineStore {
 	async addCanonVoice() {
 		const next = [
 			...this.canonVoices,
-			{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0, harmony_mode: null }
+			{
+				delay_beats: 1.0,
+				transpose_degrees: 0,
+				time_ratio: 1.0,
+				harmony_mode: null,
+				reference_voice: null
+			}
 		];
 		await this.setCanonVoices(next);
 	}
@@ -1101,6 +1148,7 @@ class EngineStore {
 			transpose_degrees: number;
 			time_ratio: number;
 			harmony_mode: string | null;
+			reference_voice: number | null;
 		}>
 	) {
 		const next = this.canonVoices.map((v, i) => (i === idx ? { ...v, ...patch } : v));
@@ -1119,15 +1167,23 @@ class EngineStore {
 				this.canonTransposeDegrees = s.transpose_degrees;
 				if (Array.isArray(s.voices) && s.voices.length > 0) {
 					// Normalize the wire shape: older builds may not send
-					// `time_ratio`, so fill in the strict-imitation default.
-					this.canonVoices = s.voices.map((v) => ({
-						delay_beats: v.delay_beats,
-						transpose_degrees: v.transpose_degrees,
-						time_ratio:
-							typeof (v as { time_ratio?: number }).time_ratio === 'number'
-								? (v as { time_ratio: number }).time_ratio
-								: 1.0
-					}));
+					// `time_ratio` / `harmony_mode` / `reference_voice`, so
+					// fall back to the strict-imitation defaults.
+					this.canonVoices = s.voices.map((v) => {
+						const rec = v as Record<string, unknown>;
+						return {
+							delay_beats: v.delay_beats,
+							transpose_degrees: v.transpose_degrees,
+							time_ratio:
+								typeof rec.time_ratio === 'number' ? (rec.time_ratio as number) : 1.0,
+							harmony_mode:
+								typeof rec.harmony_mode === 'string' ? (rec.harmony_mode as string) : null,
+							reference_voice:
+								typeof rec.reference_voice === 'number'
+									? (rec.reference_voice as number)
+									: null
+						};
+					});
 				}
 			}
 		} catch {

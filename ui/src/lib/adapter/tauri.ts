@@ -263,6 +263,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>
 	): Promise<void> {
 		try {
@@ -281,6 +282,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 			transpose_degrees: number;
 			time_ratio?: number;
 			harmony_mode?: string | null;
+			reference_voice?: number | null;
 		}>;
 	} | null> {
 		try {
@@ -291,11 +293,12 @@ export class TauriAdapter implements ContrapunkAdapter {
 				delay_beats: number;
 				transpose_degrees: number;
 				voices?: Array<{
-			delay_beats: number;
-			transpose_degrees: number;
-			time_ratio?: number;
-			harmony_mode?: string | null;
-		}>;
+					delay_beats: number;
+					transpose_degrees: number;
+					time_ratio?: number;
+					harmony_mode?: string | null;
+					reference_voice?: number | null;
+				}>;
 			};
 		} catch (e) {
 			throw new Error(`Failed to read canon state: ${e}`);

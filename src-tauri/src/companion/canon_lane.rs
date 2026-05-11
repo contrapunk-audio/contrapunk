@@ -44,7 +44,7 @@ use crate::state::VoiceOutputTarget;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CanonVoice {
     /// Beats to wait between the player's NoteOn and this voice's
-    /// NoteOn. Clamped to [0.0, 8.0].
+    /// NoteOn. Clamped to [0.0, 16.0] beats.
     pub delay_beats: f32,
     /// Diatonic transpose for this voice's emissions. Clamped to
     /// [-7, 7] degrees.
@@ -56,7 +56,7 @@ pub struct CanonVoice {
     /// voice's relative-to-phrase-anchor timing is multiplied by this
     /// ratio, so the whole sequence stretches or compresses
     /// proportionally — not just individual notes. Clamped to
-    /// [0.25, 4.0] (two octaves of speed, useful range).
+    /// [0.125, 8.0] (six octaves of speed, useful range).
     pub time_ratio: f32,
     /// Optional per-voice harmony-mode override. `None` (default) =
     /// inherit the engine's global mode for this voice's harmony
@@ -92,9 +92,9 @@ impl CanonVoice {
 
     pub fn with_time_ratio(delay_beats: f32, transpose_degrees: i8, time_ratio: f32) -> Self {
         Self {
-            delay_beats: delay_beats.clamp(0.0, 8.0),
+            delay_beats: delay_beats.clamp(0.0, 16.0),
             transpose_degrees: transpose_degrees.clamp(-7, 7),
-            time_ratio: time_ratio.clamp(0.25, 4.0),
+            time_ratio: time_ratio.clamp(0.125, 8.0),
             harmony_mode: None,
             reference_voice: None,
         }
@@ -376,7 +376,7 @@ impl CanonLane {
         if self.voices.is_empty() {
             self.voices.push(CanonVoice::default());
         }
-        self.voices[0].delay_beats = beats.clamp(0.0, 8.0);
+        self.voices[0].delay_beats = beats.clamp(0.0, 16.0);
     }
 
     pub fn set_transpose(&mut self, degrees: i8) {
@@ -429,12 +429,12 @@ impl CanonLane {
         input_note: u8,
         voice_idx: usize,
         world: &WorldState,
-    ) -> Vec<u8> {
+    ) -> (u8, Vec<u8>) {
         // Ensure per-voice engines are sized + synced with the global.
         self.sync_voice_engines(world);
 
         let Some(voice) = self.voices.get(voice_idx).copied() else {
-            return vec![input_note];
+            return (input_note, vec![input_note]);
         };
 
         // Stage 1: subject pitch = input + transpose. Diatonic shift
@@ -460,18 +460,21 @@ impl CanonLane {
         // suspension history — stateful modes accumulate per voice
         // rather than thrashing a shared global. v1 used the global
         // engine; this is the slice that fixes that.
-        let Ok(subject_note) = Note::try_from(subject_midi) else {
-            return vec![subject_midi];
+        let stack = match Note::try_from(subject_midi) {
+            Ok(subject_note) => match self.voice_engines.get_mut(voice_idx) {
+                Some(ve) => {
+                    let harmonized = ve.harmonize(subject_note);
+                    if harmonized.is_empty() {
+                        vec![subject_midi]
+                    } else {
+                        harmonized.iter().map(|n| u8::from(*n)).collect()
+                    }
+                }
+                None => vec![subject_midi],
+            },
+            Err(_) => vec![subject_midi],
         };
-        let Some(ve) = self.voice_engines.get_mut(voice_idx) else {
-            return vec![subject_midi];
-        };
-        let stack = ve.harmonize(subject_note);
-        if stack.is_empty() {
-            vec![subject_midi]
-        } else {
-            stack.iter().map(|n| u8::from(*n)).collect()
-        }
+        (subject_midi, stack)
     }
 
     /// Insert a PendingOn into the deque in fire-order. Linear scan
@@ -547,9 +550,24 @@ impl Lane for CanonLane {
                 let voices_snapshot: Vec<(usize, CanonVoice)> =
                     self.voices.iter().copied().enumerate().collect();
                 let mut held_voices: Vec<HeldVoiceFire> = Vec::with_capacity(voices_snapshot.len());
+                // Cascade table: subject MIDI emitted by each prior
+                // voice. When voice K declares reference_voice = R, it
+                // harmonizes against subjects[R] instead of the player.
+                let mut subjects: Vec<u8> = Vec::with_capacity(voices_snapshot.len());
                 for (voice_idx, voice) in voices_snapshot {
+                    // Pick the effective input for this voice's subject
+                    // computation: the referenced earlier voice's
+                    // subject (cascade) if set + valid, else the
+                    // player's note. The deserializer + UI clamp
+                    // reference_voice to strictly-earlier indices, so
+                    // the lookup is safe; the .get() guard is belt-
+                    // and-braces against runtime drift.
+                    let effective_input = voice
+                        .reference_voice
+                        .and_then(|r| subjects.get(r).copied())
+                        .unwrap_or(note);
                     // Stage 1: compute the voice's canon "subject" pitch
-                    // (player input + transpose, routed through
+                    // (effective input + transpose, routed through
                     // harmonize_smart so out-of-scale input uses modal
                     // interchange when enabled).
                     // Stage 2: route the subject through the engine's
@@ -558,7 +576,9 @@ impl Lane for CanonLane {
                     // voice canon where each entry isn't just one
                     // delayed line but a 2+ note chord. Interpretation B
                     // confirmed by the user 2026-05-12.
-                    let stack = self.compute_voice_stack(note, voice_idx, world);
+                    let (subject_midi, stack) =
+                        self.compute_voice_stack(effective_input, voice_idx, world);
+                    subjects.push(subject_midi);
                     // Per-voice fire time is anchor-relative and scaled
                     // by this voice's time_ratio. Voice with ratio 2.0
                     // (augmentation) plays at half speed.
@@ -675,6 +695,7 @@ impl Lane for CanonLane {
                     "transpose_degrees": v.transpose_degrees,
                     "time_ratio": v.time_ratio,
                     "harmony_mode": v.harmony_mode.map(harmony_mode_to_str),
+                    "reference_voice": v.reference_voice,
                 })
             })
             .collect();
@@ -697,7 +718,8 @@ impl Lane for CanonLane {
         if let Some(arr) = state.get("voices").and_then(|v| v.as_array()) {
             let voices: Vec<CanonVoice> = arr
                 .iter()
-                .filter_map(|item| {
+                .enumerate()
+                .filter_map(|(idx, item)| {
                     let delay = item.get("delay_beats").and_then(|v| v.as_f64())? as f32;
                     let trans = item.get("transpose_degrees").and_then(|v| v.as_i64())? as i8;
                     // time_ratio is optional in the wire format so old
@@ -714,6 +736,21 @@ impl Lane for CanonLane {
                         .get("harmony_mode")
                         .and_then(|v| v.as_str())
                         .and_then(harmony_mode_from_str);
+                    // reference_voice is optional. Must point to a
+                    // strictly earlier voice (idx < self_idx) to avoid
+                    // circular cascades — out-of-range, self-ref, and
+                    // negative values fall back to None (Player).
+                    voice.reference_voice = item
+                        .get("reference_voice")
+                        .and_then(|v| v.as_u64())
+                        .and_then(|r| {
+                            let r = r as usize;
+                            if r < idx {
+                                Some(r)
+                            } else {
+                                None
+                            }
+                        });
                     Some(voice)
                 })
                 .take(8)
