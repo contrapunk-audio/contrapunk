@@ -165,6 +165,35 @@ impl Companion {
         }
     }
 
+    /// Apply a partial JSON state blob to the first Lane matching the
+    /// given `type_id`. Used by per-Lane Tauri command handlers to
+    /// update specific config fields without needing to downcast the
+    /// `Box<dyn Lane>` to a concrete type. The Lane's
+    /// `deserialize_state` is expected to merge (skip missing fields)
+    /// rather than fully replace; see `CanonLane::deserialize_state`
+    /// for the canonical pattern.
+    pub fn configure_lane(
+        &mut self,
+        type_id: &str,
+        state: serde_json::Value,
+    ) -> Result<(), String> {
+        for lane in self.lanes.iter_mut() {
+            if lane.type_id() == type_id {
+                return lane.deserialize_state(state);
+            }
+        }
+        Err(format!("No lane with type_id '{}' registered", type_id))
+    }
+
+    /// Read the current state of the first Lane matching the type_id.
+    /// Returns `None` if no such Lane is registered.
+    pub fn lane_state(&self, type_id: &str) -> Option<serde_json::Value> {
+        self.lanes
+            .iter()
+            .find(|l| l.type_id() == type_id)
+            .map(|l| l.serialize_state())
+    }
+
     /// Snapshot every Lane's state. Order matches `lanes`.
     pub fn save(&self) -> CompanionState {
         CompanionState {

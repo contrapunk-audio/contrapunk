@@ -78,6 +78,10 @@ fn main() {
             commands::harmony::set_bass_register_threshold,
             commands::companion::companion_set_enabled,
             commands::companion::companion_is_enabled,
+            commands::companion::canon_set_enabled,
+            commands::companion::canon_set_delay,
+            commands::companion::canon_set_transpose,
+            commands::companion::canon_state,
             commands::harmony::set_detune,
             commands::harmony::get_detune,
             // MIDI device management

@@ -41,6 +41,49 @@ pub fn companion_is_enabled(state: State<AppState>) -> Result<bool, String> {
     Ok(companion.enabled.load(Ordering::Acquire))
 }
 
+// === CanonLane (#3) commands =================================================
+// The canon voice is the first concrete Lane shipped on the Companion.
+// These commands let the UI configure delay / transpose / enabled
+// without needing a separate adapter or downcast. Behind the scenes
+// they all funnel through `Companion::configure_lane("canon", ...)`
+// which applies a partial JSON blob to the lane's `deserialize_state`.
+
+/// Enable or disable the canon voice. Requires `companion_set_enabled(true)`
+/// for the lane to actually fire — this is the per-lane gate inside
+/// the Companion. Defaults to disabled.
+#[tauri::command]
+pub fn canon_set_enabled(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.configure_lane("canon", serde_json::json!({ "enabled": enabled }))
+}
+
+/// Set the canon delay in beats (0.0 .. 8.0). Out-of-range values are
+/// clamped engine-side. (#3)
+#[tauri::command]
+pub fn canon_set_delay(beats: f32, state: State<AppState>) -> Result<(), String> {
+    let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.configure_lane("canon", serde_json::json!({ "delay_beats": beats }))
+}
+
+/// Set the canon diatonic transpose in scale degrees (-7 .. +7).
+/// Reserved for v2 — v1 ignores the value (emits unison). (#3)
+#[tauri::command]
+pub fn canon_set_transpose(degrees: i8, state: State<AppState>) -> Result<(), String> {
+    let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.configure_lane("canon", serde_json::json!({ "transpose_degrees": degrees }))
+}
+
+/// Read the canon lane's current config as a JSON object with keys
+/// `enabled`, `delay_beats`, `transpose_degrees`. Returns `null` if
+/// the canon lane is somehow not registered. (#3)
+#[tauri::command]
+pub fn canon_state(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let companion = state.companion.lock().map_err(|e| e.to_string())?;
+    Ok(companion
+        .lane_state("canon")
+        .unwrap_or(serde_json::Value::Null))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

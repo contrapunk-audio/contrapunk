@@ -168,6 +168,14 @@ impl Default for AppState {
         let transport = Transport::new(48_000);
         let world = crate::companion::WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
         let companion = Arc::new(Mutex::new(crate::companion::Companion::new(world)));
+        // Register concrete Lanes here. CanonLane is the first one
+        // (issue #3) and ships disabled by default — the user opts in
+        // via Tauri command. Future Lanes (LooperLane, BeatMachineLane,
+        // etc.) get pushed alongside as they ship.
+        {
+            let mut c = companion.lock().expect("companion mutex poisoned at init");
+            c.lanes.push(Box::new(crate::companion::CanonLane::new()));
+        }
         Self {
             engine,
             preset_manager: Mutex::new(PresetManager::new()),
