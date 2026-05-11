@@ -56,25 +56,14 @@ fi
 context_limit=1000000
 percent=$(( total_tokens * 100 / context_limit ))
 
-# 5. Decide whether there's pending work. The OLD logic just grepped
-# for `## Phase` headers in any roadmap file, which loops forever once
-# all the phase work is done (the headers stay in the doc). The NEW
-# logic combines two signals:
+# 5. Roadmap presence check. The autoloop keeps going as long as there
+# IS a roadmap with Phase markers (i.e. we're in an active milestone).
+# When the roadmap is gone, the autoloop allows stops — that's the
+# only "no pending work" signal that matters.
 #
-#   (a) A roadmap with `## Phase` markers exists (necessary, not
-#       sufficient).
-#   (b) The model is actually making progress — at least one commit
-#       has landed in the last `STUCK_WINDOW_SECS` seconds.
-#
-# If (a) is true but (b) is false, the model is firing autoloop turns
-# without producing work — usually because all the concrete tasks are
-# done and only ambiguous / blocked items remain. Allow the stop.
-#
-# This catches the "I keep saying 'nothing concrete left' but the hook
-# keeps firing" loop without requiring the user to touch the kill
-# switch or edit the roadmap.
-STUCK_WINDOW_SECS=180
-
+# IMPORTANT: We do NOT bail early on "stuck on nothing" heuristics
+# anymore. User's directive is unambiguous — keep going until 90%
+# context budget or the kill switch file. Don't second-guess.
 has_pending="false"
 roadmap=""
 for candidate in \
@@ -91,65 +80,13 @@ do
   fi
 done
 
-# Progress check — only meaningful when has_pending is true.
-# Wall-clock windows don't help when autoloop fires arrive back-to-
-# back (each fire is bounded by the model's response time, not real
-# time). So we ALSO track consecutive no-commit fires via a state
-# file. Two consecutive fires that see the same HEAD = the model
-# isn't producing work anymore. Allow the stop.
-STUCK_FIRES_LIMIT=2
-state_file="$repo_root/.claude/.stop-autoloop-state"
-current_head=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo "unknown")
-
-if [ "$has_pending" = "true" ]; then
-  # Wall-clock signal (kept as a faster path).
-  recent_commits=$(git -C "$repo_root" log --since="${STUCK_WINDOW_SECS} seconds ago" --oneline 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$recent_commits" -eq 0 ]; then
-    has_pending="stuck"
-  fi
-fi
-
-# Consecutive-fire signal — separate from wall-clock. Read the prior
-# state, decide what to write back. Format: "<head_sha> <stuck_count>".
-prior_head=""
-prior_count=0
-if [ -f "$state_file" ]; then
-  prior_head=$(awk 'NR==1 {print $1}' "$state_file" 2>/dev/null)
-  prior_count=$(awk 'NR==1 {print $2}' "$state_file" 2>/dev/null)
-  [ -z "$prior_count" ] && prior_count=0
-fi
-
-if [ "$has_pending" = "true" ]; then
-  if [ "$current_head" = "$prior_head" ]; then
-    # Same HEAD as last fire = no new commits since then.
-    new_count=$((prior_count + 1))
-    if [ "$new_count" -ge "$STUCK_FIRES_LIMIT" ]; then
-      has_pending="stuck-consecutive"
-    fi
-  else
-    # New commit landed — reset the counter.
-    new_count=0
-  fi
-else
-  new_count=0
-fi
-
-# Persist state for the next fire.
-mkdir -p "$(dirname "$state_file")"
-printf '%s %d\n' "$current_head" "$new_count" > "$state_file" 2>/dev/null || true
-
 # 6. Decision.
 #    - At/above 90% budget → allow stop (context exhausted).
-#    - No pending work signal at all → allow stop.
-#    - has_pending="stuck" (no commits in stuck window) → allow stop.
+#    - No roadmap with Phase markers → allow stop (no active milestone).
 #    - Otherwise → block with a continue instruction.
 if [ "$percent" -ge 90 ] || [ "$has_pending" != "true" ]; then
   if [ "$percent" -ge 90 ]; then
     echo "[stop-autoloop] context at ${percent}% of 1M budget — allowing stop" >&2
-  elif [ "$has_pending" = "stuck" ]; then
-    echo "[stop-autoloop] no commits in last ${STUCK_WINDOW_SECS}s — concrete work exhausted, allowing stop" >&2
-  elif [ "$has_pending" = "stuck-consecutive" ]; then
-    echo "[stop-autoloop] HEAD unchanged across ${STUCK_FIRES_LIMIT} consecutive fires — model produced no work, allowing stop" >&2
   fi
   exit 0
 fi
