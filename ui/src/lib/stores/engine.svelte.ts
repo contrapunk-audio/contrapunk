@@ -853,10 +853,13 @@ class EngineStore {
 	/**
 	 * Restore saved settings from localStorage and apply to backend.
 	 * Call after adapter.init() and syncFromBackend().
+	 *
+	 * When no payload is saved (fresh install or schema-version bump),
+	 * SETTINGS_DEFAULTS is applied instead so the backend + reactive
+	 * store match what we declared as the out-of-box configuration.
 	 */
 	async restoreSettings() {
-		const saved = loadSettings();
-		if (!saved) return;
+		const saved = loadSettings() ?? SETTINGS_DEFAULTS;
 
 		// Apply each setting independently so one failure doesn't block the rest
 		const ops: [string, () => Promise<void>][] = [
@@ -898,9 +901,26 @@ class EngineStore {
 			}
 		}
 
-		// Mirror restored canon state into the reactive store so the UI
-		// renders the persisted config immediately without waiting for a
-		// syncFromBackend round-trip.
+		// Mirror the full restored state into the reactive store so the
+		// UI renders the persisted config immediately, without waiting
+		// for the syncFromBackend round-trip below. Without this, fresh
+		// installs (no localStorage payload) would still display the
+		// store's $state initializer values (voiceLeading off, mode
+		// PassThrough, etc.) even though SETTINGS_DEFAULTS specifies
+		// otherwise and the backend has been updated.
+		this.key = saved.key;
+		this.mode = saved.mode;
+		this.scaleMode = saved.scaleMode;
+		this.octaveMode = saved.octaveMode;
+		this.voiceLeadingEnabled = saved.voiceLeadingEnabled;
+		this.voiceLeadingStyle = saved.voiceLeadingStyle;
+		this.interchangeEnabled = saved.interchangeEnabled;
+		this.interchangeRange = saved.interchangeRange;
+		this.voicePosition = saved.voicePosition;
+		this.voiceCount = saved.voiceCount;
+		this.detuneCents = saved.detuneCents;
+		this.counterpointSpecies = saved.counterpointSpecies;
+		this.counterpointStrictness = saved.counterpointStrictness;
 		this.companionEnabled = saved.companionEnabled;
 		this.canonEnabled = saved.canonEnabled;
 		this.canonVoices = saved.canonVoices;
