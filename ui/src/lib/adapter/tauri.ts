@@ -217,6 +217,22 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async voiceOffsets(): Promise<number[]> {
+		try {
+			return (await invoke('voice_offsets')) as number[];
+		} catch (e) {
+			throw new Error(`Failed to get voice offsets: ${e}`);
+		}
+	}
+
+	async setVoiceOffset(voiceIndex: number, offset: number): Promise<void> {
+		try {
+			await invoke('set_voice_offset', { voiceIndex, offset });
+		} catch (e) {
+			throw new Error(`Failed to set voice offset: ${e}`);
+		}
+	}
+
 	/** Tauri uses native OS MIDI APIs; no browser-style permission gate. */
 	readonly midiPermissionState: MidiPermissionState = 'granted';
 

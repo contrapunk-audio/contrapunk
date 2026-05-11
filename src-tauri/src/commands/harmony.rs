@@ -231,6 +231,30 @@ pub fn set_bass_register_threshold(midi: u8, state: State<AppState>) -> Result<(
     Ok(())
 }
 
+/// Get the per-harmony-voice phase offsets (in beats). Length =
+/// voice_count - 1. Index 0 = first harmony voice above melody. (#8b)
+#[tauri::command]
+pub fn voice_offsets(state: State<AppState>) -> Result<Vec<f32>, String> {
+    let engine = state.engine.lock().map_err(|e| e.to_string())?;
+    Ok(engine.voice_offsets().to_vec())
+}
+
+/// Set the phase offset (in beats) for a specific harmony-voice index.
+/// Clamped to [-0.5, 0.5]. Out-of-range index is a no-op. Only Species
+/// 2-4 use the offset; Species 1 ignores phase. (#8b)
+#[tauri::command]
+pub fn set_voice_offset(
+    voice_index: usize,
+    offset: f32,
+    state: State<AppState>,
+) -> Result<(), String> {
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_voice_offset(voice_index, offset);
+    }
+    Ok(())
+}
+
 /// Set the MIDI routing mode (channel-based MPE or port-based).
 #[tauri::command]
 pub fn set_routing_mode(mode: String, state: State<AppState>) -> Result<(), String> {

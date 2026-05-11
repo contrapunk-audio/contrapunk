@@ -157,6 +157,35 @@
 			</div>
 		</div>
 	</div>
+
+	<!-- Per-voice phase offset (#8b) — only meaningful for Species 2-4
+	     (Species 1 ignores beat phase). One slider per harmony voice. -->
+	{#if engine.counterpointSpecies !== 'Species1' && engine.voiceOffsets.length > 0}
+		<div class="card">
+			<span class="cell-label font-ui">Voice Phase Offset (beats)</span>
+			{#each engine.voiceOffsets as offset, i (i)}
+				<div class="range-row">
+					<span class="range-label font-ui">V{i + 1}</span>
+					<input
+						type="range"
+						min="-0.5"
+						max="0.5"
+						step="0.01"
+						value={offset}
+						oninput={(e) =>
+							engine.setVoiceOffset(
+								i,
+								parseFloat((e.target as HTMLInputElement).value)
+							)}
+						class="pixel-range"
+					/>
+					<span class="range-label font-code"
+						>{offset > 0 ? '+' : ''}{offset.toFixed(2)}</span
+					>
+				</div>
+			{/each}
+		</div>
+	{/if}
 {/if}
 
 <!-- Scale Family + Scale Mode — single card, two cells. -->

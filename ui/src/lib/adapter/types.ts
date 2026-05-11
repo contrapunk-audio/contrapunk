@@ -218,6 +218,19 @@ export interface ContrapunkAdapter {
 	 */
 	setCounterpointStrictness(strictness: string): Promise<void>;
 
+	/**
+	 * Get per-harmony-voice phase offsets in beats. Length = voiceCount - 1.
+	 * Index 0 = first harmony voice above the melody. Issue #8b.
+	 */
+	voiceOffsets(): Promise<number[]>;
+
+	/**
+	 * Set the phase offset (in beats, clamped to [-0.5, 0.5]) for a
+	 * specific harmony-voice index. Out-of-range indices are a no-op.
+	 * Only Species 2-4 use the offset; Species 1 ignores phase. Issue #8b.
+	 */
+	setVoiceOffset(voiceIndex: number, offset: number): Promise<void>;
+
 	// -- MIDI devices --
 
 	/**
