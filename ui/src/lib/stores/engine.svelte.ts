@@ -560,35 +560,35 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	counterpointSpecies: 'Species1',
 	counterpointStrictness: 'Strict',
 	// Fresh-install defaults are tuned for "flow state on first note":
-	// Companion + Canon are on, with a 3-voice Modal Cascade that
-	// immediately demonstrates the engine — a Thirds voice at 0.5b
-	// (instant harmonic depth), a Counterpoint voice at 1.5b (responsive
-	// counterline), and a Chorale voice at 2.5b (slow resolutional
-	// layer). Player hears a continuous AI texture from the first
-	// note rather than a bare unison echo.
+	// Companion + Canon are on, pre-loaded with the Modal Cascade form
+	// (also in BUILTIN_TEMPLATES) — three voices climbing through
+	// Thirds → Fourths → Counterpoint, each cascading off the previous.
+	// Player hears a continuous fugal texture from the first note
+	// instead of a unison echo, and a returning user who opens the
+	// FORMS rail immediately recognises the default as the named form.
 	companionEnabled: true,
 	canonEnabled: true,
 	canonVoices: [
 		{
-			delay_beats: 0.5,
+			delay_beats: 0,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
 			harmony_mode: 'DiatonicThirds',
 			reference_voice: null
 		},
 		{
-			delay_beats: 1.5,
-			transpose_degrees: 4,
+			delay_beats: 1,
+			transpose_degrees: 2,
 			time_ratio: 1.0,
-			harmony_mode: 'StrictCounterpoint',
-			reference_voice: null
+			harmony_mode: 'DiatonicFourths',
+			reference_voice: 0
 		},
 		{
-			delay_beats: 2.5,
-			transpose_degrees: 7,
+			delay_beats: 2,
+			transpose_degrees: 2,
 			time_ratio: 1.0,
-			harmony_mode: 'BachChorale',
-			reference_voice: null
+			harmony_mode: 'StrictCounterpoint',
+			reference_voice: 1
 		}
 	]
 };

@@ -89,7 +89,7 @@
 		{
 			id: 'bach-fugue',
 			name: 'Bach Fugue',
-			desc: '3 voices · subject (V1) → tonal answer at 5th (V2 → V1) → countersubject (V3 → V2)',
+			desc: '3-voice fugue · chorale subject → 5th-up answer (2b) → tight countersubject (3.5b)',
 			family: 'reactive',
 			voices: [
 				{
@@ -100,14 +100,14 @@
 					reference_voice: null
 				},
 				{
-					delay_beats: 4,
+					delay_beats: 2,
 					transpose_degrees: 4,
 					time_ratio: 1.0,
 					harmony_mode: 'StrictCounterpoint',
 					reference_voice: 0
 				},
 				{
-					delay_beats: 8,
+					delay_beats: 3.5,
 					transpose_degrees: 0,
 					time_ratio: 1.0,
 					harmony_mode: 'BachChorale',
@@ -118,26 +118,26 @@
 		{
 			id: 'modal-cascade',
 			name: 'Modal Cascade',
-			desc: '3 voices · Thirds → Fourths → Counterpoint, each voice cascades from the previous',
+			desc: '3 voices climbing through Thirds → Fourths → Counterpoint · cascading 1b apart',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 1,
+					delay_beats: 0,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'DiatonicThirds',
 					reference_voice: null
 				},
 				{
-					delay_beats: 2,
-					transpose_degrees: 3,
+					delay_beats: 1,
+					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'DiatonicFourths',
 					reference_voice: 0
 				},
 				{
-					delay_beats: 3,
-					transpose_degrees: 4,
+					delay_beats: 2,
+					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'StrictCounterpoint',
 					reference_voice: 1
@@ -147,19 +147,19 @@
 		{
 			id: 'contrary-mirror',
 			name: 'Contrary Mirror',
-			desc: '2 voices · ContraryMotion above + below — both mirror the player',
+			desc: '2 voices · symmetric mirror around the player (6th up + 6th down, same downbeat)',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 1,
-					transpose_degrees: 4,
+					delay_beats: 0.25,
+					transpose_degrees: 5,
 					time_ratio: 1.0,
 					harmony_mode: 'ContraryMotion',
 					reference_voice: null
 				},
 				{
-					delay_beats: 2,
-					transpose_degrees: -4,
+					delay_beats: 0.25,
+					transpose_degrees: -5,
 					time_ratio: 1.0,
 					harmony_mode: 'ContraryMotion',
 					reference_voice: null
@@ -169,7 +169,7 @@
 		{
 			id: 'augmentation-canon',
 			name: 'Augmentation Canon',
-			desc: 'Subject + 2× slower answer (V2 follows V1) · Bach mensuration trick',
+			desc: 'Subject + half-speed answer at the 5th · Bach mensuration trick (V2 ← V1)',
 			family: 'reactive',
 			voices: [
 				{
@@ -180,7 +180,7 @@
 					reference_voice: null
 				},
 				{
-					delay_beats: 1,
+					delay_beats: 0.5,
 					transpose_degrees: 4,
 					time_ratio: 2.0,
 					harmony_mode: 'BachChorale',
@@ -191,7 +191,7 @@
 		{
 			id: 'diminution-fugue',
 			name: 'Diminution Fugue',
-			desc: 'Subject + 2× faster stretto (V2 follows V1) · counter-running imitation',
+			desc: 'Subject + 2× faster stretto · counter-running imitation (V2 ← V1, half-beat entry)',
 			family: 'reactive',
 			voices: [
 				{
@@ -202,7 +202,7 @@
 					reference_voice: null
 				},
 				{
-					delay_beats: 1,
+					delay_beats: 0.5,
 					transpose_degrees: 4,
 					time_ratio: 0.5,
 					harmony_mode: 'StrictCounterpoint',
@@ -213,18 +213,18 @@
 		{
 			id: 'functional-pillar',
 			name: 'Functional Pillar',
-			desc: '3 voices · I–IV–V harmony · all three stack against the player',
+			desc: '3 voices · I–IV–V harmony rolled across an 8th note · functional triad arpeggio',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0.5,
+					delay_beats: 0,
 					transpose_degrees: 0,
 					time_ratio: 1.0,
 					harmony_mode: 'FunctionalHarmony',
 					reference_voice: null
 				},
 				{
-					delay_beats: 0.5,
+					delay_beats: 0.25,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'FunctionalHarmony',
@@ -242,19 +242,12 @@
 		{
 			id: 'barry-harris',
 			name: 'Barry Harris Stack',
-			desc: '3 voices · 6th-diminished jazz harmony · simultaneous chord-tone stack',
+			desc: '3 voices · 6th + 3rd staggered through bebop voice-leading · jazz comp pad',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0.5,
+					delay_beats: 0,
 					transpose_degrees: 0,
-					time_ratio: 1.0,
-					harmony_mode: 'BarryHarris',
-					reference_voice: null
-				},
-				{
-					delay_beats: 0.5,
-					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'BarryHarris',
 					reference_voice: null
@@ -265,13 +258,20 @@
 					time_ratio: 1.0,
 					harmony_mode: 'BarryHarris',
 					reference_voice: null
+				},
+				{
+					delay_beats: 1,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'BarryHarris',
+					reference_voice: 0
 				}
 			]
 		},
 		{
 			id: 'mensuration-trinity',
 			name: 'Mensuration Trinity',
-			desc: '3 voices · 1× / 2× / 0.5× speeds · each follows the previous (Ockeghem-style)',
+			desc: '3 voices intertwining at 1× / 2× / 0.5× · Ockeghem-style proportional canon',
 			family: 'reactive',
 			voices: [
 				{
@@ -282,15 +282,15 @@
 					reference_voice: null
 				},
 				{
-					delay_beats: 2,
+					delay_beats: 1,
 					transpose_degrees: 4,
 					time_ratio: 2.0,
 					harmony_mode: 'BachChorale',
 					reference_voice: 0
 				},
 				{
-					delay_beats: 1,
-					transpose_degrees: -7,
+					delay_beats: 0.5,
+					transpose_degrees: -3,
 					time_ratio: 0.5,
 					harmony_mode: 'ContraryMotion',
 					reference_voice: 1
