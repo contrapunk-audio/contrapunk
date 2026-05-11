@@ -31,6 +31,8 @@ use std::collections::{HashMap, VecDeque};
 
 use wmidi::Note;
 
+use contrapunk::harmony::HarmonyMode;
+
 use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
 use super::world::WorldState;
 use super::DispatchOp;
@@ -56,6 +58,20 @@ pub struct CanonVoice {
     /// proportionally — not just individual notes. Clamped to
     /// [0.25, 4.0] (two octaves of speed, useful range).
     pub time_ratio: f32,
+    /// Optional per-voice harmony-mode override. `None` (default) =
+    /// inherit the engine's global mode for this voice's harmony
+    /// stack. `Some(mode)` = temporarily switch the shared engine to
+    /// the voice's mode while harmonizing this voice's subject pitch,
+    /// then restore. This lets the user assign e.g. V1 =
+    /// DiatonicThirds, V2 = StrictCounterpoint, V3 = ContraryMotion.
+    ///
+    /// v1 limitation: switching the engine mode resets the stateful
+    /// modes' per-mode history (counterpoint, contrary motion) on
+    /// each canon emission. Stateless modes (PassThrough,
+    /// DiatonicThirds, DiatonicFourths) work cleanly. Per-voice
+    /// stateful machinery is the follow-up that adds independent
+    /// state per voice rather than thrashing global state.
+    pub harmony_mode: Option<HarmonyMode>,
 }
 
 impl CanonVoice {
@@ -68,6 +84,7 @@ impl CanonVoice {
             delay_beats: delay_beats.clamp(0.0, 8.0),
             transpose_degrees: transpose_degrees.clamp(-7, 7),
             time_ratio: time_ratio.clamp(0.25, 4.0),
+            harmony_mode: None,
         }
     }
 }
@@ -78,6 +95,7 @@ impl Default for CanonVoice {
             delay_beats: 1.0,
             transpose_degrees: 0,
             time_ratio: 1.0,
+            harmony_mode: None,
         }
     }
 }
@@ -291,19 +309,19 @@ impl CanonLane {
     fn compute_voice_stack(
         &self,
         input_note: u8,
-        transpose_degrees: i8,
+        voice: &CanonVoice,
         world: &WorldState,
     ) -> Vec<u8> {
         let Ok(mut engine) = world.engine_snapshot.lock() else {
             return vec![input_note];
         };
-        let subject_midi: u8 = if transpose_degrees == 0 {
+        let subject_midi: u8 = if voice.transpose_degrees == 0 {
             input_note
         } else if let Ok(note) = Note::try_from(input_note) {
-            let prefer_above = transpose_degrees > 0;
+            let prefer_above = voice.transpose_degrees > 0;
             engine
                 .scale_mut()
-                .harmonize_smart(note, transpose_degrees, prefer_above)
+                .harmonize_smart(note, voice.transpose_degrees, prefer_above)
                 .map(u8::from)
                 .unwrap_or(input_note)
         } else {
@@ -312,7 +330,25 @@ impl CanonLane {
         let Ok(subject_note) = Note::try_from(subject_midi) else {
             return vec![subject_midi];
         };
+        // Per-voice harmony mode override (#3 slice G v2):
+        // swap the engine's mode to the voice's choice, harmonize,
+        // restore. Stateless modes (PassThrough, DiatonicThirds,
+        // DiatonicFourths) work cleanly. Stateful modes
+        // (StrictCounterpoint, ContraryMotion) lose their accumulated
+        // history on each mode switch — v1 limitation; the follow-up
+        // gives each canon voice its own state machinery.
+        let saved_mode = engine.mode();
+        let did_override = match voice.harmony_mode {
+            Some(m) if m != saved_mode => {
+                engine.set_mode(m);
+                true
+            }
+            _ => false,
+        };
         let stack = engine.harmonize(subject_note);
+        if did_override {
+            engine.set_mode(saved_mode);
+        }
         if stack.is_empty() {
             vec![subject_midi]
         } else {
@@ -404,7 +440,7 @@ impl Lane for CanonLane {
                     // voice canon where each entry isn't just one
                     // delayed line but a 2+ note chord. Interpretation B
                     // confirmed by the user 2026-05-12.
-                    let stack = self.compute_voice_stack(note, voice.transpose_degrees, world);
+                    let stack = self.compute_voice_stack(note, &voice, world);
                     // Per-voice fire time is anchor-relative and scaled
                     // by this voice's time_ratio. Voice with ratio 2.0
                     // (augmentation) plays at half speed.
