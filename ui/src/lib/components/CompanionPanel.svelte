@@ -87,6 +87,42 @@
 	// Barry Harris Stack, Contrary Mirror).
 	const BUILTIN_TEMPLATES: Form[] = [
 		{
+			id: 'pure-counterpoint',
+			name: 'Pure Counterpoint',
+			desc: '4 voices, every voice in StrictCounterpoint · cascading 3rds, 1b apart (SATB)',
+			family: 'reactive',
+			voices: [
+				{
+					delay_beats: 1,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'StrictCounterpoint',
+					reference_voice: null
+				},
+				{
+					delay_beats: 2,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'StrictCounterpoint',
+					reference_voice: 0
+				},
+				{
+					delay_beats: 3,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'StrictCounterpoint',
+					reference_voice: 1
+				},
+				{
+					delay_beats: 4,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'StrictCounterpoint',
+					reference_voice: 2
+				}
+			]
+		},
+		{
 			id: 'bach-fugue',
 			name: 'Bach Fugue',
 			desc: '5-voice fugue · chorale subject → 5th answer → countersubject → octave entry → episode',

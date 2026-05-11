@@ -513,10 +513,10 @@ function computeScaleNotes(key: KeyName, scaleMode: ScaleModeName): number[] {
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
-// Version 6: default canon trimmed from 6 voices to 4 to match the
-// engine's 4-voice SATB stack. Existing payloads fall back to the
-// new defaults so the alignment kicks in on next launch.
-const SETTINGS_VERSION = 6;
+// Version 7: default canon switched to the Pure Counterpoint form
+// (4 voices all in StrictCounterpoint mode, cascading 3rds). Older
+// payloads fall back to the new defaults on next launch.
+const SETTINGS_VERSION = 7;
 
 interface PersistedSettings {
 	version: number;
@@ -573,43 +573,41 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	detuneCents: 0,
 	counterpointSpecies: 'Species1',
 	counterpointStrictness: 'Strict',
-	// Fresh-install defaults: Companion + Canon ON with 4 imitative
-	// voices that match the engine's 4-voice SATB chorale. All canon
-	// voices have a non-zero delay because the player IS the voice at
-	// beat 0 (bass line). Companion adds 4 cascading lines ABOVE the
-	// bass — Thirds → Fourths → Counterpoint → Chorale — so a single
-	// note builds a four-part contrapuntal texture over the first
-	// two beats. (The full 6-mode showcase still ships as the Modal
-	// Cascade form in the FORMS rail.)
+	// Fresh-install defaults: Companion + Canon ON with the Pure
+	// Counterpoint form — 4 voices, every voice in StrictCounterpoint
+	// mode, cascading in 3rds above the player's bass line. The user
+	// at beat 0 + 4 SAT voices through species-counterpoint rules =
+	// a 4-part chorale texture from the first note. (Other harmony
+	// modes are one click away in the FORMS rail.)
 	companionEnabled: true,
 	canonEnabled: true,
 	canonVoices: [
 		{
-			delay_beats: 0.5,
-			transpose_degrees: 2,
-			time_ratio: 1.0,
-			harmony_mode: 'DiatonicThirds',
-			reference_voice: null
-		},
-		{
 			delay_beats: 1,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
-			harmony_mode: 'DiatonicFourths',
+			harmony_mode: 'StrictCounterpoint',
+			reference_voice: null
+		},
+		{
+			delay_beats: 2,
+			transpose_degrees: 2,
+			time_ratio: 1.0,
+			harmony_mode: 'StrictCounterpoint',
 			reference_voice: 0
 		},
 		{
-			delay_beats: 1.5,
+			delay_beats: 3,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
 			harmony_mode: 'StrictCounterpoint',
 			reference_voice: 1
 		},
 		{
-			delay_beats: 2,
+			delay_beats: 4,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
-			harmony_mode: 'BachChorale',
+			harmony_mode: 'StrictCounterpoint',
 			reference_voice: 2
 		}
 	]
