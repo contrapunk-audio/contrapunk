@@ -3,6 +3,7 @@
 export const memory: WebAssembly.Memory;
 export const __wbg_engine_free: (a: number, b: number) => void;
 export const __wbg_wasmguitarinput_free: (a: number, b: number) => void;
+export const engine_bass_register_threshold: (a: number) => number;
 export const engine_clear_notes: (a: number) => void;
 export const engine_current_key: (a: number, b: number) => void;
 export const engine_delete_preset: (a: number, b: number, c: number, d: number) => void;
@@ -16,6 +17,7 @@ export const engine_note_off: (a: number, b: number, c: number) => void;
 export const engine_note_on: (a: number, b: number, c: number) => void;
 export const engine_save_preset: (a: number, b: number, c: number, d: number) => void;
 export const engine_set_auto_key: (a: number, b: number, c: number) => void;
+export const engine_set_bass_register_threshold: (a: number, b: number) => void;
 export const engine_set_counterpoint_beat_phase: (a: number, b: number, c: number) => void;
 export const engine_set_counterpoint_species: (a: number, b: number, c: number, d: number) => void;
 export const engine_set_counterpoint_strictness: (a: number, b: number, c: number, d: number) => void;
@@ -25,9 +27,11 @@ export const engine_set_mode: (a: number, b: number, c: number, d: number) => vo
 export const engine_set_octave_intensity: (a: number, b: number) => void;
 export const engine_set_octave_mode: (a: number, b: number, c: number, d: number) => void;
 export const engine_set_scale_mode: (a: number, b: number, c: number, d: number) => void;
+export const engine_set_suppress_bass_register: (a: number, b: number) => void;
 export const engine_set_voice_count: (a: number, b: number, c: number) => void;
 export const engine_set_voice_leading: (a: number, b: number, c: number, d: number, e: number) => void;
 export const engine_set_voice_position: (a: number, b: number, c: number) => void;
+export const engine_suppress_bass_register: (a: number) => number;
 export const init_panic_hook: () => void;
 export const midi_to_name: (a: number, b: number) => void;
 export const wasmguitarinput_free: (a: number) => void;

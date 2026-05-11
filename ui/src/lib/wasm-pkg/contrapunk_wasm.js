@@ -12,6 +12,14 @@ export class Engine {
         wasm.__wbg_engine_free(ptr, 0);
     }
     /**
+     * Returns the bass-register threshold MIDI note number.
+     * @returns {number}
+     */
+    bass_register_threshold() {
+        const ret = wasm.engine_bass_register_threshold(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * Clear tracked note state (call after config changes that invalidate active harmonies).
      */
     clear_notes() {
@@ -250,6 +258,15 @@ export class Engine {
         }
     }
     /**
+     * Sets the bass-register threshold MIDI note (notes below pass
+     * through when `suppress_bass_register` is true). Clamped to
+     * 0..=127.
+     * @param {number} midi
+     */
+    set_bass_register_threshold(midi) {
+        wasm.engine_set_bass_register_threshold(this.__wbg_ptr, midi);
+    }
+    /**
      * Set the counterpoint beat-phase position within the bar
      * (`0.0 .. beats_per_bar`). Pass `None` (via JS `undefined`/`null` from
      * the optional setter) to disable beat awareness and fall back to
@@ -404,6 +421,15 @@ export class Engine {
         }
     }
     /**
+     * Enable or disable bass-register suppression. When on, input
+     * notes below the threshold pass through without producing
+     * harmony — for users who play the bass line themselves.
+     * @param {boolean} enabled
+     */
+    set_suppress_bass_register(enabled) {
+        wasm.engine_set_suppress_bass_register(this.__wbg_ptr, enabled);
+    }
+    /**
      * Set the number of output voices (1 = melody only, 2+ = melody + harmonies).
      * @param {number} count
      */
@@ -456,6 +482,14 @@ export class Engine {
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
+    }
+    /**
+     * Returns whether bass-register suppression is active. Issue #100.
+     * @returns {boolean}
+     */
+    suppress_bass_register() {
+        const ret = wasm.engine_suppress_bass_register(this.__wbg_ptr);
+        return ret !== 0;
     }
 }
 if (Symbol.dispose) Engine.prototype[Symbol.dispose] = Engine.prototype.free;
@@ -623,9 +657,6 @@ function __wbg_get_imports() {
         __wbg_getRandomValues_e9de607763a970bd: function() { return handleError(function (arg0, arg1) {
             globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
         }, arguments); },
-        __wbg_log_6b5ca2e6124b2808: function(arg0) {
-            console.log(getObject(arg0));
-        },
         __wbg_new_361308b2356cecd0: function() {
             const ret = new Object();
             return addHeapObject(ret);

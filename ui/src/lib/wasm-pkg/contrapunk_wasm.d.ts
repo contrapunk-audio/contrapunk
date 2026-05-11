@@ -5,6 +5,10 @@ export class Engine {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Returns the bass-register threshold MIDI note number.
+     */
+    bass_register_threshold(): number;
+    /**
      * Clear tracked note state (call after config changes that invalidate active harmonies).
      */
     clear_notes(): void;
@@ -60,6 +64,12 @@ export class Engine {
      */
     set_auto_key(enabled: boolean): void;
     /**
+     * Sets the bass-register threshold MIDI note (notes below pass
+     * through when `suppress_bass_register` is true). Clamped to
+     * 0..=127.
+     */
+    set_bass_register_threshold(midi: number): void;
+    /**
      * Set the counterpoint beat-phase position within the bar
      * (`0.0 .. beats_per_bar`). Pass `None` (via JS `undefined`/`null` from
      * the optional setter) to disable beat awareness and fall back to
@@ -104,6 +114,12 @@ export class Engine {
      */
     set_scale_mode(mode: string): void;
     /**
+     * Enable or disable bass-register suppression. When on, input
+     * notes below the threshold pass through without producing
+     * harmony — for users who play the bass line themselves.
+     */
+    set_suppress_bass_register(enabled: boolean): void;
+    /**
      * Set the number of output voices (1 = melody only, 2+ = melody + harmonies).
      */
     set_voice_count(count: number): void;
@@ -115,6 +131,10 @@ export class Engine {
      * Set the voice position (which output slot carries the melody).
      */
     set_voice_position(position: number): void;
+    /**
+     * Returns whether bass-register suppression is active. Issue #100.
+     */
+    suppress_bass_register(): boolean;
 }
 
 export class WasmGuitarInput {
@@ -177,6 +197,7 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_engine_free: (a: number, b: number) => void;
     readonly __wbg_wasmguitarinput_free: (a: number, b: number) => void;
+    readonly engine_bass_register_threshold: (a: number) => number;
     readonly engine_clear_notes: (a: number) => void;
     readonly engine_current_key: (a: number, b: number) => void;
     readonly engine_delete_preset: (a: number, b: number, c: number, d: number) => void;
@@ -190,6 +211,7 @@ export interface InitOutput {
     readonly engine_note_on: (a: number, b: number, c: number) => void;
     readonly engine_save_preset: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_auto_key: (a: number, b: number, c: number) => void;
+    readonly engine_set_bass_register_threshold: (a: number, b: number) => void;
     readonly engine_set_counterpoint_beat_phase: (a: number, b: number, c: number) => void;
     readonly engine_set_counterpoint_species: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_counterpoint_strictness: (a: number, b: number, c: number, d: number) => void;
@@ -199,9 +221,11 @@ export interface InitOutput {
     readonly engine_set_octave_intensity: (a: number, b: number) => void;
     readonly engine_set_octave_mode: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_scale_mode: (a: number, b: number, c: number, d: number) => void;
+    readonly engine_set_suppress_bass_register: (a: number, b: number) => void;
     readonly engine_set_voice_count: (a: number, b: number, c: number) => void;
     readonly engine_set_voice_leading: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly engine_set_voice_position: (a: number, b: number, c: number) => void;
+    readonly engine_suppress_bass_register: (a: number) => number;
     readonly init_panic_hook: () => void;
     readonly midi_to_name: (a: number, b: number) => void;
     readonly wasmguitarinput_free: (a: number) => void;
