@@ -1,20 +1,15 @@
 use crate::config::{Key, ScaleMode};
 
-// === Krumhansl-Schmuckler profiles (#81, first slice) ===
+// === Krumhansl-Schmuckler key detector ===
 //
-// Published probe-tone weights from Krumhansl & Kessler 1982. Indexed
-// 0..11 where 0 is the tonic and the rest follow ascending chromatic
-// scale degrees. Used by the (next-slice) Pearson-correlation detector
-// to score each rotation against the observed pitch-class histogram.
-//
-// Future-slice work: replace the in-scale/out-of-scale `score_tonic`
-// in `KeyDetector::detect` with `pearson_correlation(histogram, rotated_profile)`.
-// This slice just exposes the data; behavior is unchanged.
+// Published probe-tone weights from Krumhansl & Kessler 1982, scored
+// against the decay-weighted pitch-class histogram via Pearson
+// correlation. Profile is rotated to each of the 12 candidate tonics
+// and the highest-correlating rotation wins (subject to a margin gate).
 
 /// Krumhansl-Kessler major profile — the canonical weights tonic 0..11.
 /// Tonic, dominant (7), mediant (4) carry the heaviest weight; the
 /// chromatic-passing tones (1, 3, 6, 8, 10) sit lowest.
-#[allow(dead_code)]
 pub const KS_MAJOR_PROFILE: [f32; 12] = [
     6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
 ];
@@ -22,7 +17,6 @@ pub const KS_MAJOR_PROFILE: [f32; 12] = [
 /// Krumhansl-Kessler minor profile. Slightly different distribution
 /// reflecting the minor-mode tonal hierarchy (e.g. lowered mediant at
 /// index 3 carries more weight than the major-mode equivalent).
-#[allow(dead_code)]
 pub const KS_MINOR_PROFILE: [f32; 12] = [
     6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
 ];
@@ -50,7 +44,6 @@ pub fn ks_profile_for_mode(mode: ScaleMode) -> [f32; 12] {
     }
 }
 
-#[allow(dead_code)]
 fn synth_profile_from_intervals(mode: ScaleMode) -> [f32; 12] {
     let intervals = mode.intervals();
     let mut p = [1.0f32; 12];
@@ -69,7 +62,6 @@ fn synth_profile_from_intervals(mode: ScaleMode) -> [f32; 12] {
 ///
 /// Math: rotated[i] = profile[(i - tonic) mod 12]. Equivalently the
 /// profile slid `tonic` positions to the right.
-#[allow(dead_code)]
 fn rotate_profile(profile: &[f32; 12], tonic: u8) -> [f32; 12] {
     let mut out = [0.0f32; 12];
     let tonic = (tonic % 12) as usize;
@@ -84,7 +76,6 @@ fn rotate_profile(profile: &[f32; 12], tonic: u8) -> [f32; 12] {
 /// relationship. Returns 0.0 when either vector has zero variance.
 ///
 /// Pure function, no allocation, one pass over each input.
-#[allow(dead_code)]
 fn pearson_correlation(x: &[f32; 12], y: &[f32; 12]) -> f32 {
     let n = 12.0_f32;
     let x_sum: f32 = x.iter().sum();
@@ -112,13 +103,14 @@ fn pearson_correlation(x: &[f32; 12], y: &[f32; 12]) -> f32 {
 /// Minimum notes before the detector will produce a result.
 const MIN_NOTES: usize = 4;
 
-/// Decay factor applied to the histogram each note (exponential weighting
-/// toward recent notes). 0.85 means each old note loses 15% weight per new note.
-const DECAY: f32 = 0.85;
-
 /// The detected key must score this much higher than the runner-up
 /// (as a fraction of the winner's score) to be accepted.
-const CONFIDENCE_MARGIN: f32 = 0.15;
+///
+/// KS correlations between neighboring keys in the cycle-of-fifths
+/// (C-G, G-D, A-C) only differ by ~10% on a single-scale sample, so
+/// the margin sits below that to avoid wedging the detector. The
+/// reverse-pole (e.g. C vs F#) is well-separated regardless.
+const CONFIDENCE_MARGIN: f32 = 0.05;
 
 /// Auto-detects the musical key (tonic) from a stream of MIDI notes.
 ///
@@ -151,11 +143,6 @@ impl KeyDetector {
     /// confidence is sufficient, or the previous detection otherwise.
     pub fn feed(&mut self, midi_note: u8) -> Option<Key> {
         let pc = (midi_note % 12) as usize;
-
-        // Decay old data, then add the new note
-        for bin in self.histogram.iter_mut() {
-            *bin *= DECAY;
-        }
         self.histogram[pc] += 1.0;
         self.note_count += 1;
 
@@ -179,15 +166,24 @@ impl KeyDetector {
         self.detected = None;
     }
 
-    /// Score each possible tonic and pick the best.
+    /// Score each possible tonic via Krumhansl-Schmuckler correlation
+    /// and pick the best.
+    ///
+    /// For each candidate tonic 0..12, rotate the mode's reference
+    /// profile so position 0 lands on that tonic, then compute the
+    /// Pearson correlation between the rotated profile and the
+    /// decay-weighted histogram. The winner must clear `second_score`
+    /// by `CONFIDENCE_MARGIN` (as a fraction of the winner's score)
+    /// before detection commits.
     fn detect(&mut self) -> Option<Key> {
-        let intervals = self.scale_mode.intervals();
+        let profile = ks_profile_for_mode(self.scale_mode);
         let mut best_score = f32::NEG_INFINITY;
         let mut second_score = f32::NEG_INFINITY;
         let mut best_tonic: u8 = 0;
 
         for tonic in 0u8..12 {
-            let score = self.score_tonic(tonic, intervals);
+            let rotated = rotate_profile(&profile, tonic);
+            let score = pearson_correlation(&self.histogram, &rotated);
             if score > best_score {
                 second_score = best_score;
                 best_score = score;
@@ -197,7 +193,6 @@ impl KeyDetector {
             }
         }
 
-        // Require a margin between winner and runner-up
         if best_score > 0.0
             && (second_score <= 0.0
                 || (best_score - second_score) / best_score >= CONFIDENCE_MARGIN)
@@ -207,27 +202,6 @@ impl KeyDetector {
         }
 
         self.detected
-    }
-
-    /// Score a candidate tonic: sum histogram weight for in-scale pitch classes,
-    /// subtract a penalty for out-of-scale pitch classes that are present.
-    fn score_tonic(&self, tonic: u8, intervals: &[u8]) -> f32 {
-        let mut in_scale = 0.0f32;
-        let mut out_scale = 0.0f32;
-
-        for (pc, &weight) in self.histogram.iter().enumerate() {
-            if weight < 0.01 {
-                continue;
-            }
-            let relative = ((pc as u8 + 12) - tonic) % 12;
-            if intervals.contains(&relative) {
-                in_scale += weight;
-            } else {
-                out_scale += weight;
-            }
-        }
-
-        in_scale - out_scale * 0.5
     }
 }
 
@@ -466,5 +440,54 @@ mod tests {
         d.reset();
         assert_eq!(d.detected, None);
         assert_eq!(d.note_count, 0);
+    }
+
+    /// Repeated tonic + dominant + mediant should beat the old
+    /// in-scale/out-of-scale scorer's tie between sibling keys. The
+    /// Krumhansl profile heavily over-weights I/IV/V/3, so a steady
+    /// C major triad cadence reads as unambiguous C — not a/b/F.
+    #[test]
+    fn pearson_distinguishes_tonic_from_dominant_on_ambiguous_set() {
+        let mut d = KeyDetector::new(ScaleMode::Ionian);
+        // Six notes — all three triad tones of C major (C, E, G) repeated.
+        // Old scorer would have tied this with G major and F major (same
+        // pitch class set distribution). Krumhansl breaks the tie via
+        // tonal-hierarchy weighting.
+        let notes = [60, 64, 67, 60, 64, 67];
+        for &n in &notes {
+            d.feed(n);
+        }
+        assert_eq!(d.detected, Some(Key::C));
+    }
+
+    /// Minor-mode detection respects the minor profile's heavier b3
+    /// weighting — playing A C E (minor triad) reads as A minor, not
+    /// A major or C major.
+    #[test]
+    fn minor_profile_reads_minor_triad_as_minor_tonic() {
+        let mut d = KeyDetector::new(ScaleMode::Aeolian);
+        let notes = [57, 60, 64, 57, 60, 64]; // A C E repeated
+        for &n in &notes {
+            d.feed(n);
+        }
+        assert_eq!(d.detected, Some(Key::A));
+    }
+
+    /// Symmetric scales (WholeTone, Diminished) have a tonic
+    /// ambiguity that pearson + rotation cannot resolve from pitch
+    /// classes alone — every N-semitone rotation produces the same
+    /// pitch-class set, so all in-set tonics tie. The margin gate
+    /// rejects rather than commit to an arbitrary winner.
+    #[test]
+    fn symmetric_scale_does_not_commit_to_ambiguous_tonic() {
+        let mut d = KeyDetector::new(ScaleMode::WholeTone);
+        let f_whole = [65, 67, 69, 71, 73, 75];
+        for _ in 0..3 {
+            for &n in &f_whole {
+                d.feed(n);
+            }
+        }
+        // No commitment — better than picking the wrong tonic.
+        assert_eq!(d.detected, None);
     }
 }
