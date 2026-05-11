@@ -257,11 +257,31 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async canonState(): Promise<{ enabled: boolean; delay_beats: number; transpose_degrees: number } | null> {
+	async canonSetVoices(
+		voices: Array<{ delay_beats: number; transpose_degrees: number }>
+	): Promise<void> {
+		try {
+			await invoke('canon_set_voices', { voices });
+		} catch (e) {
+			throw new Error(`Failed to set canon voices: ${e}`);
+		}
+	}
+
+	async canonState(): Promise<{
+		enabled: boolean;
+		delay_beats: number;
+		transpose_degrees: number;
+		voices?: Array<{ delay_beats: number; transpose_degrees: number }>;
+	} | null> {
 		try {
 			const s = await invoke('canon_state');
 			if (s === null || typeof s !== 'object') return null;
-			return s as { enabled: boolean; delay_beats: number; transpose_degrees: number };
+			return s as {
+				enabled: boolean;
+				delay_beats: number;
+				transpose_degrees: number;
+				voices?: Array<{ delay_beats: number; transpose_degrees: number }>;
+			};
 		} catch (e) {
 			throw new Error(`Failed to read canon state: ${e}`);
 		}

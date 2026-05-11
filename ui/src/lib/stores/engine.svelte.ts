@@ -679,6 +679,12 @@ class EngineStore {
 	canonEnabled = $state(false);
 	canonDelayBeats = $state(1.0);
 	canonTransposeDegrees = $state(0);
+	/** Multi-voice canon (#3). Each entry independently delays and
+	 *  transposes. Mirrors the engine-side `voices` field. Default
+	 *  is a single voice matching the legacy single-voice config. */
+	canonVoices = $state<Array<{ delay_beats: number; transpose_degrees: number }>>([
+		{ delay_beats: 1.0, transpose_degrees: 0 },
+	]);
 
 	// -- Transport --
 	isRunning = $state(false);
@@ -976,6 +982,50 @@ class EngineStore {
 		}
 	}
 
+	/** Replace the multi-voice canon configuration. (#3) */
+	async setCanonVoices(
+		voices: Array<{ delay_beats: number; transpose_degrees: number }>
+	) {
+		const prev = this.canonVoices;
+		const clamped = voices.slice(0, 8).map((v) => ({
+			delay_beats: Math.max(0, Math.min(8, v.delay_beats)),
+			transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
+		}));
+		this.canonVoices = clamped;
+		try {
+			await adapter.canonSetVoices(clamped);
+		} catch (e) {
+			this.canonVoices = prev;
+			throw e;
+		}
+	}
+
+	/** Add a new voice with sensible defaults. UI convenience. */
+	async addCanonVoice() {
+		const next = [
+			...this.canonVoices,
+			{ delay_beats: 1.0, transpose_degrees: 0 },
+		];
+		await this.setCanonVoices(next);
+	}
+
+	/** Remove voice at the given index. Must keep at least one
+	 *  voice or the canon goes silent (still valid but the UI
+	 *  surfaces a "voices: 0" state). */
+	async removeCanonVoice(idx: number) {
+		const next = this.canonVoices.filter((_, i) => i !== idx);
+		await this.setCanonVoices(next);
+	}
+
+	/** Update a single voice in place. */
+	async updateCanonVoice(
+		idx: number,
+		patch: Partial<{ delay_beats: number; transpose_degrees: number }>
+	) {
+		const next = this.canonVoices.map((v, i) => (i === idx ? { ...v, ...patch } : v));
+		await this.setCanonVoices(next);
+	}
+
 	/** Pull canon state from the backend so the UI reflects the truth
 	 *  after restart / external config change. */
 	async syncCanonFromBackend() {
@@ -986,6 +1036,9 @@ class EngineStore {
 				this.canonEnabled = s.enabled;
 				this.canonDelayBeats = s.delay_beats;
 				this.canonTransposeDegrees = s.transpose_degrees;
+				if (Array.isArray(s.voices) && s.voices.length > 0) {
+					this.canonVoices = s.voices;
+				}
 			}
 		} catch {
 			// Adapter may not implement canon — leave defaults in place.

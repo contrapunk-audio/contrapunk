@@ -81,6 +81,7 @@ fn main() {
             commands::companion::canon_set_enabled,
             commands::companion::canon_set_delay,
             commands::companion::canon_set_transpose,
+            commands::companion::canon_set_voices,
             commands::companion::canon_state,
             commands::harmony::set_detune,
             commands::harmony::get_detune,

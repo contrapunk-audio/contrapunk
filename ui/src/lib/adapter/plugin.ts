@@ -158,7 +158,17 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async canonSetTranspose(degrees: number): Promise<void> {
 		this.send('canonSetTranspose', degrees);
 	}
-	async canonState(): Promise<{ enabled: boolean; delay_beats: number; transpose_degrees: number } | null> {
+	async canonSetVoices(
+		voices: Array<{ delay_beats: number; transpose_degrees: number }>
+	): Promise<void> {
+		this.send('canonSetVoices', voices);
+	}
+	async canonState(): Promise<{
+		enabled: boolean;
+		delay_beats: number;
+		transpose_degrees: number;
+		voices?: Array<{ delay_beats: number; transpose_degrees: number }>;
+	} | null> {
 		return null;
 	}
 

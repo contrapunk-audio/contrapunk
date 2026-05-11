@@ -291,42 +291,71 @@
 			</button>
 		</div>
 		{#if engine.canonEnabled}
-			<div class="range-row">
-				<span class="range-label font-ui">Delay</span>
-				<input
-					type="range"
-					min="0.25"
-					max="4"
-					step="0.25"
-					value={engine.canonDelayBeats}
-					oninput={(e) =>
-						engine.setCanonDelay(
-							parseFloat((e.target as HTMLInputElement).value)
-						)}
-					class="pixel-range"
-				/>
-				<span class="range-label font-code">{engine.canonDelayBeats.toFixed(2)} beat{engine.canonDelayBeats === 1 ? '' : 's'}</span>
+			<!-- Multi-voice canon: list of (delay, transpose) per voice.
+			     Each voice is one independent canon entry — Bach-style
+			     fugue subjects use 2-4 voices at staggered intervals. -->
+			<div class="cell-label-row" style="margin-top: 8px;">
+				<span class="cell-label font-ui">Voices ({engine.canonVoices.length})</span>
+				<button
+					class="pixel-btn"
+					disabled={engine.canonVoices.length >= 8}
+					onclick={() => engine.addCanonVoice()}
+					title="Add a canon voice (up to 8)"
+				>
+					+ Add
+				</button>
 			</div>
-			<div class="range-row">
-				<span class="range-label font-ui">Trnsp</span>
-				<input
-					type="range"
-					min="-7"
-					max="7"
-					step="1"
-					value={engine.canonTransposeDegrees}
-					oninput={(e) =>
-						engine.setCanonTranspose(
-							parseInt((e.target as HTMLInputElement).value, 10)
-						)}
-					class="pixel-range"
-				/>
-				<span class="range-label font-code">
-					{engine.canonTransposeDegrees > 0 ? '+' : ''}{engine.canonTransposeDegrees}°
-				</span>
-			</div>
+			{#each engine.canonVoices as voice, i (i)}
+				<div class="canon-voice-row">
+					<span class="range-label font-ui">V{i + 1}</span>
+					<div class="canon-voice-controls">
+						<div class="range-row">
+							<span class="range-label font-code" style="font-size: 0.7em;">delay</span>
+							<input
+								type="range"
+								min="0.25"
+								max="4"
+								step="0.25"
+								value={voice.delay_beats}
+								oninput={(e) =>
+									engine.updateCanonVoice(i, {
+										delay_beats: parseFloat((e.target as HTMLInputElement).value),
+									})}
+								class="pixel-range"
+							/>
+							<span class="range-label font-code" style="min-width: 3.5em;">{voice.delay_beats.toFixed(2)}b</span>
+						</div>
+						<div class="range-row">
+							<span class="range-label font-code" style="font-size: 0.7em;">trnsp</span>
+							<input
+								type="range"
+								min="-7"
+								max="7"
+								step="1"
+								value={voice.transpose_degrees}
+								oninput={(e) =>
+									engine.updateCanonVoice(i, {
+										transpose_degrees: parseInt((e.target as HTMLInputElement).value, 10),
+									})}
+								class="pixel-range"
+							/>
+							<span class="range-label font-code" style="min-width: 3.5em;">
+								{voice.transpose_degrees > 0 ? '+' : ''}{voice.transpose_degrees}°
+							</span>
+						</div>
+					</div>
+					<button
+						class="pixel-btn"
+						disabled={engine.canonVoices.length <= 1}
+						onclick={() => engine.removeCanonVoice(i)}
+						title="Remove voice"
+					>
+						×
+					</button>
+				</div>
+			{/each}
 			<div style="font-size: 0.7em; opacity: 0.7; margin-top: 4px;">
-				v1: unison only (transpose stored, not applied). Transport must be playing.
+				Transport must be playing for canon voices to fire.
 			</div>
 		{/if}
 	{/if}
@@ -429,6 +458,28 @@
 		align-items: center;
 		gap: 6px;
 		margin-top: 4px;
+	}
+
+	.canon-voice-row {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-top: 6px;
+		padding: 4px 6px;
+		background: var(--color-widget-bg);
+		border: 1px solid var(--color-border);
+	}
+
+	.canon-voice-row > .range-label {
+		min-width: 1.5em;
+		color: var(--color-accent-cyan, #33ddff);
+	}
+
+	.canon-voice-controls {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
 	.range-label {

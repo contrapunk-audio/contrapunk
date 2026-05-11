@@ -256,7 +256,18 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// No-op.
 	}
 
-	async canonState(): Promise<{ enabled: boolean; delay_beats: number; transpose_degrees: number } | null> {
+	async canonSetVoices(
+		_voices: Array<{ delay_beats: number; transpose_degrees: number }>
+	): Promise<void> {
+		// No-op.
+	}
+
+	async canonState(): Promise<{
+		enabled: boolean;
+		delay_beats: number;
+		transpose_degrees: number;
+		voices?: Array<{ delay_beats: number; transpose_degrees: number }>;
+	} | null> {
 		return null;
 	}
 

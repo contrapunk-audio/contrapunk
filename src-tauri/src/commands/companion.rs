@@ -73,15 +73,46 @@ pub fn canon_set_transpose(degrees: i8, state: State<AppState>) -> Result<(), St
     companion.configure_lane("canon", serde_json::json!({ "transpose_degrees": degrees }))
 }
 
-/// Read the canon lane's current config as a JSON object with keys
-/// `enabled`, `delay_beats`, `transpose_degrees`. Returns `null` if
-/// the canon lane is somehow not registered. (#3)
+/// Read the canon lane's current config as a JSON object. Contains:
+///   - `enabled` (bool)
+///   - `voices` (array of `{delay_beats, transpose_degrees}`)
+///   - `delay_beats` / `transpose_degrees` (legacy single-voice keys,
+///     mirror of `voices[0]` for backward compat)
+/// Returns `null` if the canon lane is somehow not registered. (#3)
 #[tauri::command]
 pub fn canon_state(state: State<AppState>) -> Result<serde_json::Value, String> {
     let companion = state.companion.lock().map_err(|e| e.to_string())?;
     Ok(companion
         .lane_state("canon")
         .unwrap_or(serde_json::Value::Null))
+}
+
+/// One canon voice config from the UI. Mirrors `CanonVoice` in
+/// `src-tauri/src/companion/canon_lane.rs`. Tauri's command codegen
+/// deserializes this from the JS side automatically.
+#[derive(serde::Deserialize)]
+pub struct CanonVoiceArg {
+    pub delay_beats: f32,
+    pub transpose_degrees: i8,
+}
+
+/// Replace the entire canon voices array. Clamped to 8 voices max
+/// engine-side. Each voice has its own delay and transpose so
+/// callers can configure multi-entry canons (e.g. a 3-voice canon
+/// at +0/+2/+4 beats). (#3 multi-voice)
+#[tauri::command]
+pub fn canon_set_voices(voices: Vec<CanonVoiceArg>, state: State<AppState>) -> Result<(), String> {
+    let voices_json: Vec<serde_json::Value> = voices
+        .into_iter()
+        .map(|v| {
+            serde_json::json!({
+                "delay_beats": v.delay_beats,
+                "transpose_degrees": v.transpose_degrees,
+            })
+        })
+        .collect();
+    let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.configure_lane("canon", serde_json::json!({ "voices": voices_json }))
 }
 
 #[cfg(test)]
