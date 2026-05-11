@@ -269,6 +269,20 @@
 		     configured — the empty case just has zero voice tracks /
 		     zero voice cards and the Add Voice button stays prominent. -->
 		<section class="right">
+			<!-- ENGINE STATUS — gives harmonic forms a visible effect.
+			     Reactive forms only change canon voices (timeline below);
+			     harmonic forms change engine.mode / voiceCount /
+			     voiceLeading globally, which without this row would be
+			     invisible on the Companion tab. -->
+			<div class="engine-status">
+				<span class="status-label font-ui">ENGINE</span>
+				<span class="status-pill font-code">
+					<span class="pill-key">{engine.key}</span> ·
+					<span class="pill-mode">{engine.mode}</span> ·
+					{engine.voiceCount} voice{engine.voiceCount === 1 ? '' : 's'}{#if engine.voiceLeadingEnabled} · VL {engine.voiceLeadingStyle}{/if}
+				</span>
+			</div>
+
 			<!-- TIMELINE VISUALIZATION -->
 			<div class="timeline-card">
 				<div class="section-header font-ui">
@@ -533,6 +547,31 @@
 		gap: 8px;
 		padding: 8px;
 		overflow-y: auto;
+	}
+
+	.engine-status {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 8px;
+		background: var(--color-widget-bg);
+		border: 1px solid var(--color-border);
+	}
+
+	.status-label {
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+		letter-spacing: 0.1em;
+	}
+
+	.status-pill {
+		font-size: var(--font-size-xs);
+		opacity: 0.85;
+	}
+
+	.pill-key,
+	.pill-mode {
+		color: var(--color-accent-cyan, #33ddff);
 	}
 
 	.timeline-card,
