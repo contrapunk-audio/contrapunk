@@ -14,7 +14,7 @@
 	let saveName = $state('');
 	let isSaving = $state(false);
 
-	// -- Delete confirmation --
+	// -- Delete confirmation -- (name of the preset whose × was first clicked)
 	let confirmDelete = $state<string | null>(null);
 
 	/**
@@ -40,6 +40,10 @@
 			await adapter.loadPreset(name);
 			await engine.syncFromBackend();
 			activePreset = name;
+			// A successful load clears any pending delete-confirm on a
+			// different pill so a second click on a × elsewhere still
+			// requires its own first-click confirm step.
+			confirmDelete = null;
 		} catch (e) {
 			error = `Failed to load preset "${name}": ${e}`;
 		}
@@ -55,9 +59,10 @@
 		try {
 			await adapter.savePreset(saveName.trim());
 			showSaveForm = false;
+			const newName = saveName.trim();
 			saveName = '';
 			await loadPresets();
-			activePreset = saveName.trim();
+			activePreset = newName;
 		} catch (e) {
 			error = `Failed to save preset: ${e}`;
 		} finally {
@@ -109,39 +114,49 @@
 		<div class="error-text font-ui">{error}</div>
 	{/if}
 
-	<!-- Preset list -->
-	<div class="preset-list">
+	<!-- Horizontal pill row. One pill per preset; active pill gets a
+	     neon-magenta glow. Built-in pills have no delete button; user
+	     pills get an inline × that becomes a "?" confirm on first
+	     click. Pill click loads; × click is stopPropagation'd so it
+	     never doubles as a load. -->
+	<div class="preset-row" role="list">
 		{#each presets as preset}
+			{@const isActive = activePreset === preset.name}
+			{@const isConfirming = confirmDelete === preset.name}
 			<div
-				class="preset-item font-ui"
-				class:preset-active={activePreset === preset.name}
-				onclick={() => handleLoadPreset(preset.name)}
-				onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') handleLoadPreset(preset.name); }}
-				role="button"
-				tabindex="0"
-				title="{preset.persona} - {preset.genre}"
+				class="preset-pill font-ui"
+				class:active={isActive}
+				class:builtin={preset.isBuiltin}
+				class:confirming={isConfirming}
+				role="listitem"
 			>
-				<span class="preset-name">{preset.name}</span>
-				<span class="preset-meta">
-					{#if preset.isBuiltin}
-						<span class="builtin-badge">BUILT-IN</span>
-					{:else}
-						<button
-							class="delete-btn font-ui"
-							onclick={(e: MouseEvent) => {
-								e.stopPropagation();
-								if (confirmDelete === preset.name) {
-									handleDelete(preset.name);
-								} else {
-									confirmDelete = preset.name;
-								}
-							}}
-							title={confirmDelete === preset.name ? 'Click again to confirm' : 'Delete preset'}
-						>
-							{confirmDelete === preset.name ? '?' : 'X'}
-						</button>
-					{/if}
-				</span>
+				<button
+					type="button"
+					class="pill-load font-ui"
+					onclick={() => handleLoadPreset(preset.name)}
+					title="{preset.persona} - {preset.genre}"
+				>
+					<span class="pill-name">{preset.name}</span>
+				</button>
+				{#if !preset.isBuiltin}
+					<button
+						type="button"
+						class="pill-delete font-ui"
+						class:confirming={isConfirming}
+						onclick={(e: MouseEvent) => {
+							e.stopPropagation();
+							if (isConfirming) {
+								handleDelete(preset.name);
+							} else {
+								confirmDelete = preset.name;
+							}
+						}}
+						title={isConfirming ? 'Click again to confirm' : 'Delete preset'}
+						aria-label={isConfirming ? `Confirm delete ${preset.name}` : `Delete ${preset.name}`}
+					>
+						{isConfirming ? '?' : '×'}
+					</button>
+				{/if}
 			</div>
 		{/each}
 	</div>
@@ -213,94 +228,100 @@
 		text-rendering: optimizeSpeed;
 	}
 
-	.preset-list {
+	/* Horizontal pill row. Wraps when there are more presets than fit
+	   on one line; horizontal scrolling would clip preset names and
+	   hide the active pill on narrow viewports. */
+	.preset-row {
 		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		margin-bottom: 4px;
-		max-height: 200px;
-		overflow-y: auto;
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-bottom: 6px;
 	}
 
-	.preset-list::-webkit-scrollbar {
-		width: 3px;
-	}
-
-	.preset-list::-webkit-scrollbar-track {
-		background: var(--color-bg-deep);
-	}
-
-	.preset-list::-webkit-scrollbar-thumb {
-		background: var(--color-widget-inactive);
-		border-radius: 0;
-	}
-
-	.preset-item {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 3px 4px;
+	.preset-pill {
+		display: inline-flex;
+		align-items: stretch;
 		background: var(--color-bg-panel);
 		border: 1px solid var(--color-border);
 		border-radius: 0;
-		cursor: pointer;
 		color: var(--color-text-primary);
 		font-size: var(--font-size-xs);
-		text-align: left;
+		overflow: hidden;
+		max-width: 100%;
 		transition: none;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
-		width: 100%;
 	}
 
-	.preset-item:hover {
+	.preset-pill:hover {
 		border-color: var(--color-accent-cyan-dim);
-		background: var(--color-widget-bg);
 	}
 
-	.preset-item.preset-active {
+	/* Active pill — magenta neon glow. */
+	.preset-pill.active {
 		border-color: var(--color-accent-magenta);
-		box-shadow: 0 0 6px var(--color-accent-magenta-dim);
+		box-shadow: 0 0 6px var(--color-accent-magenta-dim), 0 0 12px var(--color-accent-magenta-dim);
 		background: var(--color-widget-bg);
 	}
 
-	.preset-name {
-		flex: 1;
+	.preset-pill.active .pill-name {
+		color: var(--color-accent-cyan);
+		text-shadow: 0 0 4px var(--color-accent-cyan);
+	}
+
+	/* Built-in pills get a faint cyan tint on the left so users can
+	   spot which presets they can't delete. The cyan accent matches
+	   the secondary-accent color in the theme. */
+	.preset-pill.builtin {
+		border-left: 2px solid var(--color-accent-cyan-dim);
+	}
+
+	.pill-load {
+		background: none;
+		border: none;
+		color: inherit;
+		font: inherit;
+		padding: 3px 6px;
+		cursor: pointer;
+		text-align: left;
 		min-width: 0;
+		max-width: 160px;
+		-webkit-font-smoothing: none;
+		text-rendering: optimizeSpeed;
+	}
+
+	.pill-name {
+		display: inline-block;
+		max-width: 100%;
+		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
-	.preset-meta {
-		display: flex;
-		align-items: center;
-		flex-shrink: 0;
-		margin-left: 4px;
-	}
-
-	.builtin-badge {
-		font-size: var(--font-size-xs);
-		color: var(--color-text-dim);
-		white-space: nowrap;
-	}
-
-	.delete-btn {
+	.pill-delete {
 		background: none;
-		border: 1px solid var(--color-border);
+		border: none;
+		border-left: 1px solid var(--color-border);
 		color: var(--color-text-dim);
 		font-size: var(--font-size-xs);
-		padding: 1px 3px;
+		padding: 0 5px;
 		cursor: pointer;
-		border-radius: 0;
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
 		transition: none;
 	}
 
-	.delete-btn:hover {
+	.pill-delete:hover {
 		color: #ff4466;
-		border-color: #ff4466;
+		background: rgba(255, 68, 102, 0.08);
+	}
+
+	/* First click — switch to "?" with magenta glow as the confirm prompt. */
+	.pill-delete.confirming {
+		color: var(--color-accent-magenta);
+		background: rgba(255, 51, 136, 0.12);
+		text-shadow: 0 0 4px var(--color-accent-magenta);
 	}
 
 	.save-area {
