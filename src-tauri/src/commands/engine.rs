@@ -219,6 +219,12 @@ pub fn start_routing(
     // Species 1 behavior.
     let transport = Arc::clone(&state.transport);
 
+    // #91 commit A: share the Companion orchestrator with the router
+    // thread. Defaults to enabled=false with zero Lanes — tick()
+    // short-circuits and produces no DispatchOps until Lanes
+    // register and the master switch flips.
+    let companion = Arc::clone(&state.companion);
+
     // Spawn router thread
     thread::spawn(move || {
         if let Err(e) = run_tauri_router(
@@ -244,6 +250,7 @@ pub fn start_routing(
             synth_tx,
             voice_outputs,
             transport,
+            companion,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -304,6 +311,7 @@ fn run_tauri_router(
     synth_tx: mpsc::Sender<SynthEvent>,
     voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
     transport: Arc<Transport>,
+    companion: Arc<Mutex<crate::companion::Companion>>,
 ) -> anyhow::Result<()> {
     // Connect to either Guitar Audio bridge, physical MIDI input, or
     // nothing at all (Computer Keyboard virtual input — notes are pushed
@@ -385,6 +393,25 @@ fn run_tauri_router(
             };
             let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
             eng.set_counterpoint_beat_phase(phase);
+        }
+
+        // #91 commit A: tick the Companion orchestrator. When
+        // `enabled = false` (the default), tick() short-circuits and
+        // returns an empty Vec — zero overhead per iteration. When
+        // Lanes are registered and the master switch is on, the
+        // returned ops are translated to dispatch_voice /
+        // broadcast_note_off via dispatch_companion_ops.
+        //
+        // Held briefly across only this loop iteration so Tauri
+        // command handlers (enable/disable, register Lane — future
+        // commits) can acquire the lock between ticks.
+        {
+            let num_ports = output_router.connection_count();
+            let ops = {
+                let mut c = companion.lock().unwrap_or_else(|e| e.into_inner());
+                c.tick(&engine)
+            };
+            dispatch_companion_ops(&ops, num_ports, &synth_tx, &mut output_router);
         }
 
         // Beat-aligned chord retrigger. When pattern is enabled and the
@@ -1040,6 +1067,77 @@ fn broadcast_note_off(
             synth_tx,
             output,
         );
+    }
+}
+
+/// Translate `Companion::tick`'s `DispatchOp` outputs into the
+/// existing `dispatch_voice` / `broadcast_note_off` calls so Lanes
+/// can drive notes through the same routing fabric harmony voices
+/// use. Pure dispatch — no decisions, no state mutation beyond the
+/// existing per-call helpers.
+///
+/// `DispatchOp::AllNotesOff { ports }` ignores its `ports` list for
+/// now and broadcasts to every connected output (matches the existing
+/// CC 123 panic-drain behavior in the router). Per-port targeting
+/// is deferred until the audio-graph milestone introduces an
+/// `InstrumentId` model.
+fn dispatch_companion_ops(
+    ops: &[crate::companion::DispatchOp],
+    num_ports: usize,
+    synth_tx: &mpsc::Sender<SynthEvent>,
+    output: &mut OutputRouter,
+) {
+    use crate::companion::DispatchOp;
+    for op in ops {
+        match op {
+            DispatchOp::NoteOn {
+                target,
+                note,
+                velocity,
+                channel,
+            } => {
+                dispatch_voice(
+                    *target,
+                    *channel,
+                    VoiceDispatch::NoteOn {
+                        note: *note,
+                        velocity: *velocity,
+                    },
+                    num_ports,
+                    synth_tx,
+                    output,
+                );
+            }
+            DispatchOp::NoteOff {
+                target,
+                note,
+                channel,
+            } => {
+                dispatch_voice(
+                    *target,
+                    *channel,
+                    VoiceDispatch::NoteOff {
+                        note: *note,
+                        velocity: 0,
+                    },
+                    num_ports,
+                    synth_tx,
+                    output,
+                );
+            }
+            DispatchOp::AllNotesOff { .. } => {
+                // Per-port `ports` field deferred to audio-graph
+                // milestone; for now broadcast all 16 MIDI channels'
+                // CC 123 to every connected output, matching the
+                // existing router CC 123 panic path.
+                for ch in 0u8..16 {
+                    let msg = [0xB0 | ch, 123u8, 0u8];
+                    for port in 0..num_ports {
+                        let _ = output.send_to_port(port, &msg);
+                    }
+                }
+            }
+        }
     }
 }
 
