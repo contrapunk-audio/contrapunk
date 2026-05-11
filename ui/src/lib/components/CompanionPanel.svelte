@@ -2,6 +2,28 @@
 	import { engine } from '$lib/stores/engine.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 
+	// Named-interval options for the Interval dropdown. Maps to
+	// transpose_degrees ∈ [-7, +7] (the diatonic-degree count fed
+	// to Scale::harmonize_smart). UI shows musical names; engine
+	// still operates on degrees.
+	const INTERVAL_OPTIONS: Array<{ value: string; label: string }> = [
+		{ value: '-7', label: 'Octave ↓' },
+		{ value: '-6', label: '7th ↓' },
+		{ value: '-5', label: '6th ↓' },
+		{ value: '-4', label: '5th ↓' },
+		{ value: '-3', label: '4th ↓' },
+		{ value: '-2', label: '3rd ↓' },
+		{ value: '-1', label: '2nd ↓' },
+		{ value: '0', label: 'Unison' },
+		{ value: '1', label: '2nd ↑' },
+		{ value: '2', label: '3rd ↑' },
+		{ value: '3', label: '4th ↑' },
+		{ value: '4', label: '5th ↑' },
+		{ value: '5', label: '6th ↑' },
+		{ value: '6', label: '7th ↑' },
+		{ value: '7', label: 'Octave ↑' }
+	];
+
 	// Per-voice harmony mode options (slice G dropdown). Empty value =
 	// inherit the engine's global mode. Names match
 	// parse_harmony_mode in src-tauri/src/commands/harmony.rs.
@@ -308,21 +330,18 @@
 								</span>
 							</div>
 
-							<div class="voice-param">
+							<div class="voice-param voice-param-mode">
 								<span class="param-label font-ui">Interval</span>
-								<input
-									type="range"
-									min="-7"
-									max="7"
-									step="1"
-									value={voice.transpose_degrees}
-									oninput={(e) =>
+								<PixelSelect
+									options={INTERVAL_OPTIONS}
+									value={String(voice.transpose_degrees)}
+									placeholder="Unison"
+									small={true}
+									onchange={(v) =>
 										engine.updateCanonVoice(i, {
-											transpose_degrees: parseInt((e.target as HTMLInputElement).value, 10)
+											transpose_degrees: parseInt(v, 10)
 										})}
-									class="pixel-range"
 								/>
-								<span class="param-readout font-code">{transposeLabel(voice.transpose_degrees)}</span>
 							</div>
 
 							<div class="voice-param">
