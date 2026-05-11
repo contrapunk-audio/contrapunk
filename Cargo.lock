@@ -613,7 +613,7 @@ dependencies = [
 
 [[package]]
 name = "contrapunk"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "clack-extensions",
@@ -693,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "contrapunk-tauri"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "contrapunk",
@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "contrapunk_plugin"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "contrapunk",
  "nih_plug",
