@@ -542,6 +542,7 @@ interface PersistedSettings {
 		time_ratio: number;
 		harmony_mode?: string | null | undefined;
 		reference_voice?: number | null | undefined;
+		preset_id?: string | null | undefined;
 	}>;
 }
 
@@ -717,6 +718,7 @@ function loadSettings(): PersistedSettings | null {
 								time_ratio?: number;
 								harmony_mode?: string | null;
 								reference_voice?: number | null;
+								preset_id?: string | null;
 							}) => ({
 								delay_beats: Math.max(0, Math.min(16, v.delay_beats)),
 								transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
@@ -726,7 +728,8 @@ function loadSettings(): PersistedSettings | null {
 										: 1.0,
 								harmony_mode: typeof v.harmony_mode === 'string' ? v.harmony_mode : null,
 								reference_voice:
-									typeof v.reference_voice === 'number' ? v.reference_voice : null
+									typeof v.reference_voice === 'number' ? v.reference_voice : null,
+								preset_id: typeof v.preset_id === 'string' ? v.preset_id : null
 							})
 						)
 				: SETTINGS_DEFAULTS.canonVoices
@@ -802,6 +805,11 @@ class EngineStore {
 			octave_mode?: string | null;
 			counterpoint_species?: string | null;
 			counterpoint_strictness?: string | null;
+			/** Voice Library binding. UI-only; the backend never sees
+			 *  this. When set, the CompanionPanel's reactivity effect
+			 *  re-applies the named preset's fields whenever the preset
+			 *  changes in the Voices tab. */
+			preset_id?: string | null;
 		}>
 	>([
 		{
@@ -852,7 +860,8 @@ class EngineStore {
 				transpose_degrees: v.transpose_degrees,
 				time_ratio: v.time_ratio,
 				harmony_mode: v.harmony_mode ?? null,
-				reference_voice: v.reference_voice ?? null
+				reference_voice: v.reference_voice ?? null,
+				preset_id: v.preset_id ?? null
 			}))
 		});
 	}
@@ -1172,6 +1181,7 @@ class EngineStore {
 			octave_mode?: string | null;
 			counterpoint_species?: string | null;
 			counterpoint_strictness?: string | null;
+			preset_id?: string | null;
 		}>
 	) {
 		const prev = this.canonVoices;
@@ -1204,7 +1214,8 @@ class EngineStore {
 				voice_leading_style: v.voice_leading_style ?? null,
 				octave_mode: v.octave_mode ?? null,
 				counterpoint_species: v.counterpoint_species ?? null,
-				counterpoint_strictness: v.counterpoint_strictness ?? null
+				counterpoint_strictness: v.counterpoint_strictness ?? null,
+				preset_id: v.preset_id ?? null
 			};
 		});
 		this.canonVoices = clamped;
@@ -1256,6 +1267,7 @@ class EngineStore {
 			octave_mode: string | null;
 			counterpoint_species: string | null;
 			counterpoint_strictness: string | null;
+			preset_id: string | null;
 		}>
 	) {
 		const next = this.canonVoices.map((v, i) => (i === idx ? { ...v, ...patch } : v));
@@ -1273,10 +1285,11 @@ class EngineStore {
 				this.canonDelayBeats = s.delay_beats;
 				this.canonTransposeDegrees = s.transpose_degrees;
 				if (Array.isArray(s.voices) && s.voices.length > 0) {
-					// Normalize the wire shape: older builds may not send
-					// `time_ratio` / `harmony_mode` / `reference_voice`, so
-					// fall back to the strict-imitation defaults.
-					this.canonVoices = s.voices.map((v) => {
+					// Preserve UI-only preset_id by index — the backend
+					// doesn't send it back. Falling out of sync would
+					// silently unbind voices from their preset.
+					const existingByIdx = this.canonVoices;
+					this.canonVoices = s.voices.map((v, i) => {
 						const rec = v as Record<string, unknown>;
 						return {
 							delay_beats: v.delay_beats,
@@ -1288,7 +1301,8 @@ class EngineStore {
 							reference_voice:
 								typeof rec.reference_voice === 'number'
 									? (rec.reference_voice as number)
-									: null
+									: null,
+							preset_id: existingByIdx[i]?.preset_id ?? null
 						};
 					});
 				}

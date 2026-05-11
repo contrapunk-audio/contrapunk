@@ -2,8 +2,6 @@
 	import { voiceLibrary, type VoicePreset } from '$lib/stores/voiceLibrary.svelte';
 	import {
 		ALL_MODES,
-		COUNTERPOINT_SPECIES,
-		COUNTERPOINT_STRICTNESS,
 		OCTAVE_MODES,
 		SCALE_FAMILIES,
 		VOICE_LEADING_STYLES
@@ -102,6 +100,37 @@
 		value: m.name,
 		label: m.label
 	}));
+
+	// Composite mode dropdown: Counterpoint expands into the 4 Fux
+	// species in the same list so picking "Counterpoint · Species N"
+	// sets both harmony_mode + counterpoint_species at once. No
+	// separate Strictness control — Strict is always applied.
+	const COMPOSITE_MODE_OPTIONS = ALL_MODES.flatMap((m) =>
+		m.name === 'StrictCounterpoint'
+			? [
+					{ value: 'StrictCounterpoint:Species1', label: `${m.label} · Species 1` },
+					{ value: 'StrictCounterpoint:Species2', label: `${m.label} · Species 2` },
+					{ value: 'StrictCounterpoint:Species3', label: `${m.label} · Species 3` },
+					{ value: 'StrictCounterpoint:Species4', label: `${m.label} · Species 4` }
+				]
+			: [{ value: m.name, label: m.label }]
+	);
+
+	function encodeMode(harmony_mode: string, species: string): string {
+		if (harmony_mode === 'StrictCounterpoint') {
+			return `StrictCounterpoint:${species || 'Species1'}`;
+		}
+		return harmony_mode;
+	}
+	function decodeMode(v: string): { harmony_mode: string; counterpoint_species: string | null } {
+		if (v.startsWith('StrictCounterpoint:')) {
+			return {
+				harmony_mode: 'StrictCounterpoint',
+				counterpoint_species: v.slice('StrictCounterpoint:'.length)
+			};
+		}
+		return { harmony_mode: v, counterpoint_species: null };
+	}
 	const SCALE_MODE_OPTIONS = SCALE_FAMILIES.flatMap((f) =>
 		f.modes.map((m) => ({ value: m.name, label: `${f.label} · ${m.label}` }))
 	);
@@ -112,14 +141,6 @@
 	const OCTAVE_MODE_OPTIONS = OCTAVE_MODES.map((m) => ({
 		value: m.name,
 		label: m.label
-	}));
-	const CP_SPECIES_OPTIONS = COUNTERPOINT_SPECIES.map((s) => ({
-		value: s.name,
-		label: s.label
-	}));
-	const CP_STRICT_OPTIONS = COUNTERPOINT_STRICTNESS.map((s) => ({
-		value: s.name,
-		label: s.label
 	}));
 </script>
 
@@ -242,11 +263,17 @@
 					<label class="row">
 						<span class="row-label font-ui">Harmony Mode</span>
 						<PixelSelect
-							options={HARMONY_MODE_OPTIONS}
-							value={editorState.harmony_mode}
+							options={COMPOSITE_MODE_OPTIONS}
+							value={encodeMode(editorState.harmony_mode, editorState.counterpoint_species)}
 							small={true}
 							onchange={(v) => {
-								editorState.harmony_mode = v as typeof editorState.harmony_mode;
+								const dec = decodeMode(v);
+								editorState.harmony_mode =
+									dec.harmony_mode as typeof editorState.harmony_mode;
+								if (dec.counterpoint_species) {
+									editorState.counterpoint_species =
+										dec.counterpoint_species as typeof editorState.counterpoint_species;
+								}
 								applyEditorToSelected();
 							}}
 						/>
@@ -294,34 +321,6 @@
 							small={true}
 							onchange={(v) => {
 								editorState.octave_mode = v as typeof editorState.octave_mode;
-								applyEditorToSelected();
-							}}
-						/>
-					</label>
-
-					<label class="row">
-						<span class="row-label font-ui">CP Species</span>
-						<PixelSelect
-							options={CP_SPECIES_OPTIONS}
-							value={editorState.counterpoint_species}
-							small={true}
-							onchange={(v) => {
-								editorState.counterpoint_species =
-									v as typeof editorState.counterpoint_species;
-								applyEditorToSelected();
-							}}
-						/>
-					</label>
-
-					<label class="row">
-						<span class="row-label font-ui">CP Strictness</span>
-						<PixelSelect
-							options={CP_STRICT_OPTIONS}
-							value={editorState.counterpoint_strictness}
-							small={true}
-							onchange={(v) => {
-								editorState.counterpoint_strictness =
-									v as typeof editorState.counterpoint_strictness;
 								applyEditorToSelected();
 							}}
 						/>

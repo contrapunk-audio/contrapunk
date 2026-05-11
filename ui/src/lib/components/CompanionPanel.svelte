@@ -5,20 +5,55 @@
 	import Knob from './Knob.svelte';
 	import { voiceLibrary } from '$lib/stores/voiceLibrary.svelte';
 
-	// Per-voice harmony mode options (slice G dropdown). Empty value =
-	// inherit the engine's global mode. Names match
-	// parse_harmony_mode in src-tauri/src/commands/harmony.rs.
+	// Per-voice harmony mode options. Counterpoint expands into the
+	// four Fux species — picking "Counterpoint · Species 2" sets both
+	// harmony_mode = StrictCounterpoint AND counterpoint_species =
+	// Species2 in one selection. Composite values use a colon separator
+	// (mode:species); plain modes use just the mode name.
 	const MODE_OPTIONS: Array<{ value: string; label: string }> = [
 		{ value: '', label: 'Inherit global' },
 		{ value: 'PassThrough', label: 'Pass-Through' },
 		{ value: 'DiatonicThirds', label: 'Diatonic Thirds' },
 		{ value: 'DiatonicFourths', label: 'Diatonic Fourths' },
 		{ value: 'ContraryMotion', label: 'Contrary Motion' },
-		{ value: 'StrictCounterpoint', label: 'Counterpoint' },
+		{ value: 'StrictCounterpoint:Species1', label: 'Counterpoint · Species 1 (note-against-note)' },
+		{ value: 'StrictCounterpoint:Species2', label: 'Counterpoint · Species 2 (2:1)' },
+		{ value: 'StrictCounterpoint:Species3', label: 'Counterpoint · Species 3 (4:1)' },
+		{ value: 'StrictCounterpoint:Species4', label: 'Counterpoint · Species 4 (syncopated)' },
 		{ value: 'FunctionalHarmony', label: 'Functional' },
 		{ value: 'BachChorale', label: 'Bach Chorale' },
 		{ value: 'BarryHarris', label: 'Barry Harris' }
 	];
+
+	/** Encode the (mode, species) pair into a composite dropdown value
+	 *  matching MODE_OPTIONS. Counterpoint mode includes the species;
+	 *  every other mode is just the mode string. Empty/null = inherit. */
+	function encodeModeValue(
+		harmony_mode: string | null | undefined,
+		species: string | null | undefined
+	): string {
+		if (!harmony_mode) return '';
+		if (harmony_mode === 'StrictCounterpoint') {
+			return `StrictCounterpoint:${species ?? 'Species1'}`;
+		}
+		return harmony_mode;
+	}
+
+	/** Inverse of encodeModeValue. Returns {harmony_mode, counterpoint_species}
+	 *  where species is set only for counterpoint, null otherwise. */
+	function decodeModeValue(v: string): {
+		harmony_mode: string | null;
+		counterpoint_species: string | null;
+	} {
+		if (!v) return { harmony_mode: null, counterpoint_species: null };
+		if (v.startsWith('StrictCounterpoint:')) {
+			return {
+				harmony_mode: 'StrictCounterpoint',
+				counterpoint_species: v.slice('StrictCounterpoint:'.length)
+			};
+		}
+		return { harmony_mode: v, counterpoint_species: null };
+	}
 
 	// Knob bounds match canon_lane.rs (delay_beats clamp + time_ratio
 	// clamp). 16 beats covers long delays; 0.125 / 8 time-ratio covers
@@ -625,6 +660,41 @@
 		}
 		drag = null;
 	}
+
+	// --- Live-binding: when a Voice Library preset is edited in the
+	// Voices tab, any canon voice bound to that preset (via preset_id)
+	// re-applies the preset's fields automatically. The guard checks
+	// for genuine differences so the effect doesn't feed back when the
+	// fields already match.
+	$effect(() => {
+		for (let i = 0; i < engine.canonVoices.length; i++) {
+			const v = engine.canonVoices[i];
+			if (!v.preset_id) continue;
+			const p = voiceLibrary.byId(v.preset_id);
+			if (!p) continue;
+			const diff =
+				v.harmony_mode !== p.harmony_mode ||
+				v.voice_count !== p.voice_count ||
+				v.voice_position !== p.voice_position ||
+				v.voice_leading_enabled !== p.voice_leading_enabled ||
+				v.voice_leading_style !== p.voice_leading_style ||
+				v.octave_mode !== p.octave_mode ||
+				v.counterpoint_species !== p.counterpoint_species ||
+				v.counterpoint_strictness !== p.counterpoint_strictness;
+			if (diff) {
+				engine.updateCanonVoice(i, {
+					harmony_mode: p.harmony_mode,
+					voice_count: p.voice_count,
+					voice_position: p.voice_position,
+					voice_leading_enabled: p.voice_leading_enabled,
+					voice_leading_style: p.voice_leading_style,
+					octave_mode: p.octave_mode,
+					counterpoint_species: p.counterpoint_species,
+					counterpoint_strictness: p.counterpoint_strictness
+				});
+			}
+		}
+	});
 </script>
 
 <div class="companion-root">
@@ -901,25 +971,29 @@
 
 							<div
 								class="voice-param voice-param-mode"
-								title="Preset — copy a named voice-library configuration onto this voice. Picks up harmony_mode, voice_count, voice_position, voice-leading, octave_mode, and counterpoint species/strictness. Manage presets in the Voices tab."
+								title="Preset — bind this voice to a named Voice Library entry. Edits to the preset in the Voices tab live-update every bound canon voice. Pick 'Unbind' to detach (the voice keeps its current sound but stops following the preset)."
 							>
 								<span class="param-label font-ui">Preset</span>
 								<PixelSelect
 									options={[
-										{ value: '', label: '— pick preset —' },
+										{ value: '', label: '— unbind —' },
 										...voiceLibrary.all.map((p) => ({
 											value: p.id,
 											label: `${p.builtIn ? '' : '★ '}${p.name}`
 										}))
 									]}
-									value=""
-									placeholder="— pick preset —"
+									value={voice.preset_id ?? ''}
+									placeholder="— unbind —"
 									small={true}
 									onchange={(v) => {
-										if (!v) return;
+										if (!v) {
+											engine.updateCanonVoice(i, { preset_id: null });
+											return;
+										}
 										const preset = voiceLibrary.byId(v);
 										if (!preset) return;
 										engine.updateCanonVoice(i, {
+											preset_id: preset.id,
 											harmony_mode: preset.harmony_mode,
 											voice_count: preset.voice_count,
 											voice_position: preset.voice_position,
@@ -935,18 +1009,22 @@
 
 							<div
 								class="voice-param voice-param-mode"
-								title={`Mode — harmony engine routed for this voice's stack.\n\n${voice.harmony_mode ? `Currently: ${voice.harmony_mode}\n${modeHelp(voice.harmony_mode)}` : `Currently: inheriting the global engine mode (${engine.mode}).\n${modeHelp(engine.mode)}`}\n\nSet a specific mode here to override the global; pick "Inherit global" to follow the Harmony tab.`}
+								title={`Mode — harmony engine routed for this voice's stack.\n\n${voice.harmony_mode ? `Currently: ${voice.harmony_mode}\n${modeHelp(voice.harmony_mode)}` : `Currently: inheriting the global engine mode (${engine.mode}).\n${modeHelp(engine.mode)}`}\n\nCounterpoint expands into the four Fux species — pick "Counterpoint · Species N" to set both at once. Counterpoint strictness is always Strict (no Relaxed mode).`}
 							>
 								<span class="param-label font-ui">Mode</span>
 								<PixelSelect
 									options={MODE_OPTIONS}
-									value={voice.harmony_mode ?? ''}
+									value={encodeModeValue(voice.harmony_mode, voice.counterpoint_species)}
 									placeholder="Inherit"
 									small={true}
-									onchange={(v) =>
+									onchange={(v) => {
+										const decoded = decodeModeValue(v);
 										engine.updateCanonVoice(i, {
-											harmony_mode: v === '' ? null : v
-										})}
+											harmony_mode: decoded.harmony_mode,
+											counterpoint_species: decoded.counterpoint_species,
+											counterpoint_strictness: 'Strict'
+										});
+									}}
 								/>
 							</div>
 
