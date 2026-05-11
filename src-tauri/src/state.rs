@@ -141,15 +141,35 @@ pub struct AppState {
     /// nowhere. Default all `Synth` so users get audio out of the box
     /// without configuring a MIDI port first.
     pub voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
+
+    /// Companion orchestrator (#91 wiring, commit A-minus). Owns the
+    /// Sense/Mutate/Decide Lane registry. The router thread will
+    /// clone this Arc and tick it once per loop iteration (next
+    /// commit); future Tauri commands take brief locks to
+    /// enable/disable / register Lanes.
+    /// Constructed `enabled = false`, no Lanes registered — fully
+    /// no-op until the router-thread wiring (commit A) and the
+    /// input pipeline + UI controls (commits B/C) land.
+    /// `#[allow(dead_code)]` until router wiring consumes it.
+    #[allow(dead_code)]
+    pub companion: Arc<Mutex<crate::companion::Companion>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
+        // Construct engine + transport first so we can wire WorldState
+        // and Companion against the same shared handles. Companion
+        // construction MUST come after both — Lane logic reads from
+        // WorldState which holds an Arc<Mutex<HarmonyEngine>> snapshot.
+        let engine = Arc::new(Mutex::new(HarmonyEngine::new(
+            Key::C,
+            HarmonyMode::PassThrough,
+        )));
+        let transport = Transport::new(48_000);
+        let world = crate::companion::WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
+        let companion = Arc::new(Mutex::new(crate::companion::Companion::new(world)));
         Self {
-            engine: Arc::new(Mutex::new(HarmonyEngine::new(
-                Key::C,
-                HarmonyMode::PassThrough,
-            ))),
+            engine,
             preset_manager: Mutex::new(PresetManager::new()),
             is_running: AtomicBool::new(false),
             guitar_config: Arc::new(Mutex::new(None)),
@@ -162,7 +182,7 @@ impl Default for AppState {
             detune_cents: Arc::new(AtomicI32::new(0)),
             // Placeholder sample rate; audio_clock::start() corrects it
             // to the actual cpal device rate at app launch.
-            transport: Transport::new(48_000),
+            transport,
             metronome_enabled: Arc::new(AtomicBool::new(false)),
             synth_params: Arc::new(SynthParams::default()),
             synth_tx: {
@@ -174,6 +194,7 @@ impl Default for AppState {
             delay_params: Arc::new(DelayParams::default()),
             chain_commander: Mutex::new(None),
             voice_outputs: Arc::new(Mutex::new(vec![VoiceOutputTarget::default(); MAX_VOICES])),
+            companion,
         }
     }
 }
