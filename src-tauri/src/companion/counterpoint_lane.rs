@@ -95,7 +95,11 @@ pub struct CounterpointLane {
 impl CounterpointLane {
     pub fn new() -> Self {
         Self {
-            enabled: false,
+            // FTUX default: ON, alongside the canon. The Companion master
+            // toggle still gates everything, so a user who wants quiet
+            // can switch the Companion off; from the lane's perspective
+            // the goal is "fresh install plays counterpoint from note one".
+            enabled: true,
             species: CounterpointSpecies::Species1,
             transpose_degrees: 2, // default: a third above
             prefer_above: true,
