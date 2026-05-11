@@ -411,7 +411,13 @@ fn run_tauri_router(
                 let mut c = companion.lock().unwrap_or_else(|e| e.into_inner());
                 c.tick(&engine)
             };
-            dispatch_companion_ops(&ops, num_ports, &synth_tx, &mut output_router);
+            dispatch_companion_ops(
+                &ops,
+                num_ports,
+                &synth_tx,
+                &mut output_router,
+                &harmony_notes,
+            );
         }
 
         // Beat-aligned chord retrigger. When pattern is enabled and the
@@ -607,6 +613,7 @@ fn run_tauri_router(
                             num_ports,
                             &synth_tx,
                             &mut output_router,
+                            &harmony_notes,
                         );
                         suppress_default = result.suppress_default;
                     }
@@ -1144,6 +1151,7 @@ fn dispatch_companion_ops(
     num_ports: usize,
     synth_tx: &mpsc::Sender<SynthEvent>,
     output: &mut OutputRouter,
+    harmony_notes: &Arc<Mutex<HashSet<u8>>>,
 ) {
     use crate::companion::DispatchOp;
     for op in ops {
@@ -1165,6 +1173,13 @@ fn dispatch_companion_ops(
                     synth_tx,
                     output,
                 );
+                // Surface companion-emitted notes in the same tracking
+                // set the Piano UI reads, so they render alongside the
+                // engine's harmony notes. Without this, canon emissions
+                // are audible but invisible. (#3 visual-feedback slice.)
+                if let Ok(mut h) = harmony_notes.lock() {
+                    h.insert(*note);
+                }
             }
             DispatchOp::NoteOff {
                 target,
@@ -1182,6 +1197,9 @@ fn dispatch_companion_ops(
                     synth_tx,
                     output,
                 );
+                if let Ok(mut h) = harmony_notes.lock() {
+                    h.remove(note);
+                }
             }
             DispatchOp::AllNotesOff { .. } => {
                 // Per-port `ports` field deferred to audio-graph
