@@ -380,6 +380,23 @@ impl HarmonyEngine {
         self.mode
     }
 
+    /// Returns a reference to the current scale. Borrowed read-only —
+    /// callers that need to transpose against the current key/mode use
+    /// `engine.scale().transpose_diatonic(...)` directly.
+    pub fn scale(&self) -> &Scale {
+        &self.scale
+    }
+
+    /// Returns a mutable reference to the current scale. Needed for
+    /// callers that route through `Scale::harmonize_smart` (which
+    /// mutates `last_borrowed_from` as a side effect of recording
+    /// which parallel mode supplied the harmony note). Lock holders
+    /// like `CanonLane` use this when transposing canon emissions
+    /// against the live key.
+    pub fn scale_mut(&mut self) -> &mut Scale {
+        &mut self.scale
+    }
+
     /// Returns the current octave mode.
     pub fn octave_mode(&self) -> OctaveMode {
         self.octave_mode

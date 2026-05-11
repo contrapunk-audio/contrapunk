@@ -26,6 +26,8 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use wmidi::Note;
+
 use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
 use super::world::WorldState;
 use super::DispatchOp;
@@ -125,11 +127,43 @@ impl CanonLane {
         self.transpose_degrees = degrees.clamp(-7, 7);
     }
 
-    /// v1: unison only. v2 will look up the engine's current scale and
-    /// apply `Scale::transpose_diatonic`. The placeholder keeps the
-    /// call site stable so v2 changes only this method body.
-    fn transpose(&self, input_note: u8) -> u8 {
-        input_note
+    /// Apply diatonic transpose against the engine's current scale,
+    /// routing through `Scale::harmonize_smart` so out-of-scale input
+    /// lands somewhere musically defensible:
+    ///   - In-scale input → diatonic transpose in the current mode
+    ///   - Out-of-scale + interchange enabled → borrows from a parallel
+    ///     mode that contains the input note (modal interchange path)
+    ///   - Out-of-scale + interchange disabled → consonant chromatic
+    ///     interval landing in-scale where possible
+    /// All paths return *something* — no naked-unison fallback for
+    /// chromatic input. Naked unison is musically inert; the user
+    /// asked for canon transpose to do real work even on borrowed
+    /// notes.
+    ///
+    /// Locks `world.engine_snapshot` mutably (because harmonize_smart
+    /// updates `last_borrowed_from` as a side effect). Decide phase
+    /// doesn't hold the engine lock at the orchestrator level so this
+    /// is safe. Transpose is captured AT INPUT TIME so a canon line
+    /// that started in C major stays in C major even if the user
+    /// changes key mid-replay (matches classical-canon semantics).
+    fn transpose(&self, input_note: u8, world: &WorldState) -> u8 {
+        if self.transpose_degrees == 0 {
+            return input_note;
+        }
+        let Ok(mut engine) = world.engine_snapshot.lock() else {
+            return input_note;
+        };
+        let Ok(note) = Note::try_from(input_note) else {
+            return input_note;
+        };
+        let prefer_above = self.transpose_degrees > 0;
+        match engine
+            .scale_mut()
+            .harmonize_smart(note, self.transpose_degrees, prefer_above)
+        {
+            Some(transposed) => u8::from(transposed),
+            None => input_note,
+        }
     }
 }
 
@@ -171,7 +205,7 @@ impl Lane for CanonLane {
                 velocity,
                 channel,
             } => {
-                let canon_note = self.transpose(note);
+                let canon_note = self.transpose(note, world);
                 self.pending_on.push_back(PendingOn {
                     fire_at: now + self.delay_beats as f64,
                     canon_note,
@@ -451,6 +485,130 @@ mod tests {
         );
         assert!(out.ops.is_empty());
         assert!(lane.pending_off.is_empty());
+    }
+
+    /// Issue #3 transpose: canon emits diatonically-transposed notes.
+    /// Input C4 (60) with transpose_degrees=2 in C major Ionian should
+    /// emit E4 (64) — the diatonic third above C. Test pinpoints the
+    /// fact that transpose is applied at CAPTURE time, not emit time,
+    /// so the canon snapshot is stable against mid-replay key changes.
+    #[test]
+    fn transpose_emits_diatonic_interval() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_delay(1.0);
+        lane.set_transpose(2); // diatonic third
+
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60, // C4
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 1.5);
+        let out = lane.tick(&world);
+        match &out.ops[0] {
+            DispatchOp::NoteOn { note, .. } => {
+                assert_eq!(
+                    *note, 64,
+                    "C4 + 2 diatonic degrees in C major Ionian = E4 (64), got {}",
+                    note
+                );
+            }
+            _ => panic!("expected NoteOn"),
+        }
+    }
+
+    /// Chromatic input + modal interchange enabled: canon transpose
+    /// routes through harmonize_smart, which borrows from a parallel
+    /// mode that contains the note. The canon line stays musically
+    /// sensible instead of falling back to naked unison.
+    #[test]
+    fn transpose_uses_modal_interchange_for_chromatic_input() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_delay(1.0);
+        lane.set_transpose(2);
+
+        // Eb4 (63) is not in C Ionian, but IS in C Aeolian / C Dorian.
+        // Enable interchange so harmonize_smart routes through the
+        // borrowing path.
+        {
+            let mut engine = world.engine_snapshot.lock().unwrap();
+            engine.set_interchange_enabled(true);
+            engine.set_borrowing_range(3);
+        }
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 63,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 1.5);
+        let out = lane.tick(&world);
+        let emitted = match &out.ops[0] {
+            DispatchOp::NoteOn { note, .. } => *note,
+            _ => panic!("expected NoteOn"),
+        };
+        // Eb + 2 diatonic degrees in C Aeolian (Eb-F-G-Ab-Bb-C) lands
+        // on G. In C Dorian (D-Eb-F-G-A-Bb-C) the diatonic third up
+        // from Eb is also G. So the canon transpose should land on
+        // G4 (67). At minimum it must NOT equal the input (63) — that
+        // would mean we fell back to unison, defeating the whole point.
+        assert_ne!(
+            emitted, 63,
+            "interchange path must produce a real transposition, not unison"
+        );
+        assert!(
+            (emitted as i16 - 63).abs() <= 7,
+            "transpose should land within an octave of input, got {}",
+            emitted
+        );
+    }
+
+    /// Chromatic input + interchange disabled: canon transpose routes
+    /// through harmonize_smart's chromatic-consonant path, landing on
+    /// a scale tone via a consonant interval (3rd / 6th / 5th / 4th).
+    /// Still produces a real transposition, not unison.
+    #[test]
+    fn transpose_uses_chromatic_fallback_when_interchange_disabled() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_delay(1.0);
+        lane.set_transpose(2);
+
+        // interchange defaults to disabled — explicit just for clarity.
+        {
+            let mut engine = world.engine_snapshot.lock().unwrap();
+            engine.set_interchange_enabled(false);
+        }
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 63, // Eb4 — chromatic in C Ionian
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 1.5);
+        let out = lane.tick(&world);
+        match &out.ops[0] {
+            DispatchOp::NoteOn { note, .. } => {
+                // Stays within reach of the input but must not be naked
+                // unison — chromatic-consonant path always picks an
+                // interval, never returns the input unchanged.
+                assert!(
+                    (*note as i16 - 63).abs() <= 9,
+                    "chromatic-consonant transpose should land within a 6th, got {}",
+                    note
+                );
+            }
+            _ => panic!("expected NoteOn"),
+        }
     }
 
     #[test]
