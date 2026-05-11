@@ -838,9 +838,12 @@
 							class="grid-line"
 							class:bar-line={t.isBar}
 							style="left: {(t.beat / timelineBeats) * 100}%"
+							title={t.isBar
+								? `Bar ${t.barIdx + 1} · beat 1`
+								: `Bar ${t.barIdx + 1} · beat ${beatInBar}`}
 						>
 							<span class="grid-label font-code" class:bar-label={t.isBar}>
-								{t.isBar ? `${t.barIdx + 1}` : beatInBar}
+								{beatInBar}
 							</span>
 						</div>
 					{/each}
