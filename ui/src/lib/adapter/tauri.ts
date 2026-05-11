@@ -217,6 +217,56 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async companionSetEnabled(enabled: boolean): Promise<void> {
+		try {
+			await invoke('companion_set_enabled', { enabled });
+		} catch (e) {
+			throw new Error(`Failed to set companion enabled: ${e}`);
+		}
+	}
+
+	async companionIsEnabled(): Promise<boolean> {
+		try {
+			return (await invoke('companion_is_enabled')) as boolean;
+		} catch (e) {
+			throw new Error(`Failed to read companion enabled: ${e}`);
+		}
+	}
+
+	async canonSetEnabled(enabled: boolean): Promise<void> {
+		try {
+			await invoke('canon_set_enabled', { enabled });
+		} catch (e) {
+			throw new Error(`Failed to set canon enabled: ${e}`);
+		}
+	}
+
+	async canonSetDelay(beats: number): Promise<void> {
+		try {
+			await invoke('canon_set_delay', { beats });
+		} catch (e) {
+			throw new Error(`Failed to set canon delay: ${e}`);
+		}
+	}
+
+	async canonSetTranspose(degrees: number): Promise<void> {
+		try {
+			await invoke('canon_set_transpose', { degrees });
+		} catch (e) {
+			throw new Error(`Failed to set canon transpose: ${e}`);
+		}
+	}
+
+	async canonState(): Promise<{ enabled: boolean; delay_beats: number; transpose_degrees: number } | null> {
+		try {
+			const s = await invoke('canon_state');
+			if (s === null || typeof s !== 'object') return null;
+			return s as { enabled: boolean; delay_beats: number; transpose_degrees: number };
+		} catch (e) {
+			throw new Error(`Failed to read canon state: ${e}`);
+		}
+	}
+
 	/** Tauri uses native OS MIDI APIs; no browser-style permission gate. */
 	readonly midiPermissionState: MidiPermissionState = 'granted';
 

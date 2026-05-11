@@ -230,6 +230,36 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	// -- Companion / CanonLane (#3) -- WASM surface stub
+	// Companion lives in the Tauri router thread; the browser/WASM
+	// surface has no companion infrastructure yet. These methods are
+	// no-ops or return defaults so the shared store doesn't blow up
+	// when running in browser mode.
+
+	async companionSetEnabled(_enabled: boolean): Promise<void> {
+		// No-op: WASM surface has no Companion yet.
+	}
+
+	async companionIsEnabled(): Promise<boolean> {
+		return false;
+	}
+
+	async canonSetEnabled(_enabled: boolean): Promise<void> {
+		// No-op.
+	}
+
+	async canonSetDelay(_beats: number): Promise<void> {
+		// No-op.
+	}
+
+	async canonSetTranspose(_degrees: number): Promise<void> {
+		// No-op.
+	}
+
+	async canonState(): Promise<{ enabled: boolean; delay_beats: number; transpose_degrees: number } | null> {
+		return null;
+	}
+
 	/** Current MIDI permission state. */
 	get midiPermissionState(): MidiPermissionState {
 		return this._midiPermissionState;

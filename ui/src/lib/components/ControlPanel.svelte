@@ -264,6 +264,74 @@
 	</div>
 </div>
 
+<!-- Companion + Canon (#3, #91). The Companion master gates all
+     registered Lanes; Canon is the first one shipped. Two-stage gate:
+     enable Companion, then enable Canon, then adjust delay. Transport
+     must be running for canon emissions to mature. -->
+<div class="card">
+	<div class="cell-label-row">
+		<span class="cell-label font-ui">Companion</span>
+		<button
+			class="pixel-btn toggle-btn"
+			class:toggle-on={engine.companionEnabled}
+			onclick={() => engine.setCompanionEnabled(!engine.companionEnabled)}
+		>
+			{engine.companionEnabled ? 'ON' : 'OFF'}
+		</button>
+	</div>
+	{#if engine.companionEnabled}
+		<div class="cell-label-row" style="margin-top: 8px;">
+			<span class="cell-label font-ui">Canon</span>
+			<button
+				class="pixel-btn toggle-btn"
+				class:toggle-on={engine.canonEnabled}
+				onclick={() => engine.setCanonEnabled(!engine.canonEnabled)}
+			>
+				{engine.canonEnabled ? 'ON' : 'OFF'}
+			</button>
+		</div>
+		{#if engine.canonEnabled}
+			<div class="range-row">
+				<span class="range-label font-ui">Delay</span>
+				<input
+					type="range"
+					min="0.25"
+					max="4"
+					step="0.25"
+					value={engine.canonDelayBeats}
+					oninput={(e) =>
+						engine.setCanonDelay(
+							parseFloat((e.target as HTMLInputElement).value)
+						)}
+					class="pixel-range"
+				/>
+				<span class="range-label font-code">{engine.canonDelayBeats.toFixed(2)} beat{engine.canonDelayBeats === 1 ? '' : 's'}</span>
+			</div>
+			<div class="range-row">
+				<span class="range-label font-ui">Trnsp</span>
+				<input
+					type="range"
+					min="-7"
+					max="7"
+					step="1"
+					value={engine.canonTransposeDegrees}
+					oninput={(e) =>
+						engine.setCanonTranspose(
+							parseInt((e.target as HTMLInputElement).value, 10)
+						)}
+					class="pixel-range"
+				/>
+				<span class="range-label font-code">
+					{engine.canonTransposeDegrees > 0 ? '+' : ''}{engine.canonTransposeDegrees}°
+				</span>
+			</div>
+			<div style="font-size: 0.7em; opacity: 0.7; margin-top: 4px;">
+				v1: unison only (transpose stored, not applied). Transport must be playing.
+			</div>
+		{/if}
+	{/if}
+</div>
+
 <style>
 	.card {
 		background: var(--color-widget-bg);

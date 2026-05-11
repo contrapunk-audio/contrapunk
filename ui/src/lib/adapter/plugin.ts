@@ -143,6 +143,25 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('setCounterpointStrictness', strictness);
 	}
 
+	async companionSetEnabled(enabled: boolean): Promise<void> {
+		this.send('companionSetEnabled', enabled);
+	}
+	async companionIsEnabled(): Promise<boolean> {
+		return false;
+	}
+	async canonSetEnabled(enabled: boolean): Promise<void> {
+		this.send('canonSetEnabled', enabled);
+	}
+	async canonSetDelay(beats: number): Promise<void> {
+		this.send('canonSetDelay', beats);
+	}
+	async canonSetTranspose(degrees: number): Promise<void> {
+		this.send('canonSetTranspose', degrees);
+	}
+	async canonState(): Promise<{ enabled: boolean; delay_beats: number; transpose_degrees: number } | null> {
+		return null;
+	}
+
 	// -- MIDI devices (DAW handles routing in plugin mode) --
 
 	/** DAW manages MIDI for the plugin; no browser permission needed. */

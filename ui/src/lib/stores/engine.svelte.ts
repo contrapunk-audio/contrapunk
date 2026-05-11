@@ -674,6 +674,12 @@ class EngineStore {
 	// -- Detune --
 	detuneCents = $state(0);
 
+	// -- Companion / Canon (#3, #91) --
+	companionEnabled = $state(false);
+	canonEnabled = $state(false);
+	canonDelayBeats = $state(1.0);
+	canonTransposeDegrees = $state(0);
+
 	// -- Transport --
 	isRunning = $state(false);
 
@@ -922,6 +928,68 @@ class EngineStore {
 		this.detuneCents = cents;
 		adapter.setDetune(cents);
 		this.persist();
+	}
+
+	async setCompanionEnabled(enabled: boolean) {
+		const prev = this.companionEnabled;
+		this.companionEnabled = enabled;
+		try {
+			await adapter.companionSetEnabled(enabled);
+		} catch (e) {
+			this.companionEnabled = prev;
+			throw e;
+		}
+	}
+
+	async setCanonEnabled(enabled: boolean) {
+		const prev = this.canonEnabled;
+		this.canonEnabled = enabled;
+		try {
+			await adapter.canonSetEnabled(enabled);
+		} catch (e) {
+			this.canonEnabled = prev;
+			throw e;
+		}
+	}
+
+	async setCanonDelay(beats: number) {
+		const prev = this.canonDelayBeats;
+		const clamped = Math.max(0, Math.min(8, beats));
+		this.canonDelayBeats = clamped;
+		try {
+			await adapter.canonSetDelay(clamped);
+		} catch (e) {
+			this.canonDelayBeats = prev;
+			throw e;
+		}
+	}
+
+	async setCanonTranspose(degrees: number) {
+		const prev = this.canonTransposeDegrees;
+		const clamped = Math.max(-7, Math.min(7, Math.round(degrees)));
+		this.canonTransposeDegrees = clamped;
+		try {
+			await adapter.canonSetTranspose(clamped);
+		} catch (e) {
+			this.canonTransposeDegrees = prev;
+			throw e;
+		}
+	}
+
+	/** Pull canon state from the backend so the UI reflects the truth
+	 *  after restart / external config change. */
+	async syncCanonFromBackend() {
+		try {
+			this.companionEnabled = await adapter.companionIsEnabled();
+			const s = await adapter.canonState();
+			if (s) {
+				this.canonEnabled = s.enabled;
+				this.canonDelayBeats = s.delay_beats;
+				this.canonTransposeDegrees = s.transpose_degrees;
+			}
+		} catch {
+			// Adapter may not implement canon — leave defaults in place.
+		}
 	}
 
 	/**

@@ -218,6 +218,29 @@ export interface ContrapunkAdapter {
 	 */
 	setCounterpointStrictness(strictness: string): Promise<void>;
 
+	// -- Companion / CanonLane (#3) --
+
+	/** Master enable for the Companion orchestrator (#91). Required for
+	 *  any registered Lane (including CanonLane) to actually run. */
+	companionSetEnabled(enabled: boolean): Promise<void>;
+
+	/** Read whether the Companion is currently enabled. */
+	companionIsEnabled(): Promise<boolean>;
+
+	/** Enable / disable the Canon voice (#3). Requires the Companion
+	 *  master to be enabled too — this is the per-lane gate. */
+	canonSetEnabled(enabled: boolean): Promise<void>;
+
+	/** Set the canon delay in beats. Clamped engine-side to [0.0, 8.0]. */
+	canonSetDelay(beats: number): Promise<void>;
+
+	/** Set the canon diatonic transpose. Reserved for v2 — v1 ignores
+	 *  the value. Clamped to [-7, +7] degrees. */
+	canonSetTranspose(degrees: number): Promise<void>;
+
+	/** Read the canon lane's full config snapshot. */
+	canonState(): Promise<{ enabled: boolean; delay_beats: number; transpose_degrees: number } | null>;
+
 	// -- MIDI devices --
 
 	/**
