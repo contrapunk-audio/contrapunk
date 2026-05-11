@@ -264,101 +264,13 @@
 	</div>
 </div>
 
-<!-- Companion + Canon (#3, #91). The Companion master gates all
-     registered Lanes; Canon is the first one shipped. Two-stage gate:
-     enable Companion, then enable Canon, then adjust delay. Transport
-     must be running for canon emissions to mature. -->
-<div class="card">
-	<div class="cell-label-row">
-		<span class="cell-label font-ui">Companion</span>
-		<button
-			class="pixel-btn toggle-btn"
-			class:toggle-on={engine.companionEnabled}
-			onclick={() => engine.setCompanionEnabled(!engine.companionEnabled)}
-		>
-			{engine.companionEnabled ? 'ON' : 'OFF'}
-		</button>
-	</div>
-	{#if engine.companionEnabled}
-		<div class="cell-label-row" style="margin-top: 8px;">
-			<span class="cell-label font-ui">Canon</span>
-			<button
-				class="pixel-btn toggle-btn"
-				class:toggle-on={engine.canonEnabled}
-				onclick={() => engine.setCanonEnabled(!engine.canonEnabled)}
-			>
-				{engine.canonEnabled ? 'ON' : 'OFF'}
-			</button>
-		</div>
-		{#if engine.canonEnabled}
-			<!-- Multi-voice canon: list of (delay, transpose) per voice.
-			     Each voice is one independent canon entry — Bach-style
-			     fugue subjects use 2-4 voices at staggered intervals. -->
-			<div class="cell-label-row" style="margin-top: 8px;">
-				<span class="cell-label font-ui">Voices ({engine.canonVoices.length})</span>
-				<button
-					class="pixel-btn"
-					disabled={engine.canonVoices.length >= 8}
-					onclick={() => engine.addCanonVoice()}
-					title="Add a canon voice (up to 8)"
-				>
-					+ Add
-				</button>
-			</div>
-			{#each engine.canonVoices as voice, i (i)}
-				<div class="canon-voice-row">
-					<span class="range-label font-ui">V{i + 1}</span>
-					<div class="canon-voice-controls">
-						<div class="range-row">
-							<span class="range-label font-code" style="font-size: 0.7em;">delay</span>
-							<input
-								type="range"
-								min="0.25"
-								max="4"
-								step="0.25"
-								value={voice.delay_beats}
-								oninput={(e) =>
-									engine.updateCanonVoice(i, {
-										delay_beats: parseFloat((e.target as HTMLInputElement).value),
-									})}
-								class="pixel-range"
-							/>
-							<span class="range-label font-code" style="min-width: 3.5em;">{voice.delay_beats.toFixed(2)}b</span>
-						</div>
-						<div class="range-row">
-							<span class="range-label font-code" style="font-size: 0.7em;">trnsp</span>
-							<input
-								type="range"
-								min="-7"
-								max="7"
-								step="1"
-								value={voice.transpose_degrees}
-								oninput={(e) =>
-									engine.updateCanonVoice(i, {
-										transpose_degrees: parseInt((e.target as HTMLInputElement).value, 10),
-									})}
-								class="pixel-range"
-							/>
-							<span class="range-label font-code" style="min-width: 3.5em;">
-								{voice.transpose_degrees > 0 ? '+' : ''}{voice.transpose_degrees}°
-							</span>
-						</div>
-					</div>
-					<button
-						class="pixel-btn"
-						disabled={engine.canonVoices.length <= 1}
-						onclick={() => engine.removeCanonVoice(i)}
-						title="Remove voice"
-					>
-						×
-					</button>
-				</div>
-			{/each}
-			<div style="font-size: 0.7em; opacity: 0.7; margin-top: 4px;">
-				Transport must be playing for canon voices to fire.
-			</div>
-		{/if}
-	{/if}
+<!-- Companion / Canon controls live in the Companion tab now. Leaving
+     a tiny pointer here so Harmony-tab users discover the new home. -->
+<div class="card companion-pointer">
+	<span class="cell-label font-ui">Companion / Canon</span>
+	<span class="pointer-hint font-code">
+		→ <em>Companion</em> tab
+	</span>
 </div>
 
 <style>
@@ -460,26 +372,21 @@
 		margin-top: 4px;
 	}
 
-	.canon-voice-row {
+	.companion-pointer {
 		display: flex;
+		justify-content: space-between;
 		align-items: center;
-		gap: 4px;
-		margin-top: 6px;
-		padding: 4px 6px;
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
 	}
 
-	.canon-voice-row > .range-label {
-		min-width: 1.5em;
+	.pointer-hint {
+		font-size: var(--font-size-xs);
+		opacity: 0.7;
 		color: var(--color-accent-cyan, #33ddff);
 	}
 
-	.canon-voice-controls {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
+	.pointer-hint em {
+		font-style: normal;
+		text-decoration: underline;
 	}
 
 	.range-label {

@@ -167,7 +167,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		enabled: boolean;
 		delay_beats: number;
 		transpose_degrees: number;
-		voices?: Array<{ delay_beats: number; transpose_degrees: number }>;
+		voices?: Array<{ delay_beats: number; transpose_degrees: number; time_ratio?: number }>;
 	} | null> {
 		return null;
 	}

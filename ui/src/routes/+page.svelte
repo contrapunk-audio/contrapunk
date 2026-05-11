@@ -12,6 +12,7 @@
 	import HistoryStrip from '$lib/components/HistoryStrip.svelte';
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
 	import ChainPanel from '$lib/components/ChainPanel.svelte';
+	import CompanionPanel from '$lib/components/CompanionPanel.svelte';
 	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
@@ -141,7 +142,14 @@
 				class:active={ui.activeTab === 'play'}
 				onclick={() => (ui.activeTab = 'play')}
 			>
-				Play
+				Harmony
+			</button>
+			<button
+				class="tab-btn font-ui"
+				class:active={ui.activeTab === 'companion'}
+				onclick={() => (ui.activeTab = 'companion')}
+			>
+				Companion
 			</button>
 			<button
 				class="tab-btn font-ui"
@@ -200,6 +208,13 @@
 					{#if ui.panels.piano}<Piano />{/if}
 				</div>
 			{/if}
+		{:else if ui.activeTab === 'companion'}
+			<!-- Companion tab: delayed-voice configuration (canon lanes
+			     + per-voice settings). The voice management UX lives
+			     here so the Play tab stays focused on real-time harmony. -->
+			<div class="companion-area">
+				<CompanionPanel />
+			</div>
 		{:else}
 			<!-- Chain tab: audio signal flow + synth params -->
 			<div class="chain-area">
@@ -264,6 +279,12 @@
 	.chain-area {
 		background: rgba(15, 14, 26, 0.88);
 		overflow-y: auto;
+	}
+
+	.companion-area {
+		background: rgba(15, 14, 26, 0.88);
+		overflow-y: auto;
+		height: 100%;
 	}
 
 	.content-area {

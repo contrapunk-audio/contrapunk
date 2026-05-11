@@ -513,9 +513,9 @@ function computeScaleNotes(key: KeyName, scaleMode: ScaleModeName): number[] {
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
-// Version bumped from 1 → 2 when counterpointSpecies / counterpointStrictness
-// fields were added. Older payloads fall back to defaults on migration.
-const SETTINGS_VERSION = 2;
+// Version 3: companion + canon state (canonEnabled, companionEnabled,
+// canonVoices). Older payloads fall back to defaults on migration.
+const SETTINGS_VERSION = 3;
 
 interface PersistedSettings {
 	version: number;
@@ -532,6 +532,10 @@ interface PersistedSettings {
 	detuneCents: number;
 	counterpointSpecies: CounterpointSpeciesName;
 	counterpointStrictness: CounterpointStrictnessName;
+	// Companion + Canon (#3) — persisted in version 3+.
+	companionEnabled: boolean;
+	canonEnabled: boolean;
+	canonVoices: Array<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>;
 }
 
 const SETTINGS_DEFAULTS: PersistedSettings = {
@@ -548,7 +552,10 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	voiceCount: 2,
 	detuneCents: 0,
 	counterpointSpecies: 'Species1',
-	counterpointStrictness: 'Strict'
+	counterpointStrictness: 'Strict',
+	companionEnabled: false,
+	canonEnabled: false,
+	canonVoices: [{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 }]
 };
 
 // Enum validation sets
@@ -625,7 +632,34 @@ function loadSettings(): PersistedSettings | null {
 				: SETTINGS_DEFAULTS.counterpointSpecies,
 			counterpointStrictness: VALID_CP_STRICTNESS.has(parsed.counterpointStrictness)
 				? parsed.counterpointStrictness
-				: SETTINGS_DEFAULTS.counterpointStrictness
+				: SETTINGS_DEFAULTS.counterpointStrictness,
+			companionEnabled:
+				typeof parsed.companionEnabled === 'boolean'
+					? parsed.companionEnabled
+					: SETTINGS_DEFAULTS.companionEnabled,
+			canonEnabled:
+				typeof parsed.canonEnabled === 'boolean'
+					? parsed.canonEnabled
+					: SETTINGS_DEFAULTS.canonEnabled,
+			canonVoices: Array.isArray(parsed.canonVoices)
+				? parsed.canonVoices
+						.slice(0, 8)
+						.filter(
+							(v: unknown): v is { delay_beats: number; transpose_degrees: number; time_ratio: number } =>
+								typeof v === 'object' &&
+								v !== null &&
+								typeof (v as Record<string, unknown>).delay_beats === 'number' &&
+								typeof (v as Record<string, unknown>).transpose_degrees === 'number'
+						)
+						.map((v: { delay_beats: number; transpose_degrees: number; time_ratio?: number }) => ({
+							delay_beats: Math.max(0, Math.min(8, v.delay_beats)),
+							transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
+							time_ratio:
+								typeof v.time_ratio === 'number'
+									? Math.max(0.25, Math.min(4, v.time_ratio))
+									: 1.0
+						}))
+				: SETTINGS_DEFAULTS.canonVoices
 		};
 	} catch {
 		localStorage.removeItem(SETTINGS_KEY);
@@ -679,12 +713,12 @@ class EngineStore {
 	canonEnabled = $state(false);
 	canonDelayBeats = $state(1.0);
 	canonTransposeDegrees = $state(0);
-	/** Multi-voice canon (#3). Each entry independently delays and
-	 *  transposes. Mirrors the engine-side `voices` field. Default
-	 *  is a single voice matching the legacy single-voice config. */
-	canonVoices = $state<Array<{ delay_beats: number; transpose_degrees: number }>>([
-		{ delay_beats: 1.0, transpose_degrees: 0 },
-	]);
+	/** Multi-voice canon (#3). Each entry independently delays,
+	 *  transposes, and time-scales (augmentation/diminution).
+	 *  Mirrors the engine-side `voices` field. */
+	canonVoices = $state<
+		Array<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>
+	>([{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 }]);
 
 	// -- Transport --
 	isRunning = $state(false);
@@ -717,7 +751,14 @@ class EngineStore {
 			voiceCount: this.voiceCount,
 			detuneCents: this.detuneCents,
 			counterpointSpecies: this.counterpointSpecies,
-			counterpointStrictness: this.counterpointStrictness
+			counterpointStrictness: this.counterpointStrictness,
+			companionEnabled: this.companionEnabled,
+			canonEnabled: this.canonEnabled,
+			canonVoices: this.canonVoices.map((v) => ({
+				delay_beats: v.delay_beats,
+				transpose_degrees: v.transpose_degrees,
+				time_ratio: v.time_ratio
+			}))
 		});
 	}
 
@@ -753,7 +794,12 @@ class EngineStore {
 			[
 				'counterpointStrictness',
 				() => adapter.setCounterpointStrictness(saved.counterpointStrictness)
-			]
+			],
+			// Companion + Canon state (#3): voices first so the backend
+			// has the right voice list before we flip canon enabled.
+			['canonVoices', () => adapter.canonSetVoices(saved.canonVoices)],
+			['canonEnabled', () => adapter.canonSetEnabled(saved.canonEnabled)],
+			['companionEnabled', () => adapter.companionSetEnabled(saved.companionEnabled)]
 		];
 
 		for (const [name, op] of ops) {
@@ -763,6 +809,13 @@ class EngineStore {
 				console.warn(`[contrapunk] Failed to restore ${name}:`, e);
 			}
 		}
+
+		// Mirror restored canon state into the reactive store so the UI
+		// renders the persisted config immediately without waiting for a
+		// syncFromBackend round-trip.
+		this.companionEnabled = saved.companionEnabled;
+		this.canonEnabled = saved.canonEnabled;
+		this.canonVoices = saved.canonVoices;
 
 		// Sync back to pick up any clamped/validated values from the backend
 		try {
@@ -941,6 +994,7 @@ class EngineStore {
 		this.companionEnabled = enabled;
 		try {
 			await adapter.companionSetEnabled(enabled);
+			this.persist();
 		} catch (e) {
 			this.companionEnabled = prev;
 			throw e;
@@ -952,6 +1006,7 @@ class EngineStore {
 		this.canonEnabled = enabled;
 		try {
 			await adapter.canonSetEnabled(enabled);
+			this.persist();
 		} catch (e) {
 			this.canonEnabled = prev;
 			throw e;
@@ -984,16 +1039,18 @@ class EngineStore {
 
 	/** Replace the multi-voice canon configuration. (#3) */
 	async setCanonVoices(
-		voices: Array<{ delay_beats: number; transpose_degrees: number }>
+		voices: Array<{ delay_beats: number; transpose_degrees: number; time_ratio?: number }>
 	) {
 		const prev = this.canonVoices;
 		const clamped = voices.slice(0, 8).map((v) => ({
 			delay_beats: Math.max(0, Math.min(8, v.delay_beats)),
 			transpose_degrees: Math.max(-7, Math.min(7, Math.round(v.transpose_degrees))),
+			time_ratio: Math.max(0.25, Math.min(4, v.time_ratio ?? 1.0))
 		}));
 		this.canonVoices = clamped;
 		try {
 			await adapter.canonSetVoices(clamped);
+			this.persist();
 		} catch (e) {
 			this.canonVoices = prev;
 			throw e;
@@ -1004,7 +1061,7 @@ class EngineStore {
 	async addCanonVoice() {
 		const next = [
 			...this.canonVoices,
-			{ delay_beats: 1.0, transpose_degrees: 0 },
+			{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 }
 		];
 		await this.setCanonVoices(next);
 	}
@@ -1020,7 +1077,7 @@ class EngineStore {
 	/** Update a single voice in place. */
 	async updateCanonVoice(
 		idx: number,
-		patch: Partial<{ delay_beats: number; transpose_degrees: number }>
+		patch: Partial<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>
 	) {
 		const next = this.canonVoices.map((v, i) => (i === idx ? { ...v, ...patch } : v));
 		await this.setCanonVoices(next);
@@ -1037,7 +1094,16 @@ class EngineStore {
 				this.canonDelayBeats = s.delay_beats;
 				this.canonTransposeDegrees = s.transpose_degrees;
 				if (Array.isArray(s.voices) && s.voices.length > 0) {
-					this.canonVoices = s.voices;
+					// Normalize the wire shape: older builds may not send
+					// `time_ratio`, so fill in the strict-imitation default.
+					this.canonVoices = s.voices.map((v) => ({
+						delay_beats: v.delay_beats,
+						transpose_degrees: v.transpose_degrees,
+						time_ratio:
+							typeof (v as { time_ratio?: number }).time_ratio === 'number'
+								? (v as { time_ratio: number }).time_ratio
+								: 1.0
+					}));
 				}
 			}
 		} catch {
