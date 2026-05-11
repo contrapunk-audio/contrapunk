@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: Shipped work not yet reflected in roadmap phases — reality reconciled 2026-04-15
-stopped_at: context exhaustion at 90% (2026-05-11)
-last_updated: "2026-05-11T12:50:00.435Z"
-last_activity: 2026-04-15 - Codebase map refreshed (7 docs, commit `af7161e`); STATE.md reconciled with 2 weeks of shipped work
+milestone: v1.2.x
+milestone_name: Bugs + small features + plugin spike
+status: Phase 2 ~95% complete — #81/#65/#66 shipped this session, #8b unblocked, #9 Day 1 spike PASS on worktree
+stopped_at: 2026-05-11 evening — between #8b investigation and #8b implementation
+last_updated: "2026-05-11T21:00:00Z"
+last_activity: 2026-05-11 - #81 slice 3 (f1ab6ba), #65+#66 merge (096acea), wasm rebuild (27277be); issue #112 filed for HistoryStrip analysis overlay
 progress:
   total_phases: 29
   completed_phases: 17
