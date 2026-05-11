@@ -45,9 +45,12 @@ pub struct ReverbParams {
 impl Default for ReverbParams {
     fn default() -> Self {
         Self {
-            enabled: AtomicBool::new(false),
-            mix_ppt: AtomicU32::new(300),       // 0.30
-            room_size_ppt: AtomicU32::new(700), // 0.70
+            // FTUX: reverb on by default so the first note sounds like
+            // an instrument, not a dry sine. Mix kept conservative so it
+            // doesn't smear the contrapuntal lines.
+            enabled: AtomicBool::new(true),
+            mix_ppt: AtomicU32::new(250),       // 0.25 — subtle wash
+            room_size_ppt: AtomicU32::new(550), // 0.55 — medium space
             damping_ppt: AtomicU32::new(500),   // 0.50
         }
     }
@@ -308,14 +311,13 @@ impl AudioBlock for Reverb {
 mod tests {
     use super::*;
 
-    fn mk_reverb() -> Reverb {
-        Reverb::new(Arc::new(ReverbParams::default()), 48_000)
-    }
-
     #[test]
     fn bypass_when_disabled() {
-        let mut r = mk_reverb();
-        // default is disabled
+        // Reverb default is enabled (FTUX) — explicitly disable here
+        // to validate the bypass path.
+        let r_params = Arc::new(ReverbParams::default());
+        r_params.set_enabled(false);
+        let mut r = Reverb::new(Arc::clone(&r_params), 48_000);
         let mut buf = [0.5f32; 256];
         r.process(&mut buf, 2);
         assert!(buf.iter().all(|&x| x == 0.5));

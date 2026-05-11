@@ -64,6 +64,26 @@
 				} catch {
 					/* no transport adapter (browser w/o backend) */
 				}
+
+				// FTUX: if the user has no saved MIDI input and didn't
+				// pick one from the device list, default to the
+				// Computer-Keyboard virtual input and auto-start routing
+				// so the first note they play (typed) immediately
+				// produces audible companion voices. Skip auto-start if
+				// the user already has a real input selected (saved
+				// from a prior session — they may want to wire up before
+				// routing fires).
+				try {
+					if (midi.selectedInput === null) {
+						midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
+					}
+					if (!engine.isRunning && midi.selectedInput !== null) {
+						await engine.start(midi.selectedInput, midi.selectedOutputs);
+					}
+				} catch (e) {
+					console.warn('[contrapunk] FTUX auto-routing skipped:', e);
+				}
+
 				initDone = true;
 			} catch (e) {
 				initError = `Init failed: ${e}`;

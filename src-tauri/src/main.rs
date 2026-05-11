@@ -48,6 +48,11 @@ fn main() {
                     if let Ok(mut slot) = state.chain_commander.lock() {
                         *slot = Some(commander);
                     }
+                    // FTUX: auto-start the transport so canon-companion
+                    // voices fire from the first note. Metronome stays
+                    // off by default — the clock ticks silently until
+                    // the user enables it.
+                    state.transport.play();
                 }
                 Err(e) => {
                     eprintln!(
