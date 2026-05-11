@@ -1,28 +1,91 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
 
-	// --- Templates: each is one canon-shape preset the user picks
-	// from the left rail. Today the Companion has one mode (canon-
-	// style delayed voices); future mode types (looper, drone, etc.)
-	// would land alongside as additional template families.
-	type Template = {
+	// --- Forms: each is one preset the user picks from the left rail.
+	// Two families today: REACTIVE (canon-style delayed voices) and
+	// HARMONIC (synchronous accompaniment via engine config). Future
+	// families (looper, drone, arpeggiator) ship as additional lanes.
+	type Form = {
 		id: string;
 		name: string;
 		desc: string;
-		voices: Array<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>;
+		family: 'reactive' | 'harmonic';
+		voices?: Array<{ delay_beats: number; transpose_degrees: number; time_ratio: number }>;
+		harmonic?: {
+			mode: string;
+			scale_mode?: string;
+			voice_count: number;
+			voice_leading_enabled?: boolean;
+			voice_leading_style?: string;
+		};
 	};
 
-	const TEMPLATES: Template[] = [
+	const TEMPLATES: Form[] = [
+		// Harmonic accompaniment — configures the engine's global
+		// mode + voice count so each input note gets a synchronous
+		// harmony stack. No delayed voices.
+		{
+			id: 'add-thirds',
+			name: 'Add Thirds',
+			desc: 'Synchronous: each input adds a diatonic 3rd',
+			family: 'harmonic',
+			harmonic: { mode: 'DiatonicThirds', voice_count: 2 }
+		},
+		{
+			id: 'add-fourths',
+			name: 'Add Fourths',
+			desc: 'Synchronous: each input adds a diatonic 4th',
+			family: 'harmonic',
+			harmonic: { mode: 'DiatonicFourths', voice_count: 2 }
+		},
+		{
+			id: 'satb-counterpoint',
+			name: 'SATB Counterpoint',
+			desc: '4 voices in strict species 1 counterpoint',
+			family: 'harmonic',
+			harmonic: {
+				mode: 'StrictCounterpoint',
+				voice_count: 4,
+				voice_leading_enabled: true,
+				voice_leading_style: 'Free'
+			}
+		},
+		{
+			id: 'bach-chorale-4',
+			name: 'Bach Chorale',
+			desc: '4-voice chorale with Bach-style voice leading',
+			family: 'harmonic',
+			harmonic: {
+				mode: 'BachChorale',
+				voice_count: 4,
+				voice_leading_enabled: true,
+				voice_leading_style: 'Bach'
+			}
+		},
+		{
+			id: 'functional-3',
+			name: 'Functional Trio',
+			desc: '3 voices with functional harmony',
+			family: 'harmonic',
+			harmonic: {
+				mode: 'FunctionalHarmony',
+				voice_count: 3,
+				voice_leading_enabled: true,
+				voice_leading_style: 'Free'
+			}
+		},
 		{
 			id: 'single-echo',
 			name: 'Single Echo',
 			desc: '1 voice, +1 beat unison',
+			family: 'reactive',
 			voices: [{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 }]
 		},
 		{
 			id: 'round-3',
 			name: '3-Voice Round',
 			desc: 'Frère Jacques — 3 voices, unison, staggered',
+			family: 'reactive',
 			voices: [
 				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
 				{ delay_beats: 2.0, transpose_degrees: 0, time_ratio: 1.0 },
@@ -33,6 +96,7 @@
 			id: 'canon-5th',
 			name: 'Canon at 5th',
 			desc: '2 voices, unison + a fifth above',
+			family: 'reactive',
 			voices: [
 				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
 				{ delay_beats: 2.0, transpose_degrees: 4, time_ratio: 1.0 }
@@ -42,6 +106,7 @@
 			id: 'triad-stack',
 			name: 'Triad Stack',
 			desc: '3 voices simultaneously at unison/third/fifth',
+			family: 'reactive',
 			voices: [
 				{ delay_beats: 0.5, transpose_degrees: 0, time_ratio: 1.0 },
 				{ delay_beats: 0.5, transpose_degrees: 2, time_ratio: 1.0 },
@@ -52,6 +117,7 @@
 			id: 'augment',
 			name: 'Augmentation Canon',
 			desc: '2 voices: unison + a 2× slower copy',
+			family: 'reactive',
 			voices: [
 				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
 				{ delay_beats: 1.0, transpose_degrees: -7, time_ratio: 2.0 }
@@ -61,6 +127,7 @@
 			id: 'dimin',
 			name: 'Diminution Canon',
 			desc: '2 voices: unison + a 2× faster copy',
+			family: 'reactive',
 			voices: [
 				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
 				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 0.5 }
@@ -70,6 +137,7 @@
 			id: 'bach-3',
 			name: 'Bach 3-Voice',
 			desc: '3 voices at unison/fifth/octave, +1/+2/+3 beats',
+			family: 'reactive',
 			voices: [
 				{ delay_beats: 1.0, transpose_degrees: 0, time_ratio: 1.0 },
 				{ delay_beats: 2.0, transpose_degrees: 4, time_ratio: 1.0 },
@@ -80,15 +148,29 @@
 
 	let selectedTemplate = $state<string | null>(null);
 
-	async function applyTemplate(t: Template) {
+	async function applyTemplate(t: Form) {
 		selectedTemplate = t.id;
-		await engine.setCanonVoices(t.voices);
-		// One-master-toggle UX: enabling Companion auto-enables canon
-		// (canon is the only inner mode today; the per-lane gate is
-		// implementation detail). When other lanes arrive they'll each
-		// gain their own UI surface.
-		if (!engine.companionEnabled) await engine.setCompanionEnabled(true);
-		if (!engine.canonEnabled) await engine.setCanonEnabled(true);
+
+		if (t.family === 'reactive' && t.voices) {
+			// Canon form: replace voices + enable canon.
+			await engine.setCanonVoices(t.voices);
+			if (!engine.companionEnabled) await engine.setCompanionEnabled(true);
+			if (!engine.canonEnabled) await engine.setCanonEnabled(true);
+		} else if (t.family === 'harmonic' && t.harmonic) {
+			// Accompaniment form: configures the engine's global mode +
+			// voice count to produce a synchronous harmony stack on each
+			// input. Disables Canon so the user hears the accompaniment
+			// alone (they can re-enable Canon manually to layer it).
+			await engine.setMode(t.harmonic.mode as never);
+			await engine.setVoiceCount(t.harmonic.voice_count);
+			if (t.harmonic.voice_leading_enabled !== undefined) {
+				await engine.setVoiceLeading(
+					t.harmonic.voice_leading_enabled,
+					(t.harmonic.voice_leading_style ?? 'Free') as never
+				);
+			}
+			if (engine.canonEnabled) await engine.setCanonEnabled(false);
+		}
 	}
 
 	async function toggleCompanion() {
@@ -146,20 +228,40 @@
 
 	<!-- BODY: templates left, visual + voices right -->
 	<div class="body">
-		<!-- LEFT: templates rail -->
+		<!-- LEFT: forms rail. Forms are split into two families:
+		     HARMONIC = synchronous accompaniment (engine config), and
+		     REACTIVE = delayed-voice canon. Future Lane types
+		     (Looper, Drone, Arpeggiator) appear here as additional
+		     family groups. -->
 		<aside class="templates">
-			<div class="section-header font-ui">FORMS</div>
-			{#each TEMPLATES as t (t.id)}
-				<button
-					class="template-row"
-					class:active={selectedTemplate === t.id}
-					onclick={() => applyTemplate(t)}
-					title={t.desc}
-				>
-					<div class="template-name font-ui">{t.name}</div>
-					<div class="template-desc font-code">{t.desc}</div>
-				</button>
-			{/each}
+			<div class="family-group">
+				<div class="section-header font-ui">HARMONIC</div>
+				{#each TEMPLATES.filter((t) => t.family === 'harmonic') as t (t.id)}
+					<button
+						class="template-row"
+						class:active={selectedTemplate === t.id}
+						onclick={() => applyTemplate(t)}
+						title={t.desc}
+					>
+						<div class="template-name font-ui">{t.name}</div>
+						<div class="template-desc font-code">{t.desc}</div>
+					</button>
+				{/each}
+			</div>
+			<div class="family-group">
+				<div class="section-header font-ui">REACTIVE</div>
+				{#each TEMPLATES.filter((t) => t.family === 'reactive') as t (t.id)}
+					<button
+						class="template-row"
+						class:active={selectedTemplate === t.id}
+						onclick={() => applyTemplate(t)}
+						title={t.desc}
+					>
+						<div class="template-name font-ui">{t.name}</div>
+						<div class="template-desc font-code">{t.desc}</div>
+					</button>
+				{/each}
+			</div>
 		</aside>
 
 		<!-- RIGHT: visualization + voice cards -->
