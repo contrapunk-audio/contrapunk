@@ -513,10 +513,10 @@ function computeScaleNotes(key: KeyName, scaleMode: ScaleModeName): number[] {
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
-// Version 5: defaults retuned for "Bach voice-leading + Counterpoint +
-// user-as-bass + 4-voice chorale", with all canon voices delayed
-// (player owns beat 0). Existing payloads fall back to the new defaults.
-const SETTINGS_VERSION = 5;
+// Version 6: default canon trimmed from 6 voices to 4 to match the
+// engine's 4-voice SATB stack. Existing payloads fall back to the
+// new defaults so the alignment kicks in on next launch.
+const SETTINGS_VERSION = 6;
 
 interface PersistedSettings {
 	version: number;
@@ -573,12 +573,14 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	detuneCents: 0,
 	counterpointSpecies: 'Species1',
 	counterpointStrictness: 'Strict',
-	// Fresh-install defaults: Companion + Canon ON with the 6-voice
-	// Modal Cascade form. All canon voices have a non-zero delay
-	// because the player IS the voice at beat 0 (bass line).
-	// Companion adds 6 imitative voices ABOVE the player, climbing
-	// through every harmony mode in sequence so a single note instantly
-	// reveals the engine's full vocabulary.
+	// Fresh-install defaults: Companion + Canon ON with 4 imitative
+	// voices that match the engine's 4-voice SATB chorale. All canon
+	// voices have a non-zero delay because the player IS the voice at
+	// beat 0 (bass line). Companion adds 4 cascading lines ABOVE the
+	// bass — Thirds → Fourths → Counterpoint → Chorale — so a single
+	// note builds a four-part contrapuntal texture over the first
+	// two beats. (The full 6-mode showcase still ships as the Modal
+	// Cascade form in the FORMS rail.)
 	companionEnabled: true,
 	canonEnabled: true,
 	canonVoices: [
@@ -609,20 +611,6 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 			time_ratio: 1.0,
 			harmony_mode: 'BachChorale',
 			reference_voice: 2
-		},
-		{
-			delay_beats: 2.5,
-			transpose_degrees: 2,
-			time_ratio: 1.0,
-			harmony_mode: 'FunctionalHarmony',
-			reference_voice: 3
-		},
-		{
-			delay_beats: 3,
-			transpose_degrees: 2,
-			time_ratio: 1.0,
-			harmony_mode: 'BarryHarris',
-			reference_voice: 4
 		}
 	]
 };
