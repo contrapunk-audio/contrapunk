@@ -280,7 +280,7 @@ export const ALL_MODES: {
 	},
 	{
 		name: 'StrictCounterpoint',
-		label: 'Counterpoint (Species 1)',
+		label: 'Counterpoint',
 		shortLabel: 'Cpt',
 		tooltip:
 			'Note-against-note voice leading with scoring. No parallel 5ths/octaves, prefers contrary/stepwise motion.'
