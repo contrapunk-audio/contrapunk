@@ -89,7 +89,7 @@
 		{
 			id: 'bach-fugue',
 			name: 'Bach Fugue',
-			desc: '3-voice fugue · chorale echo (0.5b) → 5th-up answer (2b) → countersubject (3.5b)',
+			desc: '5-voice fugue · chorale subject → 5th answer → countersubject → octave entry → episode',
 			family: 'reactive',
 			voices: [
 				{
@@ -112,13 +112,27 @@
 					time_ratio: 1.0,
 					harmony_mode: 'BachChorale',
 					reference_voice: 1
+				},
+				{
+					delay_beats: 5,
+					transpose_degrees: 7,
+					time_ratio: 1.0,
+					harmony_mode: 'StrictCounterpoint',
+					reference_voice: 0
+				},
+				{
+					delay_beats: 6.5,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'BachChorale',
+					reference_voice: 2
 				}
 			]
 		},
 		{
 			id: 'modal-cascade',
 			name: 'Modal Cascade',
-			desc: '3 voices climbing through Thirds → Fourths → Counterpoint · 1b apart starting at 0.5b',
+			desc: '6 voices climbing every harmony mode · Thirds → Fourths → CP → Chorale → Functional → Barry',
 			family: 'reactive',
 			voices: [
 				{
@@ -129,47 +143,82 @@
 					reference_voice: null
 				},
 				{
-					delay_beats: 1.5,
+					delay_beats: 1,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'DiatonicFourths',
 					reference_voice: 0
 				},
 				{
-					delay_beats: 2.5,
+					delay_beats: 1.5,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'StrictCounterpoint',
 					reference_voice: 1
+				},
+				{
+					delay_beats: 2,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'BachChorale',
+					reference_voice: 2
+				},
+				{
+					delay_beats: 2.5,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'FunctionalHarmony',
+					reference_voice: 3
+				},
+				{
+					delay_beats: 3,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'BarryHarris',
+					reference_voice: 4
 				}
 			]
 		},
 		{
 			id: 'contrary-mirror',
 			name: 'Contrary Mirror',
-			desc: '2 voices · symmetric mirror around the player (6th up + 6th down, same downbeat)',
+			desc: '4 voices · fourfold symmetric mirror at 3rd and 6th, above + below',
 			family: 'reactive',
 			voices: [
 				{
 					delay_beats: 0.25,
-					transpose_degrees: 5,
+					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'ContraryMotion',
 					reference_voice: null
 				},
 				{
 					delay_beats: 0.25,
-					transpose_degrees: -5,
+					transpose_degrees: -2,
 					time_ratio: 1.0,
 					harmony_mode: 'ContraryMotion',
 					reference_voice: null
+				},
+				{
+					delay_beats: 1,
+					transpose_degrees: 5,
+					time_ratio: 1.0,
+					harmony_mode: 'ContraryMotion',
+					reference_voice: 0
+				},
+				{
+					delay_beats: 1,
+					transpose_degrees: -5,
+					time_ratio: 1.0,
+					harmony_mode: 'ContraryMotion',
+					reference_voice: 1
 				}
 			]
 		},
 		{
 			id: 'augmentation-canon',
 			name: 'Augmentation Canon',
-			desc: 'Counterpoint echo (0.5b) + half-speed answer at 5th (1b) · Bach mensuration',
+			desc: '4 voices · subject + 2× slow answer + 4× ultra-slow + counter-augmentation',
 			family: 'reactive',
 			voices: [
 				{
@@ -185,13 +234,27 @@
 					time_ratio: 2.0,
 					harmony_mode: 'BachChorale',
 					reference_voice: 0
+				},
+				{
+					delay_beats: 2,
+					transpose_degrees: 7,
+					time_ratio: 4.0,
+					harmony_mode: 'StrictCounterpoint',
+					reference_voice: 0
+				},
+				{
+					delay_beats: 1.5,
+					transpose_degrees: -3,
+					time_ratio: 2.0,
+					harmony_mode: 'BachChorale',
+					reference_voice: 1
 				}
 			]
 		},
 		{
 			id: 'diminution-fugue',
 			name: 'Diminution Fugue',
-			desc: 'Counterpoint echo (0.5b) + 2× faster stretto at 5th (1b) · running imitation',
+			desc: '4 voices · subject + 2× / 4× stretto + counter-diminution · running imitation layers',
 			family: 'reactive',
 			voices: [
 				{
@@ -207,13 +270,27 @@
 					time_ratio: 0.5,
 					harmony_mode: 'StrictCounterpoint',
 					reference_voice: 0
+				},
+				{
+					delay_beats: 1.5,
+					transpose_degrees: 0,
+					time_ratio: 0.25,
+					harmony_mode: 'BachChorale',
+					reference_voice: 0
+				},
+				{
+					delay_beats: 2,
+					transpose_degrees: 7,
+					time_ratio: 0.5,
+					harmony_mode: 'StrictCounterpoint',
+					reference_voice: 1
 				}
 			]
 		},
 		{
 			id: 'functional-pillar',
 			name: 'Functional Pillar',
-			desc: '3 voices · I–IV–V triad arpeggio across an 8th note (0.25 / 0.5 / 0.75b)',
+			desc: '5 voices · full V7 arpeggio · root → 3rd → 5th → 7th → octave restated',
 			family: 'reactive',
 			voices: [
 				{
@@ -236,13 +313,27 @@
 					time_ratio: 1.0,
 					harmony_mode: 'FunctionalHarmony',
 					reference_voice: null
+				},
+				{
+					delay_beats: 1,
+					transpose_degrees: 6,
+					time_ratio: 1.0,
+					harmony_mode: 'FunctionalHarmony',
+					reference_voice: null
+				},
+				{
+					delay_beats: 1.5,
+					transpose_degrees: 7,
+					time_ratio: 1.0,
+					harmony_mode: 'BachChorale',
+					reference_voice: 0
 				}
 			]
 		},
 		{
 			id: 'barry-harris',
 			name: 'Barry Harris Stack',
-			desc: '3 voices · root → 6th → 3rd cascading through bebop voice-leading · jazz comp pad',
+			desc: '5 voices · 6th-diminished pad · root → 3 → 5 → 6 → octave restatement (V5 ← V1)',
 			family: 'reactive',
 			voices: [
 				{
@@ -253,15 +344,29 @@
 					reference_voice: null
 				},
 				{
+					delay_beats: 0.5,
+					transpose_degrees: 2,
+					time_ratio: 1.0,
+					harmony_mode: 'BarryHarris',
+					reference_voice: null
+				},
+				{
 					delay_beats: 0.75,
+					transpose_degrees: 4,
+					time_ratio: 1.0,
+					harmony_mode: 'BarryHarris',
+					reference_voice: null
+				},
+				{
+					delay_beats: 1,
 					transpose_degrees: 5,
 					time_ratio: 1.0,
 					harmony_mode: 'BarryHarris',
 					reference_voice: null
 				},
 				{
-					delay_beats: 1.25,
-					transpose_degrees: 2,
+					delay_beats: 1.5,
+					transpose_degrees: 7,
 					time_ratio: 1.0,
 					harmony_mode: 'BarryHarris',
 					reference_voice: 0
@@ -269,9 +374,9 @@
 			]
 		},
 		{
-			id: 'mensuration-trinity',
-			name: 'Mensuration Trinity',
-			desc: '3 voices intertwining at 1× / 2× / 0.5× · proportional canon (Ockeghem-style)',
+			id: 'mensuration-quartet',
+			name: 'Mensuration Quartet',
+			desc: '4 voices · 1× / 2× / 0.5× / 4× speeds intertwining · proportional canon (Ockeghem)',
 			family: 'reactive',
 			voices: [
 				{
@@ -282,17 +387,24 @@
 					reference_voice: null
 				},
 				{
-					delay_beats: 1.5,
+					delay_beats: 1,
 					transpose_degrees: 4,
 					time_ratio: 2.0,
 					harmony_mode: 'BachChorale',
 					reference_voice: 0
 				},
 				{
-					delay_beats: 1,
+					delay_beats: 1.5,
 					transpose_degrees: -3,
 					time_ratio: 0.5,
 					harmony_mode: 'ContraryMotion',
+					reference_voice: 0
+				},
+				{
+					delay_beats: 2,
+					transpose_degrees: 7,
+					time_ratio: 4.0,
+					harmony_mode: 'BachChorale',
 					reference_voice: 1
 				}
 			]
@@ -423,6 +535,58 @@
 	function entryX(beats: number): number {
 		const clamped = Math.max(0, Math.min(timelineBeats, beats));
 		return (clamped / timelineBeats) * 100;
+	}
+
+	// --- Drag-to-set-delay on timeline dots ---
+	// Hold pointer on a voice's dot and drag horizontally — the
+	// voice's delay_beats follows the cursor. The rail's width and
+	// the active timelineBeats snapshot are frozen at drag-start so
+	// the auto-fit doesn't fight the cursor mid-drag. Step snaps to
+	// 16th notes (0.125b); hold Shift for free positioning.
+	let drag = $state<{
+		voiceIdx: number;
+		railLeft: number;
+		railWidth: number;
+		beatsAtDragStart: number;
+	} | null>(null);
+
+	function onDotPointerDown(e: PointerEvent, voiceIdx: number) {
+		// The dot lives inside .track-rail. Walk up to find the rail.
+		const dot = e.currentTarget as HTMLElement;
+		const rail = dot.parentElement;
+		if (!rail) return;
+		const rect = rail.getBoundingClientRect();
+		dot.setPointerCapture(e.pointerId);
+		drag = {
+			voiceIdx,
+			railLeft: rect.left,
+			railWidth: rect.width,
+			beatsAtDragStart: timelineBeats
+		};
+		e.preventDefault();
+	}
+
+	function onDotPointerMove(e: PointerEvent) {
+		if (!drag) return;
+		const dx = e.clientX - drag.railLeft;
+		const ratio = Math.max(0, Math.min(1, dx / Math.max(1, drag.railWidth)));
+		let beats = ratio * drag.beatsAtDragStart;
+		if (!e.shiftKey) {
+			beats = Math.round(beats / DELAY_STEP) * DELAY_STEP;
+		}
+		beats = Math.max(DELAY_MIN, Math.min(DELAY_MAX, beats));
+		engine.updateCanonVoice(drag.voiceIdx, { delay_beats: beats });
+	}
+
+	function onDotPointerUp(e: PointerEvent) {
+		if (!drag) return;
+		const dot = e.currentTarget as HTMLElement;
+		try {
+			dot.releasePointerCapture(e.pointerId);
+		} catch {
+			/* pointer wasn't actually captured — ignore */
+		}
+		drag = null;
 	}
 </script>
 
@@ -582,21 +746,38 @@
 						{@const mode = voice.harmony_mode ?? `${engine.mode} (inherited)`}
 						<div
 							class="track voice-track"
-							title={`Voice ${i + 1}\n• enters ${voice.delay_beats.toFixed(2)} beats after ${ref}\n• transposes ${transposeLabel(voice.transpose_degrees)}\n• plays at ${ratioLabel(voice.time_ratio)}\n• harmony mode: ${mode}\n• follows: ${ref}`}
+							title={`Voice ${i + 1}\n• enters ${voice.delay_beats.toFixed(2)} beats after ${ref}\n• transposes ${transposeLabel(voice.transpose_degrees)}\n• plays at ${ratioLabel(voice.time_ratio)}\n• harmony mode: ${mode}\n• follows: ${ref}\n\nDrag the dot to set the delay (Shift = free, no snap).`}
 						>
 							<span class="track-label font-ui">V{i + 1}</span>
 							<div class="track-rail">
+								<!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
 								<div
-									class="entry-dot voice-dot"
+									class="entry-dot voice-dot draggable"
+									class:dragging={drag?.voiceIdx === i}
 									class:transpose-pos={voice.transpose_degrees > 0}
 									class:transpose-neg={voice.transpose_degrees < 0}
 									style="left: {entryX(voice.delay_beats)}%"
+									role="slider"
+									tabindex="0"
+									aria-label="Voice {i + 1} delay in beats"
+									aria-valuemin={DELAY_MIN}
+									aria-valuemax={DELAY_MAX}
+									aria-valuenow={voice.delay_beats}
+									onpointerdown={(e) => onDotPointerDown(e, i)}
+									onpointermove={onDotPointerMove}
+									onpointerup={onDotPointerUp}
+									onpointercancel={onDotPointerUp}
 								>
 									{voice.time_ratio < 1
 										? '◀'
 										: voice.time_ratio > 1
 											? '▶'
 											: '◉'}
+									{#if drag?.voiceIdx === i}
+										<span class="drag-readout font-code">
+											{voice.delay_beats.toFixed(2)}b
+										</span>
+									{/if}
 								</div>
 							</div>
 						</div>
@@ -996,6 +1177,32 @@
 		font-size: 14px;
 		line-height: 1;
 		pointer-events: auto;
+	}
+
+	.entry-dot.draggable {
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+	}
+
+	.entry-dot.dragging {
+		cursor: grabbing;
+		filter: drop-shadow(0 0 6px currentColor);
+	}
+
+	.drag-readout {
+		position: absolute;
+		top: -16px;
+		left: 50%;
+		transform: translateX(-50%);
+		padding: 1px 5px;
+		font-size: 0.65em;
+		background: rgba(15, 14, 26, 0.95);
+		border: 1px solid currentColor;
+		color: var(--color-text);
+		white-space: nowrap;
+		pointer-events: none;
+		z-index: 10;
 	}
 
 	.player-dot {

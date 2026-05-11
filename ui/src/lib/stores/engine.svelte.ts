@@ -573,12 +573,12 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	detuneCents: 0,
 	counterpointSpecies: 'Species1',
 	counterpointStrictness: 'Strict',
-	// Fresh-install defaults: Companion + Canon ON with a 3-voice
-	// Modal Cascade. All canon voices have a non-zero delay because
-	// the player IS the voice at beat 0 (bass line). Companion adds
-	// imitative voices ABOVE the player, staggered through the first
-	// 3 beats so the chorale builds up over a bar rather than
-	// doubling the bass on every note.
+	// Fresh-install defaults: Companion + Canon ON with the 6-voice
+	// Modal Cascade form. All canon voices have a non-zero delay
+	// because the player IS the voice at beat 0 (bass line).
+	// Companion adds 6 imitative voices ABOVE the player, climbing
+	// through every harmony mode in sequence so a single note instantly
+	// reveals the engine's full vocabulary.
 	companionEnabled: true,
 	canonEnabled: true,
 	canonVoices: [
@@ -590,18 +590,39 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 			reference_voice: null
 		},
 		{
-			delay_beats: 1.5,
+			delay_beats: 1,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
 			harmony_mode: 'DiatonicFourths',
 			reference_voice: 0
 		},
 		{
-			delay_beats: 2.5,
+			delay_beats: 1.5,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
 			harmony_mode: 'StrictCounterpoint',
 			reference_voice: 1
+		},
+		{
+			delay_beats: 2,
+			transpose_degrees: 2,
+			time_ratio: 1.0,
+			harmony_mode: 'BachChorale',
+			reference_voice: 2
+		},
+		{
+			delay_beats: 2.5,
+			transpose_degrees: 2,
+			time_ratio: 1.0,
+			harmony_mode: 'FunctionalHarmony',
+			reference_voice: 3
+		},
+		{
+			delay_beats: 3,
+			transpose_degrees: 2,
+			time_ratio: 1.0,
+			harmony_mode: 'BarryHarris',
+			reference_voice: 4
 		}
 	]
 };
