@@ -148,7 +148,7 @@
 	<div class="body">
 		<!-- LEFT: templates rail -->
 		<aside class="templates">
-			<div class="section-header font-ui">TEMPLATES</div>
+			<div class="section-header font-ui">FORMS</div>
 			{#each TEMPLATES as t (t.id)}
 				<button
 					class="template-row"

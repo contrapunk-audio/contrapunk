@@ -108,14 +108,17 @@ struct PendingOff {
     channel: u8,
 }
 
-/// One canon voice's fire record for a single held input — captures
-/// the voice's index (to look up its delay on NoteOff) and the
-/// already-transposed pitch (so the matching NoteOff fires the same
-/// note).
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// One canon voice's fire record for a single held input. Captures
+/// the voice's index (to look up its delay on NoteOff) and the full
+/// pitch stack the voice emitted at NoteOn time — including any
+/// harmony notes the engine added on top of the canon's subject
+/// pitch (interpretation B: each canon voice routes its emission
+/// through the engine's harmonize pipeline). NoteOff replays the
+/// same stack so every emitted pitch gets a matching off.
+#[derive(Clone, Debug, PartialEq)]
 struct HeldVoiceFire {
     voice_idx: usize,
-    canon_note: u8,
+    canon_notes: Vec<u8>,
     channel: u8,
 }
 
@@ -270,6 +273,53 @@ impl CanonLane {
         }
     }
 
+    /// Compute the full pitch stack one canon voice emits for a given
+    /// input note. Two stages, one engine lock:
+    ///
+    /// 1. Subject pitch = input + diatonic transpose via
+    ///    `Scale::harmonize_smart`. Out-of-scale input borrows via
+    ///    modal interchange when enabled.
+    /// 2. Subject pitch → engine.harmonize() to produce a harmony
+    ///    stack at the engine's GLOBAL current mode + voice_count.
+    ///    Each canon voice thus emits a chord rather than a single
+    ///    note — Bach-style multi-voice canon (#3 interpretation B).
+    ///
+    /// v1 uses the engine's global harmony settings for the stack.
+    /// Per-voice harmony mode (each canon voice with its own
+    /// HarmonyMode) is the next slice. Falls back to a single-note
+    /// vec on lock failure / MIDI conversion failure / empty stack.
+    fn compute_voice_stack(
+        &self,
+        input_note: u8,
+        transpose_degrees: i8,
+        world: &WorldState,
+    ) -> Vec<u8> {
+        let Ok(mut engine) = world.engine_snapshot.lock() else {
+            return vec![input_note];
+        };
+        let subject_midi: u8 = if transpose_degrees == 0 {
+            input_note
+        } else if let Ok(note) = Note::try_from(input_note) {
+            let prefer_above = transpose_degrees > 0;
+            engine
+                .scale_mut()
+                .harmonize_smart(note, transpose_degrees, prefer_above)
+                .map(u8::from)
+                .unwrap_or(input_note)
+        } else {
+            input_note
+        };
+        let Ok(subject_note) = Note::try_from(subject_midi) else {
+            return vec![subject_midi];
+        };
+        let stack = engine.harmonize(subject_note);
+        if stack.is_empty() {
+            vec![subject_midi]
+        } else {
+            stack.iter().map(|n| u8::from(*n)).collect()
+        }
+    }
+
     /// Insert a PendingOn into the deque in fire-order. Linear scan
     /// over the deque from the back — typically O(1) because voices
     /// with longer delays arrive in fire-order naturally, but
@@ -344,23 +394,33 @@ impl Lane for CanonLane {
                     self.voices.iter().copied().enumerate().collect();
                 let mut held_voices: Vec<HeldVoiceFire> = Vec::with_capacity(voices_snapshot.len());
                 for (voice_idx, voice) in voices_snapshot {
-                    let canon_note = self.transpose(note, voice.transpose_degrees, world);
+                    // Stage 1: compute the voice's canon "subject" pitch
+                    // (player input + transpose, routed through
+                    // harmonize_smart so out-of-scale input uses modal
+                    // interchange when enabled).
+                    // Stage 2: route the subject through the engine's
+                    // harmonize pipeline so each canon voice carries
+                    // its own full harmony stack — Bach-style multi-
+                    // voice canon where each entry isn't just one
+                    // delayed line but a 2+ note chord. Interpretation B
+                    // confirmed by the user 2026-05-12.
+                    let stack = self.compute_voice_stack(note, voice.transpose_degrees, world);
                     // Per-voice fire time is anchor-relative and scaled
                     // by this voice's time_ratio. Voice with ratio 2.0
-                    // (augmentation) plays at half speed: a note 1 beat
-                    // into the phrase fires 2 beats into the canon
-                    // sequence (after the delay offset).
+                    // (augmentation) plays at half speed.
                     let fire_at =
                         anchor + voice.delay_beats as f64 + relative_on * voice.time_ratio as f64;
-                    self.insert_sorted(PendingOn {
-                        fire_at,
-                        canon_note,
-                        velocity,
-                        channel,
-                    });
+                    for &canon_note in &stack {
+                        self.insert_sorted(PendingOn {
+                            fire_at,
+                            canon_note,
+                            velocity,
+                            channel,
+                        });
+                    }
                     held_voices.push(HeldVoiceFire {
                         voice_idx,
-                        canon_note,
+                        canon_notes: stack,
                         channel,
                     });
                 }
@@ -381,22 +441,22 @@ impl Lane for CanonLane {
                         let Some(voice) = self.voices.get(fire.voice_idx) else {
                             continue; // voice removed mid-flight — drop the off
                         };
-                        // Recompute the canon NoteOn fire time from the
-                        // anchor that was in effect at NoteOn (cached in
-                        // HeldEntry), then add the duration scaled by the
-                        // voice's time_ratio. Anchor may have since reset
-                        // due to a new phrase; using the captured value
-                        // keeps off-fires consistent with the on-fires.
                         let voice_on_relative = (held.on_beat - held.anchor).max(0.0);
                         let voice_on_fire = held.anchor
                             + voice.delay_beats as f64
                             + voice_on_relative * voice.time_ratio as f64;
                         let voice_off_fire = voice_on_fire + duration * voice.time_ratio as f64;
-                        self.pending_off.push(PendingOff {
-                            fire_at: voice_off_fire,
-                            canon_note: fire.canon_note,
-                            channel: fire.channel,
-                        });
+                        // Send NoteOff for every pitch this voice
+                        // emitted (subject + harmony stack). All fire
+                        // at the same off-time — the canon voice's
+                        // chord releases simultaneously.
+                        for &canon_note in &fire.canon_notes {
+                            self.pending_off.push(PendingOff {
+                                fire_at: voice_off_fire,
+                                canon_note,
+                                channel: fire.channel,
+                            });
+                        }
                     }
                 }
                 self.last_input_beat = Some(now);

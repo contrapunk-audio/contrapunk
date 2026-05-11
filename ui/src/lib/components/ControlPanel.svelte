@@ -264,14 +264,7 @@
 	</div>
 </div>
 
-<!-- Companion / Canon controls live in the Companion tab now. Leaving
-     a tiny pointer here so Harmony-tab users discover the new home. -->
-<div class="card companion-pointer">
-	<span class="cell-label font-ui">Companion / Canon</span>
-	<span class="pointer-hint font-code">
-		→ <em>Companion</em> tab
-	</span>
-</div>
+<!-- Companion / Canon controls live in the Companion tab. -->
 
 <style>
 	.card {
@@ -372,22 +365,6 @@
 		margin-top: 4px;
 	}
 
-	.companion-pointer {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.pointer-hint {
-		font-size: var(--font-size-xs);
-		opacity: 0.7;
-		color: var(--color-accent-cyan, #33ddff);
-	}
-
-	.pointer-hint em {
-		font-style: normal;
-		text-decoration: underline;
-	}
 
 	.range-label {
 		color: var(--color-text-secondary);
