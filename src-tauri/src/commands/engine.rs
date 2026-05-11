@@ -589,18 +589,41 @@ fn run_tauri_router(
                     // process_midi_message would route them to send_to_first
                     // which is wrong for control data.
                 } else {
-                    process_midi_message(
-                        &message,
-                        &engine,
-                        &mut output_router,
-                        &input_notes,
-                        &harmony_notes,
-                        &borrowed_notes,
-                        &chord_name,
-                        routing_mode,
-                        &synth_tx,
-                        &voice_outputs,
-                    );
+                    // #91 commit B: ask the Companion's input-pipeline
+                    // Lanes to inspect this event first. If any Lane
+                    // returns `suppress_default = true`, skip the
+                    // existing harmony dispatch — the Lane has taken
+                    // over for this event. Returned ops are dispatched
+                    // through the same translator as tick() ops.
+                    let mut suppress_default = false;
+                    if let Some(ev) = midi_bytes_to_input_event(&message) {
+                        let result = {
+                            let mut c = companion.lock().unwrap_or_else(|e| e.into_inner());
+                            c.on_input(ev, &engine)
+                        };
+                        let num_ports = output_router.connection_count();
+                        dispatch_companion_ops(
+                            &result.ops,
+                            num_ports,
+                            &synth_tx,
+                            &mut output_router,
+                        );
+                        suppress_default = result.suppress_default;
+                    }
+                    if !suppress_default {
+                        process_midi_message(
+                            &message,
+                            &engine,
+                            &mut output_router,
+                            &input_notes,
+                            &harmony_notes,
+                            &borrowed_notes,
+                            &chord_name,
+                            routing_mode,
+                            &synth_tx,
+                            &voice_outputs,
+                        );
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -1070,6 +1093,41 @@ fn broadcast_note_off(
     }
 }
 
+/// Translate raw MIDI bytes into a Companion `InputEvent` for the
+/// `on_input` pipeline. Returns `None` for messages that aren't one
+/// of the three supported event types (NoteOn / NoteOff / Cc) — those
+/// fall through to the legacy router path untouched.
+///
+/// Pure: takes a byte slice, returns Option. No I/O, no locks.
+fn midi_bytes_to_input_event(bytes: &[u8]) -> Option<crate::companion::InputEvent> {
+    use crate::companion::InputEvent;
+    if bytes.len() < 3 {
+        return None;
+    }
+    let status = bytes[0] & 0xF0;
+    let channel = bytes[0] & 0x0F;
+    match status {
+        // NoteOn with velocity 0 is the wmidi-equivalent NoteOff —
+        // honor that convention here too so Lanes see a consistent
+        // input shape across controllers.
+        0x90 if bytes[2] != 0 => Some(InputEvent::NoteOn {
+            note: bytes[1],
+            velocity: bytes[2],
+            channel,
+        }),
+        0x80 | 0x90 => Some(InputEvent::NoteOff {
+            note: bytes[1],
+            channel,
+        }),
+        0xB0 => Some(InputEvent::Cc {
+            number: bytes[1],
+            value: bytes[2],
+            channel,
+        }),
+        _ => None,
+    }
+}
+
 /// Translate `Companion::tick`'s `DispatchOp` outputs into the
 /// existing `dispatch_voice` / `broadcast_note_off` calls so Lanes
 /// can drive notes through the same routing fabric harmony voices
@@ -1438,6 +1496,86 @@ mod tests {
         let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
         let expected: HashSet<u8> = [60, 64].iter().copied().collect();
         assert_eq!(drained, expected);
+    }
+
+    /// MIDI NoteOn (status 0x9X) with non-zero velocity decodes to
+    /// the InputEvent::NoteOn variant carrying note + velocity +
+    /// channel. The channel is the low nibble of the status byte.
+    #[test]
+    fn test_midi_bytes_to_input_event_note_on() {
+        use crate::companion::InputEvent;
+        let ev = midi_bytes_to_input_event(&[0x91, 60, 100]).unwrap();
+        match ev {
+            InputEvent::NoteOn {
+                note,
+                velocity,
+                channel,
+            } => {
+                assert_eq!(note, 60);
+                assert_eq!(velocity, 100);
+                assert_eq!(channel, 1);
+            }
+            _ => panic!("expected NoteOn, got {:?}", ev),
+        }
+    }
+
+    /// MIDI convention: NoteOn with velocity 0 is a NoteOff. Verify
+    /// that decodes correctly so Lanes see a normalized input shape
+    /// regardless of which form the controller sent.
+    #[test]
+    fn test_midi_bytes_to_input_event_note_on_zero_velocity_is_off() {
+        use crate::companion::InputEvent;
+        let ev = midi_bytes_to_input_event(&[0x90, 60, 0]).unwrap();
+        assert!(matches!(
+            ev,
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0
+            }
+        ));
+    }
+
+    /// Explicit NoteOff (status 0x8X) decodes regardless of velocity.
+    #[test]
+    fn test_midi_bytes_to_input_event_note_off() {
+        use crate::companion::InputEvent;
+        let ev = midi_bytes_to_input_event(&[0x82, 64, 50]).unwrap();
+        assert!(matches!(
+            ev,
+            InputEvent::NoteOff {
+                note: 64,
+                channel: 2
+            }
+        ));
+    }
+
+    /// Control Change (status 0xBX) decodes to InputEvent::Cc.
+    #[test]
+    fn test_midi_bytes_to_input_event_cc() {
+        use crate::companion::InputEvent;
+        let ev = midi_bytes_to_input_event(&[0xB3, 7, 100]).unwrap();
+        match ev {
+            InputEvent::Cc {
+                number,
+                value,
+                channel,
+            } => {
+                assert_eq!(number, 7);
+                assert_eq!(value, 100);
+                assert_eq!(channel, 3);
+            }
+            _ => panic!("expected Cc, got {:?}", ev),
+        }
+    }
+
+    /// Other status bytes (pitch bend, aftertouch, sysex, etc.) fall
+    /// through with None so the legacy router path handles them.
+    #[test]
+    fn test_midi_bytes_to_input_event_passthrough() {
+        assert!(midi_bytes_to_input_event(&[0xE0, 0, 64]).is_none()); // pitch bend
+        assert!(midi_bytes_to_input_event(&[0xD0, 100, 0]).is_none()); // channel pressure
+        assert!(midi_bytes_to_input_event(&[]).is_none());
+        assert!(midi_bytes_to_input_event(&[0x90]).is_none()); // too short
     }
 
     /// Issue #14 detection: external ports selected + all voices Synth →
