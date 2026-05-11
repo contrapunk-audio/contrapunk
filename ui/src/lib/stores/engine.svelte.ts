@@ -513,9 +513,10 @@ function computeScaleNotes(key: KeyName, scaleMode: ScaleModeName): number[] {
 // === Settings Persistence ===
 
 const SETTINGS_KEY = 'contrapunk-settings';
-// Version 4: canon voices grew reference_voice (cascade) and per-voice
-// harmony_mode is now persisted. Older payloads fall back to defaults.
-const SETTINGS_VERSION = 4;
+// Version 5: defaults retuned for "Bach voice-leading + Counterpoint +
+// user-as-bass + 4-voice chorale", with all canon voices delayed
+// (player owns beat 0). Existing payloads fall back to the new defaults.
+const SETTINGS_VERSION = 5;
 
 interface PersistedSettings {
 	version: number;
@@ -547,44 +548,56 @@ interface PersistedSettings {
 const SETTINGS_DEFAULTS: PersistedSettings = {
 	version: SETTINGS_VERSION,
 	key: 'C',
-	mode: 'PassThrough',
+	// Counterpoint mode for the global engine — every note the
+	// player or canon voices route through gets harmonized with
+	// proper species-counterpoint rules (no parallel 5ths/8ves,
+	// stepwise motion preferred).
+	mode: 'StrictCounterpoint',
 	scaleMode: 'Ionian',
 	octaveMode: 'None',
-	voiceLeadingEnabled: false,
-	voiceLeadingStyle: 'Free',
-	interchangeEnabled: false,
+	// Bach voice-leading on top of counterpoint — pitch choices
+	// minimize voice crossings + parallel motion across the four
+	// voices, producing chorale-style stacks.
+	voiceLeadingEnabled: true,
+	voiceLeadingStyle: 'BachChorale',
+	// Modal interchange ON so out-of-scale input borrows from
+	// parallel modes instead of dropping back to bare unison.
+	interchangeEnabled: true,
 	interchangeRange: 3,
-	voicePosition: 0,
-	voiceCount: 2,
+	// 4-voice SATB chorale with the user playing the Bass line.
+	// voicePosition is the index of the user's voice in the stack:
+	// 0 = Soprano, 1 = Alto, 2 = Tenor, 3 = Bass — so the player is
+	// at the bottom and the engine generates SAT above.
+	voiceCount: 4,
+	voicePosition: 3,
 	detuneCents: 0,
 	counterpointSpecies: 'Species1',
 	counterpointStrictness: 'Strict',
-	// Fresh-install defaults are tuned for "flow state on first note":
-	// Companion + Canon are on, pre-loaded with the Modal Cascade form
-	// (also in BUILTIN_TEMPLATES) — three voices climbing through
-	// Thirds → Fourths → Counterpoint, each cascading off the previous.
-	// Player hears a continuous fugal texture from the first note
-	// instead of a unison echo, and a returning user who opens the
-	// FORMS rail immediately recognises the default as the named form.
+	// Fresh-install defaults: Companion + Canon ON with a 3-voice
+	// Modal Cascade. All canon voices have a non-zero delay because
+	// the player IS the voice at beat 0 (bass line). Companion adds
+	// imitative voices ABOVE the player, staggered through the first
+	// 3 beats so the chorale builds up over a bar rather than
+	// doubling the bass on every note.
 	companionEnabled: true,
 	canonEnabled: true,
 	canonVoices: [
 		{
-			delay_beats: 0,
+			delay_beats: 0.5,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
 			harmony_mode: 'DiatonicThirds',
 			reference_voice: null
 		},
 		{
-			delay_beats: 1,
+			delay_beats: 1.5,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
 			harmony_mode: 'DiatonicFourths',
 			reference_voice: 0
 		},
 		{
-			delay_beats: 2,
+			delay_beats: 2.5,
 			transpose_degrees: 2,
 			time_ratio: 1.0,
 			harmony_mode: 'StrictCounterpoint',

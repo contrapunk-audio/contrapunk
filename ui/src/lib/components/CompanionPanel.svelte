@@ -89,11 +89,11 @@
 		{
 			id: 'bach-fugue',
 			name: 'Bach Fugue',
-			desc: '3-voice fugue · chorale subject → 5th-up answer (2b) → tight countersubject (3.5b)',
+			desc: '3-voice fugue · chorale echo (0.5b) → 5th-up answer (2b) → countersubject (3.5b)',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0,
+					delay_beats: 0.5,
 					transpose_degrees: 0,
 					time_ratio: 1.0,
 					harmony_mode: 'BachChorale',
@@ -118,25 +118,25 @@
 		{
 			id: 'modal-cascade',
 			name: 'Modal Cascade',
-			desc: '3 voices climbing through Thirds → Fourths → Counterpoint · cascading 1b apart',
+			desc: '3 voices climbing through Thirds → Fourths → Counterpoint · 1b apart starting at 0.5b',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0,
+					delay_beats: 0.5,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'DiatonicThirds',
 					reference_voice: null
 				},
 				{
-					delay_beats: 1,
+					delay_beats: 1.5,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'DiatonicFourths',
 					reference_voice: 0
 				},
 				{
-					delay_beats: 2,
+					delay_beats: 2.5,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'StrictCounterpoint',
@@ -169,18 +169,18 @@
 		{
 			id: 'augmentation-canon',
 			name: 'Augmentation Canon',
-			desc: 'Subject + half-speed answer at the 5th · Bach mensuration trick (V2 ← V1)',
+			desc: 'Counterpoint echo (0.5b) + half-speed answer at 5th (1b) · Bach mensuration',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0,
+					delay_beats: 0.5,
 					transpose_degrees: 0,
 					time_ratio: 1.0,
 					harmony_mode: 'StrictCounterpoint',
 					reference_voice: null
 				},
 				{
-					delay_beats: 0.5,
+					delay_beats: 1,
 					transpose_degrees: 4,
 					time_ratio: 2.0,
 					harmony_mode: 'BachChorale',
@@ -191,18 +191,18 @@
 		{
 			id: 'diminution-fugue',
 			name: 'Diminution Fugue',
-			desc: 'Subject + 2× faster stretto · counter-running imitation (V2 ← V1, half-beat entry)',
+			desc: 'Counterpoint echo (0.5b) + 2× faster stretto at 5th (1b) · running imitation',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0,
+					delay_beats: 0.5,
 					transpose_degrees: 0,
 					time_ratio: 1.0,
 					harmony_mode: 'StrictCounterpoint',
 					reference_voice: null
 				},
 				{
-					delay_beats: 0.5,
+					delay_beats: 1,
 					transpose_degrees: 4,
 					time_ratio: 0.5,
 					harmony_mode: 'StrictCounterpoint',
@@ -213,25 +213,25 @@
 		{
 			id: 'functional-pillar',
 			name: 'Functional Pillar',
-			desc: '3 voices · I–IV–V harmony rolled across an 8th note · functional triad arpeggio',
+			desc: '3 voices · I–IV–V triad arpeggio across an 8th note (0.25 / 0.5 / 0.75b)',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0,
+					delay_beats: 0.25,
 					transpose_degrees: 0,
 					time_ratio: 1.0,
 					harmony_mode: 'FunctionalHarmony',
 					reference_voice: null
 				},
 				{
-					delay_beats: 0.25,
+					delay_beats: 0.5,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'FunctionalHarmony',
 					reference_voice: null
 				},
 				{
-					delay_beats: 0.5,
+					delay_beats: 0.75,
 					transpose_degrees: 4,
 					time_ratio: 1.0,
 					harmony_mode: 'FunctionalHarmony',
@@ -242,25 +242,25 @@
 		{
 			id: 'barry-harris',
 			name: 'Barry Harris Stack',
-			desc: '3 voices · 6th + 3rd staggered through bebop voice-leading · jazz comp pad',
+			desc: '3 voices · root → 6th → 3rd cascading through bebop voice-leading · jazz comp pad',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0,
+					delay_beats: 0.25,
 					transpose_degrees: 0,
 					time_ratio: 1.0,
 					harmony_mode: 'BarryHarris',
 					reference_voice: null
 				},
 				{
-					delay_beats: 0.5,
+					delay_beats: 0.75,
 					transpose_degrees: 5,
 					time_ratio: 1.0,
 					harmony_mode: 'BarryHarris',
 					reference_voice: null
 				},
 				{
-					delay_beats: 1,
+					delay_beats: 1.25,
 					transpose_degrees: 2,
 					time_ratio: 1.0,
 					harmony_mode: 'BarryHarris',
@@ -271,25 +271,25 @@
 		{
 			id: 'mensuration-trinity',
 			name: 'Mensuration Trinity',
-			desc: '3 voices intertwining at 1× / 2× / 0.5× · Ockeghem-style proportional canon',
+			desc: '3 voices intertwining at 1× / 2× / 0.5× · proportional canon (Ockeghem-style)',
 			family: 'reactive',
 			voices: [
 				{
-					delay_beats: 0,
+					delay_beats: 0.5,
 					transpose_degrees: 0,
 					time_ratio: 1.0,
 					harmony_mode: 'StrictCounterpoint',
 					reference_voice: null
 				},
 				{
-					delay_beats: 1,
+					delay_beats: 1.5,
 					transpose_degrees: 4,
 					time_ratio: 2.0,
 					harmony_mode: 'BachChorale',
 					reference_voice: 0
 				},
 				{
-					delay_beats: 0.5,
+					delay_beats: 1,
 					transpose_degrees: -3,
 					time_ratio: 0.5,
 					harmony_mode: 'ContraryMotion',
