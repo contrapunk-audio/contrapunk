@@ -77,9 +77,10 @@ class UiStore {
 	sidebarCollapsed = $state(false);
 	activePanel = $state<string>('play');
 	/** Main-view tab: 'play' (harmony UI) / 'companion' (delayed-voice
-	 *  configuration — canon lanes + per-voice settings) / 'chain'
-	 *  (audio signal flow + synth params). */
-	activeTab = $state<'play' | 'companion' | 'chain'>('play');
+	 *  configuration — canon lanes + per-voice settings) / 'voices'
+	 *  (named voice-preset library) / 'chain' (audio signal flow + synth
+	 *  params). */
+	activeTab = $state<'play' | 'companion' | 'voices' | 'chain'>('play');
 
 	// -- Settings modal --
 	settingsOpen = $state(false);

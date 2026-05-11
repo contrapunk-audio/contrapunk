@@ -3,6 +3,7 @@
 	import { transport } from '$lib/stores/transport.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 	import Knob from './Knob.svelte';
+	import { voiceLibrary } from '$lib/stores/voiceLibrary.svelte';
 
 	// Per-voice harmony mode options (slice G dropdown). Empty value =
 	// inherit the engine's global mode. Names match
@@ -896,6 +897,33 @@
 										onchange={(v) => engine.updateCanonVoice(i, { time_ratio: v })}
 									/>
 								</div>
+							</div>
+
+							<div
+								class="voice-param voice-param-mode"
+								title="Preset — copy a named voice-library configuration onto this voice. Manage presets in the Voices tab. Applying a preset sets this voice's harmony_mode (other preset fields are stored in the Voices library but not yet wired through to the canon backend)."
+							>
+								<span class="param-label font-ui">Preset</span>
+								<PixelSelect
+									options={[
+										{ value: '', label: '— pick preset —' },
+										...voiceLibrary.all.map((p) => ({
+											value: p.id,
+											label: `${p.builtIn ? '' : '★ '}${p.name}`
+										}))
+									]}
+									value=""
+									placeholder="— pick preset —"
+									small={true}
+									onchange={(v) => {
+										if (!v) return;
+										const preset = voiceLibrary.byId(v);
+										if (!preset) return;
+										engine.updateCanonVoice(i, {
+											harmony_mode: preset.harmony_mode
+										});
+									}}
+								/>
 							</div>
 
 							<div

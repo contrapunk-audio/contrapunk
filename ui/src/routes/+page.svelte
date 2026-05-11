@@ -13,6 +13,7 @@
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
 	import ChainPanel from '$lib/components/ChainPanel.svelte';
 	import CompanionPanel from '$lib/components/CompanionPanel.svelte';
+	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
 	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
@@ -173,6 +174,13 @@
 			</button>
 			<button
 				class="tab-btn font-ui"
+				class:active={ui.activeTab === 'voices'}
+				onclick={() => (ui.activeTab = 'voices')}
+			>
+				Voices
+			</button>
+			<button
+				class="tab-btn font-ui"
 				class:active={ui.activeTab === 'chain'}
 				onclick={() => (ui.activeTab = 'chain')}
 			>
@@ -234,6 +242,13 @@
 			     here so the Play tab stays focused on real-time harmony. -->
 			<div class="companion-area">
 				<CompanionPanel />
+			</div>
+		{:else if ui.activeTab === 'voices'}
+			<!-- Voices tab: named voice presets (built-in SATB chorale
+			     roles + user-defined). Canon voice cards pick from this
+			     library to apply a full harmony config to each voice. -->
+			<div class="voices-area">
+				<VoicesPanel />
 			</div>
 		{:else}
 			<!-- Chain tab: audio signal flow + synth params -->
@@ -301,7 +316,8 @@
 		overflow-y: auto;
 	}
 
-	.companion-area {
+	.companion-area,
+	.voices-area {
 		background: rgba(15, 14, 26, 0.88);
 		overflow-y: auto;
 		height: 100%;
