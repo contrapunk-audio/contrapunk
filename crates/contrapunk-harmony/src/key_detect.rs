@@ -63,6 +63,52 @@ fn synth_profile_from_intervals(mode: ScaleMode) -> [f32; 12] {
     p
 }
 
+/// Rotate a 12-element profile by `tonic` semitones so the tonic
+/// position lines up with pitch class 0 in the rotated frame.
+/// Returns a new array; the input is unchanged.
+///
+/// Math: rotated[i] = profile[(i - tonic) mod 12]. Equivalently the
+/// profile slid `tonic` positions to the right.
+#[allow(dead_code)]
+fn rotate_profile(profile: &[f32; 12], tonic: u8) -> [f32; 12] {
+    let mut out = [0.0f32; 12];
+    let tonic = (tonic % 12) as usize;
+    for i in 0..12 {
+        out[i] = profile[(i + 12 - tonic) % 12];
+    }
+    out
+}
+
+/// Pearson correlation coefficient between two 12-element vectors.
+/// Returns a value in [-1.0, 1.0]; higher = stronger linear
+/// relationship. Returns 0.0 when either vector has zero variance.
+///
+/// Pure function, no allocation, one pass over each input.
+#[allow(dead_code)]
+fn pearson_correlation(x: &[f32; 12], y: &[f32; 12]) -> f32 {
+    let n = 12.0_f32;
+    let x_sum: f32 = x.iter().sum();
+    let y_sum: f32 = y.iter().sum();
+    let x_mean = x_sum / n;
+    let y_mean = y_sum / n;
+    let mut num = 0.0_f32;
+    let mut x_sq = 0.0_f32;
+    let mut y_sq = 0.0_f32;
+    for i in 0..12 {
+        let dx = x[i] - x_mean;
+        let dy = y[i] - y_mean;
+        num += dx * dy;
+        x_sq += dx * dx;
+        y_sq += dy * dy;
+    }
+    let denom = (x_sq * y_sq).sqrt();
+    if denom < 1e-9 {
+        0.0
+    } else {
+        num / denom
+    }
+}
+
 /// Minimum notes before the detector will produce a result.
 const MIN_NOTES: usize = 4;
 
@@ -282,6 +328,89 @@ mod tests {
         // WholeTone has 6 in-scale degrees, 6 out-of-scale.
         let in_scale = p.iter().filter(|&&w| w == 4.0).count();
         assert_eq!(in_scale, 6, "WholeTone should have 6 in-scale degrees");
+    }
+
+    /// Rotation by 0 is identity.
+    #[test]
+    fn test_rotate_profile_by_zero_is_identity() {
+        let rotated = rotate_profile(&KS_MAJOR_PROFILE, 0);
+        assert_eq!(rotated, KS_MAJOR_PROFILE);
+    }
+
+    /// Rotating the major profile by 7 (G) makes the dominant-weighted
+    /// position (index 7 in the unrotated frame) appear at the tonic
+    /// position of the rotated frame (index 0).
+    #[test]
+    fn test_rotate_profile_by_seven_aligns_dominant_at_tonic() {
+        let rotated = rotate_profile(&KS_MAJOR_PROFILE, 7);
+        assert_eq!(rotated[0], KS_MAJOR_PROFILE[5]); // (0 + 12 - 7) % 12 = 5
+                                                     // Verify the rotation is well-defined for every position.
+        for i in 0..12 {
+            assert_eq!(rotated[i], KS_MAJOR_PROFILE[(i + 12 - 7) % 12]);
+        }
+    }
+
+    /// Rotation is reversible by rotating in the opposite direction.
+    #[test]
+    fn test_rotate_profile_is_reversible() {
+        let once = rotate_profile(&KS_MAJOR_PROFILE, 5);
+        let back = rotate_profile(&once, 12 - 5);
+        for i in 0..12 {
+            assert!(
+                (back[i] - KS_MAJOR_PROFILE[i]).abs() < 1e-6,
+                "rotate by 5 then by 7 should restore original at index {}",
+                i
+            );
+        }
+    }
+
+    /// Pearson of a vector with itself is 1.0 (perfect positive
+    /// correlation), modulo float precision.
+    #[test]
+    fn test_pearson_self_correlation_is_one() {
+        let r = pearson_correlation(&KS_MAJOR_PROFILE, &KS_MAJOR_PROFILE);
+        assert!((r - 1.0).abs() < 1e-5, "self-correlation got {}", r);
+    }
+
+    /// Pearson of a vector with its negation is -1.0.
+    #[test]
+    fn test_pearson_negated_correlation_is_minus_one() {
+        let mut neg = [0.0_f32; 12];
+        for i in 0..12 {
+            neg[i] = -KS_MAJOR_PROFILE[i];
+        }
+        let r = pearson_correlation(&KS_MAJOR_PROFILE, &neg);
+        assert!((r + 1.0).abs() < 1e-5, "negated correlation got {}", r);
+    }
+
+    /// Zero-variance input (constant vector) returns 0.0 to avoid
+    /// NaN propagation downstream.
+    #[test]
+    fn test_pearson_zero_variance_returns_zero() {
+        let constant = [3.0_f32; 12];
+        let r = pearson_correlation(&constant, &KS_MAJOR_PROFILE);
+        assert_eq!(r, 0.0, "constant vector should produce 0.0, not NaN");
+    }
+
+    /// Rotation + correlation roundtrip: rotate the major profile by
+    /// 7 (G), correlate against the unrotated major profile. The
+    /// correlation should be HIGHER than chance but LESS than 1.0 —
+    /// it's the dominant-related profile, which shares structure
+    /// with C but isn't identical.
+    #[test]
+    fn test_pearson_g_major_vs_c_major_is_positive_but_not_perfect() {
+        let g_rotated = rotate_profile(&KS_MAJOR_PROFILE, 7);
+        let r = pearson_correlation(&g_rotated, &KS_MAJOR_PROFILE);
+        assert!(
+            r > 0.0,
+            "G major profile should correlate positively with C major (got {})",
+            r
+        );
+        assert!(
+            r < 0.95,
+            "G major profile should NOT perfectly match C major (got {})",
+            r
+        );
     }
 
     #[test]
