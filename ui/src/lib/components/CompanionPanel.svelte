@@ -1,5 +1,21 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
+	import PixelSelect from './PixelSelect.svelte';
+
+	// Per-voice harmony mode options (slice G dropdown). Empty value =
+	// inherit the engine's global mode. Names match
+	// parse_harmony_mode in src-tauri/src/commands/harmony.rs.
+	const MODE_OPTIONS: Array<{ value: string; label: string }> = [
+		{ value: '', label: 'Inherit global' },
+		{ value: 'PassThrough', label: 'Pass-Through' },
+		{ value: 'DiatonicThirds', label: 'Diatonic Thirds' },
+		{ value: 'DiatonicFourths', label: 'Diatonic Fourths' },
+		{ value: 'ContraryMotion', label: 'Contrary Motion' },
+		{ value: 'StrictCounterpoint', label: 'Counterpoint' },
+		{ value: 'FunctionalHarmony', label: 'Functional' },
+		{ value: 'BachChorale', label: 'Bach Chorale' },
+		{ value: 'BarryHarris', label: 'Barry Harris' }
+	];
 
 	// --- Forms: each is one preset the user picks from the left rail.
 	// Two families today: REACTIVE (canon-style delayed voices) and
@@ -248,21 +264,11 @@
 			{/each}
 		</aside>
 
-		<!-- RIGHT: visualization + voice cards. Only renders when there
-		     are canon voices to show. Harmonic-only forms configure the
-		     engine globally — that lives on the Harmony tab, not here.
-		     A small status pill confirms the harmonic form took effect. -->
+		<!-- RIGHT: visualization + voice cards. Always renders the same
+		     layout so the UI doesn't lurch when no voices are
+		     configured — the empty case just has zero voice tracks /
+		     zero voice cards and the Add Voice button stays prominent. -->
 		<section class="right">
-			{#if !engine.canonEnabled || engine.canonVoices.length === 0}
-				<div class="empty-right">
-					<div class="empty-title font-ui">No reactive voices</div>
-					<div class="empty-status font-code">
-						<span class="status-key">{engine.key}</span> ·
-						<span class="status-mode">{engine.mode}</span> ·
-						{engine.voiceCount} voice{engine.voiceCount === 1 ? '' : 's'}
-					</div>
-				</div>
-			{:else}
 			<!-- TIMELINE VISUALIZATION -->
 			<div class="timeline-card">
 				<div class="section-header font-ui">
@@ -394,24 +400,16 @@
 
 							<div class="voice-param voice-param-mode">
 								<span class="param-label font-ui">Mode</span>
-								<select
-									class="pixel-select"
+								<PixelSelect
+									options={MODE_OPTIONS}
 									value={voice.harmony_mode ?? ''}
-									onchange={(e) => {
-										const v = (e.target as HTMLSelectElement).value;
-										engine.updateCanonVoice(i, { harmony_mode: v === '' ? null : v });
-									}}
-								>
-									<option value="">Inherit global</option>
-									<option value="PassThrough">Pass-Through</option>
-									<option value="DiatonicThirds">Diatonic Thirds</option>
-									<option value="DiatonicFourths">Diatonic Fourths</option>
-									<option value="ContraryMotion">Contrary Motion</option>
-									<option value="StrictCounterpoint">Counterpoint</option>
-									<option value="FunctionalHarmony">Functional</option>
-									<option value="BachChorale">Bach Chorale</option>
-									<option value="BarryHarris">Barry Harris</option>
-								</select>
+									placeholder="Inherit"
+									small={true}
+									onchange={(v) =>
+										engine.updateCanonVoice(i, {
+											harmony_mode: v === '' ? null : v
+										})}
+								/>
 							</div>
 						</div>
 					{/each}
@@ -425,7 +423,6 @@
 				from a parallel mode rather than emitting bare unison. Transport must be playing for voices
 				to fire.
 			</div>
-			{/if}
 		</section>
 	</div>
 </div>
@@ -536,41 +533,6 @@
 		gap: 8px;
 		padding: 8px;
 		overflow-y: auto;
-	}
-
-	.empty-right {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		padding: 24px;
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
-		max-width: 540px;
-		margin: 16px auto 0;
-	}
-
-	.empty-title {
-		font-size: var(--font-size-md);
-		color: var(--color-accent-cyan, #33ddff);
-	}
-
-	.empty-desc {
-		font-size: var(--font-size-xs);
-		opacity: 0.7;
-		line-height: 1.5;
-	}
-
-	.empty-status {
-		font-size: var(--font-size-xs);
-		opacity: 0.6;
-		padding: 6px 8px;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-	}
-
-	.status-key,
-	.status-mode {
-		color: var(--color-accent-cyan, #33ddff);
 	}
 
 	.timeline-card,
@@ -726,20 +688,6 @@
 
 	.voice-param-mode {
 		grid-template-columns: 4.5em 1fr;
-	}
-
-	.pixel-select {
-		font-family: inherit;
-		font-size: var(--font-size-xs);
-		padding: 2px 4px;
-		background: var(--color-bg);
-		color: var(--color-text);
-		border: 1px solid var(--color-border);
-		cursor: pointer;
-	}
-
-	.pixel-select:focus {
-		outline: 1px solid var(--color-accent-cyan, #33ddff);
 	}
 
 	.footer-hint {
