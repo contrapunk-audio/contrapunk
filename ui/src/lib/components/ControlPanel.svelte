@@ -3,32 +3,27 @@
 		engine,
 		ALL_KEYS,
 		KEY_DISPLAY,
-		ALL_MODES,
 		SCALE_FAMILIES,
 		OCTAVE_MODES,
 		VOICE_LEADING_STYLES,
-		COUNTERPOINT_SPECIES,
-		COUNTERPOINT_STRICTNESS,
 		type HarmonyModeName,
 		type ScaleModeName,
 		type OctaveModeName,
 		type VoiceLeadingStyleName,
 		type CounterpointSpeciesName,
-		type CounterpointStrictnessName,
 		type KeyName
 	} from '$lib/stores/engine.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 	import { formatMusicalString } from '$lib/embed/music-utils';
+	import { compositeModeOptions, encodeMode, decodeMode } from '$lib/harmony/modeComposite';
 
 	// --- Dropdown option lists. Scale/mode labels are piped through
 	// formatMusicalString so "Lydian #2" → "Lydian ♯2" etc. ---
 	let keyOptions = ALL_KEYS.map((k) => ({ value: k, label: KEY_DISPLAY[k] }));
-	let modeOptions = ALL_MODES.map((m) => ({ value: m.name, label: formatMusicalString(m.label) }));
+	let modeOptions = compositeModeOptions();
 	let octaveOptions = OCTAVE_MODES.map((om) => ({ value: om.name, label: om.label }));
 	let vlStyleOptions = VOICE_LEADING_STYLES.map((s) => ({ value: s.name, label: s.label }));
 	let familyOptions = SCALE_FAMILIES.map((g) => ({ value: g.family, label: formatMusicalString(g.label) }));
-	let speciesOptions = COUNTERPOINT_SPECIES.map((sp) => ({ value: sp.name, label: sp.label }));
-	let strictnessOptions = COUNTERPOINT_STRICTNESS.map((s) => ({ value: s.name, label: s.label }));
 
 	// --- Current scale family derived from the selected scale mode ---
 	let currentFamily = $derived(
@@ -59,7 +54,13 @@
 	}
 
 	function onModeChange(name: string) {
-		engine.setMode(name as HarmonyModeName);
+		const decoded = decodeMode(name);
+		if (decoded.mode) {
+			engine.setMode(decoded.mode as HarmonyModeName);
+		}
+		if (decoded.species) {
+			engine.setCounterpointSpecies(decoded.species as CounterpointSpeciesName);
+		}
 	}
 
 	function onOctaveChange(name: string) {
@@ -68,14 +69,6 @@
 
 	function onVlStyleChange(name: string) {
 		engine.setVoiceLeading(true, name as VoiceLeadingStyleName);
-	}
-
-	function onSpeciesChange(name: string) {
-		engine.setCounterpointSpecies(name as CounterpointSpeciesName);
-	}
-
-	function onStrictnessChange(name: string) {
-		engine.setCounterpointStrictness(name as CounterpointStrictnessName);
 	}
 
 	function onKeyChange(value: string) {
@@ -111,7 +104,7 @@
 			<span class="cell-label font-ui">Mode</span>
 			<PixelSelect
 				options={modeOptions}
-				value={engine.mode}
+				value={encodeMode(engine.mode, engine.counterpointSpecies)}
 				placeholder="Mode"
 				small={true}
 				onchange={onModeChange}
@@ -129,35 +122,6 @@
 		</div>
 	</div>
 </div>
-
-<!-- Counterpoint Species + Strictness (only when mode = StrictCounterpoint).
-     Single card, two cells — same chrome cost as one regular card. -->
-{#if engine.mode === 'StrictCounterpoint'}
-	<div class="card">
-		<div class="row-2col-cells">
-			<div class="cell">
-				<span class="cell-label font-ui">Species</span>
-				<PixelSelect
-					options={speciesOptions}
-					value={engine.counterpointSpecies}
-					placeholder="Species"
-					small={true}
-					onchange={onSpeciesChange}
-				/>
-			</div>
-			<div class="cell">
-				<span class="cell-label font-ui">Strictness</span>
-				<PixelSelect
-					options={strictnessOptions}
-					value={engine.counterpointStrictness}
-					placeholder="Strictness"
-					small={true}
-					onchange={onStrictnessChange}
-				/>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <!-- Scale Family + Scale Mode — single card, two cells. -->
 <div class="card">

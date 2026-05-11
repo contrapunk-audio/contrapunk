@@ -6,6 +6,11 @@
 		SCALE_FAMILIES,
 		VOICE_LEADING_STYLES
 	} from '$lib/stores/engine.svelte';
+	import {
+		compositeModeOptions,
+		encodeMode as encodeCompositeMode,
+		decodeMode as decodeCompositeMode
+	} from '$lib/harmony/modeComposite';
 	import PixelSelect from './PixelSelect.svelte';
 
 	let selectedId = $state<string | null>(voiceLibrary.all[0]?.id ?? null);
@@ -96,41 +101,10 @@
 		selectedId = id;
 	}
 
-	const HARMONY_MODE_OPTIONS = ALL_MODES.map((m) => ({
-		value: m.name,
-		label: m.label
-	}));
-
-	// Composite mode dropdown: Counterpoint expands into the 4 Fux
-	// species in the same list so picking "Counterpoint · Species N"
-	// sets both harmony_mode + counterpoint_species at once. No
-	// separate Strictness control — Strict is always applied.
-	const COMPOSITE_MODE_OPTIONS = ALL_MODES.flatMap((m) =>
-		m.name === 'StrictCounterpoint'
-			? [
-					{ value: 'StrictCounterpoint:Species1', label: `${m.label} (1:1)` },
-					{ value: 'StrictCounterpoint:Species2', label: `${m.label} (2:1 rules)` },
-					{ value: 'StrictCounterpoint:Species3', label: `${m.label} (4:1 rules)` },
-					{ value: 'StrictCounterpoint:Species4', label: `${m.label} (syncopated)` }
-				]
-			: [{ value: m.name, label: m.label }]
-	);
-
-	function encodeMode(harmony_mode: string, species: string): string {
-		if (harmony_mode === 'StrictCounterpoint') {
-			return `StrictCounterpoint:${species || 'Species1'}`;
-		}
-		return harmony_mode;
-	}
-	function decodeMode(v: string): { harmony_mode: string; counterpoint_species: string | null } {
-		if (v.startsWith('StrictCounterpoint:')) {
-			return {
-				harmony_mode: 'StrictCounterpoint',
-				counterpoint_species: v.slice('StrictCounterpoint:'.length)
-			};
-		}
-		return { harmony_mode: v, counterpoint_species: null };
-	}
+	// Shared composite-mode dropdown options + encode/decode (same as
+	// Harmony tab and Companion). Pass identity formatter to keep the
+	// raw mode label without musical-symbol substitution.
+	const COMPOSITE_MODE_OPTIONS = compositeModeOptions((s) => s);
 	const SCALE_MODE_OPTIONS = SCALE_FAMILIES.flatMap((f) =>
 		f.modes.map((m) => ({ value: m.name, label: `${f.label} · ${m.label}` }))
 	);
@@ -264,15 +238,19 @@
 						<span class="row-label font-ui">Harmony Mode</span>
 						<PixelSelect
 							options={COMPOSITE_MODE_OPTIONS}
-							value={encodeMode(editorState.harmony_mode, editorState.counterpoint_species)}
+							value={encodeCompositeMode(
+								editorState.harmony_mode,
+								editorState.counterpoint_species
+							)}
 							small={true}
 							onchange={(v) => {
-								const dec = decodeMode(v);
-								editorState.harmony_mode =
-									dec.harmony_mode as typeof editorState.harmony_mode;
-								if (dec.counterpoint_species) {
+								const dec = decodeCompositeMode(v);
+								if (dec.mode) {
+									editorState.harmony_mode = dec.mode as typeof editorState.harmony_mode;
+								}
+								if (dec.species) {
 									editorState.counterpoint_species =
-										dec.counterpoint_species as typeof editorState.counterpoint_species;
+										dec.species as typeof editorState.counterpoint_species;
 								}
 								applyEditorToSelected();
 							}}

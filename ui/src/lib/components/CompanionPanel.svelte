@@ -5,56 +5,15 @@
 	import PixelSelect from './PixelSelect.svelte';
 	import Knob from './Knob.svelte';
 	import { voiceLibrary } from '$lib/stores/voiceLibrary.svelte';
+	import { compositeModeOptions, encodeMode, decodeMode } from '$lib/harmony/modeComposite';
 
-	// Per-voice harmony mode options. Counterpoint expands into the
-	// four Fux species — picking "Counterpoint · Species 2" sets both
-	// harmony_mode = StrictCounterpoint AND counterpoint_species =
-	// Species2 in one selection. Composite values use a colon separator
-	// (mode:species); plain modes use just the mode name.
+	// Per-voice harmony mode options. Reuses the same composite list as
+	// the Harmony tab + Voices tab, plus an "Inherit global" entry at
+	// the top for the canon's per-voice override.
 	const MODE_OPTIONS: Array<{ value: string; label: string }> = [
 		{ value: '', label: 'Inherit global' },
-		{ value: 'PassThrough', label: 'Pass-Through' },
-		{ value: 'DiatonicThirds', label: 'Diatonic Thirds' },
-		{ value: 'DiatonicFourths', label: 'Diatonic Fourths' },
-		{ value: 'ContraryMotion', label: 'Contrary Motion' },
-		{ value: 'StrictCounterpoint:Species1', label: 'Counterpoint (1:1)' },
-		{ value: 'StrictCounterpoint:Species2', label: 'Counterpoint (2:1 rules)' },
-		{ value: 'StrictCounterpoint:Species3', label: 'Counterpoint (4:1 rules)' },
-		{ value: 'StrictCounterpoint:Species4', label: 'Counterpoint (syncopated rules)' },
-		{ value: 'FunctionalHarmony', label: 'Functional' },
-		{ value: 'BachChorale', label: 'Bach Chorale' },
-		{ value: 'BarryHarris', label: 'Barry Harris' }
+		...compositeModeOptions((s) => s)
 	];
-
-	/** Encode the (mode, species) pair into a composite dropdown value
-	 *  matching MODE_OPTIONS. Counterpoint mode includes the species;
-	 *  every other mode is just the mode string. Empty/null = inherit. */
-	function encodeModeValue(
-		harmony_mode: string | null | undefined,
-		species: string | null | undefined
-	): string {
-		if (!harmony_mode) return '';
-		if (harmony_mode === 'StrictCounterpoint') {
-			return `StrictCounterpoint:${species ?? 'Species1'}`;
-		}
-		return harmony_mode;
-	}
-
-	/** Inverse of encodeModeValue. Returns {harmony_mode, counterpoint_species}
-	 *  where species is set only for counterpoint, null otherwise. */
-	function decodeModeValue(v: string): {
-		harmony_mode: string | null;
-		counterpoint_species: string | null;
-	} {
-		if (!v) return { harmony_mode: null, counterpoint_species: null };
-		if (v.startsWith('StrictCounterpoint:')) {
-			return {
-				harmony_mode: 'StrictCounterpoint',
-				counterpoint_species: v.slice('StrictCounterpoint:'.length)
-			};
-		}
-		return { harmony_mode: v, counterpoint_species: null };
-	}
 
 	// Knob bounds match canon_lane.rs (delay_beats clamp + time_ratio
 	// clamp). 16 beats covers long delays; 0.125 / 8 time-ratio covers
@@ -1040,14 +999,14 @@
 								<span class="param-label font-ui">Mode</span>
 								<PixelSelect
 									options={MODE_OPTIONS}
-									value={encodeModeValue(voice.harmony_mode, voice.counterpoint_species)}
+									value={encodeMode(voice.harmony_mode, voice.counterpoint_species)}
 									placeholder="Inherit"
 									small={true}
 									onchange={(v) => {
-										const decoded = decodeModeValue(v);
+										const decoded = decodeMode(v);
 										engine.updateCanonVoice(i, {
-											harmony_mode: decoded.harmony_mode,
-											counterpoint_species: decoded.counterpoint_species,
+											harmony_mode: decoded.mode,
+											counterpoint_species: decoded.species,
 											counterpoint_strictness: 'Strict'
 										});
 									}}
