@@ -26,6 +26,9 @@ interface Voice {
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 let dryBus: GainNode | null = null;
+/** Shared lowpass filter — every voice routes its env through this
+ *  so the synth's cutoff/resonance knobs in the UI control timbre. */
+let filterNode: BiquadFilterNode | null = null;
 let delayNode: DelayNode | null = null;
 let delayFeedback: GainNode | null = null;
 let delayWet: GainNode | null = null;
@@ -43,11 +46,18 @@ let currentDelayMix = 0.22;
 let currentDelayFeedback = 0.32;
 let currentDelayTime = 0.32;
 let currentReverbMix = 0.22;
+let currentReverbRoomSize = 0.7;
+let currentReverbDamping = 0.5;
+let currentCutoffHz = 6000;
+let currentResonance = 0.2;
 
-const ATTACK_S = 0.005;
-const DECAY_S = 0.05;
-const SUSTAIN = 0.6;
-const RELEASE_S = 0.25;
+// ADSR — mutable so the Harmony tab's envelope knobs work. Defaults
+// kept short/snappy so unconfigured presets sound responsive.
+let attackS = 0.005;
+let decayS = 0.05;
+let sustainLevel = 0.6;
+let releaseS = 0.25;
+
 const VOICE_GAIN = 0.18;
 const SMOOTH_S = 0.02;
 
@@ -55,8 +65,34 @@ function midiToFreq(midi: number): number {
 	return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
-function buildReverbIR(audioCtx: AudioContext, durationS = 1.6, decay = 2.5): AudioBuffer {
+/**
+ * UI "resonance" knob is 0..1; the Rust biquad maps the same range to
+ * a perceptually-smooth Q sweep that tops out around 12 (audibly
+ * squelchy but not self-oscillating). Linear mapping is good enough
+ * for parity until users notice a difference between native and web.
+ */
+function mapResonanceToQ(resonance: number): number {
+	const r = Math.max(0, Math.min(1, resonance));
+	return 0.5 + r * 11.5;
+}
+
+/**
+ * Synthesize a stereo impulse response for the convolver. roomSize
+ * (0..1) sets the duration (~0.3s..3.2s); damping (0..1) controls
+ * decay rate — higher = brighter / longer tail. The shape is white
+ * noise with an exponential envelope so it's CPU-cheap to rebuild
+ * when the UI sliders move.
+ */
+function buildReverbIR(
+	audioCtx: AudioContext,
+	roomSize = currentReverbRoomSize,
+	damping = currentReverbDamping
+): AudioBuffer {
 	const sampleRate = audioCtx.sampleRate;
+	// Map roomSize 0..1 to 0.3..3.2 s. Damping inverts: higher damping
+	// = shorter tail (more absorption), so exponent grows.
+	const durationS = 0.3 + 2.9 * Math.max(0, Math.min(1, roomSize));
+	const decay = 1.0 + 4.5 * Math.max(0, Math.min(1, damping));
 	const length = Math.floor(sampleRate * durationS);
 	const buffer = audioCtx.createBuffer(2, length, sampleRate);
 	for (let ch = 0; ch < 2; ch++) {
@@ -85,9 +121,18 @@ function ensureAudio(): AudioContext | null {
 	masterGain.gain.value = currentMasterGain;
 	masterGain.connect(ctx.destination);
 
+	// Shared lowpass filter — Q maps loosely to Tauri's "resonance"
+	// parameter on the Rust biquad. Bypassed-feeling at cutoff
+	// >= 18kHz, audibly squelchy below ~1.5kHz.
+	filterNode = ctx.createBiquadFilter();
+	filterNode.type = 'lowpass';
+	filterNode.frequency.value = currentCutoffHz;
+	filterNode.Q.value = mapResonanceToQ(currentResonance);
+	filterNode.connect(masterGain);
+
 	dryBus = ctx.createGain();
 	dryBus.gain.value = 1.0;
-	dryBus.connect(masterGain);
+	dryBus.connect(filterNode);
 
 	delayNode = ctx.createDelay(2.0);
 	delayNode.delayTime.value = currentDelayTime;
@@ -152,8 +197,8 @@ export function noteOn(midi: number, velocity = 100) {
 	const now = audio.currentTime;
 	const peak = VOICE_GAIN * (velocity / 127);
 	env.gain.setValueAtTime(0, now);
-	env.gain.linearRampToValueAtTime(peak, now + ATTACK_S);
-	env.gain.linearRampToValueAtTime(peak * SUSTAIN, now + ATTACK_S + DECAY_S);
+	env.gain.linearRampToValueAtTime(peak, now + attackS);
+	env.gain.linearRampToValueAtTime(peak * sustainLevel, now + attackS + decayS);
 
 	osc.start(now);
 
@@ -177,9 +222,9 @@ export function noteOff(midi: number) {
 	const current = v.env.gain.value;
 	v.env.gain.cancelScheduledValues(now);
 	v.env.gain.setValueAtTime(current, now);
-	v.env.gain.linearRampToValueAtTime(0, now + RELEASE_S);
+	v.env.gain.linearRampToValueAtTime(0, now + releaseS);
 	try {
-		v.osc.stop(now + RELEASE_S + 0.02);
+		v.osc.stop(now + releaseS + 0.02);
 	} catch {
 		// already stopped
 	}
@@ -232,4 +277,47 @@ export function setReverbMix(mix: number) {
 	if (ctx && reverbWet) {
 		reverbWet.gain.setTargetAtTime(currentReverbMix, ctx.currentTime, SMOOTH_S);
 	}
+}
+
+// === Filter (lowpass after the dry bus) ===
+export function setCutoffHz(hz: number) {
+	currentCutoffHz = Math.max(20, Math.min(20_000, hz));
+	if (ctx && filterNode) {
+		filterNode.frequency.setTargetAtTime(currentCutoffHz, ctx.currentTime, SMOOTH_S);
+	}
+}
+export function setResonance(value: number) {
+	currentResonance = Math.max(0, Math.min(1, value));
+	if (ctx && filterNode) {
+		filterNode.Q.setTargetAtTime(mapResonanceToQ(currentResonance), ctx.currentTime, SMOOTH_S);
+	}
+}
+
+// === ADSR (applied to subsequent noteOn / noteOff calls) ===
+export function setAttackMs(ms: number) {
+	attackS = Math.max(0, ms) / 1000;
+}
+export function setDecayMs(ms: number) {
+	decayS = Math.max(0, ms) / 1000;
+}
+export function setSustain(level: number) {
+	sustainLevel = Math.max(0, Math.min(1, level));
+}
+export function setReleaseMs(ms: number) {
+	releaseS = Math.max(0, ms) / 1000;
+}
+
+// === Reverb shape (rebuilds the impulse-response buffer) ===
+export function setReverbRoomSize(size: number) {
+	currentReverbRoomSize = Math.max(0, Math.min(1, size));
+	rebuildReverbIR();
+}
+export function setReverbDamping(d: number) {
+	currentReverbDamping = Math.max(0, Math.min(1, d));
+	rebuildReverbIR();
+}
+
+function rebuildReverbIR() {
+	if (!ctx || !reverbNode) return;
+	reverbNode.buffer = buildReverbIR(ctx, currentReverbRoomSize, currentReverbDamping);
 }

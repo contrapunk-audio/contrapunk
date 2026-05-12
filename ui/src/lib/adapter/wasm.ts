@@ -1173,18 +1173,48 @@ export class WasmAdapter implements ContrapunkAdapter {
 			/* embedAudio may not be ready before init */
 		}
 	}
-	async setSynthAttackMs(_ms: number): Promise<void> {
-		// embedAudio uses a fixed amplitude envelope; ADSR control
-		// would need new functions in $lib/embed/audio.ts. Tracked
-		// as a follow-up.
+	async setSynthAttackMs(ms: number): Promise<void> {
+		try {
+			embedAudio.setAttackMs(ms);
+		} catch {
+			/* */
+		}
 	}
-	async setSynthDecayMs(_ms: number): Promise<void> {}
-	async setSynthSustain(_level: number): Promise<void> {}
-	async setSynthReleaseMs(_ms: number): Promise<void> {}
-	async setSynthCutoffHz(_hz: number): Promise<void> {
-		// embedAudio has no filter section yet.
+	async setSynthDecayMs(ms: number): Promise<void> {
+		try {
+			embedAudio.setDecayMs(ms);
+		} catch {
+			/* */
+		}
 	}
-	async setSynthResonance(_value: number): Promise<void> {}
+	async setSynthSustain(level: number): Promise<void> {
+		try {
+			embedAudio.setSustain(level);
+		} catch {
+			/* */
+		}
+	}
+	async setSynthReleaseMs(ms: number): Promise<void> {
+		try {
+			embedAudio.setReleaseMs(ms);
+		} catch {
+			/* */
+		}
+	}
+	async setSynthCutoffHz(hz: number): Promise<void> {
+		try {
+			embedAudio.setCutoffHz(hz);
+		} catch {
+			/* */
+		}
+	}
+	async setSynthResonance(value: number): Promise<void> {
+		try {
+			embedAudio.setResonance(value);
+		} catch {
+			/* */
+		}
+	}
 	async setSynthMasterGain(value: number): Promise<void> {
 		try {
 			embedAudio.setMasterGain(Math.max(0, Math.min(1, value)));
@@ -1216,12 +1246,19 @@ export class WasmAdapter implements ContrapunkAdapter {
 			/* */
 		}
 	}
-	async setReverbRoomSize(_value: number): Promise<void> {
-		// embedAudio's reverb IR is fixed at module load; a runtime
-		// room-size control would need an IR rebuild on each change.
+	async setReverbRoomSize(value: number): Promise<void> {
+		try {
+			embedAudio.setReverbRoomSize(value);
+		} catch {
+			/* */
+		}
 	}
-	async setReverbDamping(_value: number): Promise<void> {
-		// Same fixed-IR caveat as room size.
+	async setReverbDamping(value: number): Promise<void> {
+		try {
+			embedAudio.setReverbDamping(value);
+		} catch {
+			/* */
+		}
 	}
 
 	async getDelayState() {
