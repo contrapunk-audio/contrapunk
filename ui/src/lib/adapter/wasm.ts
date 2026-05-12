@@ -1156,33 +1156,107 @@ export class WasmAdapter implements ContrapunkAdapter {
 			masterGain: 0.25
 		};
 	}
-	async setSynthEnabled(_enabled: boolean): Promise<void> {}
-	async setSynthWaveform(_value: number): Promise<void> {}
-	async setSynthAttackMs(_ms: number): Promise<void> {}
+	async setSynthEnabled(_enabled: boolean): Promise<void> {
+		// embedAudio is permanently enabled in the browser; toggling it
+		// off would silence the user's own notes too. Tauri toggles a
+		// dedicated Rust synth that runs alongside MIDI-out routing.
+		// No-op until embedAudio grows a mute toggle.
+	}
+	async setSynthWaveform(value: number): Promise<void> {
+		// EngineState.waveform: 0 = sine, 1 = triangle, 2 = sawtooth,
+		// 3 = square — matches contrapunk-audio's Waveform enum.
+		const map = ['sine', 'triangle', 'sawtooth', 'square'] as const;
+		const w = map[Math.max(0, Math.min(3, Math.round(value)))];
+		try {
+			embedAudio.setWaveform(w);
+		} catch {
+			/* embedAudio may not be ready before init */
+		}
+	}
+	async setSynthAttackMs(_ms: number): Promise<void> {
+		// embedAudio uses a fixed amplitude envelope; ADSR control
+		// would need new functions in $lib/embed/audio.ts. Tracked
+		// as a follow-up.
+	}
 	async setSynthDecayMs(_ms: number): Promise<void> {}
 	async setSynthSustain(_level: number): Promise<void> {}
 	async setSynthReleaseMs(_ms: number): Promise<void> {}
-	async setSynthCutoffHz(_hz: number): Promise<void> {}
+	async setSynthCutoffHz(_hz: number): Promise<void> {
+		// embedAudio has no filter section yet.
+	}
 	async setSynthResonance(_value: number): Promise<void> {}
-	async setSynthMasterGain(_value: number): Promise<void> {}
+	async setSynthMasterGain(value: number): Promise<void> {
+		try {
+			embedAudio.setMasterGain(Math.max(0, Math.min(1, value)));
+		} catch {
+			/* embedAudio may not be ready before init */
+		}
+	}
 
-	// -- FX (no built-in FX in browser; stubs) --
+	// -- FX (browser uses WebAudio chain in embedAudio) --
 
 	async getReverbState() {
 		return { enabled: false, mix: 0.3, roomSize: 0.7, damping: 0.5 };
 	}
-	async setReverbEnabled(_enabled: boolean): Promise<void> {}
-	async setReverbMix(_value: number): Promise<void> {}
-	async setReverbRoomSize(_value: number): Promise<void> {}
-	async setReverbDamping(_value: number): Promise<void> {}
+	async setReverbEnabled(enabled: boolean): Promise<void> {
+		// embedAudio has no explicit enable; routing mix to 0 silences
+		// the reverb send. Tauri's Rust reverb has a real bypass.
+		if (!enabled) {
+			try {
+				embedAudio.setReverbMix(0);
+			} catch {
+				/* */
+			}
+		}
+	}
+	async setReverbMix(value: number): Promise<void> {
+		try {
+			embedAudio.setReverbMix(Math.max(0, Math.min(1, value)));
+		} catch {
+			/* */
+		}
+	}
+	async setReverbRoomSize(_value: number): Promise<void> {
+		// embedAudio's reverb IR is fixed at module load; a runtime
+		// room-size control would need an IR rebuild on each change.
+	}
+	async setReverbDamping(_value: number): Promise<void> {
+		// Same fixed-IR caveat as room size.
+	}
 
 	async getDelayState() {
 		return { enabled: false, mix: 0.3, timeMs: 375, feedback: 0.35 };
 	}
-	async setDelayEnabled(_enabled: boolean): Promise<void> {}
-	async setDelayMix(_value: number): Promise<void> {}
-	async setDelayTimeMs(_ms: number): Promise<void> {}
-	async setDelayFeedback(_value: number): Promise<void> {}
+	async setDelayEnabled(enabled: boolean): Promise<void> {
+		if (!enabled) {
+			try {
+				embedAudio.setDelayMix(0);
+			} catch {
+				/* */
+			}
+		}
+	}
+	async setDelayMix(value: number): Promise<void> {
+		try {
+			embedAudio.setDelayMix(Math.max(0, Math.min(1, value)));
+		} catch {
+			/* */
+		}
+	}
+	async setDelayTimeMs(ms: number): Promise<void> {
+		try {
+			embedAudio.setDelayTime(Math.max(0, ms) / 1000);
+		} catch {
+			/* */
+		}
+	}
+	async setDelayFeedback(value: number): Promise<void> {
+		try {
+			embedAudio.setDelayFeedback(Math.max(0, Math.min(0.99, value)));
+		} catch {
+			/* */
+		}
+	}
 
 	// -- Chain topology + CLAP (no native host in browser; stubs) --
 
