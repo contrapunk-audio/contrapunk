@@ -3,6 +3,7 @@ name: Windows Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
     paths:
@@ -92,3 +93,12 @@ jobs:
           path: target/release/contrapunk-tauri.exe
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Attach Windows installers to GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+          fail_on_unmatched_files: false
