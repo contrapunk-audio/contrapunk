@@ -48,6 +48,7 @@ export const __wbg_companionwasm_free: (a: number, b: number) => void;
 export const companionwasm_advance: (a: number, b: number) => void;
 export const companionwasm_configure_canon: (a: number, b: number, c: number, d: number) => void;
 export const companionwasm_configure_counterpoint: (a: number, b: number, c: number, d: number) => void;
+export const companionwasm_debug_snapshot: (a: number, b: number) => void;
 export const companionwasm_is_enabled: (a: number) => number;
 export const companionwasm_new: () => number;
 export const companionwasm_on_note_off: (a: number, b: number, c: number, d: number) => void;

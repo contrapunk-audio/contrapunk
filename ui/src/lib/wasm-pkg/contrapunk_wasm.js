@@ -60,6 +60,31 @@ export class CompanionWasm {
         }
     }
     /**
+     * Debug snapshot — JSON dump of the global engine snapshot + each
+     * canon-lane voice's mini-engine state (mode, key, scale_mode,
+     * voice_count, voice_position) and the voice config (transpose,
+     * reference_voice, etc.). Used by the JS adapter to log what's
+     * actually happening on each NoteOn so we can verify the per-voice
+     * engines are independent and the cascade is firing.
+     * @returns {string}
+     */
+    debug_snapshot() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.companionwasm_debug_snapshot(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @returns {boolean}
      */
     is_enabled() {

@@ -17,6 +17,15 @@ export class CompanionWasm {
      */
     configure_canon(json: string): void;
     configure_counterpoint(json: string): void;
+    /**
+     * Debug snapshot — JSON dump of the global engine snapshot + each
+     * canon-lane voice's mini-engine state (mode, key, scale_mode,
+     * voice_count, voice_position) and the voice config (transpose,
+     * reference_voice, etc.). Used by the JS adapter to log what's
+     * actually happening on each NoteOn so we can verify the per-voice
+     * engines are independent and the cascade is firing.
+     */
+    debug_snapshot(): string;
     is_enabled(): boolean;
     constructor();
     on_note_off(note: number, channel: number): string;
@@ -282,6 +291,7 @@ export interface InitOutput {
     readonly companionwasm_advance: (a: number, b: number) => void;
     readonly companionwasm_configure_canon: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_configure_counterpoint: (a: number, b: number, c: number, d: number) => void;
+    readonly companionwasm_debug_snapshot: (a: number, b: number) => void;
     readonly companionwasm_is_enabled: (a: number) => number;
     readonly companionwasm_new: () => number;
     readonly companionwasm_on_note_off: (a: number, b: number, c: number, d: number) => void;
