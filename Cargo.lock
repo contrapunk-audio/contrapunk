@@ -661,6 +661,17 @@ name = "contrapunk-chord"
 version = "1.1.0"
 
 [[package]]
+name = "contrapunk-companion"
+version = "1.2.0"
+dependencies = [
+ "contrapunk-harmony",
+ "contrapunk-transport",
+ "serde",
+ "serde_json",
+ "wmidi",
+]
+
+[[package]]
 name = "contrapunk-harmony"
 version = "1.1.0"
 dependencies = [
@@ -697,6 +708,7 @@ version = "1.2.0"
 dependencies = [
  "anyhow",
  "contrapunk",
+ "contrapunk-companion",
  "cpal",
  "midir",
  "rand 0.10.1",
@@ -717,6 +729,9 @@ version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "contrapunk",
+ "contrapunk-companion",
+ "contrapunk-harmony",
+ "contrapunk-transport",
  "getrandom 0.2.17",
  "getrandom 0.4.2",
  "js-sys",

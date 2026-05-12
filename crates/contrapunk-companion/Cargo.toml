@@ -1,0 +1,12 @@
+[package]
+name = "contrapunk-companion"
+version = "1.2.0"
+edition = "2021"
+description = "Companion orchestrator + Lane trait + concrete Lanes (Canon, Counterpoint)"
+
+[dependencies]
+contrapunk-harmony = { path = "../contrapunk-harmony" }
+contrapunk-transport = { path = "../contrapunk-transport" }
+wmidi = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

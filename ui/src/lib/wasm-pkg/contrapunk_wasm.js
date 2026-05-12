@@ -1,5 +1,207 @@
 /* @ts-self-types="./contrapunk_wasm.d.ts" */
 
+export class CompanionWasm {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        CompanionWasmFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_companionwasm_free(ptr, 0);
+    }
+    /**
+     * Advance the transport by `frames` audio frames. JS calls this
+     * from its animation-frame / WebAudio loop so per-lane scheduling
+     * (canon delays, counterpoint subdivisions) sees forward time.
+     * At the default 48 kHz sample rate, 768 frames ≈ 16 ms.
+     * @param {number} frames
+     */
+    advance(frames) {
+        wasm.companionwasm_advance(this.__wbg_ptr, frames);
+    }
+    /**
+     * Apply a partial JSON state blob to the canon lane (same shape
+     * the Tauri command consumes). See CanonLane::deserialize_state.
+     * @param {string} json
+     */
+    configure_canon(json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.companionwasm_configure_canon(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * @param {string} json
+     */
+    configure_counterpoint(json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.companionwasm_configure_counterpoint(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * @returns {boolean}
+     */
+    is_enabled() {
+        const ret = wasm.companionwasm_is_enabled(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    constructor() {
+        const ret = wasm.companionwasm_new();
+        this.__wbg_ptr = ret >>> 0;
+        CompanionWasmFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {number} note
+     * @param {number} channel
+     * @returns {string}
+     */
+    on_note_off(note, channel) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.companionwasm_on_note_off(retptr, this.__wbg_ptr, note, channel);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            var ptr1 = r0;
+            var len1 = r1;
+            if (r3) {
+                ptr1 = 0; len1 = 0;
+                throw takeObject(r2);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export3(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * Feed a player NoteOn into the Companion. Returns a JSON array
+     * of dispatch ops emitted by lanes that fired immediately
+     * (Species 1 canon-onset emissions, etc.).
+     * @param {number} note
+     * @param {number} velocity
+     * @param {number} channel
+     * @returns {string}
+     */
+    on_note_on(note, velocity, channel) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.companionwasm_on_note_on(retptr, this.__wbg_ptr, note, velocity, channel);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            var ptr1 = r0;
+            var len1 = r1;
+            if (r3) {
+                ptr1 = 0; len1 = 0;
+                throw takeObject(r2);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export3(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * @param {boolean} enabled
+     */
+    set_enabled(enabled) {
+        wasm.companionwasm_set_enabled(this.__wbg_ptr, enabled);
+    }
+    /**
+     * Mirror the global engine's key/scale/mode/voice_count etc.
+     * into the snapshot the Companion's mini-engines read. Called by
+     * JS whenever the Harmony tab changes these.
+     * @param {string} key
+     * @param {string} mode
+     * @param {string} scale_mode
+     * @param {number} voice_count
+     * @param {number} voice_position
+     */
+    set_global_state(key, mode, scale_mode, voice_count, voice_position) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(key, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(mode, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(scale_mode, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len2 = WASM_VECTOR_LEN;
+            wasm.companionwasm_set_global_state(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, voice_count, voice_position);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Tick the lanes. Drains pending emissions whose fire_at has
+     * elapsed. Returns a JSON array of dispatch ops to schedule on
+     * the WebAudio synth.
+     * @returns {string}
+     */
+    tick() {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.companionwasm_tick(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            var ptr1 = r0;
+            var len1 = r1;
+            if (r3) {
+                ptr1 = 0; len1 = 0;
+                throw takeObject(r2);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export3(deferred2_0, deferred2_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) CompanionWasm.prototype[Symbol.dispose] = CompanionWasm.prototype.free;
+
 export class Engine {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -711,6 +913,9 @@ function __wbg_get_imports() {
     };
 }
 
+const CompanionWasmFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_companionwasm_free(ptr >>> 0, 1));
 const EngineFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_engine_free(ptr >>> 0, 1));

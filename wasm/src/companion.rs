@@ -1,0 +1,224 @@
+//! WASM bridge for the shared Companion orchestrator.
+//!
+//! Exposes a thin `CompanionWasm` wrapper around
+//! `contrapunk_companion::Companion` so the browser build can host
+//! both lanes (Canon + Counterpoint) that ship in v1.2.0. The JS
+//! adapter feeds player NoteOn / NoteOff via `on_note_on` /
+//! `on_note_off`, ticks the lanes via `tick(beat)`, and reads back
+//! dispatch ops as JSON to schedule on the WebAudio synth.
+//!
+//! The Companion's internal mini-engines need a HarmonyEngine
+//! snapshot to mirror global key/scale/mode state. In Tauri that
+//! snapshot lives in `WorldState::engine_snapshot` and is shared with
+//! the router thread's main engine. In WASM there's no router thread;
+//! the JS side calls `set_global_state(...)` after each user change
+//! to mirror the same fields into the snapshot.
+
+use std::sync::{Arc, Mutex};
+
+use wasm_bindgen::prelude::*;
+use wmidi::Note;
+
+use contrapunk_companion::lane::InputEvent;
+use contrapunk_companion::{CanonLane, CounterpointLane};
+use contrapunk_companion::{Companion, DispatchOp, WorldState};
+use contrapunk_harmony::{HarmonyEngine, HarmonyMode, Key, ScaleMode};
+use contrapunk_transport::Transport;
+
+use crate::enum_strings::{parse_key, parse_mode, parse_scale_mode};
+
+#[wasm_bindgen]
+pub struct CompanionWasm {
+    inner: Companion,
+    world: Arc<WorldState>,
+    /// Unused "main engine" passed into Companion::tick — the canon
+    /// and counterpoint lanes are both Decide-phase and don't mutate
+    /// the main engine, so this is a no-op recipient.
+    dummy_engine: Mutex<HarmonyEngine>,
+}
+
+#[wasm_bindgen]
+impl CompanionWasm {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        let transport = Transport::new(48_000);
+        // Snapshot engine the Companion's mini-engines read for global
+        // key/mode/scale defaults. JS keeps this in sync via
+        // set_global_* setters below.
+        let engine = Arc::new(Mutex::new(HarmonyEngine::new(
+            Key::C,
+            HarmonyMode::PassThrough,
+        )));
+        let world = WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
+        let mut companion = Companion::new(world.clone());
+        companion.lanes.push(Box::new(CanonLane::new()));
+        companion.lanes.push(Box::new(CounterpointLane::new()));
+        // Master enable defaults ON to match the Tauri build's FTUX.
+        companion
+            .enabled
+            .store(true, std::sync::atomic::Ordering::Release);
+
+        Self {
+            inner: companion,
+            world,
+            dummy_engine: Mutex::new(HarmonyEngine::new(Key::C, HarmonyMode::PassThrough)),
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn set_enabled(&self, enabled: bool) {
+        self.inner
+            .enabled
+            .store(enabled, std::sync::atomic::Ordering::Release);
+    }
+
+    #[wasm_bindgen]
+    pub fn is_enabled(&self) -> bool {
+        self.inner
+            .enabled
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Mirror the global engine's key/scale/mode/voice_count etc.
+    /// into the snapshot the Companion's mini-engines read. Called by
+    /// JS whenever the Harmony tab changes these.
+    #[wasm_bindgen]
+    pub fn set_global_state(
+        &self,
+        key: &str,
+        mode: &str,
+        scale_mode: &str,
+        voice_count: usize,
+        voice_position: usize,
+    ) -> Result<(), JsValue> {
+        let key = parse_key(key)?;
+        let mode = parse_mode(mode)?;
+        let scale_mode = parse_scale_mode(scale_mode)?;
+        let mut eng = self
+            .world
+            .engine_snapshot
+            .lock()
+            .map_err(|e| JsValue::from_str(&format!("snapshot lock: {}", e)))?;
+        if eng.key() != key {
+            eng.set_key(key);
+        }
+        if eng.mode() != mode {
+            eng.set_mode(mode);
+        }
+        if eng.scale_mode() != scale_mode {
+            eng.set_scale_mode(scale_mode);
+        }
+        if eng.voice_count() != voice_count {
+            eng.set_voice_count(voice_count);
+        }
+        if eng.voice_position() != voice_position {
+            eng.set_voice_position(voice_position);
+        }
+        Ok(())
+    }
+
+    /// Apply a partial JSON state blob to the canon lane (same shape
+    /// the Tauri command consumes). See CanonLane::deserialize_state.
+    #[wasm_bindgen]
+    pub fn configure_canon(&mut self, json: &str) -> Result<(), JsValue> {
+        let value: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.inner
+            .configure_lane("canon", value)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    #[wasm_bindgen]
+    pub fn configure_counterpoint(&mut self, json: &str) -> Result<(), JsValue> {
+        let value: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.inner
+            .configure_lane("counterpoint", value)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Advance the transport by `frames` audio frames. JS calls this
+    /// from its animation-frame / WebAudio loop so per-lane scheduling
+    /// (canon delays, counterpoint subdivisions) sees forward time.
+    /// At the default 48 kHz sample rate, 768 frames ≈ 16 ms.
+    #[wasm_bindgen]
+    pub fn advance(&self, frames: u32) {
+        if !self.world.transport.is_running() {
+            self.world.transport.play();
+        }
+        let _ = self.world.transport.advance(frames);
+    }
+
+    /// Feed a player NoteOn into the Companion. Returns a JSON array
+    /// of dispatch ops emitted by lanes that fired immediately
+    /// (Species 1 canon-onset emissions, etc.).
+    #[wasm_bindgen]
+    pub fn on_note_on(&mut self, note: u8, velocity: u8, channel: u8) -> Result<String, JsValue> {
+        let ev = InputEvent::NoteOn {
+            note,
+            velocity,
+            channel,
+        };
+        let result = self.inner.on_input(ev, &self.dummy_engine);
+        serialize_ops(&result.ops).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    #[wasm_bindgen]
+    pub fn on_note_off(&mut self, note: u8, channel: u8) -> Result<String, JsValue> {
+        let ev = InputEvent::NoteOff { note, channel };
+        let result = self.inner.on_input(ev, &self.dummy_engine);
+        serialize_ops(&result.ops).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Tick the lanes. Drains pending emissions whose fire_at has
+    /// elapsed. Returns a JSON array of dispatch ops to schedule on
+    /// the WebAudio synth.
+    #[wasm_bindgen]
+    pub fn tick(&mut self) -> Result<String, JsValue> {
+        let ops = self.inner.tick(&self.dummy_engine);
+        serialize_ops(&ops).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+}
+
+impl Default for CompanionWasm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Serialize dispatch ops in a stable shape for the JS adapter.
+/// Mirrors the JSON the Tauri command path produces so the UI side
+/// can share decoder code.
+fn serialize_ops(ops: &[DispatchOp]) -> Result<String, serde_json::Error> {
+    let values: Vec<serde_json::Value> = ops
+        .iter()
+        .map(|op| match op {
+            DispatchOp::NoteOn {
+                note,
+                velocity,
+                channel,
+                ..
+            } => serde_json::json!({
+                "kind": "note_on",
+                "note": note,
+                "velocity": velocity,
+                "channel": channel,
+            }),
+            DispatchOp::NoteOff { note, channel, .. } => serde_json::json!({
+                "kind": "note_off",
+                "note": note,
+                "channel": channel,
+            }),
+            DispatchOp::AllNotesOff { ports } => serde_json::json!({
+                "kind": "all_notes_off",
+                "ports": ports,
+            }),
+        })
+        .collect();
+    serde_json::to_string(&values)
+}
+
+// Silence unused-import warnings on Note when wasm-bindgen drops in
+// generated glue that doesn't reference it.
+#[allow(dead_code)]
+fn _note_typeguard(_n: Note) {}

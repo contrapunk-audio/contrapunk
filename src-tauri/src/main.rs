@@ -8,7 +8,11 @@
 
 mod audio_clock;
 mod commands;
-mod companion;
+/// Companion lives in the shared `contrapunk-companion` crate so the
+/// WASM build can host the same Lanes (Canon + Counterpoint). The
+/// local re-export keeps `crate::companion::Foo` paths working
+/// without rewriting every call site.
+pub use contrapunk_companion as companion;
 mod guitar_bridge;
 mod state;
 

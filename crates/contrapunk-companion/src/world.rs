@@ -17,10 +17,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use contrapunk::harmony::HarmonyEngine;
-use contrapunk::transport::Transport;
+use contrapunk_harmony::HarmonyEngine;
+use contrapunk_transport::Transport;
 
-use crate::state::VoiceOutputTarget;
+use crate::voice_output::VoiceOutputTarget;
 
 /// One currently-held input note. Populated on `Companion::on_input`
 /// note-on, removed on note-off. The router consults `held_inputs` for
@@ -134,7 +134,7 @@ impl WorldState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use contrapunk::harmony::{HarmonyMode, Key};
+    use contrapunk_harmony::{HarmonyMode, Key};
 
     fn fixture() -> Arc<WorldState> {
         let transport = Transport::new(48_000);

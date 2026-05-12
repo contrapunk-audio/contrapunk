@@ -11,6 +11,7 @@ members = [
     "crates/contrapunk-harmony",
     "crates/contrapunk-audio",
     "crates/contrapunk-preset",
+    "crates/contrapunk-companion",
 ]
 resolver = "2"
 

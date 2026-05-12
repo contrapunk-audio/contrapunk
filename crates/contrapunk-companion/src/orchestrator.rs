@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-use contrapunk::harmony::HarmonyEngine;
+use contrapunk_harmony::HarmonyEngine;
 
 use super::lane::{EngineMutation, InputEvent, Lane, LanePhase, LaneState, WorldWrite};
 use super::world::WorldState;
@@ -283,10 +283,10 @@ fn apply_engine_mutation(engine: &mut HarmonyEngine, m: EngineMutation) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::companion::lane::{InputFilter, LaneOutput};
-    use crate::companion::world::DetectedChord;
-    use contrapunk::harmony::{HarmonyMode, Key};
-    use contrapunk::transport::Transport;
+    use crate::lane::{InputFilter, LaneOutput};
+    use crate::world::DetectedChord;
+    use contrapunk_harmony::{HarmonyMode, Key};
+    use contrapunk_transport::Transport;
     use std::sync::atomic::AtomicUsize;
 
     /// Generic test Lane. Records every tick and on_input call into a
@@ -459,7 +459,7 @@ mod tests {
         c.enabled.store(true, Ordering::Release);
         let trace = Arc::new(Mutex::new(Vec::new()));
 
-        let target = crate::state::VoiceOutputTarget::Synth;
+        let target = crate::voice_output::VoiceOutputTarget::Synth;
         let mut a = TestLane::new("a", LanePhase::Decide, trace.clone());
         a.tick_output = vec![DispatchOp::NoteOn {
             target,

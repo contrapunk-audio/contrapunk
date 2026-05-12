@@ -22,23 +22,11 @@ use contrapunk::transport::Transport;
 /// itself accepts any voice_count up to this value.
 pub const MAX_VOICES: usize = 8;
 
-/// Per-voice output destination. Each engine-emitted voice (by index
-/// 0..voice_count-1) can be routed independently.
-///
-/// Three explicit destinations only — no implicit "defer to global
-/// routing_mode" fallback. Default is `Synth` so users get audio out
-/// of the box without needing to add a MIDI port first.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum VoiceOutputTarget {
-    /// Send to the internal synth only. Skip external MIDI for this voice.
-    #[default]
-    Synth,
-    /// Send to a specific external MIDI port only. Skip the internal synth.
-    MidiPort { port: usize },
-    /// Skip both synth and external MIDI. Voice is silent.
-    Off,
-}
+/// Per-voice output destination. Source of truth lives in the
+/// shared `contrapunk-companion` crate so the WASM build can use
+/// the same type. Re-exported here so the rest of src-tauri keeps
+/// importing `crate::state::VoiceOutputTarget` unchanged.
+pub use contrapunk_companion::voice_output::VoiceOutputTarget;
 
 /// Application state managed by Tauri.
 ///

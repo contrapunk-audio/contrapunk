@@ -14,14 +14,16 @@
 //! See `.planning/jam-features-2026/01-companion-architecture.md` for
 //! the full architecture, phase ordering rationale, and Lane catalog.
 
-use crate::state::VoiceOutputTarget;
-
 pub mod canon_lane;
 pub mod counterpoint_lane;
 pub mod lane;
 pub mod loops;
 pub mod orchestrator;
+pub mod voice_output;
 pub mod world;
+
+use crate::voice_output::VoiceOutputTarget;
+pub use voice_output::VoiceOutputTarget as VoiceOutput;
 
 pub use canon_lane::CanonLane;
 #[allow(unused_imports)]

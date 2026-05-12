@@ -28,12 +28,12 @@ use std::collections::{HashMap, VecDeque};
 
 use wmidi::Note;
 
-use contrapunk::harmony::{CounterpointSpecies, CounterpointState, HarmonyMode, Key, ScaleMode};
+use contrapunk_harmony::{CounterpointSpecies, CounterpointState, HarmonyMode, Key, ScaleMode};
 
 use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
 use super::world::WorldState;
 use super::DispatchOp;
-use crate::state::VoiceOutputTarget;
+use crate::voice_output::VoiceOutputTarget;
 
 /// One pending counterpoint NoteOn scheduled for a future beat.
 #[derive(Clone, Copy, Debug)]
@@ -136,7 +136,7 @@ impl CounterpointLane {
 
     /// Compute the harmony pitch for the player's input using the
     /// scoring rules baked into CounterpointState.
-    fn pick_pitch(&mut self, scale: &mut contrapunk::harmony::Scale, melody: Note) -> Option<Note> {
+    fn pick_pitch(&mut self, scale: &mut contrapunk_harmony::Scale, melody: Note) -> Option<Note> {
         // process_directed updates state and returns [melody, harmony].
         let result = self
             .state
@@ -154,7 +154,7 @@ impl CounterpointLane {
     /// the step.
     fn pick_passing(
         &self,
-        scale: &mut contrapunk::harmony::Scale,
+        scale: &mut contrapunk_harmony::Scale,
         from: Note,
         direction: i8,
     ) -> Note {
@@ -212,7 +212,7 @@ impl Lane for CounterpointLane {
                 } else {
                     (Key::C, ScaleMode::Ionian)
                 };
-                let mut scale = contrapunk::harmony::Scale::new(key.semitones_from_c(), scale_mode);
+                let mut scale = contrapunk_harmony::Scale::new(key.semitones_from_c(), scale_mode);
                 let Ok(melody_note) = Note::try_from(note) else {
                     return LaneOutput::default();
                 };

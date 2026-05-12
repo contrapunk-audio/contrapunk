@@ -31,6 +31,13 @@ import * as embedAudio from '$lib/embed/audio';
 let wasmModule: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let engine: any = null;
+// CompanionWasm instance — hosts the Canon + Counterpoint Lanes that
+// the v1.2.0 native build ships. Constructed during init().
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let companion: any = null;
+// Animation-frame loop that advances the Companion's transport and
+// drains pending lane emissions. Started on first injectNoteOn.
+let companionTickHandle: number | null = null;
 
 /**
  * Sentinel input index used to signal "guitar audio input" rather than MIDI.
@@ -68,9 +75,74 @@ export class WasmAdapter implements ContrapunkAdapter {
 				await wasmModule.default();
 			}
 			engine = new wasmModule.Engine();
+			// Companion + Lanes. Mirrors what Tauri's AppState registers
+			// at boot (CanonLane + CounterpointLane under one master
+			// Companion). Construction defaults to enabled = ON.
+			try {
+				companion = new wasmModule.CompanionWasm();
+			} catch (e) {
+				console.warn('[wasm] CompanionWasm init failed:', e);
+				companion = null;
+			}
 			this.initialized = true;
+			this.startCompanionTick();
 		} catch (e) {
 			throw new Error(`Failed to initialize WASM: ${e}`);
+		}
+	}
+
+	/** Run a requestAnimationFrame loop that advances the Companion's
+	 *  transport by ~one buffer per frame and drains any lane emissions
+	 *  whose scheduled fire_at has elapsed. Frames-per-tick is computed
+	 *  to keep the transport roughly in real time at 48 kHz. */
+	private startCompanionTick(): void {
+		if (companionTickHandle !== null || !companion) return;
+		let last = performance.now();
+		const loop = () => {
+			if (!companion) {
+				companionTickHandle = null;
+				return;
+			}
+			const now = performance.now();
+			const dtMs = Math.max(0, now - last);
+			last = now;
+			// Frames at 48 kHz that match wallclock delta.
+			const frames = Math.max(1, Math.round(dtMs * 48));
+			try {
+				companion.advance(frames);
+				const json = companion.tick();
+				this.dispatchOpsJson(json);
+			} catch {
+				/* keep the loop alive */
+			}
+			companionTickHandle = requestAnimationFrame(loop);
+		};
+		companionTickHandle = requestAnimationFrame(loop);
+	}
+
+	/** Play (or release) the lane-emitted dispatch ops on the browser
+	 *  WebAudio synth + any active external MIDI output. */
+	private dispatchOpsJson(json: string): void {
+		if (!json || json === '[]') return;
+		let ops: Array<{ kind: string; note?: number; velocity?: number; channel?: number }>;
+		try {
+			ops = JSON.parse(json);
+		} catch {
+			return;
+		}
+		for (const op of ops) {
+			if (op.kind === 'note_on' && typeof op.note === 'number') {
+				const v = op.velocity ?? 100;
+				embedAudio.noteOn(op.note, v);
+				if (this.activeOutputs.length > 0) {
+					this.activeOutputs[0].send([0x90, op.note, v]);
+				}
+			} else if (op.kind === 'note_off' && typeof op.note === 'number') {
+				embedAudio.noteOff(op.note);
+				if (this.activeOutputs.length > 0) {
+					this.activeOutputs[0].send([0x80, op.note, 0]);
+				}
+			}
 		}
 	}
 
@@ -236,28 +308,34 @@ export class WasmAdapter implements ContrapunkAdapter {
 	// no-ops or return defaults so the shared store doesn't blow up
 	// when running in browser mode.
 
-	async companionSetEnabled(_enabled: boolean): Promise<void> {
-		// No-op: WASM surface has no Companion yet.
+	async companionSetEnabled(enabled: boolean): Promise<void> {
+		if (companion) companion.set_enabled(enabled);
 	}
 
 	async companionIsEnabled(): Promise<boolean> {
-		return false;
+		if (!companion) return false;
+		try {
+			return Boolean(companion.is_enabled());
+		} catch {
+			return false;
+		}
 	}
 
-	async canonSetEnabled(_enabled: boolean): Promise<void> {
-		// No-op.
+	async canonSetEnabled(enabled: boolean): Promise<void> {
+		if (companion) companion.configure_canon(JSON.stringify({ enabled }));
 	}
 
 	async canonSetDelay(_beats: number): Promise<void> {
-		// No-op.
+		// Single-voice setters are unused in the v1.2.0 multi-voice UI;
+		// keep as no-op (canonSetVoices is the authoritative path).
 	}
 
 	async canonSetTranspose(_degrees: number): Promise<void> {
-		// No-op.
+		// Same as canonSetDelay — unused in v1.2.0.
 	}
 
 	async canonSetVoices(
-		_voices: Array<{
+		voices: Array<{
 			delay_beats: number;
 			transpose_degrees: number;
 			time_ratio?: number;
@@ -272,16 +350,26 @@ export class WasmAdapter implements ContrapunkAdapter {
 			counterpoint_strictness?: string | null;
 		}>
 	): Promise<void> {
-		// No-op.
+		if (!companion) return;
+		try {
+			companion.configure_canon(JSON.stringify({ voices }));
+		} catch (e) {
+			console.warn('[wasm] canonSetVoices failed:', e);
+		}
 	}
 
-	async counterpointSetConfig(_config: {
+	async counterpointSetConfig(config: {
 		enabled?: boolean;
 		species?: string;
 		transpose_degrees?: number;
 		prefer_above?: boolean;
 	}): Promise<void> {
-		// No-op in browser.
+		if (!companion) return;
+		try {
+			companion.configure_counterpoint(JSON.stringify(config));
+		} catch (e) {
+			console.warn('[wasm] counterpointSetConfig failed:', e);
+		}
 	}
 
 	async counterpointState(): Promise<{
@@ -290,6 +378,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 		transpose_degrees: number;
 		prefer_above: boolean;
 	} | null> {
+		// CompanionWasm doesn't expose a state getter in v1.2.0 — the
+		// canonical state lives in the JS engine store + localStorage,
+		// and gets pushed back via configure_counterpoint on mount.
 		return null;
 	}
 
@@ -305,6 +396,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 			reference_voice?: number | null;
 		}>;
 	} | null> {
+		// Same as counterpointState — state is JS-side authoritative.
 		return null;
 	}
 
@@ -606,6 +698,18 @@ export class WasmAdapter implements ContrapunkAdapter {
 				// (the desktop Tauri side has its own Rust synth).
 				embedAudio.noteOn(sorted[i], vel);
 			}
+			// Feed the player input to the Companion so the Canon and
+			// Counterpoint lanes can fire delayed / subdivided
+			// emissions. Immediate-fire ops (Species 1 at delay 0) come
+			// back here; longer-delayed ones drain via the tick loop.
+			if (companion) {
+				try {
+					const opsJson = companion.on_note_on(note, vel, 0);
+					this.dispatchOpsJson(opsJson);
+				} catch {
+					/* ignore — companion is best-effort in browser */
+				}
+			}
 			return sorted;
 		} catch {
 			return [note];
@@ -622,6 +726,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 					this.activeOutputs[i % this.activeOutputs.length].send([0x80, sorted[i], 0]);
 				}
 				embedAudio.noteOff(sorted[i]);
+			}
+			if (companion) {
+				try {
+					const opsJson = companion.on_note_off(note, 0);
+					this.dispatchOpsJson(opsJson);
+				} catch {
+					/* ignore */
+				}
 			}
 			return sorted;
 		} catch {

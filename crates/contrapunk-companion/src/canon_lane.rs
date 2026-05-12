@@ -31,7 +31,7 @@ use std::collections::{HashMap, VecDeque};
 
 use wmidi::Note;
 
-use contrapunk::harmony::{
+use contrapunk_harmony::{
     CounterpointSpecies, CounterpointStrictness, HarmonyEngine, HarmonyMode, Key, OctaveMode,
     ScaleMode, VoiceLeadingStyle,
 };
@@ -39,7 +39,7 @@ use contrapunk::harmony::{
 use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
 use super::world::WorldState;
 use super::DispatchOp;
-use crate::state::VoiceOutputTarget;
+use crate::voice_output::VoiceOutputTarget;
 
 /// Configuration for one canon voice. The lane can hold any number
 /// of these; each one independently delays, transposes, and time-
@@ -1024,9 +1024,9 @@ impl Lane for CanonLane {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::companion::world::WorldState;
-    use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key};
-    use contrapunk::transport::Transport;
+    use crate::world::WorldState;
+    use contrapunk_harmony::{HarmonyEngine, HarmonyMode, Key};
+    use contrapunk_transport::Transport;
     use std::sync::Arc;
 
     fn fixture() -> (CanonLane, Arc<WorldState>, Arc<Transport>) {

@@ -17,7 +17,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use contrapunk::harmony::{HarmonyMode, Key, ScaleMode, VoiceLeadingStyle};
+use contrapunk_harmony::{HarmonyMode, Key, ScaleMode, VoiceLeadingStyle};
 
 use super::world::{DetectedChord, WorldState};
 use super::DispatchOp;
