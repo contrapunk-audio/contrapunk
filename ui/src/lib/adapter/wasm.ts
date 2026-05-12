@@ -38,6 +38,13 @@ let companion: any = null;
 // Animation-frame loop that advances the Companion's transport and
 // drains pending lane emissions. Started on first injectNoteOn.
 let companionTickHandle: number | null = null;
+// MIDI numbers the Companion currently holds on. dispatchOpsJson
+// updates this set on every note_on / note_off so getNoteState can
+// merge these pitches into harmonyNotes — that's what feeds the
+// ActiveNotes strip + the Piano / Fretboard highlights. Without
+// this, the Tauri build shows the canon + counterpoint emissions
+// in the UI but the WASM build only showed the player's harmony.
+const activeCompanionNotes: Set<number> = new Set();
 
 /**
  * Sentinel input index used to signal "guitar audio input" rather than MIDI.
@@ -134,11 +141,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 			if (op.kind === 'note_on' && typeof op.note === 'number') {
 				const v = op.velocity ?? 100;
 				embedAudio.noteOn(op.note, v);
+				activeCompanionNotes.add(op.note);
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[0].send([0x90, op.note, v]);
 				}
 			} else if (op.kind === 'note_off' && typeof op.note === 'number') {
 				embedAudio.noteOff(op.note);
+				activeCompanionNotes.delete(op.note);
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[0].send([0x80, op.note, 0]);
 				}
@@ -797,9 +806,19 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			const raw = engine.get_note_state();
+			const engineHarmony: number[] = raw?.harmony_notes ?? [];
+			// Merge companion-emitted notes (Canon + Counterpoint
+			// lanes) into harmonyNotes so the ActiveNotes strip + the
+			// Piano + Fretboard highlight them. The Tauri build gets
+			// these from the router thread's note-state aggregation;
+			// in WASM we accumulate them in `activeCompanionNotes` via
+			// dispatchOpsJson. Set-merge dedups overlap with the
+			// engine's own harmony output.
+			const merged = new Set<number>(engineHarmony);
+			for (const n of activeCompanionNotes) merged.add(n);
 			return {
 				inputNotes: raw?.input_notes ?? [],
-				harmonyNotes: raw?.harmony_notes ?? [],
+				harmonyNotes: Array.from(merged),
 				borrowedNotes: raw?.borrowed_notes ?? [],
 				chordName: raw?.chord_name ?? '',
 				lastBorrowedFrom: raw?.last_borrowed_from ?? '',
@@ -808,7 +827,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		} catch {
 			return {
 				inputNotes: [],
-				harmonyNotes: [],
+				harmonyNotes: Array.from(activeCompanionNotes),
 				borrowedNotes: [],
 				chordName: '',
 				lastBorrowedFrom: '',
