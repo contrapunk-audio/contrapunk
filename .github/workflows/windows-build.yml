@@ -21,6 +21,11 @@ jobs:
     name: Build Windows installer (x86_64-pc-windows-msvc)
     runs-on: windows-latest
     timeout-minutes: 60
+    # Required for softprops/action-gh-release to update the release
+    # on tag pushes. Without this the attach step fails with
+    # "Resource not accessible by integration".
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout

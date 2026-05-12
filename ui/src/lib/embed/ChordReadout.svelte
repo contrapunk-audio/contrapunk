@@ -16,7 +16,11 @@
 	let {
 		chordName,
 		variant = 'inline',
-		emptyPlaceholder = ' '
+		// NBSP (U+00A0) instead of a plain space — a plain space can
+		// get collapsed by inline-block / flex parents on some browsers
+		// during hydration, briefly collapsing the line-box height and
+		// causing a 1-frame jitter when the first chord arrives.
+		emptyPlaceholder = ' '
 	}: {
 		/** Raw chord-name string from the engine, e.g. "Fmaj7 (IVmaj7 in C)". */
 		chordName: string;
@@ -55,9 +59,12 @@
 
 	/* Inline variant — small, just keeps the line-box stable. Matches
 	   the chord-display the full Piano used to render inline above
-	   the keyboard. */
+	   the keyboard. min-height locks the row so the first chord-name
+	   arrival doesn't reflow the Piano panel underneath. */
 	.chord-readout.inline {
 		font-size: var(--font-size-xs, 0.7rem);
+		line-height: 1.4;
+		min-height: calc(var(--font-size-xs, 0.7rem) * 1.4 + 4px);
 		padding: 2px 0;
 		background: var(--color-bg-deep, #0a0612);
 		border-bottom: 1px solid var(--color-border, #2a1648);

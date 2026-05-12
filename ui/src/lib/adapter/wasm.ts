@@ -194,10 +194,32 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	/** Mirror the wasm Engine's global state (key / mode / scale_mode
+	 *  / voice_count / voice_position) into the CompanionWasm's
+	 *  internal engine_snapshot so the canon mini-engines see the
+	 *  same key/scale as the player. The Tauri build shares one
+	 *  HarmonyEngine across both; in WASM they're separate objects. */
+	private syncCompanionGlobal(): void {
+		if (!companion || !engine) return;
+		try {
+			const raw = engine.get_state();
+			companion.set_global_state(
+				raw.key ?? 'C',
+				raw.mode ?? 'PassThrough',
+				raw.scale_mode ?? 'Ionian',
+				raw.voice_count ?? 2,
+				raw.voice_position ?? 0
+			);
+		} catch {
+			/* best-effort */
+		}
+	}
+
 	async setKey(key: string): Promise<void> {
 		this.ensureInit();
 		try {
 			engine.set_key(key);
+			this.syncCompanionGlobal();
 		} catch (e) {
 			throw new Error(`Failed to set key: ${e}`);
 		}
@@ -207,6 +229,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			engine.set_mode(mode);
+			this.syncCompanionGlobal();
 		} catch (e) {
 			throw new Error(`Failed to set mode: ${e}`);
 		}
@@ -216,6 +239,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			engine.set_scale_mode(mode);
+			this.syncCompanionGlobal();
 		} catch (e) {
 			throw new Error(`Failed to set scale mode: ${e}`);
 		}
@@ -261,6 +285,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			engine.set_voice_position(position);
+			this.syncCompanionGlobal();
 		} catch (e) {
 			throw new Error(`Failed to set voice position: ${e}`);
 		}
@@ -270,6 +295,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			engine.set_voice_count(count);
+			this.syncCompanionGlobal();
 		} catch (e) {
 			throw new Error(`Failed to set voice count: ${e}`);
 		}
@@ -524,6 +550,23 @@ export class WasmAdapter implements ContrapunkAdapter {
 							if (outs.length > 0) {
 								outs[i % outs.length].send([0x90, sorted[i], velocity]);
 							}
+							// WebAudio synth so the engine harmonies are
+							// audible even without an external MIDI out.
+							embedAudio.noteOn(sorted[i], velocity);
+						}
+						// Feed the player input to the Companion so canon +
+						// counterpoint lanes fire delayed / subdivided
+						// emissions. Without this hook the v1.2.0 web build
+						// would only fire companion voices for the
+						// Computer-Keyboard virtual input path, not real
+						// MIDI hardware.
+						if (companion) {
+							try {
+								const opsJson = companion.on_note_on(note, velocity, 0);
+								self.dispatchOpsJson(opsJson);
+							} catch {
+								/* best-effort */
+							}
 						}
 					} catch {
 						/* give up on this note */
@@ -535,6 +578,15 @@ export class WasmAdapter implements ContrapunkAdapter {
 						for (let i = 0; i < sorted.length; i++) {
 							if (outs.length > 0) {
 								outs[i % outs.length].send([0x80, sorted[i], 0]);
+							}
+							embedAudio.noteOff(sorted[i]);
+						}
+						if (companion) {
+							try {
+								const opsJson = companion.on_note_off(note, 0);
+								self.dispatchOpsJson(opsJson);
+							} catch {
+								/* best-effort */
 							}
 						}
 					} catch {
