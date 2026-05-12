@@ -831,22 +831,35 @@
 					<!-- Beat / bar grid lines. Every beat is labeled with
 					     its beat-within-bar number (1..bpb). Bar boundaries
 					     are visually brighter; the label at a bar boundary
-					     is the bar number, otherwise the beat-within-bar. -->
-					{#each gridTicks as t (t.beat)}
-						{@const beatInBar = (t.beat % Math.max(1, transport.beatsPerBar)) + 1}
-						<div
-							class="grid-line"
-							class:bar-line={t.isBar}
-							style="left: {(t.beat / timelineBeats) * 100}%"
-							title={t.isBar
-								? `Bar ${t.barIdx + 1} · beat 1`
-								: `Bar ${t.barIdx + 1} · beat ${beatInBar}`}
-						>
-							<span class="grid-label font-code" class:bar-label={t.isBar}>
-								{beatInBar}
-							</span>
-						</div>
-					{/each}
+					     is the bar number, otherwise the beat-within-bar.
+
+					     The overlay div is `position: absolute` and sized
+					     to exactly match every .track-rail's horizontal
+					     extent (left = timeline padding + label column +
+					     gap; right = timeline padding). Grid-lines
+					     positioned at `left: X%` therefore share one
+					     coordinate space with the rail dots, eliminating
+					     the prior misalignment caused by absolutely-
+					     positioned children resolving percentages
+					     against the full timeline padding box rather
+					     than the rail content area. -->
+					<div class="grid-overlay">
+						{#each gridTicks as t (t.beat)}
+							{@const beatInBar = (t.beat % Math.max(1, transport.beatsPerBar)) + 1}
+							<div
+								class="grid-line"
+								class:bar-line={t.isBar}
+								style="left: {(t.beat / timelineBeats) * 100}%"
+								title={t.isBar
+									? `Bar ${t.barIdx + 1} · beat 1`
+									: `Bar ${t.barIdx + 1} · beat ${beatInBar}`}
+							>
+								<span class="grid-label font-code" class:bar-label={t.isBar}>
+									{beatInBar}
+								</span>
+							</div>
+						{/each}
+					</div>
 
 					<!-- Player track (always at beat 0) -->
 					<div class="track player-track">
@@ -1421,13 +1434,23 @@
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
-		/* Left padding (76px) holds the absolutely-positioned track
-		   labels. The remaining content area spans the same horizontal
-		   extent as every .track-rail, so grid-lines / labels / dots
-		   positioned at `left: X%` all share one coordinate space. */
-		padding: 18px 8px 8px 76px;
+		padding: 18px 8px 8px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
+	}
+
+	/* Spans the rail content area exactly:
+	   left   = timeline padding-left (8px) + label column (60px) + track gap (8px) = 76px
+	   right  = timeline padding-right (8px)
+	   so grid-line children at `left: X%` align with every track-rail's
+	   X% under it (rails share the same horizontal extent). */
+	.grid-overlay {
+		position: absolute;
+		left: 76px;
+		right: 8px;
+		top: 0;
+		bottom: 0;
+		pointer-events: none;
 	}
 
 	.grid-line {
@@ -1460,21 +1483,14 @@
 	}
 
 	.track {
-		/* Track is `position: relative` so its absolutely-positioned
-		   label can sit OUTSIDE the content (in the timeline's
-		   padding-left zone), leaving the track's content area to
-		   match the rail extent. */
-		position: relative;
-		min-height: 22px;
-		display: flex;
+		display: grid;
+		grid-template-columns: 60px 1fr;
 		align-items: center;
+		gap: 8px;
+		min-height: 22px;
 	}
 
 	.track-label {
-		position: absolute;
-		right: 100%;
-		margin-right: 8px;
-		width: 60px;
 		font-size: var(--font-size-xs);
 		color: var(--color-text-secondary);
 		text-align: right;
@@ -1490,7 +1506,6 @@
 
 	.track-rail {
 		position: relative;
-		flex: 1;
 		height: 16px;
 		background: rgba(255, 255, 255, 0.04);
 		border: 1px solid rgba(255, 255, 255, 0.08);
