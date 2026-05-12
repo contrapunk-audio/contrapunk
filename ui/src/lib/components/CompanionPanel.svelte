@@ -85,9 +85,16 @@
 		{
 			id: 'pure-counterpoint',
 			name: 'Pure Counterpoint',
-			desc: '4 voices, every voice in StrictCounterpoint · cascading 3rds, 1b apart (SATB)',
+			desc: '3 voices · cascading strict counterpoint · each voice inherits the previous voice\'s CounterpointState (interval history, contour, pitch buffer) before picking its own harmony',
 			family: 'reactive',
 			voices: [
+				// True stateful cascade: each voice's mini-engine
+				// receives the prior voice's CounterpointState before
+				// generating, so V2's rule scoring sees V1's emitted
+				// pitch in `harmony_pitch_buffer` and avoids parallels
+				// with it. Over multiple notes the chain accumulates
+				// real polyphonic memory rather than each voice
+				// computing in isolation.
 				{
 					delay_beats: 1,
 					transpose_degrees: 2,
@@ -108,13 +115,6 @@
 					time_ratio: 1.0,
 					harmony_mode: 'StrictCounterpoint',
 					reference_voice: 1
-				},
-				{
-					delay_beats: 4,
-					transpose_degrees: 2,
-					time_ratio: 1.0,
-					harmony_mode: 'StrictCounterpoint',
-					reference_voice: 2
 				}
 			]
 		},
@@ -1421,7 +1421,11 @@
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
-		padding: 18px 8px 8px;
+		/* Left padding (76px) holds the absolutely-positioned track
+		   labels. The remaining content area spans the same horizontal
+		   extent as every .track-rail, so grid-lines / labels / dots
+		   positioned at `left: X%` all share one coordinate space. */
+		padding: 18px 8px 8px 76px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 	}
@@ -1456,14 +1460,21 @@
 	}
 
 	.track {
-		display: grid;
-		grid-template-columns: 60px 1fr;
-		align-items: center;
-		gap: 8px;
+		/* Track is `position: relative` so its absolutely-positioned
+		   label can sit OUTSIDE the content (in the timeline's
+		   padding-left zone), leaving the track's content area to
+		   match the rail extent. */
+		position: relative;
 		min-height: 22px;
+		display: flex;
+		align-items: center;
 	}
 
 	.track-label {
+		position: absolute;
+		right: 100%;
+		margin-right: 8px;
+		width: 60px;
 		font-size: var(--font-size-xs);
 		color: var(--color-text-secondary);
 		text-align: right;
@@ -1479,6 +1490,7 @@
 
 	.track-rail {
 		position: relative;
+		flex: 1;
 		height: 16px;
 		background: rgba(255, 255, 255, 0.04);
 		border: 1px solid rgba(255, 255, 255, 0.08);

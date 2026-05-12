@@ -516,7 +516,7 @@ const SETTINGS_KEY = 'contrapunk-settings';
 // Version 8: defaults switched to Palestrina voice-leading +
 // Octave Spread to match the Renaissance counterpoint style of
 // the StrictCounterpoint mode + Pure Counterpoint default form.
-const SETTINGS_VERSION = 8;
+const SETTINGS_VERSION = 9;
 
 interface PersistedSettings {
 	version: number;
@@ -586,6 +586,11 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	// modes are one click away in the FORMS rail.)
 	companionEnabled: true,
 	canonEnabled: true,
+	// Stateful cascade: V1 references the player, V2 references V1,
+	// V3 references V2. Each mini-engine inherits the prior voice's
+	// CounterpointState (interval history + harmony pitch buffer +
+	// melodic contour) before generating, so V2's rule scoring is
+	// aware of V1's emitted pitch and avoids parallels with it.
 	canonVoices: [
 		{
 			delay_beats: 1,
@@ -607,13 +612,6 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 			time_ratio: 1.0,
 			harmony_mode: 'StrictCounterpoint',
 			reference_voice: 1
-		},
-		{
-			delay_beats: 4,
-			transpose_degrees: 2,
-			time_ratio: 1.0,
-			harmony_mode: 'StrictCounterpoint',
-			reference_voice: 2
 		}
 	]
 };

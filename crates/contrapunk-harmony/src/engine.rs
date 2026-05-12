@@ -745,6 +745,27 @@ impl HarmonyEngine {
         self.clear_active_for_reharm();
     }
 
+    /// Borrow a clone of the CounterpointState at the given chain
+    /// position. CanonLane uses this to thread a single cascade
+    /// chain's stateful history across multiple per-voice mini-
+    /// engines: V1 generates → V1's state is cloned into V2 before V2
+    /// generates → V2 sees V1's pitch in its interval/range history
+    /// and avoids parallels with it. Returns None if the index is out
+    /// of range (engine has `harmony_voices` slots).
+    pub fn counterpoint_state(&self, idx: usize) -> Option<CounterpointState> {
+        self.counterpoint_states.get(idx).cloned()
+    }
+
+    /// Replace the CounterpointState at the given chain position
+    /// without resetting it. Pair with `counterpoint_state(idx)` to
+    /// pre-seed a downstream voice's mini-engine with an upstream
+    /// voice's history for stateful cascading counterpoint.
+    pub fn set_counterpoint_state(&mut self, idx: usize, state: CounterpointState) {
+        if let Some(slot) = self.counterpoint_states.get_mut(idx) {
+            *slot = state;
+        }
+    }
+
     /// Harmonizes a single note based on the current mode.
     ///
     /// Returns a Vec containing:

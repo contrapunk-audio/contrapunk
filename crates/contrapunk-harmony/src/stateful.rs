@@ -240,7 +240,7 @@ impl ContraryMotionState {
 /// - Tracks interval history to avoid overusing the same interval
 /// - Tracks melodic contour to encourage contrary motion
 /// - Tracks harmony range to encourage range expansion
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CounterpointState {
     last_melody: Option<Note>,
     last_harmony: Option<Note>,
@@ -344,6 +344,13 @@ impl CounterpointState {
 
     pub fn strictness(&self) -> CounterpointStrictness {
         self.strictness
+    }
+
+    /// Snapshot of the recent harmony pitch buffer (last up to 5
+    /// chosen pitches). Exposed so CanonLane can verify state has
+    /// been propagated across cascade voices in tests.
+    pub fn harmony_pitch_buffer(&self) -> Vec<u8> {
+        self.harmony_pitch_buffer.iter().copied().collect()
     }
 
     // --- Helper methods for interval history ---

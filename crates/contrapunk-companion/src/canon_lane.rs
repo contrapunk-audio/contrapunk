@@ -564,10 +564,22 @@ impl CanonLane {
     /// queues per input note. Empty vector means "no canon
     /// emissions" — the lane stays enabled but produces nothing.
     pub fn set_voices(&mut self, voices: Vec<CanonVoice>) {
+        // Preserve every per-voice override (harmony_mode,
+        // reference_voice, voice_count, voice_position, voice_leading,
+        // octave_mode, counterpoint_species/strictness) — the previous
+        // implementation rebuilt each voice via with_time_ratio which
+        // silently dropped them, making the cascade + per-voice mode
+        // overrides silently no-op. Just clamp the numeric fields and
+        // leave the rest alone.
         let clamped: Vec<CanonVoice> = voices
             .into_iter()
             .take(8)
-            .map(|v| CanonVoice::with_time_ratio(v.delay_beats, v.transpose_degrees, v.time_ratio))
+            .map(|mut v| {
+                v.delay_beats = v.delay_beats.clamp(0.0, 16.0);
+                v.transpose_degrees = v.transpose_degrees.clamp(-7, 7);
+                v.time_ratio = v.time_ratio.clamp(0.125, 8.0);
+                v
+            })
             .collect();
         self.voices = clamped;
         // Drop any in-flight emissions targeting voices that may no
@@ -654,6 +666,40 @@ impl CanonLane {
             return (input_note, vec![input_note]);
         };
 
+        // Stateful cascade: when this voice references an earlier
+        // voice, clone the reference voice's CounterpointState chain
+        // INTO this voice's engine BEFORE it harmonizes. The chain's
+        // harmony_pitch_buffer / interval_history / contour now carry
+        // the earlier voice's actual pitches, so this voice's rule
+        // scoring will avoid parallels / repeated intervals with what
+        // V_ref just emitted. Effectively this turns the cascade chain
+        // into one logical multi-voice counterpoint stream that grows
+        // pitch-by-pitch from V1 → V_last.
+        if let Some(ref_idx) = voice.reference_voice {
+            if ref_idx < voice_idx {
+                // Snapshot the reference engine's CP chain (cloned out
+                // of one engine, into the next — no aliasing borrow).
+                let ref_states: Vec<_> = {
+                    if let Some(ref_engine) = self.voice_engines.get(ref_idx) {
+                        let mut v = Vec::new();
+                        let mut i = 0;
+                        while let Some(s) = ref_engine.counterpoint_state(i) {
+                            v.push(s);
+                            i += 1;
+                        }
+                        v
+                    } else {
+                        Vec::new()
+                    }
+                };
+                if let Some(ve) = self.voice_engines.get_mut(voice_idx) {
+                    for (i, s) in ref_states.into_iter().enumerate() {
+                        ve.set_counterpoint_state(i, s);
+                    }
+                }
+            }
+        }
+
         // Stage 1: subject pitch = input + transpose. Diatonic shift
         // uses the per-voice engine's scale so interchange / chromatic
         // fallback honor the voice's own state.
@@ -672,11 +718,10 @@ impl CanonLane {
             input_note
         };
 
-        // Stage 2: harmony stack via per-voice engine. Each voice's
-        // engine carries its own CounterpointState / contour /
-        // suspension history — stateful modes accumulate per voice
-        // rather than thrashing a shared global. v1 used the global
-        // engine; this is the slice that fixes that.
+        // Stage 2: harmony stack via per-voice engine. Stateful modes
+        // now read the seeded history from the cascade (above) so the
+        // chosen harmony pitch reflects what earlier cascade voices
+        // emitted, not just this voice's own past.
         let stack = match Note::try_from(subject_midi) {
             Ok(subject_note) => match self.voice_engines.get_mut(voice_idx) {
                 Some(ve) => {
@@ -1048,6 +1093,229 @@ mod tests {
         if target_frames > 0 {
             let _ = transport.advance(target_frames);
         }
+    }
+
+    /// The Pure Counterpoint default form: 4 voices, all transpose +2,
+    /// all StrictCounterpoint, cascading 0 → 1 → 2 → 3. Verifies the
+    /// per-voice mini-engines + cascade produce 4 DISTINCT subject
+    /// pitches for a single player NoteOn — i.e. the cascade is real.
+    /// If this test fails, the user's "voices repeat the same harmony"
+    /// report is a genuine bug rather than the by-design stack-of-thirds
+    /// shape. If it passes, the perceived "sameness" is the form's
+    /// design (all +2 transposes ladder through the scale).
+    #[test]
+    fn pure_counterpoint_cascade_produces_distinct_subjects() {
+        let (mut lane, world, _t) = fixture();
+        lane.set_enabled(true);
+
+        // Mirror the global engine to StrictCounterpoint so the mini-
+        // engines fall through to per-voice StrictCounterpoint mode
+        // without internal mode-mismatch resets.
+        {
+            let mut g = world.engine_snapshot.lock().unwrap();
+            g.set_mode(HarmonyMode::StrictCounterpoint);
+        }
+
+        // Build the Pure Counterpoint voices.
+        let voices = vec![
+            CanonVoice {
+                delay_beats: 1.0,
+                transpose_degrees: 2,
+                time_ratio: 1.0,
+                harmony_mode: Some(HarmonyMode::StrictCounterpoint),
+                reference_voice: None,
+                voice_count: None,
+                voice_position: None,
+                voice_leading_enabled: None,
+                voice_leading_style: None,
+                octave_mode: None,
+                counterpoint_species: None,
+                counterpoint_strictness: None,
+            },
+            CanonVoice {
+                delay_beats: 2.0,
+                transpose_degrees: 2,
+                time_ratio: 1.0,
+                harmony_mode: Some(HarmonyMode::StrictCounterpoint),
+                reference_voice: Some(0),
+                voice_count: None,
+                voice_position: None,
+                voice_leading_enabled: None,
+                voice_leading_style: None,
+                octave_mode: None,
+                counterpoint_species: None,
+                counterpoint_strictness: None,
+            },
+            CanonVoice {
+                delay_beats: 3.0,
+                transpose_degrees: 2,
+                time_ratio: 1.0,
+                harmony_mode: Some(HarmonyMode::StrictCounterpoint),
+                reference_voice: Some(1),
+                voice_count: None,
+                voice_position: None,
+                voice_leading_enabled: None,
+                voice_leading_style: None,
+                octave_mode: None,
+                counterpoint_species: None,
+                counterpoint_strictness: None,
+            },
+            CanonVoice {
+                delay_beats: 4.0,
+                transpose_degrees: 2,
+                time_ratio: 1.0,
+                harmony_mode: Some(HarmonyMode::StrictCounterpoint),
+                reference_voice: Some(2),
+                voice_count: None,
+                voice_position: None,
+                voice_leading_enabled: None,
+                voice_leading_style: None,
+                octave_mode: None,
+                counterpoint_species: None,
+                counterpoint_strictness: None,
+            },
+        ];
+        lane.set_voices(voices);
+
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60, // C4
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+
+        let held = lane
+            .held
+            .get(&60)
+            .expect("held entry for player note 60 should exist");
+
+        // Subjects = the first emitted note per voice = each mini-
+        // engine's transposed-input pitch. If cascade is firing, V1
+        // sees C → E, V2 sees E → G, V3 sees G → B, V4 sees B → D.
+        // If cascade is broken (every voice harmonizes against the
+        // player's input), V1..V4 would all share the same subject
+        // (E from C+2 diatonic), which is the failure case we're
+        // guarding against.
+        let subjects: Vec<u8> = held
+            .voices
+            .iter()
+            .map(|v| v.canon_notes.first().copied().unwrap_or(0))
+            .collect();
+        assert_eq!(subjects.len(), 4, "should have 4 emitted voices");
+
+        let unique: std::collections::HashSet<u8> = subjects.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            4,
+            "expected 4 distinct subject pitches across cascading voices, got {:?}",
+            subjects
+        );
+
+        // Sanity: the subjects should be ascending — every voice
+        // transposes its (already-transposed) reference up by +2
+        // diatonic degrees, so they ladder upward.
+        for w in subjects.windows(2) {
+            assert!(
+                w[1] > w[0],
+                "cascade subjects should be strictly ascending: {:?}",
+                subjects
+            );
+        }
+    }
+
+    /// Stateful cascade: when V2 references V1, V2's mini-engine
+    /// CounterpointState should be SEEDED with V1's history before V2
+    /// harmonizes. After a single NoteOn through a 2-voice cascade,
+    /// V2's harmony_pitch_buffer must contain V1's emitted harmony
+    /// pitch — proving the per-voice mini-engines are no longer
+    /// state-isolated for cascade chains.
+    #[test]
+    fn cascade_shares_counterpoint_state_across_voices() {
+        let (mut lane, world, _t) = fixture();
+        lane.set_enabled(true);
+        {
+            let mut g = world.engine_snapshot.lock().unwrap();
+            g.set_mode(HarmonyMode::StrictCounterpoint);
+        }
+
+        let voices = vec![
+            CanonVoice {
+                delay_beats: 1.0,
+                transpose_degrees: 2,
+                time_ratio: 1.0,
+                harmony_mode: Some(HarmonyMode::StrictCounterpoint),
+                reference_voice: None,
+                voice_count: None,
+                voice_position: None,
+                voice_leading_enabled: None,
+                voice_leading_style: None,
+                octave_mode: None,
+                counterpoint_species: None,
+                counterpoint_strictness: None,
+            },
+            CanonVoice {
+                delay_beats: 2.0,
+                transpose_degrees: 2,
+                time_ratio: 1.0,
+                harmony_mode: Some(HarmonyMode::StrictCounterpoint),
+                reference_voice: Some(0),
+                voice_count: None,
+                voice_position: None,
+                voice_leading_enabled: None,
+                voice_leading_style: None,
+                octave_mode: None,
+                counterpoint_species: None,
+                counterpoint_strictness: None,
+            },
+        ];
+        lane.set_voices(voices);
+
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+
+        let v1_buffer = lane
+            .voice_engines
+            .first()
+            .and_then(|e| e.counterpoint_state(0))
+            .map(|s| s.harmony_pitch_buffer())
+            .unwrap_or_default();
+        let v2_buffer = lane
+            .voice_engines
+            .get(1)
+            .and_then(|e| e.counterpoint_state(0))
+            .map(|s| s.harmony_pitch_buffer())
+            .unwrap_or_default();
+
+        assert!(
+            !v1_buffer.is_empty(),
+            "V1 should have at least one harmony pitch in its buffer after NoteOn"
+        );
+        // The decisive check: V2 should have inherited V1's history.
+        // Every pitch V1 chose must appear in V2's buffer before
+        // V2's own pitch — proving the seed-then-harmonize chain
+        // wrote V1's full buffer into V2 before V2 ran.
+        for v1_pitch in &v1_buffer {
+            assert!(
+                v2_buffer.contains(v1_pitch),
+                "V2 buffer {:?} should contain V1 pitch {} (state was not propagated)",
+                v2_buffer,
+                v1_pitch
+            );
+        }
+        assert!(
+            v2_buffer.len() > v1_buffer.len(),
+            "V2 buffer ({:?}) should extend V1 buffer ({:?}) with V2's own choice",
+            v2_buffer,
+            v1_buffer
+        );
     }
 
     #[test]
