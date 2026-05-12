@@ -46,6 +46,29 @@ let companionTickHandle: number | null = null;
 // in the UI but the WASM build only showed the player's harmony.
 const activeCompanionNotes: Set<number> = new Set();
 
+/** Debug logger — set `window.__cpDebug = true` in DevTools to
+ *  print a snapshot of the Companion + per-voice state on every
+ *  player NoteOn / NoteOff and the dispatch ops that came back.
+ *  Off by default so production users don't see console noise. */
+function isCompanionDebug(): boolean {
+	try {
+		return Boolean((globalThis as unknown as { __cpDebug?: boolean }).__cpDebug);
+	} catch {
+		return false;
+	}
+}
+
+function logCompanionEvent(label: string, payload: Record<string, unknown>): void {
+	if (!isCompanionDebug() || !companion) return;
+	try {
+		const snap = JSON.parse(companion.debug_snapshot());
+		// eslint-disable-next-line no-console
+		console.log(`[cp:${label}]`, { ...payload, ...snap });
+	} catch {
+		/* serialization failure — ignore */
+	}
+}
+
 /**
  * Sentinel input index used to signal "guitar audio input" rather than MIDI.
  * Must match the value used in the UI when starting guitar routing.
@@ -573,6 +596,11 @@ export class WasmAdapter implements ContrapunkAdapter {
 							try {
 								const opsJson = companion.on_note_on(note, velocity, 0);
 								self.dispatchOpsJson(opsJson);
+								logCompanionEvent('note_on (midi)', {
+									player_note: note,
+									velocity,
+									immediate_ops: self.safeParse(opsJson)
+								});
 							} catch {
 								/* best-effort */
 							}
@@ -594,6 +622,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 							try {
 								const opsJson = companion.on_note_off(note, 0);
 								self.dispatchOpsJson(opsJson);
+								logCompanionEvent('note_off (midi)', {
+									player_note: note,
+									immediate_ops: self.safeParse(opsJson)
+								});
 							} catch {
 								/* best-effort */
 							}
@@ -767,6 +799,11 @@ export class WasmAdapter implements ContrapunkAdapter {
 				try {
 					const opsJson = companion.on_note_on(note, vel, 0);
 					this.dispatchOpsJson(opsJson);
+					logCompanionEvent('note_on (virtual)', {
+						player_note: note,
+						velocity: vel,
+						immediate_ops: this.safeParse(opsJson)
+					});
 				} catch {
 					/* ignore — companion is best-effort in browser */
 				}
@@ -774,6 +811,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 			return sorted;
 		} catch {
 			return [note];
+		}
+	}
+
+	private safeParse(json: string): unknown {
+		try {
+			return JSON.parse(json);
+		} catch {
+			return json;
 		}
 	}
 
@@ -792,6 +837,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 				try {
 					const opsJson = companion.on_note_off(note, 0);
 					this.dispatchOpsJson(opsJson);
+					logCompanionEvent('note_off (virtual)', {
+						player_note: note,
+						immediate_ops: this.safeParse(opsJson)
+					});
 				} catch {
 					/* ignore */
 				}

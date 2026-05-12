@@ -178,6 +178,47 @@ impl CompanionWasm {
         let ops = self.inner.tick(&self.dummy_engine);
         serialize_ops(&ops).map_err(|e| JsValue::from_str(&e.to_string()))
     }
+
+    /// Debug snapshot — JSON dump of the global engine snapshot + each
+    /// canon-lane voice's mini-engine state (mode, key, scale_mode,
+    /// voice_count, voice_position) and the voice config (transpose,
+    /// reference_voice, etc.). Used by the JS adapter to log what's
+    /// actually happening on each NoteOn so we can verify the per-voice
+    /// engines are independent and the cascade is firing.
+    #[wasm_bindgen]
+    pub fn debug_snapshot(&self) -> String {
+        let snapshot = if let Ok(g) = self.world.engine_snapshot.lock() {
+            serde_json::json!({
+                "key": format!("{:?}", g.key()),
+                "mode": format!("{:?}", g.mode()),
+                "scale_mode": format!("{:?}", g.scale_mode()),
+                "voice_count": g.voice_count(),
+                "voice_position": g.voice_position(),
+                "counterpoint_species": format!("{:?}", g.counterpoint_species()),
+            })
+        } else {
+            serde_json::json!({ "error": "snapshot lock poisoned" })
+        };
+        // Canon lane state — already serialized by CanonLane itself
+        // (includes per-voice config). We add the global snapshot
+        // alongside so a single log line shows both.
+        let canon = self
+            .inner
+            .lane_state("canon")
+            .unwrap_or(serde_json::Value::Null);
+        let counterpoint = self
+            .inner
+            .lane_state("counterpoint")
+            .unwrap_or(serde_json::Value::Null);
+        serde_json::json!({
+            "snapshot": snapshot,
+            "canon": canon,
+            "counterpoint": counterpoint,
+            "companion_enabled": self.inner.enabled.load(std::sync::atomic::Ordering::Acquire),
+            "transport_beats": self.world.transport.total_beats(),
+        })
+        .to_string()
+    }
 }
 
 impl Default for CompanionWasm {
