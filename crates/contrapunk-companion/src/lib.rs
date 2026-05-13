@@ -31,7 +31,8 @@ pub use counterpoint_lane::CounterpointLane;
 
 #[allow(unused_imports)]
 pub use lane::{
-    EngineMutation, InputEvent, InputFilter, Lane, LaneOutput, LanePhase, LaneState, WorldWrite,
+    EngineMutation, HoldMode, InputEvent, InputFilter, Lane, LaneOutput, LanePhase, LaneState,
+    WorldWrite,
 };
 #[allow(unused_imports)]
 pub use loops::{LoopBuffer, LoopEvent, LoopEventKind, LoopSlot, LoopSource, LoopState};

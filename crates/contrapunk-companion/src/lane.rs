@@ -22,6 +22,58 @@ use contrapunk_harmony::{HarmonyMode, Key, ScaleMode, VoiceLeadingStyle};
 use super::world::{DetectedChord, WorldState};
 use super::DispatchOp;
 
+/// What happens to pending lane emissions when the player releases
+/// the input note that seeded them.
+///
+/// Lane emissions are buffered as `PendingOn` entries with a `fire_at`
+/// beat. The naive design lets them all fire on schedule even after
+/// the player released — which is right for canons (delayed echoes
+/// outlive the subject by design) but wrong for performative
+/// scenarios where the user expects "lift = stop." Per-lane and per-
+/// voice `Option<HoldMode>` overrides let the user pick per slot;
+/// the orchestrator-level `Companion.hold_mode` is the default.
+///
+/// Resolution: `voice.hold_mode || lane.hold_mode || companion.hold_mode`.
+///
+/// Event-driven: applied at NoteOff time, NOT polled. Each lane's
+/// `on_input(NoteOff)` walks its `pending_on` deque, filters by the
+/// effective mode + the current `transport.total_beats()`, and emits
+/// matching NoteOffs / cancels orphan NoteOns in one pass.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HoldMode {
+    /// Kill every pending emission seeded by the released input note.
+    /// Already-sounded voices still go through their natural release
+    /// envelope (the synth handles that). Use for performative "lift
+    /// = stop" feel.
+    Cancel,
+    /// Let pending emissions whose `fire_at` lies within `tail_beats`
+    /// of the current beat fire normally; cancel anything scheduled
+    /// further out. Use for "echoes near in time still ring, far-
+    /// future canon entries cancel." `tail_beats = 0.0` is equivalent
+    /// to `Cancel`.
+    NearFuture { tail_beats: f64 },
+    /// Let pending emissions within the CURRENT phrase fire (where
+    /// "phrase" is anchored by `CanonLane.sequence_anchor` plus the
+    /// transport's beats-per-bar). Cancels anything beyond the next
+    /// phrase boundary. Use for "let this musical idea finish, then
+    /// stop."
+    PhraseEnd,
+    /// No cancellation. Every pending emission fires on its scheduled
+    /// beat. This is the pre-v1.2 behavior; keeps canon-as-canon
+    /// semantics intact (V_K can outlive the player's input by
+    /// `delay_beats * time_ratio` beats).
+    Forever,
+}
+
+impl Default for HoldMode {
+    fn default() -> Self {
+        // Tail of 1.0 beats — near-term companion echoes ring out
+        // after a release, multi-bar augmentation/canon emissions
+        // cancel. Most musical of the four for a typical user.
+        HoldMode::NearFuture { tail_beats: 1.0 }
+    }
+}
+
 /// Which orchestration phase a Lane participates in.
 ///
 /// The orchestrator runs all `Sense` lanes first, then all `Mutate`,
