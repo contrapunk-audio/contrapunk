@@ -787,6 +787,28 @@
 				<span class="lane-title font-ui">CANON</span>
 				<span class="lane-subtitle font-code">delayed echoes · cascaded voices</span>
 				<span class="lane-actions">
+					<label class="lane-hold-pick" title="Override Companion's global HoldMode for this lane only. 'Inherit' uses the global setting.">
+						<span class="font-code">HOLD</span>
+						<select
+							value={engine.canonLaneHoldMode === null ? 'inherit' : engine.canonLaneHoldMode.kind}
+							onchange={(e) => {
+								const v = (e.target as HTMLSelectElement).value;
+								if (v === 'inherit') {
+									engine.setCanonLaneHoldMode(null);
+								} else if (v === 'near_future') {
+									engine.setCanonLaneHoldMode({ kind: 'near_future', tail_beats: 1.0 });
+								} else {
+									engine.setCanonLaneHoldMode({ kind: v as 'cancel' | 'phrase_end' | 'forever' });
+								}
+							}}
+						>
+							<option value="inherit">Inherit</option>
+							<option value="cancel">Cancel</option>
+							<option value="near_future">Near</option>
+							<option value="phrase_end">Phrase</option>
+							<option value="forever">Forever</option>
+						</select>
+					</label>
 					<button
 						class="pixel-btn"
 						class:toggle-on={engine.canonEnabled}
@@ -1126,6 +1148,34 @@
 										})}
 								/>
 							</div>
+
+							<div
+								class="voice-param voice-param-mode"
+								title={`Hold — what happens to this voice's pending notes when you release the seeding input.\n\nInherit = use the lane's setting (which itself may inherit the Companion global).\nCancel = drop all pending the moment you release.\nNear = let pending within 1 beat fire.\nPhrase = let pending within the current bar fire.\nForever = no cancellation (this voice always completes scheduled notes).`}
+							>
+								<span class="param-label font-ui">Hold</span>
+								<PixelSelect
+									options={[
+										{ value: 'inherit', label: 'Inherit' },
+										{ value: 'cancel', label: 'Cancel' },
+										{ value: 'near_future', label: 'Near' },
+										{ value: 'phrase_end', label: 'Phrase' },
+										{ value: 'forever', label: 'Forever' }
+									]}
+									value={voice.hold_mode == null ? 'inherit' : voice.hold_mode.kind}
+									placeholder="Inherit"
+									small={true}
+									onchange={(v) => {
+										const mode =
+											v === 'inherit'
+												? null
+												: v === 'near_future'
+													? { kind: 'near_future' as const, tail_beats: 1.0 }
+													: { kind: v as 'cancel' | 'phrase_end' | 'forever' };
+										engine.updateCanonVoice(i, { hold_mode: mode });
+									}}
+								/>
+							</div>
 						</div>
 					{/each}
 				</div>
@@ -1148,6 +1198,30 @@
 				<span class="lane-title font-ui">COUNTERPOINT</span>
 				<span class="lane-subtitle font-code">Fux species · subdivided emissions</span>
 				<span class="lane-actions">
+					<label class="lane-hold-pick" title="Override Companion's global HoldMode for this lane only. 'Inherit' uses the global setting.">
+						<span class="font-code">HOLD</span>
+						<select
+							value={engine.counterpointLaneHoldMode === null
+								? 'inherit'
+								: engine.counterpointLaneHoldMode.kind}
+							onchange={(e) => {
+								const v = (e.target as HTMLSelectElement).value;
+								if (v === 'inherit') {
+									engine.setCounterpointLaneHoldMode(null);
+								} else if (v === 'near_future') {
+									engine.setCounterpointLaneHoldMode({ kind: 'near_future', tail_beats: 1.0 });
+								} else {
+									engine.setCounterpointLaneHoldMode({ kind: v as 'cancel' | 'phrase_end' | 'forever' });
+								}
+							}}
+						>
+							<option value="inherit">Inherit</option>
+							<option value="cancel">Cancel</option>
+							<option value="near_future">Near</option>
+							<option value="phrase_end">Phrase</option>
+							<option value="forever">Forever</option>
+						</select>
+					</label>
 					<button
 						class="pixel-btn"
 						class:toggle-on={cp.enabled}
@@ -1460,6 +1534,23 @@
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
 		flex-wrap: wrap;
+	}
+	.lane-hold-pick {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 0.7em;
+		color: var(--color-text-secondary);
+		letter-spacing: 0.06em;
+		margin-right: 8px;
+	}
+	.lane-hold-pick select {
+		font-size: 0.85em;
+		padding: 2px 4px;
+		background: var(--color-bg);
+		color: var(--color-text-primary);
+		border: 1px solid var(--color-border);
+		font-family: var(--font-code, monospace);
 	}
 	.hold-mode-buttons {
 		display: flex;

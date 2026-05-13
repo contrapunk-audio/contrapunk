@@ -795,6 +795,25 @@ class EngineStore {
 	canonEnabled = $state(false);
 	canonDelayBeats = $state(1.0);
 	canonTransposeDegrees = $state(0);
+	/** Canon lane HoldMode override (#11). `null` = inherit Companion
+	 *  global. Otherwise this lane's own HoldMode takes precedence
+	 *  over global at NoteOff resolution time. */
+	canonLaneHoldMode = $state<
+		| null
+		| { kind: 'cancel' }
+		| { kind: 'near_future'; tail_beats: number }
+		| { kind: 'phrase_end' }
+		| { kind: 'forever' }
+	>(null);
+	/** Counterpoint lane HoldMode override (#11). Same semantics as
+	 *  canonLaneHoldMode. */
+	counterpointLaneHoldMode = $state<
+		| null
+		| { kind: 'cancel' }
+		| { kind: 'near_future'; tail_beats: number }
+		| { kind: 'phrase_end' }
+		| { kind: 'forever' }
+	>(null);
 	/** Multi-voice canon (#3). Each entry independently delays,
 	 *  transposes, time-scales (augmentation/diminution), and can
 	 *  override the engine's harmony mode for its own stack. Mirrors
@@ -814,6 +833,15 @@ class EngineStore {
 			octave_mode?: string | null;
 			counterpoint_species?: string | null;
 			counterpoint_strictness?: string | null;
+			/** Per-voice HoldMode override (#11). Wire-format object;
+			 *  `null`/undefined = inherit from lane / global. Persisted
+			 *  via `canonSetVoices` JSON pass-through. */
+			hold_mode?:
+				| null
+				| { kind: 'cancel' }
+				| { kind: 'near_future'; tail_beats: number }
+				| { kind: 'phrase_end' }
+				| { kind: 'forever' };
 			/** Voice Library binding. UI-only; the backend never sees
 			 *  this. When set, the CompanionPanel's reactivity effect
 			 *  re-applies the named preset's fields whenever the preset
@@ -1160,6 +1188,52 @@ class EngineStore {
 		}
 	}
 
+	/** Canon lane override (#11). Pass `null` to clear and inherit
+	 *  the Companion global. Pushes through `canonSetVoices` (the
+	 *  configure_canon JSON path includes the lane-level hold_mode). */
+	async setCanonLaneHoldMode(
+		mode:
+			| null
+			| { kind: 'cancel' }
+			| { kind: 'near_future'; tail_beats: number }
+			| { kind: 'phrase_end' }
+			| { kind: 'forever' }
+	) {
+		const prev = this.canonLaneHoldMode;
+		this.canonLaneHoldMode = mode;
+		try {
+			// configure_canon already routes through the lane's
+			// deserialize_state which handles top-level `hold_mode`.
+			// Sending null clears the override.
+			await adapter.canonConfigure({ hold_mode: mode });
+			this.persist();
+		} catch (e) {
+			this.canonLaneHoldMode = prev;
+			throw e;
+		}
+	}
+
+	/** Counterpoint lane override (#11). Same semantics as canon
+	 *  lane override. */
+	async setCounterpointLaneHoldMode(
+		mode:
+			| null
+			| { kind: 'cancel' }
+			| { kind: 'near_future'; tail_beats: number }
+			| { kind: 'phrase_end' }
+			| { kind: 'forever' }
+	) {
+		const prev = this.counterpointLaneHoldMode;
+		this.counterpointLaneHoldMode = mode;
+		try {
+			await adapter.counterpointConfigure({ hold_mode: mode });
+			this.persist();
+		} catch (e) {
+			this.counterpointLaneHoldMode = prev;
+			throw e;
+		}
+	}
+
 	async setCanonEnabled(enabled: boolean) {
 		const prev = this.canonEnabled;
 		this.canonEnabled = enabled;
@@ -1211,6 +1285,12 @@ class EngineStore {
 			octave_mode?: string | null;
 			counterpoint_species?: string | null;
 			counterpoint_strictness?: string | null;
+			hold_mode?:
+				| null
+				| { kind: 'cancel' }
+				| { kind: 'near_future'; tail_beats: number }
+				| { kind: 'phrase_end' }
+				| { kind: 'forever' };
 			preset_id?: string | null;
 		}>
 	) {
@@ -1245,6 +1325,7 @@ class EngineStore {
 				octave_mode: v.octave_mode ?? null,
 				counterpoint_species: v.counterpoint_species ?? null,
 				counterpoint_strictness: v.counterpoint_strictness ?? null,
+				hold_mode: v.hold_mode ?? null,
 				preset_id: v.preset_id ?? null
 			};
 		});
@@ -1297,6 +1378,12 @@ class EngineStore {
 			octave_mode: string | null;
 			counterpoint_species: string | null;
 			counterpoint_strictness: string | null;
+			hold_mode:
+				| null
+				| { kind: 'cancel' }
+				| { kind: 'near_future'; tail_beats: number }
+				| { kind: 'phrase_end' }
+				| { kind: 'forever' };
 			preset_id: string | null;
 		}>
 	) {

@@ -284,8 +284,15 @@ export interface ContrapunkAdapter {
 			octave_mode?: string | null;
 			counterpoint_species?: string | null;
 			counterpoint_strictness?: string | null;
+			hold_mode?: HoldMode | null;
 		}>
 	): Promise<void>;
+
+	/** Generic lane-level configure for CanonLane (#11 override path).
+	 *  Sends an arbitrary partial JSON state blob to the lane's
+	 *  `deserialize_state`. Use for fields not covered by the typed
+	 *  setters above — currently the lane-level `hold_mode` field. */
+	canonConfigure(partial: Record<string, unknown>): Promise<void>;
 
 	/** Configure the dedicated CounterpointLane. Each field is
 	 *  optional — only the ones you pass are applied. */
@@ -295,6 +302,10 @@ export interface ContrapunkAdapter {
 		transpose_degrees?: number;
 		prefer_above?: boolean;
 	}): Promise<void>;
+
+	/** Generic lane-level configure for CounterpointLane (#11 override
+	 *  path). Same shape as `canonConfigure`. */
+	counterpointConfigure(partial: Record<string, unknown>): Promise<void>;
 
 	/** Read the dedicated CounterpointLane's current state. */
 	counterpointState(): Promise<{

@@ -228,6 +228,28 @@ pub fn counterpoint_state(state: State<AppState>) -> Result<serde_json::Value, S
         .unwrap_or(serde_json::Value::Null))
 }
 
+/// Generic configure pass-through for CanonLane (#11 lane-level
+/// HoldMode override + future fields). Accepts any partial JSON the
+/// lane's `deserialize_state` recognises. Use this instead of adding
+/// per-field typed commands for fields that don't yet need their own
+/// UI store; the JSON path is forward-compatible.
+#[tauri::command]
+pub fn canon_configure(partial: serde_json::Value, state: State<AppState>) -> Result<(), String> {
+    let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.configure_lane("canon", partial)
+}
+
+/// Generic configure pass-through for CounterpointLane (#11 lane-level
+/// HoldMode override + future fields). Same shape as `canon_configure`.
+#[tauri::command]
+pub fn counterpoint_configure(
+    partial: serde_json::Value,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.configure_lane("counterpoint", partial)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

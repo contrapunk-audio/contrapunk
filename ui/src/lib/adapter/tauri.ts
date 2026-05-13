@@ -302,6 +302,22 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async canonConfigure(partial: Record<string, unknown>): Promise<void> {
+		try {
+			await invoke('canon_configure', { partial });
+		} catch (e) {
+			throw new Error(`Failed to configure canon lane: ${e}`);
+		}
+	}
+
+	async counterpointConfigure(partial: Record<string, unknown>): Promise<void> {
+		try {
+			await invoke('counterpoint_configure', { partial });
+		} catch (e) {
+			throw new Error(`Failed to configure counterpoint lane: ${e}`);
+		}
+	}
+
 	async counterpointState(): Promise<{
 		enabled: boolean;
 		species: string;

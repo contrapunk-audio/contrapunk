@@ -88,6 +88,8 @@ fn main() {
             commands::companion::companion_set_enabled,
             commands::companion::companion_is_enabled,
             commands::companion::companion_set_global_hold_mode,
+            commands::companion::canon_configure,
+            commands::companion::counterpoint_configure,
             commands::companion::canon_set_enabled,
             commands::companion::canon_set_delay,
             commands::companion::canon_set_transpose,

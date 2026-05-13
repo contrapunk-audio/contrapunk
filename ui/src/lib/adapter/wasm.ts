@@ -440,6 +440,24 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async canonConfigure(partial: Record<string, unknown>): Promise<void> {
+		if (!companion) return;
+		try {
+			companion.configure_canon(JSON.stringify(partial));
+		} catch (e) {
+			console.warn('[wasm] canonConfigure failed:', e);
+		}
+	}
+
+	async counterpointConfigure(partial: Record<string, unknown>): Promise<void> {
+		if (!companion) return;
+		try {
+			companion.configure_counterpoint(JSON.stringify(partial));
+		} catch (e) {
+			console.warn('[wasm] counterpointConfigure failed:', e);
+		}
+	}
+
 	async counterpointState(): Promise<{
 		enabled: boolean;
 		species: string;

@@ -189,6 +189,14 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// No-op in plugin host today.
 	}
 
+	async canonConfigure(_partial: Record<string, unknown>): Promise<void> {
+		// No-op in plugin host today.
+	}
+
+	async counterpointConfigure(_partial: Record<string, unknown>): Promise<void> {
+		// No-op in plugin host today.
+	}
+
 	async counterpointState(): Promise<{
 		enabled: boolean;
 		species: string;
