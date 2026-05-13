@@ -137,6 +137,24 @@ impl CompanionWasm {
             .map_err(|e| JsValue::from_str(&e))
     }
 
+    /// Set the Companion's global HoldMode default. JSON shape:
+    ///   {"kind":"cancel"}
+    ///   {"kind":"near_future","tail_beats":1.0}
+    ///   {"kind":"phrase_end"}
+    ///   {"kind":"forever"}
+    /// Lanes / voices can still override via the existing
+    /// `configure_canon` / `configure_counterpoint` JSON paths (they
+    /// each accept a `hold_mode` field with the same shape).
+    #[wasm_bindgen]
+    pub fn set_global_hold_mode(&self, json: &str) -> Result<(), JsValue> {
+        let value: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let mode = contrapunk_companion::lane::hold_mode_from_json(&value)
+            .ok_or_else(|| JsValue::from_str("invalid hold_mode JSON shape"))?;
+        self.inner.set_global_hold_mode(mode);
+        Ok(())
+    }
+
     /// Advance the transport by `frames` audio frames. JS calls this
     /// from its animation-frame / WebAudio loop so per-lane scheduling
     /// (canon delays, counterpoint subdivisions) sees forward time.

@@ -17,6 +17,7 @@ import type {
 	DelayState,
 	EngineState,
 	GuitarConfig,
+	HoldMode,
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
@@ -230,6 +231,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 			return (await invoke('companion_is_enabled')) as boolean;
 		} catch (e) {
 			throw new Error(`Failed to read companion enabled: ${e}`);
+		}
+	}
+
+	async companionSetGlobalHoldMode(holdMode: HoldMode): Promise<void> {
+		try {
+			await invoke('companion_set_global_hold_mode', { holdModeJson: holdMode });
+		} catch (e) {
+			throw new Error(`Failed to set companion hold mode: ${e}`);
 		}
 	}
 

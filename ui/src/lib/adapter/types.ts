@@ -24,6 +24,25 @@ export type VoiceOutputTarget =
 	| { kind: 'midi_port'; port: number }
 	| { kind: 'off' };
 
+/** What lanes do with pending emissions when the player releases the
+ *  NoteOn that seeded them (#11). Shape mirrors the Rust `HoldMode`
+ *  enum's JSON serialization (`hold_mode_to_json` in
+ *  `crates/contrapunk-companion/src/lane.rs`).
+ *
+ *    - `cancel`       — kill all pending derived from the released note.
+ *    - `near_future`  — let pending within `tail_beats` of now fire;
+ *                       cancel anything beyond.
+ *    - `phrase_end`   — let pending within the current phrase
+ *                       (anchor + beats_per_bar) fire; cancel beyond.
+ *    - `forever`      — never cancel (pre-v1.2 behavior, preserves
+ *                       canon-as-canon semantics).
+ */
+export type HoldMode =
+	| { kind: 'cancel' }
+	| { kind: 'near_future'; tail_beats: number }
+	| { kind: 'phrase_end' }
+	| { kind: 'forever' };
+
 export interface MidiDevice {
 	index: number;
 	name: string;
@@ -226,6 +245,16 @@ export interface ContrapunkAdapter {
 
 	/** Read whether the Companion is currently enabled. */
 	companionIsEnabled(): Promise<boolean>;
+
+	/** Set the Companion's global HoldMode default (#11). Lanes / voices
+	 *  can still override via the existing canon / counterpoint
+	 *  configure paths. JSON shape:
+	 *    {"kind":"cancel"}
+	 *    {"kind":"near_future","tail_beats":1.0}
+	 *    {"kind":"phrase_end"}
+	 *    {"kind":"forever"}
+	 */
+	companionSetGlobalHoldMode(holdMode: HoldMode): Promise<void>;
 
 	/** Enable / disable the Canon voice (#3). Requires the Companion
 	 *  master to be enabled too — this is the per-lane gate. */

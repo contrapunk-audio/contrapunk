@@ -11,6 +11,7 @@ import type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
+	HoldMode,
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
@@ -148,6 +149,9 @@ export class PluginAdapter implements ContrapunkAdapter {
 	}
 	async companionIsEnabled(): Promise<boolean> {
 		return false;
+	}
+	async companionSetGlobalHoldMode(holdMode: HoldMode): Promise<void> {
+		this.send('companionSetGlobalHoldMode', holdMode);
 	}
 	async canonSetEnabled(enabled: boolean): Promise<void> {
 		this.send('canonSetEnabled', enabled);

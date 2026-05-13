@@ -41,6 +41,28 @@ pub fn companion_is_enabled(state: State<AppState>) -> Result<bool, String> {
     Ok(companion.enabled.load(Ordering::Acquire))
 }
 
+/// Set the Companion's global default `HoldMode`. Lanes / voices can
+/// still override per-slot via the existing canon / counterpoint
+/// configure commands (each lane's JSON state accepts a `hold_mode`
+/// field with the same shape).
+///
+/// Wire format:
+///   {"kind":"cancel"}
+///   {"kind":"near_future","tail_beats":1.0}
+///   {"kind":"phrase_end"}
+///   {"kind":"forever"}
+#[tauri::command]
+pub fn companion_set_global_hold_mode(
+    hold_mode_json: serde_json::Value,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let companion = state.companion.lock().map_err(|e| e.to_string())?;
+    let mode = contrapunk_companion::lane::hold_mode_from_json(&hold_mode_json)
+        .ok_or_else(|| "invalid hold_mode JSON shape".to_string())?;
+    companion.set_global_hold_mode(mode);
+    Ok(())
+}
+
 // === CanonLane (#3) commands =================================================
 // The canon voice is the first concrete Lane shipped on the Companion.
 // These commands let the UI configure delay / transpose / enabled

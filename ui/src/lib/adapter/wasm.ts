@@ -9,6 +9,7 @@ import type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
+	HoldMode,
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
@@ -376,6 +377,15 @@ export class WasmAdapter implements ContrapunkAdapter {
 			return Boolean(companion.is_enabled());
 		} catch {
 			return false;
+		}
+	}
+
+	async companionSetGlobalHoldMode(holdMode: HoldMode): Promise<void> {
+		if (!companion) return;
+		try {
+			companion.set_global_hold_mode(JSON.stringify(holdMode));
+		} catch (e) {
+			console.warn('[wasm-adapter] companionSetGlobalHoldMode failed:', e);
 		}
 	}
 
