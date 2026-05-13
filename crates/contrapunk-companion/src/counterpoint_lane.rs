@@ -497,3 +497,264 @@ impl Lane for CounterpointLane {
 // Suppress unused-field warnings on HarmonyMode (referenced via the
 // scale module but not directly used by this file's symbols today).
 const _: Option<HarmonyMode> = None;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::WorldState;
+    use contrapunk_harmony::HarmonyEngine;
+    use contrapunk_transport::Transport;
+    use std::sync::Arc;
+
+    fn fixture() -> (CounterpointLane, Arc<WorldState>, Arc<Transport>) {
+        let transport = Transport::new(48_000);
+        let engine = Arc::new(std::sync::Mutex::new(HarmonyEngine::new(
+            contrapunk_harmony::Key::C,
+            HarmonyMode::PassThrough,
+        )));
+        let world = WorldState::new(Arc::clone(&transport), engine);
+        let lane = CounterpointLane::new();
+        (lane, world, transport)
+    }
+
+    fn advance_to_beat(transport: &Transport, beat: f64) {
+        let spb = transport.sample_rate() as f64 * 60.0 / transport.bpm();
+        let target_frames = (beat * spb) as u32;
+        transport.reset();
+        transport.play();
+        if target_frames > 0 {
+            let _ = transport.advance(target_frames);
+        }
+    }
+
+    // HoldMode tests (#11) — CounterpointLane
+
+    #[test]
+    fn hold_mode_cancel_drops_pending_species2() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_species(CounterpointSpecies::Species2);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(
+            !lane.pending_on.is_empty(),
+            "Species 2 should buffer at least one pending emission"
+        );
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(
+            lane.pending_on.iter().all(|p| p.player_note != 60),
+            "Cancel should drop pending for note 60"
+        );
+    }
+
+    #[test]
+    fn hold_mode_near_future_keeps_within_window() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_species(CounterpointSpecies::Species2);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::NearFuture { tail_beats: 0.6 };
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(!lane.pending_on.is_empty());
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        let kept = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert!(
+            kept > 0,
+            "NearFuture(0.6) should keep the 0.5b pending entry"
+        );
+    }
+
+    #[test]
+    fn hold_mode_near_future_drops_beyond_window() {
+        // Species 4 emits a single suspension at fire_at = now + 0.5
+        // with no onset entry, so tail_beats = 0.1 cleanly drops the
+        // only pending entry. (Species 2 keeps the onset entry — its
+        // own NearFuture cancellation is covered by the "keeps within
+        // window" + "drops half-beat passing" cases above.)
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_species(CounterpointSpecies::Species4);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::NearFuture { tail_beats: 0.1 };
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(
+            !lane.pending_on.is_empty(),
+            "Species 4 should buffer a 0.5b suspension"
+        );
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(
+            lane.pending_on.iter().all(|p| p.player_note != 60),
+            "NearFuture(0.1) should drop the 0.5b Species 4 suspension entry"
+        );
+    }
+
+    #[test]
+    fn hold_mode_forever_keeps_all_pending() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_species(CounterpointSpecies::Species2);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Forever;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let before = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert!(before > 0);
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        let after = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert_eq!(before, after, "Forever should preserve all pending");
+    }
+
+    #[test]
+    fn hold_mode_lane_override_beats_global() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_species(CounterpointSpecies::Species2);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+        lane.hold_mode = Some(HoldMode::Forever);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let before = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert!(before > 0);
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        let after = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert_eq!(before, after, "Lane Forever should beat global Cancel");
+    }
+
+    #[test]
+    fn hold_mode_only_affects_target_player_note() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_species(CounterpointSpecies::Species2);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 64,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        assert!(
+            lane.pending_on.iter().all(|p| p.player_note != 60),
+            "Note 60's pending should be cancelled"
+        );
+        assert!(
+            lane.pending_on.iter().any(|p| p.player_note == 64),
+            "Note 64's pending should be preserved"
+        );
+    }
+}

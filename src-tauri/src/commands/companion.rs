@@ -151,6 +151,11 @@ pub struct CanonVoiceArg {
     pub counterpoint_species: Option<String>,
     #[serde(default)]
     pub counterpoint_strictness: Option<String>,
+    /// Per-voice HoldMode override (#11). Pass-through JSON value;
+    /// CanonLane's `deserialize_state` parses it via
+    /// `hold_mode_from_json`. None = inherit lane / global.
+    #[serde(default)]
+    pub hold_mode: Option<serde_json::Value>,
 }
 
 fn default_time_ratio() -> f32 {
@@ -179,6 +184,7 @@ pub fn canon_set_voices(voices: Vec<CanonVoiceArg>, state: State<AppState>) -> R
                 "octave_mode": v.octave_mode,
                 "counterpoint_species": v.counterpoint_species,
                 "counterpoint_strictness": v.counterpoint_strictness,
+                "hold_mode": v.hold_mode,
             })
         })
         .collect();
