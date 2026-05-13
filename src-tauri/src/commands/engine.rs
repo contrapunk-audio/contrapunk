@@ -38,6 +38,13 @@ pub struct NoteUpdatePayload {
     pub chord_name: String,
     pub last_borrowed_from: String,
     pub current_key: String,
+    /// Notes currently sounding from the Companion's canon lane.
+    /// Subset of `harmony_notes` — included separately so the piano
+    /// can color them distinctly from generic harmony output.
+    pub canon_notes: Vec<u8>,
+    /// Notes currently sounding from the Companion's counterpoint lane.
+    /// Subset of `harmony_notes` — same role as `canon_notes`.
+    pub counterpoint_notes: Vec<u8>,
 }
 
 /// Payload for the "guitar-signal" Tauri event (UI signal feedback).
@@ -364,6 +371,14 @@ fn run_tauri_router(
     // "I picked soprano in a 4-voice setup but the engine had only
     // 2 voices" reports.)
 
+    // Per-lane attribution sets — kept distinct from `harmony_notes`
+    // so the Piano UI can color canon (gold) and counterpoint (lime)
+    // emissions separately. `dispatch_companion_ops` inserts/removes
+    // here based on the lane tag, *in addition to* the unified
+    // `harmony_notes` set the rest of the router still reads.
+    let canon_notes: Arc<Mutex<HashSet<u8>>> = Arc::new(Mutex::new(HashSet::new()));
+    let counterpoint_notes: Arc<Mutex<HashSet<u8>>> = Arc::new(Mutex::new(HashSet::new()));
+
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();
     let emit_interval = Duration::from_millis(33);
@@ -407,16 +422,18 @@ fn run_tauri_router(
         // commits) can acquire the lock between ticks.
         {
             let num_ports = output_router.connection_count();
-            let ops = {
+            let tagged = {
                 let mut c = companion.lock().unwrap_or_else(|e| e.into_inner());
-                c.tick(&engine)
+                c.tick_tagged(&engine)
             };
             dispatch_companion_ops(
-                &ops,
+                &tagged,
                 num_ports,
                 &synth_tx,
                 &mut output_router,
                 &harmony_notes,
+                &canon_notes,
+                &counterpoint_notes,
             );
         }
 
@@ -603,19 +620,21 @@ fn run_tauri_router(
                     // through the same translator as tick() ops.
                     let mut suppress_default = false;
                     if let Some(ev) = midi_bytes_to_input_event(&message) {
-                        let result = {
+                        let (tagged, sup) = {
                             let mut c = companion.lock().unwrap_or_else(|e| e.into_inner());
-                            c.on_input(ev, &engine)
+                            c.on_input_tagged(ev, &engine)
                         };
                         let num_ports = output_router.connection_count();
                         dispatch_companion_ops(
-                            &result.ops,
+                            &tagged,
                             num_ports,
                             &synth_tx,
                             &mut output_router,
                             &harmony_notes,
+                            &canon_notes,
+                            &counterpoint_notes,
                         );
-                        suppress_default = result.suppress_default;
+                        suppress_default = sup;
                     }
                     if !suppress_default {
                         process_midi_message(
@@ -660,6 +679,8 @@ fn run_tauri_router(
                 let in_notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());
                 let harm_notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
                 let borr_notes = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
+                let canon = canon_notes.lock().unwrap_or_else(|e| e.into_inner());
+                let cp = counterpoint_notes.lock().unwrap_or_else(|e| e.into_inner());
                 let ch_name = chord_name.lock().unwrap_or_else(|e| e.into_inner());
                 build_note_update_payload(
                     &in_notes,
@@ -668,6 +689,8 @@ fn run_tauri_router(
                     ch_name.clone(),
                     last_borrowed_from,
                     current_key,
+                    &canon,
+                    &cp,
                 )
             };
             let _ = app_handle.emit("note-update", payload);
@@ -1147,14 +1170,23 @@ fn midi_bytes_to_input_event(bytes: &[u8]) -> Option<crate::companion::InputEven
 /// is deferred until the audio-graph milestone introduces an
 /// `InstrumentId` model.
 fn dispatch_companion_ops(
-    ops: &[crate::companion::DispatchOp],
+    tagged: &[(String, crate::companion::DispatchOp)],
     num_ports: usize,
     synth_tx: &mpsc::Sender<SynthEvent>,
     output: &mut OutputRouter,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
+    canon_notes: &Arc<Mutex<HashSet<u8>>>,
+    counterpoint_notes: &Arc<Mutex<HashSet<u8>>>,
 ) {
     use crate::companion::DispatchOp;
-    for op in ops {
+    for (lane, op) in tagged {
+        // Per-lane set the note belongs to, if any. Other lane tags
+        // (or AllNotesOff) leave both untouched.
+        let lane_set: Option<&Arc<Mutex<HashSet<u8>>>> = match lane.as_str() {
+            "canon" => Some(canon_notes),
+            "counterpoint" => Some(counterpoint_notes),
+            _ => None,
+        };
         match op {
             DispatchOp::NoteOn {
                 target,
@@ -1173,12 +1205,16 @@ fn dispatch_companion_ops(
                     synth_tx,
                     output,
                 );
-                // Surface companion-emitted notes in the same tracking
-                // set the Piano UI reads, so they render alongside the
-                // engine's harmony notes. Without this, canon emissions
-                // are audible but invisible. (#3 visual-feedback slice.)
+                // Track in the unified harmony set so the Piano knows
+                // a note is sounding even without lane attribution.
                 if let Ok(mut h) = harmony_notes.lock() {
                     h.insert(*note);
+                }
+                // Plus the per-lane set so the Piano can color it.
+                if let Some(set) = lane_set {
+                    if let Ok(mut s) = set.lock() {
+                        s.insert(*note);
+                    }
                 }
             }
             DispatchOp::NoteOff {
@@ -1199,6 +1235,11 @@ fn dispatch_companion_ops(
                 );
                 if let Ok(mut h) = harmony_notes.lock() {
                     h.remove(note);
+                }
+                if let Some(set) = lane_set {
+                    if let Ok(mut s) = set.lock() {
+                        s.remove(note);
+                    }
                 }
             }
             DispatchOp::AllNotesOff { .. } => {
@@ -1324,6 +1365,7 @@ fn cents_to_pitch_bend_msg(cents: i32) -> [u8; 3] {
 /// Sorts each note vector for stable UI rendering — without sorting,
 /// HashSet iteration order would cause the piano-roll display to
 /// shuffle pips between frames.
+#[allow(clippy::too_many_arguments)]
 fn build_note_update_payload(
     input_notes: &HashSet<u8>,
     harmony_notes: &HashSet<u8>,
@@ -1331,13 +1373,19 @@ fn build_note_update_payload(
     chord_name: String,
     last_borrowed_from: String,
     current_key: String,
+    canon_notes: &HashSet<u8>,
+    counterpoint_notes: &HashSet<u8>,
 ) -> NoteUpdatePayload {
     let mut in_vec: Vec<u8> = input_notes.iter().copied().collect();
     let mut harm_vec: Vec<u8> = harmony_notes.iter().copied().collect();
     let mut borr_vec: Vec<u8> = borrowed_notes.iter().copied().collect();
+    let mut canon_vec: Vec<u8> = canon_notes.iter().copied().collect();
+    let mut cp_vec: Vec<u8> = counterpoint_notes.iter().copied().collect();
     in_vec.sort_unstable();
     harm_vec.sort_unstable();
     borr_vec.sort_unstable();
+    canon_vec.sort_unstable();
+    cp_vec.sort_unstable();
     NoteUpdatePayload {
         input_notes: in_vec,
         harmony_notes: harm_vec,
@@ -1345,6 +1393,8 @@ fn build_note_update_payload(
         chord_name,
         last_borrowed_from,
         current_key,
+        canon_notes: canon_vec,
+        counterpoint_notes: cp_vec,
     }
 }
 
@@ -1396,6 +1446,8 @@ mod tests {
         let input: HashSet<u8> = [67u8, 60, 64].iter().copied().collect();
         let harmony: HashSet<u8> = [55u8, 71, 60].iter().copied().collect();
         let borrowed: HashSet<u8> = [70u8].iter().copied().collect();
+        let canon: HashSet<u8> = [71u8, 60].iter().copied().collect();
+        let cp: HashSet<u8> = [55u8].iter().copied().collect();
         let payload = build_note_update_payload(
             &input,
             &harmony,
@@ -1403,10 +1455,14 @@ mod tests {
             "Cmaj7".into(),
             "Aeolian".into(),
             "C".into(),
+            &canon,
+            &cp,
         );
         assert_eq!(payload.input_notes, vec![60, 64, 67]);
         assert_eq!(payload.harmony_notes, vec![55, 60, 71]);
         assert_eq!(payload.borrowed_notes, vec![70]);
+        assert_eq!(payload.canon_notes, vec![60, 71]);
+        assert_eq!(payload.counterpoint_notes, vec![55]);
         assert_eq!(payload.chord_name, "Cmaj7");
         assert_eq!(payload.last_borrowed_from, "Aeolian");
         assert_eq!(payload.current_key, "C");
@@ -1422,10 +1478,14 @@ mod tests {
             String::new(),
             String::new(),
             "C".into(),
+            &empty,
+            &empty,
         );
         assert!(payload.input_notes.is_empty());
         assert!(payload.harmony_notes.is_empty());
         assert!(payload.borrowed_notes.is_empty());
+        assert!(payload.canon_notes.is_empty());
+        assert!(payload.counterpoint_notes.is_empty());
         assert!(payload.chord_name.is_empty());
         assert_eq!(payload.current_key, "C");
     }

@@ -79,7 +79,9 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 		borrowedNotes: raw.borrowed_notes as number[],
 		chordName: raw.chord_name as string,
 		lastBorrowedFrom: raw.last_borrowed_from as string,
-		currentKey: normalizeKey((raw.current_key as string) ?? 'C')
+		currentKey: normalizeKey((raw.current_key as string) ?? 'C'),
+		canonNotes: (raw.canon_notes as number[]) ?? [],
+		counterpointNotes: (raw.counterpoint_notes as number[]) ?? []
 	};
 }
 
