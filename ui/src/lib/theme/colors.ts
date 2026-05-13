@@ -29,6 +29,13 @@ export const PIANO_INPUT = '#4fe8c3';     // teal — melody in
 export const PIANO_HARMONY = '#ff2e88';   // magenta — harmony out
 export const PIANO_BORROWED = '#8a5cff';  // violet — borrowed / modal interchange
 export const PIANO_IN_SCALE = 'rgba(255, 253, 180, 0.35)';
+/** Canon lane emissions — gold so they read as "echoes" of the
+ *  player's input (#11 follow-up). Distinct from the magenta
+ *  generic-harmony tint. */
+export const PIANO_CANON = '#ffdd44';
+/** Counterpoint lane emissions — orange so they sit visually
+ *  between the canon's gold and the borrowed-note violet. */
+export const PIANO_COUNTERPOINT = '#ff8844';
 
 // === Text ===
 export const TEXT_PRIMARY = '#e8e0f0';
@@ -61,9 +68,19 @@ export function getPianoKeyColor(
 	inputNotes: number[] = [],
 	harmonyNotes: number[] = [],
 	borrowedNotes: number[] = [],
-	inScaleNotes: number[] = []
+	inScaleNotes: number[] = [],
+	canonNotes: number[] = [],
+	counterpointNotes: number[] = []
 ): string {
+	// Priority: player input → lane-specific (canon/counterpoint) →
+	// generic harmony → borrowed. Lane-specific colors take precedence
+	// over generic harmony so when a canon voice and a player-driven
+	// harmony land on the same pitch, the user sees the canon
+	// attribution. Input still wins because it's what the user
+	// physically played.
 	if (inputNotes.includes(midi)) return PIANO_INPUT;
+	if (canonNotes.includes(midi)) return PIANO_CANON;
+	if (counterpointNotes.includes(midi)) return PIANO_COUNTERPOINT;
 	if (harmonyNotes.includes(midi)) return PIANO_HARMONY;
 	if (borrowedNotes.includes(midi)) return PIANO_BORROWED;
 	return '';

@@ -87,6 +87,13 @@ export interface NoteState {
 	chordName: string;
 	lastBorrowedFrom: string;
 	currentKey: string;
+	/** Companion-emitted notes attributed by originating lane (#11
+	 *  follow-up — per-lane piano colors). Empty arrays when the
+	 *  attribution is unavailable (Tauri build today). The Piano /
+	 *  Fretboard components render these with distinct colors so
+	 *  users can see which lane is playing what. */
+	canonNotes?: number[];
+	counterpointNotes?: number[];
 }
 
 /** Guitar DSP pipeline configuration sent to the backend. */

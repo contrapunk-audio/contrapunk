@@ -865,6 +865,13 @@ class EngineStore {
 	inputNotes = $state<number[]>([]);
 	harmonyNotes = $state<number[]>([]);
 	borrowedNotes = $state<number[]>([]);
+	/** Companion-emitted notes attributed by lane (#11 follow-up:
+	 *  per-lane piano colors). Empty on the Tauri build today;
+	 *  populated from the WASM bridge's per-lane attribution. The
+	 *  Piano + Fretboard components read these and apply distinct
+	 *  fill colors per lane. */
+	canonNotes = $state<number[]>([]);
+	counterpointNotes = $state<number[]>([]);
 	inScaleNotes = $derived(computeScaleNotes(this.key, this.scaleMode));
 
 	// -- Display --
@@ -1506,6 +1513,14 @@ class EngineStore {
 				this.harmonyNotes = state.harmonyNotes;
 			if (!sameNotes(this.borrowedNotes, state.borrowedNotes))
 				this.borrowedNotes = state.borrowedNotes;
+			// Per-lane attribution (#11 follow-up). Optional fields —
+			// fall back to empty arrays so Tauri builds (which don't
+			// emit per-lane today) don't disturb existing UI behavior.
+			const nextCanon = state.canonNotes ?? [];
+			const nextCp = state.counterpointNotes ?? [];
+			if (!sameNotes(this.canonNotes, nextCanon)) this.canonNotes = nextCanon;
+			if (!sameNotes(this.counterpointNotes, nextCp))
+				this.counterpointNotes = nextCp;
 			if (this.chordName !== state.chordName)
 				this.chordName = state.chordName;
 			if (this.lastBorrowedFrom !== state.lastBorrowedFrom)

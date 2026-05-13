@@ -143,6 +143,55 @@ impl Companion {
         all_ops
     }
 
+    /// Variant of `tick` that tags each emitted DispatchOp with the
+    /// `lane.type_id()` that produced it. Used by the WASM bridge to
+    /// surface per-lane note attribution to the UI (different piano
+    /// colors per lane). Tauri callers still use the untagged `tick`
+    /// for backward compatibility.
+    pub fn tick_tagged(&mut self, engine: &Mutex<HarmonyEngine>) -> Vec<(String, DispatchOp)> {
+        if !self.enabled.load(Ordering::Acquire) {
+            return Vec::new();
+        }
+
+        // Sense + Mutate are identical to `tick`; only Decide
+        // emissions get the lane_id stamp.
+        for lane in self
+            .lanes
+            .iter_mut()
+            .filter(|l| l.phase() == LanePhase::Sense)
+        {
+            let out = lane.tick(&self.world);
+            apply_world_writes(&self.world, out.world_writes);
+        }
+        for lane in self
+            .lanes
+            .iter_mut()
+            .filter(|l| l.phase() == LanePhase::Mutate)
+        {
+            let out = lane.tick(&self.world);
+            if !out.engine_mutations.is_empty() {
+                let mut e = engine.lock().expect("engine mutex poisoned");
+                for m in out.engine_mutations {
+                    apply_engine_mutation(&mut e, m);
+                }
+            }
+        }
+
+        let mut tagged = Vec::new();
+        for lane in self
+            .lanes
+            .iter_mut()
+            .filter(|l| l.phase() == LanePhase::Decide)
+        {
+            let lane_id = lane.type_id().to_string();
+            let out = lane.tick(&self.world);
+            for op in out.ops {
+                tagged.push((lane_id.clone(), op));
+            }
+        }
+        tagged
+    }
+
     /// Dispatch one input event to filter-matching Lanes. Returns the
     /// concatenated ops + `suppress_default` flag for the input
     /// pipeline. Callers handle their own `WorldState.held_inputs`
@@ -185,6 +234,45 @@ impl Companion {
             ops,
             suppress_default,
         }
+    }
+
+    /// Variant of `on_input` that tags each emitted DispatchOp with
+    /// the `lane.type_id()` that produced it. Same role as
+    /// `tick_tagged` — surfaces per-lane attribution to the UI.
+    pub fn on_input_tagged(
+        &mut self,
+        ev: InputEvent,
+        engine: &Mutex<HarmonyEngine>,
+    ) -> (Vec<(String, DispatchOp)>, bool) {
+        if !self.enabled.load(Ordering::Acquire) {
+            return (Vec::new(), false);
+        }
+
+        let mut tagged: Vec<(String, DispatchOp)> = Vec::new();
+        let mut suppress_default = false;
+
+        for lane in self.lanes.iter_mut() {
+            if !lane.input_filter().matches(&ev) {
+                continue;
+            }
+            let lane_id = lane.type_id().to_string();
+            let out = lane.on_input(ev, &self.world);
+            for op in out.ops {
+                tagged.push((lane_id.clone(), op));
+            }
+            if out.suppress_default {
+                suppress_default = true;
+            }
+            apply_world_writes(&self.world, out.world_writes);
+            if !out.engine_mutations.is_empty() {
+                let mut e = engine.lock().expect("engine mutex poisoned");
+                for m in out.engine_mutations {
+                    apply_engine_mutation(&mut e, m);
+                }
+            }
+        }
+
+        (tagged, suppress_default)
     }
 
     /// Apply a partial JSON state blob to the first Lane matching the

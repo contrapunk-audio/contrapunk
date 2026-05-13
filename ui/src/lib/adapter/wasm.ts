@@ -39,13 +39,15 @@ let companion: any = null;
 // Animation-frame loop that advances the Companion's transport and
 // drains pending lane emissions. Started on first injectNoteOn.
 let companionTickHandle: number | null = null;
-// MIDI numbers the Companion currently holds on. dispatchOpsJson
-// updates this set on every note_on / note_off so getNoteState can
-// merge these pitches into harmonyNotes — that's what feeds the
-// ActiveNotes strip + the Piano / Fretboard highlights. Without
-// this, the Tauri build shows the canon + counterpoint emissions
-// in the UI but the WASM build only showed the player's harmony.
+// MIDI numbers the Companion currently holds on, by lane (#11
+// per-lane piano colors). Each set is updated on note_on / note_off
+// from `dispatchOpsJson` based on the `lane` field in the op. The
+// legacy `activeCompanionNotes` is kept as a union view for callers
+// that don't care about attribution. Lane-specific sets feed the
+// piano + fretboard highlights with distinct colors per lane.
 const activeCompanionNotes: Set<number> = new Set();
+const activeCanonNotes: Set<number> = new Set();
+const activeCounterpointNotes: Set<number> = new Set();
 
 /** Debug logger — set `window.__cpDebug = true` in DevTools to
  *  print a snapshot of the Companion + per-voice state on every
@@ -152,26 +154,42 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	/** Play (or release) the lane-emitted dispatch ops on the browser
-	 *  WebAudio synth + any active external MIDI output. */
+	 *  WebAudio synth + any active external MIDI output. Updates the
+	 *  per-lane note-attribution sets keyed by the op's `lane` field
+	 *  so the piano UI can color each lane's notes distinctly. */
 	private dispatchOpsJson(json: string): void {
 		if (!json || json === '[]') return;
-		let ops: Array<{ kind: string; note?: number; velocity?: number; channel?: number }>;
+		let ops: Array<{
+			kind: string;
+			note?: number;
+			velocity?: number;
+			channel?: number;
+			lane?: string;
+		}>;
 		try {
 			ops = JSON.parse(json);
 		} catch {
 			return;
 		}
 		for (const op of ops) {
+			const laneSet =
+				op.lane === 'canon'
+					? activeCanonNotes
+					: op.lane === 'counterpoint'
+						? activeCounterpointNotes
+						: null;
 			if (op.kind === 'note_on' && typeof op.note === 'number') {
 				const v = op.velocity ?? 100;
 				embedAudio.noteOn(op.note, v);
 				activeCompanionNotes.add(op.note);
+				if (laneSet) laneSet.add(op.note);
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[0].send([0x90, op.note, v]);
 				}
 			} else if (op.kind === 'note_off' && typeof op.note === 'number') {
 				embedAudio.noteOff(op.note);
 				activeCompanionNotes.delete(op.note);
+				if (laneSet) laneSet.delete(op.note);
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[0].send([0x80, op.note, 0]);
 				}
@@ -899,7 +917,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 				borrowedNotes: raw?.borrowed_notes ?? [],
 				chordName: raw?.chord_name ?? '',
 				lastBorrowedFrom: raw?.last_borrowed_from ?? '',
-				currentKey: engine.current_key?.() ?? 'C'
+				currentKey: engine.current_key?.() ?? 'C',
+				canonNotes: Array.from(activeCanonNotes),
+				counterpointNotes: Array.from(activeCounterpointNotes)
 			};
 		} catch {
 			return {
@@ -908,7 +928,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 				borrowedNotes: [],
 				chordName: '',
 				lastBorrowedFrom: '',
-				currentKey: 'C'
+				currentKey: 'C',
+				canonNotes: Array.from(activeCanonNotes),
+				counterpointNotes: Array.from(activeCounterpointNotes)
 			};
 		}
 	}

@@ -10,9 +10,11 @@
 	 *  Harmony (magenta) + borrowed (violet) fills are mid-dark → light label.
 	 *  Un-lit black keys stay with the default pale-violet text. */
 	function labelColorFor(midi: number, isBlack: boolean): string {
-		if (engine.inputNotes.includes(midi)) return '#0a0612';    // dark on teal
-		if (engine.harmonyNotes.includes(midi)) return '#f5e9c9';  // cream on magenta
-		if (engine.borrowedNotes.includes(midi)) return '#f5e9c9'; // cream on violet
+		if (engine.inputNotes.includes(midi)) return '#0a0612';     // dark on teal
+		if (engine.canonNotes.includes(midi)) return '#0a0612';     // dark on gold
+		if (engine.counterpointNotes.includes(midi)) return '#0a0612'; // dark on orange
+		if (engine.harmonyNotes.includes(midi)) return '#f5e9c9';   // cream on magenta
+		if (engine.borrowedNotes.includes(midi)) return '#f5e9c9';  // cream on violet
 		return isBlack ? 'var(--color-text-primary)' : 'var(--color-bg-deep)';
 	}
 
@@ -60,14 +62,24 @@
 			engine.inputNotes,
 			engine.harmonyNotes,
 			engine.borrowedNotes,
-			engine.inScaleNotes
+			engine.inScaleNotes,
+			engine.canonNotes,
+			engine.counterpointNotes
 		);
 	}
 
-	/** Get box-shadow for active keys (neon glow). */
+	/** Get box-shadow for active keys (neon glow). Priority mirrors
+	 *  `getPianoKeyColor`: input → canon → counterpoint → harmony →
+	 *  borrowed, so the glow color always matches the fill. */
 	function keyGlow(midi: number): string {
 		if (engine.inputNotes.includes(midi)) {
 			return '0 0 6px #4fe8c3, 0 0 14px #4fe8c366';
+		}
+		if (engine.canonNotes.includes(midi)) {
+			return '0 0 6px #ffdd44, 0 0 14px #ffdd4466';
+		}
+		if (engine.counterpointNotes.includes(midi)) {
+			return '0 0 6px #ff8844, 0 0 14px #ff884466';
 		}
 		if (engine.harmonyNotes.includes(midi)) {
 			return '0 0 6px #ff2e88, 0 0 14px #ff2e8866';
@@ -83,7 +95,9 @@
 		return (
 			engine.inputNotes.includes(midi) ||
 			engine.harmonyNotes.includes(midi) ||
-			engine.borrowedNotes.includes(midi)
+			engine.borrowedNotes.includes(midi) ||
+			engine.canonNotes.includes(midi) ||
+			engine.counterpointNotes.includes(midi)
 		);
 	}
 

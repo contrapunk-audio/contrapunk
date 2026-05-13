@@ -169,7 +169,9 @@ impl CompanionWasm {
 
     /// Feed a player NoteOn into the Companion. Returns a JSON array
     /// of dispatch ops emitted by lanes that fired immediately
-    /// (Species 1 canon-onset emissions, etc.).
+    /// (Species 1 canon-onset emissions, etc.). Each op carries a
+    /// `lane` field (e.g. `"canon"`, `"counterpoint"`) so the UI can
+    /// render per-lane attribution (different piano colors per lane).
     #[wasm_bindgen]
     pub fn on_note_on(&mut self, note: u8, velocity: u8, channel: u8) -> Result<String, JsValue> {
         let ev = InputEvent::NoteOn {
@@ -177,24 +179,24 @@ impl CompanionWasm {
             velocity,
             channel,
         };
-        let result = self.inner.on_input(ev, &self.dummy_engine);
-        serialize_ops(&result.ops).map_err(|e| JsValue::from_str(&e.to_string()))
+        let (tagged, _suppress) = self.inner.on_input_tagged(ev, &self.dummy_engine);
+        serialize_tagged_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen]
     pub fn on_note_off(&mut self, note: u8, channel: u8) -> Result<String, JsValue> {
         let ev = InputEvent::NoteOff { note, channel };
-        let result = self.inner.on_input(ev, &self.dummy_engine);
-        serialize_ops(&result.ops).map_err(|e| JsValue::from_str(&e.to_string()))
+        let (tagged, _suppress) = self.inner.on_input_tagged(ev, &self.dummy_engine);
+        serialize_tagged_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Tick the lanes. Drains pending emissions whose fire_at has
     /// elapsed. Returns a JSON array of dispatch ops to schedule on
-    /// the WebAudio synth.
+    /// the WebAudio synth. Each op carries its originating `lane`.
     #[wasm_bindgen]
     pub fn tick(&mut self) -> Result<String, JsValue> {
-        let ops = self.inner.tick(&self.dummy_engine);
-        serialize_ops(&ops).map_err(|e| JsValue::from_str(&e.to_string()))
+        let tagged = self.inner.tick_tagged(&self.dummy_engine);
+        serialize_tagged_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Debug snapshot — JSON dump of the global engine snapshot + each
@@ -248,33 +250,54 @@ impl Default for CompanionWasm {
 /// Serialize dispatch ops in a stable shape for the JS adapter.
 /// Mirrors the JSON the Tauri command path produces so the UI side
 /// can share decoder code.
+#[allow(dead_code)]
 fn serialize_ops(ops: &[DispatchOp]) -> Result<String, serde_json::Error> {
-    let values: Vec<serde_json::Value> = ops
+    let values: Vec<serde_json::Value> = ops.iter().map(op_to_json).collect();
+    serde_json::to_string(&values)
+}
+
+/// Same shape as `serialize_ops` but each entry carries an extra
+/// `lane` field — the `type_id` of the lane that produced it
+/// (e.g. `"canon"` or `"counterpoint"`). Used by the JS adapter to
+/// attribute each emission to a lane so the UI can color piano keys
+/// per-lane.
+fn serialize_tagged_ops(tagged: &[(String, DispatchOp)]) -> Result<String, serde_json::Error> {
+    let values: Vec<serde_json::Value> = tagged
         .iter()
-        .map(|op| match op {
-            DispatchOp::NoteOn {
-                note,
-                velocity,
-                channel,
-                ..
-            } => serde_json::json!({
-                "kind": "note_on",
-                "note": note,
-                "velocity": velocity,
-                "channel": channel,
-            }),
-            DispatchOp::NoteOff { note, channel, .. } => serde_json::json!({
-                "kind": "note_off",
-                "note": note,
-                "channel": channel,
-            }),
-            DispatchOp::AllNotesOff { ports } => serde_json::json!({
-                "kind": "all_notes_off",
-                "ports": ports,
-            }),
+        .map(|(lane_id, op)| {
+            let mut v = op_to_json(op);
+            if let serde_json::Value::Object(ref mut map) = v {
+                map.insert("lane".into(), serde_json::Value::String(lane_id.clone()));
+            }
+            v
         })
         .collect();
     serde_json::to_string(&values)
+}
+
+fn op_to_json(op: &DispatchOp) -> serde_json::Value {
+    match op {
+        DispatchOp::NoteOn {
+            note,
+            velocity,
+            channel,
+            ..
+        } => serde_json::json!({
+            "kind": "note_on",
+            "note": note,
+            "velocity": velocity,
+            "channel": channel,
+        }),
+        DispatchOp::NoteOff { note, channel, .. } => serde_json::json!({
+            "kind": "note_off",
+            "note": note,
+            "channel": channel,
+        }),
+        DispatchOp::AllNotesOff { ports } => serde_json::json!({
+            "kind": "all_notes_off",
+            "ports": ports,
+        }),
+    }
 }
 
 // Silence unused-import warnings on Note when wasm-bindgen drops in
