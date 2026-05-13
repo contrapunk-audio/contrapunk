@@ -25,6 +25,10 @@ interface Voice {
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+/** Master-bus dynamics compressor — limits amplitude on dense
+ *  multi-voice attacks (companion stacking 4-8 voices). See setup
+ *  in ensureAudio() for tuning rationale. */
+let masterCompressor: DynamicsCompressorNode | null = null;
 let dryBus: GainNode | null = null;
 /** Shared lowpass filter — every voice routes its env through this
  *  so the synth's cutoff/resonance knobs in the UI control timbre. */
@@ -42,6 +46,14 @@ const voices = new Map<number, Voice>();
 // switching between native and web.
 let currentWaveform: Waveform = 'triangle';
 let currentMasterGain = 0.7;
+/** Voice-retrigger behavior toggle. When `true` (default), a NoteOn
+ *  arriving on a MIDI pitch that already has a Voice gracefully fades
+ *  the old voice out over ~15 ms while the new voice's attack ramp
+ *  comes up — no audible click. When `false`, falls back to the
+ *  legacy 1 ms hard `osc.stop` (cheaper, but clicks on retrigger).
+ *  UI surface exposes this so users can pick fast-but-clicky vs
+ *  smooth-but-50ms-attack-overlap. */
+let crossfadeRetrigger = true;
 let currentDelayMix = 0.22;
 let currentDelayFeedback = 0.32;
 let currentDelayTime = 0.32;
@@ -121,6 +133,25 @@ function ensureAudio(): AudioContext | null {
 	masterGain.gain.value = currentMasterGain;
 	masterGain.connect(ctx.destination);
 
+	// Dry-path dynamics compressor — protects against amplitude
+	// pile-up when the companion stacks 4-8 voices on the same beat.
+	// Placement: AFTER the lowpass filter, BEFORE the master sum.
+	// Critically, the delay/reverb wets bypass this compressor and
+	// reach masterGain directly — otherwise reverb tails would
+	// trigger the compressor on every dry attack and "duck" the
+	// reverb (audible pumping). Tuned for transparency: 4:1 ratio
+	// above -12 dB with a 12 dB knee = ~6 dB of gain reduction on a
+	// 6-voice attack, almost no audible squashing in normal use.
+	// Slow release (250 ms) avoids breathing artifacts on sustained
+	// chords.
+	masterCompressor = ctx.createDynamicsCompressor();
+	masterCompressor.threshold.value = -12;
+	masterCompressor.knee.value = 12;
+	masterCompressor.ratio.value = 4;
+	masterCompressor.attack.value = 0.005;
+	masterCompressor.release.value = 0.25;
+	masterCompressor.connect(masterGain);
+
 	// Shared lowpass filter — Q maps loosely to Tauri's "resonance"
 	// parameter on the Rust biquad. Bypassed-feeling at cutoff
 	// >= 18kHz, audibly squelchy below ~1.5kHz.
@@ -128,7 +159,7 @@ function ensureAudio(): AudioContext | null {
 	filterNode.type = 'lowpass';
 	filterNode.frequency.value = currentCutoffHz;
 	filterNode.Q.value = mapResonanceToQ(currentResonance);
-	filterNode.connect(masterGain);
+	filterNode.connect(masterCompressor);
 
 	dryBus = ctx.createGain();
 	dryBus.gain.value = 1.0;
@@ -167,17 +198,66 @@ async function resumeIfSuspended() {
 	}
 }
 
-export function noteOn(midi: number, velocity = 100) {
+/** Note-on with optional precise scheduling.
+ *
+ *  `scheduleAt` (audio-clock seconds, i.e. an `AudioContext.currentTime`
+ *  value) lets the caller pre-schedule a note in the future instead of
+ *  firing immediately. Used by the companion tick loop to lookahead-
+ *  schedule lane emissions: rAF jitter (16-50 ms stalls under load) no
+ *  longer translates 1:1 into audio jitter, because the underlying
+ *  Web Audio scheduler honors the exact `when` regardless of when
+ *  `noteOn` was called.
+ *
+ *  Player-input callers omit `scheduleAt` → defaults to
+ *  `audio.currentTime` (zero added latency, preserves the sub-10 ms
+ *  branding). Only companion-emitted notes pay the lookahead cost. */
+export function noteOn(midi: number, velocity = 100, scheduleAt?: number) {
 	const audio = ensureAudio();
 	if (!audio || !dryBus || !delayNode || !reverbNode) return;
 	void resumeIfSuspended();
+	// NaN/Infinity guard — `Math.max(currentTime, NaN)` returns NaN,
+	// which then propagates into setValueAtTime / osc.start and throws
+	// in Chrome (silent no-op in some Safari versions). Today the only
+	// caller is dispatchCompanionOps which computes a real number, but
+	// any future scheduler-sync caller could pass garbage. Treat NaN /
+	// Infinity / negative as "fire now".
+	const safeScheduleAt =
+		typeof scheduleAt === 'number' && Number.isFinite(scheduleAt) ? scheduleAt : audio.currentTime;
+	const when = Math.max(audio.currentTime, safeScheduleAt);
 
 	const existing = voices.get(midi);
 	if (existing) {
-		try {
-			existing.osc.stop(audio.currentTime + 0.001);
-		} catch {
-			// already stopped
+		if (crossfadeRetrigger) {
+			// Envelope-aware crossfade. The previous hard `osc.stop(now
+			// + 0.001)` was a 1 ms gain step at a non-zero waveform
+			// phase — a textbook click. Now: ramp the existing env
+			// down to 0 over FADE_OUT_S, then stop the oscillator
+			// slightly after the ramp ends. The new voice (created
+			// below) starts at `when` with its own attack ramp from
+			// 0 — old and new sum during the overlap, with old's
+			// downward ramp + new's upward ramp crossing near zero
+			// gain, so there's no audible discontinuity at the
+			// retrigger.
+			const FADE_OUT_S = 0.015;
+			try {
+				const currentGain = existing.env.gain.value;
+				existing.env.gain.cancelScheduledValues(when);
+				existing.env.gain.setValueAtTime(currentGain, when);
+				existing.env.gain.linearRampToValueAtTime(0, when + FADE_OUT_S);
+				existing.osc.stop(when + FADE_OUT_S + 0.005);
+			} catch {
+				// already stopped
+			}
+		} else {
+			// Legacy hard-stop retrigger. Cheaper, but clicks audibly
+			// on retrigger because the osc cuts mid-cycle. Exposed as
+			// a toggle for cases where the user prefers the snappier
+			// attack at the cost of the click.
+			try {
+				existing.osc.stop(when + 0.001);
+			} catch {
+				// already stopped
+			}
 		}
 		voices.delete(midi);
 	}
@@ -194,13 +274,12 @@ export function noteOn(midi: number, velocity = 100) {
 	env.connect(delayNode);
 	env.connect(reverbNode);
 
-	const now = audio.currentTime;
 	const peak = VOICE_GAIN * (velocity / 127);
-	env.gain.setValueAtTime(0, now);
-	env.gain.linearRampToValueAtTime(peak, now + attackS);
-	env.gain.linearRampToValueAtTime(peak * sustainLevel, now + attackS + decayS);
+	env.gain.setValueAtTime(0, when);
+	env.gain.linearRampToValueAtTime(peak, when + attackS);
+	env.gain.linearRampToValueAtTime(peak * sustainLevel, when + attackS + decayS);
 
-	osc.start(now);
+	osc.start(when);
 
 	osc.onended = () => {
 		try {
@@ -214,17 +293,22 @@ export function noteOn(midi: number, velocity = 100) {
 	voices.set(midi, { osc, env });
 }
 
-export function noteOff(midi: number) {
+/** Note-off with optional precise scheduling. See `noteOn` for the
+ *  rationale; same `scheduleAt` semantics. */
+export function noteOff(midi: number, scheduleAt?: number) {
 	if (!ctx) return;
 	const v = voices.get(midi);
 	if (!v) return;
-	const now = ctx.currentTime;
+	// Same NaN/Infinity guard as noteOn — keep both setters symmetric.
+	const safeScheduleAt =
+		typeof scheduleAt === 'number' && Number.isFinite(scheduleAt) ? scheduleAt : ctx.currentTime;
+	const when = Math.max(ctx.currentTime, safeScheduleAt);
 	const current = v.env.gain.value;
-	v.env.gain.cancelScheduledValues(now);
-	v.env.gain.setValueAtTime(current, now);
-	v.env.gain.linearRampToValueAtTime(0, now + releaseS);
+	v.env.gain.cancelScheduledValues(when);
+	v.env.gain.setValueAtTime(current, when);
+	v.env.gain.linearRampToValueAtTime(0, when + releaseS);
 	try {
-		v.osc.stop(now + releaseS + 0.02);
+		v.osc.stop(when + releaseS + 0.02);
 	} catch {
 		// already stopped
 	}
@@ -260,6 +344,16 @@ export function setWaveform(w: Waveform) {
 }
 export function getWaveform(): Waveform {
 	return currentWaveform;
+}
+
+/** Toggle voice-retrigger crossfade. See `crossfadeRetrigger` const
+ *  docblock for the trade-off. UI surface exposes this on the Chain
+ *  / synth panel. */
+export function setCrossfadeRetrigger(on: boolean) {
+	crossfadeRetrigger = !!on;
+}
+export function getCrossfadeRetrigger(): boolean {
+	return crossfadeRetrigger;
 }
 
 export function setMasterGain(g: number) {
