@@ -953,13 +953,31 @@ impl Lane for CanonLane {
                             + voice.delay_beats as f64
                             + voice_on_relative * voice.time_ratio as f64;
                         let voice_off_fire = voice_on_fire + duration * voice.time_ratio as f64;
+                        // HoldMode applies to already-emitted notes too:
+                        // the pending NoteOff's fire_at must honor the
+                        // effective mode, otherwise Cancel just drops
+                        // pending NoteOns while leaving currently-
+                        // playing notes ringing until their natural
+                        // canon-voice end. Resolve per-voice (voice >
+                        // lane > global) so each cascade voice can
+                        // release on its own schedule.
+                        let voice_hold = voice.hold_mode;
+                        let effective = voice_hold.or(lane_hold).unwrap_or(global_hold);
+                        let release_at = match effective {
+                            HoldMode::Forever => voice_off_fire,
+                            HoldMode::Cancel => now,
+                            HoldMode::NearFuture { tail_beats } => {
+                                voice_off_fire.min(now + tail_beats)
+                            }
+                            HoldMode::PhraseEnd => voice_off_fire.min(phrase_end),
+                        };
                         // Send NoteOff for every pitch this voice
                         // emitted (subject + harmony stack). All fire
-                        // at the same off-time — the canon voice's
+                        // at the same release_at — the canon voice's
                         // chord releases simultaneously.
                         for &canon_note in &fire.canon_notes {
                             self.pending_off.push(PendingOff {
-                                fire_at: voice_off_fire,
+                                fire_at: release_at,
                                 canon_note,
                                 channel: fire.channel,
                                 player_note: note,
@@ -2327,5 +2345,114 @@ mod tests {
         // 60's pending should be gone; 64's should still be there.
         assert!(lane.pending_on.iter().all(|p| p.player_note != 60));
         assert!(lane.pending_on.iter().any(|p| p.player_note == 64));
+    }
+
+    /// Regression: in Cancel mode, the user reported notes ringing on
+    /// after release. Root cause was that pending_off for already-
+    /// emitted canon notes was scheduled at the canon voice's natural
+    /// `voice_off_fire`, not `now`. Verify Cancel releases now.
+    #[test]
+    fn hold_mode_cancel_releases_emitted_notes_at_now() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        // Single voice, delay=0, time_ratio=2 — emits NoteOn at beat 0
+        // and (under Forever) would naturally release at 0.5 * 2.0 = 1.0.
+        // Under Cancel we expect release at `now` (~0.5).
+        let voice = CanonVoice::with_time_ratio(0.0, 2, 2.0);
+        lane.set_voices(vec![voice]);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        // Drain the NoteOn so the canon note is "playing" on the synth.
+        let _ = lane.tick(&world);
+
+        advance_to_beat(&transport, 0.5);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        let offs: Vec<f64> = lane
+            .pending_off
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .map(|p| p.fire_at)
+            .collect();
+        assert!(
+            !offs.is_empty(),
+            "Cancel should still schedule a NoteOff to release the playing canon note"
+        );
+        for &off_at in &offs {
+            assert!(
+                (off_at - 0.5).abs() < 0.01,
+                "Cancel should release at now (~0.5); got fire_at={} (natural voice_off_fire would be 1.0)",
+                off_at
+            );
+        }
+    }
+
+    /// Per-voice Forever override should preserve the natural release
+    /// time even when global is Cancel — proves voice > lane > global
+    /// resolution works for pending_off too, not just pending_on.
+    #[test]
+    fn hold_mode_voice_forever_overrides_global_cancel_for_release() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        // Voice with explicit Forever override, time_ratio=2 so natural
+        // voice_off_fire differs from now.
+        let mut voice = CanonVoice::with_time_ratio(0.0, 2, 2.0);
+        voice.hold_mode = Some(HoldMode::Forever);
+        lane.set_voices(vec![voice]);
+        // Global = Cancel; voice override should win.
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let _ = lane.tick(&world);
+
+        advance_to_beat(&transport, 0.5);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        let offs: Vec<f64> = lane
+            .pending_off
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .map(|p| p.fire_at)
+            .collect();
+        assert!(
+            !offs.is_empty(),
+            "voice override should still schedule a release"
+        );
+        for &off_at in &offs {
+            assert!(
+                (off_at - 1.0).abs() < 0.01,
+                "voice Forever override should release at natural voice_off_fire (~1.0), got {}",
+                off_at
+            );
+        }
     }
 }
