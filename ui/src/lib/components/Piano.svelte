@@ -79,7 +79,7 @@
 			return '0 0 6px #ffdd44, 0 0 14px #ffdd4466';
 		}
 		if (engine.counterpointNotes.includes(midi)) {
-			return '0 0 6px #ff8844, 0 0 14px #ff884466';
+			return '0 0 6px #a3e635, 0 0 14px #a3e63566';
 		}
 		if (engine.harmonyNotes.includes(midi)) {
 			return '0 0 6px #ff2e88, 0 0 14px #ff2e8866';

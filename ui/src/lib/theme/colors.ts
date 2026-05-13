@@ -33,9 +33,13 @@ export const PIANO_IN_SCALE = 'rgba(255, 253, 180, 0.35)';
  *  player's input (#11 follow-up). Distinct from the magenta
  *  generic-harmony tint. */
 export const PIANO_CANON = '#ffdd44';
-/** Counterpoint lane emissions — orange so they sit visually
- *  between the canon's gold and the borrowed-note violet. */
-export const PIANO_COUNTERPOINT = '#ff8844';
+/** Counterpoint lane emissions — lime green so they're distinct
+ *  from both the canon's gold (yellow-ish) and the player's teal.
+ *  Earlier orange (#ff8844) was too close to gold under projector
+ *  / screencast compression and for colorblind users. Lime sits
+ *  visually between yellow and cyan, away from both palette
+ *  neighbours, and stays readable on dark backgrounds. */
+export const PIANO_COUNTERPOINT = '#a3e635';
 
 // === Text ===
 export const TEXT_PRIMARY = '#e8e0f0';

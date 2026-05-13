@@ -516,7 +516,7 @@ const SETTINGS_KEY = 'contrapunk-settings';
 // Version 8: defaults switched to Palestrina voice-leading +
 // Octave Spread to match the Renaissance counterpoint style of
 // the StrictCounterpoint mode + Pure Counterpoint default form.
-const SETTINGS_VERSION = 9;
+const SETTINGS_VERSION = 10;
 
 interface PersistedSettings {
 	version: number;
@@ -544,6 +544,26 @@ interface PersistedSettings {
 		reference_voice?: number | null | undefined;
 		preset_id?: string | null | undefined;
 	}>;
+	// HoldMode (#11) — persisted from v10. Global default for the
+	// Companion; lane-level overrides for canon + counterpoint.
+	// Per-voice overrides ride along inside canonVoices.
+	companionHoldMode:
+		| { kind: 'cancel' }
+		| { kind: 'near_future'; tail_beats: number }
+		| { kind: 'phrase_end' }
+		| { kind: 'forever' };
+	canonLaneHoldMode:
+		| null
+		| { kind: 'cancel' }
+		| { kind: 'near_future'; tail_beats: number }
+		| { kind: 'phrase_end' }
+		| { kind: 'forever' };
+	counterpointLaneHoldMode:
+		| null
+		| { kind: 'cancel' }
+		| { kind: 'near_future'; tail_beats: number }
+		| { kind: 'phrase_end' }
+		| { kind: 'forever' };
 }
 
 const SETTINGS_DEFAULTS: PersistedSettings = {
@@ -613,7 +633,13 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 			harmony_mode: 'StrictCounterpoint',
 			reference_voice: 1
 		}
-	]
+	],
+	// HoldMode (#11) defaults — global is the canon-preserving
+	// NearFuture(1.0) value; lane-level overrides start null so they
+	// inherit the global. Per-voice overrides ride along in canonVoices.
+	companionHoldMode: { kind: 'near_future', tail_beats: 1.0 },
+	canonLaneHoldMode: null,
+	counterpointLaneHoldMode: null
 };
 
 // Enum validation sets
@@ -730,12 +756,47 @@ function loadSettings(): PersistedSettings | null {
 								preset_id: typeof v.preset_id === 'string' ? v.preset_id : null
 							})
 						)
-				: SETTINGS_DEFAULTS.canonVoices
+				: SETTINGS_DEFAULTS.canonVoices,
+			companionHoldMode:
+				parseHoldMode(parsed.companionHoldMode) ?? SETTINGS_DEFAULTS.companionHoldMode,
+			canonLaneHoldMode: parseLaneHoldMode(parsed.canonLaneHoldMode),
+			counterpointLaneHoldMode: parseLaneHoldMode(parsed.counterpointLaneHoldMode)
 		};
 	} catch {
 		localStorage.removeItem(SETTINGS_KEY);
 		return null;
 	}
+}
+
+/** Parse a global HoldMode from persisted JSON. Returns null on
+ *  malformed shape; caller falls back to default. */
+function parseHoldMode(v: unknown):
+	| { kind: 'cancel' }
+	| { kind: 'near_future'; tail_beats: number }
+	| { kind: 'phrase_end' }
+	| { kind: 'forever' }
+	| null {
+	if (typeof v !== 'object' || v === null) return null;
+	const obj = v as { kind?: unknown; tail_beats?: unknown };
+	if (obj.kind === 'cancel') return { kind: 'cancel' };
+	if (obj.kind === 'phrase_end') return { kind: 'phrase_end' };
+	if (obj.kind === 'forever') return { kind: 'forever' };
+	if (obj.kind === 'near_future') {
+		const tb = typeof obj.tail_beats === 'number' ? obj.tail_beats : 1.0;
+		return { kind: 'near_future', tail_beats: Math.max(0, Math.min(32, tb)) };
+	}
+	return null;
+}
+
+/** Lane override variant. null means "inherit Companion global." */
+function parseLaneHoldMode(v: unknown):
+	| null
+	| { kind: 'cancel' }
+	| { kind: 'near_future'; tail_beats: number }
+	| { kind: 'phrase_end' }
+	| { kind: 'forever' } {
+	if (v === null || v === undefined) return null;
+	return parseHoldMode(v);
 }
 
 function saveSettings(s: Omit<PersistedSettings, 'version'>) {
@@ -906,7 +967,10 @@ class EngineStore {
 				harmony_mode: v.harmony_mode ?? null,
 				reference_voice: v.reference_voice ?? null,
 				preset_id: v.preset_id ?? null
-			}))
+			})),
+			companionHoldMode: this.companionHoldMode,
+			canonLaneHoldMode: this.canonLaneHoldMode,
+			counterpointLaneHoldMode: this.counterpointLaneHoldMode
 		});
 	}
 
@@ -955,7 +1019,24 @@ class EngineStore {
 			// has the right voice list before we flip canon enabled.
 			['canonVoices', () => adapter.canonSetVoices(saved.canonVoices)],
 			['canonEnabled', () => adapter.canonSetEnabled(saved.canonEnabled)],
-			['companionEnabled', () => adapter.companionSetEnabled(saved.companionEnabled)]
+			['companionEnabled', () => adapter.companionSetEnabled(saved.companionEnabled)],
+			// HoldMode (#11) — restore global first, then per-lane
+			// overrides. Order matters because the lane override on
+			// the Rust side is the wrong field write order — but with
+			// the engine-mirror pattern both writes are independent
+			// and idempotent, so the order is forward-compatible.
+			[
+				'companionHoldMode',
+				() => adapter.companionSetGlobalHoldMode(saved.companionHoldMode)
+			],
+			[
+				'canonLaneHoldMode',
+				() => adapter.canonConfigure({ hold_mode: saved.canonLaneHoldMode })
+			],
+			[
+				'counterpointLaneHoldMode',
+				() => adapter.counterpointConfigure({ hold_mode: saved.counterpointLaneHoldMode })
+			]
 		];
 
 		for (const [name, op] of ops) {
