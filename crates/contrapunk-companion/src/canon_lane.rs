@@ -1928,4 +1928,271 @@ mod tests {
             notes
         );
     }
+
+    // ──────────────────────────────────────────────────────────
+    // HoldMode tests (#11)
+    // ──────────────────────────────────────────────────────────
+
+    /// Helper: build a lane with one voice at delay=4 beats (so its
+    /// pending NoteOn sits in the queue well past any plausible
+    /// near-future tolerance). Player NoteOn(60) at beat 0 → NoteOff
+    /// at beat 0.5. Expect: pending_on has 1 entry pre-NoteOff. The
+    /// per-mode tests below all start from this state and check what
+    /// remains in pending_on after the NoteOff resolves.
+    fn fixture_with_long_delay_voice() -> (CanonLane, Arc<WorldState>, Arc<Transport>) {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        // One voice, no cascade, 4-beat delay.
+        let mut voice = CanonVoice::default();
+        voice.delay_beats = 4.0;
+        voice.transpose_degrees = 2;
+        lane.set_voices(vec![voice]);
+        (lane, world, transport)
+    }
+
+    #[test]
+    fn hold_mode_cancel_drops_pending_on_release() {
+        let (mut lane, world, transport) = fixture_with_long_delay_voice();
+        // Set global to Cancel so NoteOff drops everything.
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(
+            !lane.pending_on.is_empty(),
+            "NoteOn should have buffered a delayed emission"
+        );
+
+        advance_to_beat(&transport, 0.5);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        // Cancel mode → all pending for note 60 should be gone.
+        assert!(
+            lane.pending_on.iter().all(|p| p.player_note != 60),
+            "HoldMode::Cancel should have dropped all pending_on for player_note=60; got {:?}",
+            lane.pending_on
+        );
+    }
+
+    #[test]
+    fn hold_mode_near_future_keeps_within_window_drops_beyond() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        // Two voices: one near (delay 0.5b), one far (delay 4b).
+        let near = {
+            let mut v = CanonVoice::default();
+            v.delay_beats = 0.5;
+            v.transpose_degrees = 2;
+            v
+        };
+        let far = {
+            let mut v = CanonVoice::default();
+            v.delay_beats = 4.0;
+            v.transpose_degrees = 4;
+            v
+        };
+        lane.set_voices(vec![near, far]);
+        // NearFuture with tail=1 beat — should keep voice 0, drop voice 1.
+        *world.global_hold_mode.lock().unwrap() = HoldMode::NearFuture { tail_beats: 1.0 };
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let pending_before = lane.pending_on.len();
+        assert!(
+            pending_before >= 2,
+            "Expected at least 2 pending entries (one per voice); got {}",
+            pending_before
+        );
+
+        // Release at beat 0 — fire_at for voice 0 is 0+0.5=0.5 (within
+        // tail=1), voice 1 is 0+4=4 (well beyond).
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        let remaining: Vec<f64> = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .map(|p| p.fire_at)
+            .collect();
+        assert!(
+            remaining.iter().any(|&f| (f - 0.5).abs() < 0.001),
+            "NearFuture(1.0) should have kept voice 0 (fire_at≈0.5); got {:?}",
+            remaining
+        );
+        assert!(
+            !remaining.iter().any(|&f| (f - 4.0).abs() < 0.001),
+            "NearFuture(1.0) should have dropped voice 1 (fire_at≈4.0); got {:?}",
+            remaining
+        );
+    }
+
+    #[test]
+    fn hold_mode_forever_keeps_all_pending() {
+        let (mut lane, world, transport) = fixture_with_long_delay_voice();
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Forever;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let before = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert!(before >= 1);
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        let after = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert_eq!(
+            before, after,
+            "HoldMode::Forever should not cancel any pending; before={} after={}",
+            before, after
+        );
+    }
+
+    #[test]
+    fn hold_mode_lane_override_wins_over_global() {
+        // Global = Cancel (kill everything), Lane override = Forever
+        // (keep everything). Lane override must win.
+        let (mut lane, world, transport) = fixture_with_long_delay_voice();
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+        lane.hold_mode = Some(HoldMode::Forever);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let before = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert!(before >= 1);
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        let after = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+        assert_eq!(
+            before, after,
+            "Lane override Forever should beat global Cancel; before={} after={}",
+            before, after
+        );
+    }
+
+    #[test]
+    fn hold_mode_json_round_trip() {
+        // Each variant should survive a JSON round-trip through the
+        // wire format used by IPC + save/restore.
+        for mode in [
+            HoldMode::Cancel,
+            HoldMode::NearFuture { tail_beats: 2.5 },
+            HoldMode::PhraseEnd,
+            HoldMode::Forever,
+        ] {
+            let json = crate::lane::hold_mode_to_json(mode);
+            let parsed = crate::lane::hold_mode_from_json(&json)
+                .expect("hold_mode_from_json should accept every emitted variant");
+            assert_eq!(mode, parsed, "round-trip mismatch on {:?}", mode);
+        }
+        // Unknown shapes return None — caller falls back, doesn't crash.
+        assert!(
+            crate::lane::hold_mode_from_json(&serde_json::json!({ "kind": "bogus" })).is_none()
+        );
+        assert!(crate::lane::hold_mode_from_json(&serde_json::json!({ "nope": true })).is_none());
+    }
+
+    #[test]
+    fn hold_mode_only_affects_target_player_note() {
+        // Two held notes; release only one. The other's pending
+        // emissions must be untouched even when global mode is Cancel.
+        let (mut lane, world, transport) = fixture_with_long_delay_voice();
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 64,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let total_before = lane.pending_on.len();
+        assert!(total_before >= 2);
+
+        // Release only note 60.
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        // 60's pending should be gone; 64's should still be there.
+        assert!(lane.pending_on.iter().all(|p| p.player_note != 60));
+        assert!(lane.pending_on.iter().any(|p| p.player_note == 64));
+    }
 }
