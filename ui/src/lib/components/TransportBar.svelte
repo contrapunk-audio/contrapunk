@@ -2,11 +2,22 @@
 	import { transport } from '$lib/stores/transport.svelte';
 
 	let bpmInput = $state(120);
+	// True while the user is mid-edit (input focused). The transport
+	// store ticks `bpm` every router cycle in Tauri; without this flag
+	// the `$effect` below kept overwriting whatever the user typed
+	// with the polled backend value, making it impossible to reduce
+	// BPM below the current backend reading. Tracking focus lets us
+	// stop the sync while the user is editing — `commitBpm` flushes
+	// their value to the backend on blur/Enter.
+	let bpmFocused = $state(false);
 
 	// Sync local BPM input with store changes (from Ableton Link sync
-	// later, or tap tempo, or initial load).
+	// later, tap tempo, or initial load) — but only when the user
+	// isn't actively typing into it.
 	$effect(() => {
-		bpmInput = Math.round(transport.bpm);
+		if (!bpmFocused) {
+			bpmInput = Math.round(transport.bpm);
+		}
 	});
 
 	async function togglePlay() {
@@ -18,6 +29,7 @@
 	}
 
 	async function commitBpm() {
+		bpmFocused = false;
 		await transport.setBpm(bpmInput);
 	}
 
@@ -54,6 +66,8 @@
 			max="240"
 			step="1"
 			bind:value={bpmInput}
+			onfocus={() => (bpmFocused = true)}
+			onblur={commitBpm}
 			onchange={commitBpm}
 			onkeydown={onBpmKey}
 		/>

@@ -343,6 +343,12 @@ struct PendingOn {
     /// the HoldMode filter to "only emissions seeded by THIS released
     /// player note" so other held notes' cascades aren't disturbed.
     player_note: u8,
+    /// Index into `CanonLane.voices` of the voice that scheduled
+    /// this emission. Required for per-voice HoldMode override
+    /// resolution at NoteOff — without this, the filter loop would
+    /// fall through to the lane / global mode for every entry and
+    /// the per-voice UI dropdown would be decorative.
+    voice_idx: usize,
 }
 
 /// One pending NoteOff matched to a previously-scheduled NoteOn.
@@ -897,6 +903,7 @@ impl Lane for CanonLane {
                             velocity,
                             channel,
                             player_note: note,
+                            voice_idx,
                         });
                     }
                     held_voices.push(HeldVoiceFire {
@@ -966,24 +973,24 @@ impl Lane for CanonLane {
                 // effective mode (voice > lane > global). Cancelling a
                 // PendingOn also removes its matched PendingOff so the
                 // synth doesn't receive an orphan release.
+                // Snapshot voice.hold_mode by index BEFORE retain —
+                // the closure borrows `self.voices` immutably via .get
+                // and we want to avoid borrowing self twice during the
+                // retain. Cloned/Copy so the closure can dereference.
+                let voice_holds: Vec<Option<HoldMode>> =
+                    self.voices.iter().map(|v| v.hold_mode).collect();
                 self.pending_on.retain(|p| {
                     if p.player_note != note {
                         return true; // not seeded by this NoteOff
                     }
-                    // Find this PendingOn's voice index by matching
-                    // its (fire_at, canon_note) back through the held
-                    // entry — but the held entry was just removed
-                    // above. Fall back to the lane-level hold_mode +
-                    // a per-pending fallback: any PendingOn without a
-                    // voice override answers to the lane mode.
-                    //
-                    // For voice-level override resolution we'd need
-                    // PendingOn to also carry voice_idx. For now,
-                    // lane-level + global resolution is correct for
-                    // the common case (per-voice overrides not yet
-                    // exposed via UI). Voice override TODO once UI
-                    // ships.
-                    let effective = lane_hold.unwrap_or(global_hold);
+                    // Resolve effective HoldMode: voice override wins
+                    // over lane, which wins over global. `voice_holds`
+                    // is indexed by the PendingOn's `voice_idx`,
+                    // captured at scheduling time, so the resolution
+                    // matches what the user sees on the per-voice
+                    // dropdown.
+                    let voice_hold = voice_holds.get(p.voice_idx).copied().flatten();
+                    let effective = voice_hold.or(lane_hold).unwrap_or(global_hold);
                     match effective {
                         HoldMode::Forever => true,
                         HoldMode::Cancel => false,
@@ -2131,6 +2138,132 @@ mod tests {
             "Lane override Forever should beat global Cancel; before={} after={}",
             before, after
         );
+    }
+
+    #[test]
+    fn hold_mode_voice_override_beats_lane_and_global() {
+        // Global = Forever, Lane = Forever, Voice 1 = Cancel.
+        // Only V1's pending should be dropped; V0's should survive.
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Forever;
+        lane.hold_mode = Some(HoldMode::Forever);
+        // Two voices: V0 inherits, V1 overrides to Cancel.
+        let mut v0 = CanonVoice::default();
+        v0.delay_beats = 4.0;
+        v0.transpose_degrees = 2;
+        let mut v1 = CanonVoice::default();
+        v1.delay_beats = 4.0;
+        v1.transpose_degrees = 4;
+        v1.hold_mode = Some(HoldMode::Cancel);
+        lane.set_voices(vec![v0, v1]);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        // Both voices should have buffered pending entries.
+        let v0_before = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.voice_idx == 0 && p.player_note == 60)
+            .count();
+        let v1_before = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.voice_idx == 1 && p.player_note == 60)
+            .count();
+        assert!(
+            v0_before > 0 && v1_before > 0,
+            "Both voices should have buffered pending; V0={} V1={}",
+            v0_before,
+            v1_before
+        );
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        let v0_after = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.voice_idx == 0 && p.player_note == 60)
+            .count();
+        let v1_after = lane
+            .pending_on
+            .iter()
+            .filter(|p| p.voice_idx == 1 && p.player_note == 60)
+            .count();
+        assert_eq!(
+            v0_after, v0_before,
+            "V0 (Forever inherit) should keep all pending; got {} vs before {}",
+            v0_after, v0_before
+        );
+        assert_eq!(
+            v1_after, 0,
+            "V1 (Cancel override) should drop all pending; got {}",
+            v1_after
+        );
+    }
+
+    #[test]
+    fn hold_mode_phrase_end_keeps_within_bar_drops_beyond() {
+        // PhraseEnd should keep pending whose fire_at is within the
+        // current bar (anchor + beats_per_bar = 4.0 in 4/4).
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::PhraseEnd;
+        // V0 at delay 2 (within bar 1), V1 at delay 8 (way beyond).
+        let mut near = CanonVoice::default();
+        near.delay_beats = 2.0;
+        near.transpose_degrees = 2;
+        let mut far = CanonVoice::default();
+        far.delay_beats = 8.0;
+        far.transpose_degrees = 4;
+        lane.set_voices(vec![near, far]);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        // Anchor = 0, beats_per_bar = 4, so phrase_end = 4.
+        // Near's fire_at = 2 ≤ 4 → kept.
+        // Far's fire_at  = 8 > 4 → dropped.
+        let near_kept = lane
+            .pending_on
+            .iter()
+            .any(|p| (p.fire_at - 2.0).abs() < 0.001);
+        let far_kept = lane
+            .pending_on
+            .iter()
+            .any(|p| (p.fire_at - 8.0).abs() < 0.001);
+        assert!(
+            near_kept,
+            "PhraseEnd should keep emissions within the current bar"
+        );
+        assert!(!far_kept, "PhraseEnd should drop emissions beyond the bar");
     }
 
     #[test]
