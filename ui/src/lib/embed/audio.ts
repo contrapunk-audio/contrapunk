@@ -238,6 +238,20 @@ export function allNotesOff() {
 	}
 }
 
+// === Audio-clock accessors — expose AudioContext properties to the
+//     Companion tick loop so it advances the transport on the same
+//     clock the synth uses (eliminates the performance.now() drift
+//     and the hardcoded-48k sample-rate bug).
+//
+// `getAudioContext()` lazy-initializes via `ensureAudio()` — safe
+// to call before any noteOn. Returns null only if Web Audio is
+// completely unavailable. Read sampleRate / currentTime off the
+// returned context.
+
+export function getAudioContext(): AudioContext | null {
+	return ensureAudio();
+}
+
 // === Imperative setters — update internal state + live audio nodes.
 
 export function setWaveform(w: Waveform) {
