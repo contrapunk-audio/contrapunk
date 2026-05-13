@@ -701,6 +701,59 @@
 		</button>
 	</header>
 
+	<!-- HOLD BEHAVIOR — what lanes do with already-scheduled emissions
+	     when the player releases the note that seeded them (#11).
+	     Global default; per-lane / per-voice overrides exist in the
+	     core but UI for overrides is hidden in v1. -->
+	<div class="hold-mode-row" title="What the canon / counterpoint lanes do with pending notes when you release the input. Global default — applies to every lane unless that lane has its own override.">
+		<span class="status-label font-ui">HOLD</span>
+		<div class="hold-mode-buttons">
+			<button
+				class="pixel-btn hold-btn"
+				class:hold-on={engine.companionHoldMode.kind === 'cancel'}
+				onclick={() => engine.setCompanionHoldMode({ kind: 'cancel' })}
+				title="CANCEL — kill every pending companion note the moment you release. Performative, 'lift = stop' feel."
+			>Cancel</button>
+			<button
+				class="pixel-btn hold-btn"
+				class:hold-on={engine.companionHoldMode.kind === 'near_future'}
+				onclick={() => engine.setCompanionHoldMode({ kind: 'near_future', tail_beats: 1.0 })}
+				title="NEAR FUTURE — let pending notes scheduled within `tail_beats` of now fire; cancel anything further out. Default — near-term echoes still ring, multi-bar canons cancel."
+			>Near</button>
+			<button
+				class="pixel-btn hold-btn"
+				class:hold-on={engine.companionHoldMode.kind === 'phrase_end'}
+				onclick={() => engine.setCompanionHoldMode({ kind: 'phrase_end' })}
+				title="PHRASE END — let pending notes within the current bar fire; cancel anything beyond. 'Finish this idea, then stop.'"
+			>Phrase</button>
+			<button
+				class="pixel-btn hold-btn"
+				class:hold-on={engine.companionHoldMode.kind === 'forever'}
+				onclick={() => engine.setCompanionHoldMode({ kind: 'forever' })}
+				title="FOREVER — no cancellation. Every scheduled note fires on its beat regardless of release. Preserves canon-as-canon (delayed echoes always complete)."
+			>Forever</button>
+		</div>
+		{#if engine.companionHoldMode.kind === 'near_future'}
+			<label class="hold-tail-input">
+				<span class="font-code">tail:</span>
+				<input
+					type="number"
+					min="0"
+					max="32"
+					step="0.25"
+					value={engine.companionHoldMode.tail_beats}
+					oninput={(e) => {
+						const v = parseFloat((e.target as HTMLInputElement).value);
+						if (!isNaN(v) && v >= 0 && v <= 32) {
+							engine.setCompanionHoldMode({ kind: 'near_future', tail_beats: v });
+						}
+					}}
+				/>
+				<span class="font-code">beats</span>
+			</label>
+		{/if}
+	</div>
+
 	<!-- BODY: vertical stack of Lane cards. Each lane is a self-
 	     contained module — header (name + enable toggle), body
 	     (lane-specific controls). The engine-status pill sits above
@@ -1396,6 +1449,54 @@
 		padding: 4px 8px;
 		background: var(--color-widget-bg);
 		border: 1px solid var(--color-border);
+	}
+
+	.hold-mode-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 6px 8px;
+		margin-top: 6px;
+		background: var(--color-widget-bg);
+		border: 1px solid var(--color-border);
+		flex-wrap: wrap;
+	}
+	.hold-mode-buttons {
+		display: flex;
+		gap: 4px;
+	}
+	.hold-btn {
+		font-size: var(--font-size-xs);
+		padding: 3px 8px;
+		border: 1px solid var(--color-border);
+		background: transparent;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+	}
+	.hold-btn:hover {
+		color: var(--color-text-primary);
+		border-color: var(--color-text-secondary);
+	}
+	.hold-btn.hold-on {
+		background: var(--color-accent-magenta, #ff33aa);
+		color: var(--color-bg, #0a0a1a);
+		border-color: var(--color-accent-magenta, #ff33aa);
+	}
+	.hold-tail-input {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+	}
+	.hold-tail-input input {
+		width: 4em;
+		padding: 2px 4px;
+		font-family: var(--font-code, monospace);
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		color: var(--color-text-primary);
 	}
 
 	.status-label {

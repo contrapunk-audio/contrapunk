@@ -781,6 +781,17 @@ class EngineStore {
 
 	// -- Companion / Canon (#3, #91) --
 	companionEnabled = $state(false);
+	/** Companion's global HoldMode — what lanes do with pending
+	 *  emissions when the player releases the seeding NoteOn (#11).
+	 *  Default `near_future` with `tail_beats: 1.0` mirrors the Rust
+	 *  side default. Lanes / voices can still override per-slot
+	 *  (Rust-plumbed but UI for overrides is deferred). */
+	companionHoldMode = $state<
+		| { kind: 'cancel' }
+		| { kind: 'near_future'; tail_beats: number }
+		| { kind: 'phrase_end' }
+		| { kind: 'forever' }
+	>({ kind: 'near_future', tail_beats: 1.0 });
 	canonEnabled = $state(false);
 	canonDelayBeats = $state(1.0);
 	canonTransposeDegrees = $state(0);
@@ -1124,6 +1135,27 @@ class EngineStore {
 			this.persist();
 		} catch (e) {
 			this.companionEnabled = prev;
+			throw e;
+		}
+	}
+
+	/** Set the Companion's global HoldMode (#11). Pushes through to
+	 *  the active adapter (Tauri / WASM / plugin); Rust side resolves
+	 *  voice > lane > global on each NoteOff. */
+	async setCompanionHoldMode(
+		mode:
+			| { kind: 'cancel' }
+			| { kind: 'near_future'; tail_beats: number }
+			| { kind: 'phrase_end' }
+			| { kind: 'forever' }
+	) {
+		const prev = this.companionHoldMode;
+		this.companionHoldMode = mode;
+		try {
+			await adapter.companionSetGlobalHoldMode(mode);
+			this.persist();
+		} catch (e) {
+			this.companionHoldMode = prev;
 			throw e;
 		}
 	}
