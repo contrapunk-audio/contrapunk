@@ -32,10 +32,23 @@ export class CompanionWasm {
     /**
      * Feed a player NoteOn into the Companion. Returns a JSON array
      * of dispatch ops emitted by lanes that fired immediately
-     * (Species 1 canon-onset emissions, etc.).
+     * (Species 1 canon-onset emissions, etc.). Each op carries a
+     * `lane` field (e.g. `"canon"`, `"counterpoint"`) so the UI can
+     * render per-lane attribution (different piano colors per lane).
      */
     on_note_on(note: number, velocity: number, channel: number): string;
     set_enabled(enabled: boolean): void;
+    /**
+     * Set the Companion's global HoldMode default. JSON shape:
+     *   {"kind":"cancel"}
+     *   {"kind":"near_future","tail_beats":1.0}
+     *   {"kind":"phrase_end"}
+     *   {"kind":"forever"}
+     * Lanes / voices can still override via the existing
+     * `configure_canon` / `configure_counterpoint` JSON paths (they
+     * each accept a `hold_mode` field with the same shape).
+     */
+    set_global_hold_mode(json: string): void;
     /**
      * Mirror the global engine's key/scale/mode/voice_count etc.
      * into the snapshot the Companion's mini-engines read. Called by
@@ -45,7 +58,7 @@ export class CompanionWasm {
     /**
      * Tick the lanes. Drains pending emissions whose fire_at has
      * elapsed. Returns a JSON array of dispatch ops to schedule on
-     * the WebAudio synth.
+     * the WebAudio synth. Each op carries its originating `lane`.
      */
     tick(): string;
 }
@@ -297,6 +310,7 @@ export interface InitOutput {
     readonly companionwasm_on_note_off: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_on_note_on: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly companionwasm_set_enabled: (a: number, b: number) => void;
+    readonly companionwasm_set_global_hold_mode: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_set_global_state: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
     readonly companionwasm_tick: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;

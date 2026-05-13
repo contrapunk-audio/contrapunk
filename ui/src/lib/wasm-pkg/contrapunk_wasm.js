@@ -129,7 +129,9 @@ export class CompanionWasm {
     /**
      * Feed a player NoteOn into the Companion. Returns a JSON array
      * of dispatch ops emitted by lanes that fired immediately
-     * (Species 1 canon-onset emissions, etc.).
+     * (Species 1 canon-onset emissions, etc.). Each op carries a
+     * `lane` field (e.g. `"canon"`, `"counterpoint"`) so the UI can
+     * render per-lane attribution (different piano colors per lane).
      * @param {number} note
      * @param {number} velocity
      * @param {number} channel
@@ -166,6 +168,32 @@ export class CompanionWasm {
         wasm.companionwasm_set_enabled(this.__wbg_ptr, enabled);
     }
     /**
+     * Set the Companion's global HoldMode default. JSON shape:
+     *   {"kind":"cancel"}
+     *   {"kind":"near_future","tail_beats":1.0}
+     *   {"kind":"phrase_end"}
+     *   {"kind":"forever"}
+     * Lanes / voices can still override via the existing
+     * `configure_canon` / `configure_counterpoint` JSON paths (they
+     * each accept a `hold_mode` field with the same shape).
+     * @param {string} json
+     */
+    set_global_hold_mode(json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.companionwasm_set_global_hold_mode(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * Mirror the global engine's key/scale/mode/voice_count etc.
      * into the snapshot the Companion's mini-engines read. Called by
      * JS whenever the Harmony tab changes these.
@@ -197,7 +225,7 @@ export class CompanionWasm {
     /**
      * Tick the lanes. Drains pending emissions whose fire_at has
      * elapsed. Returns a JSON array of dispatch ops to schedule on
-     * the WebAudio synth.
+     * the WebAudio synth. Each op carries its originating `lane`.
      * @returns {string}
      */
     tick() {

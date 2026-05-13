@@ -54,6 +54,7 @@ export const companionwasm_new: () => number;
 export const companionwasm_on_note_off: (a: number, b: number, c: number, d: number) => void;
 export const companionwasm_on_note_on: (a: number, b: number, c: number, d: number, e: number) => void;
 export const companionwasm_set_enabled: (a: number, b: number) => void;
+export const companionwasm_set_global_hold_mode: (a: number, b: number, c: number, d: number) => void;
 export const companionwasm_set_global_state: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
 export const companionwasm_tick: (a: number, b: number) => void;
 export const __wbindgen_export: (a: number, b: number) => number;
