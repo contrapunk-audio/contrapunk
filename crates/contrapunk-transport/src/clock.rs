@@ -136,10 +136,28 @@ impl Transport {
     // ─── Mutators (from command thread) ───────────────────────────
 
     /// Set tempo in BPM. Clamped to [20, 400]. Takes effect immediately.
+    ///
+    /// Also re-anchors `last_crossed_beat` to the beat-count implied
+    /// by the current `sample_pos` under the NEW bpm. Without this
+    /// re-anchor, lowering BPM mid-play made the metronome silently
+    /// stop firing: the recomputed `current_beat` (under the new
+    /// smaller bpm) was less than the old `last_crossed_beat`, so
+    /// every subsequent `advance()` saw `current_beat <= last` and
+    /// returned `None`. Raising BPM did the inverse — fired a
+    /// retroactive burst of crossings to "catch up." Both are
+    /// surprising behaviours; re-anchoring sidesteps both by
+    /// declaring "the next crossing fires after the next beat in
+    /// the NEW tempo, starting from where we are right now."
     pub fn set_bpm(&self, bpm: f64) {
         let clamped = bpm.clamp(20.0, 400.0);
         self.bpm_milli
             .store((clamped * 1000.0) as u32, Ordering::Relaxed);
+        // Re-anchor the monotonic beat counter at the new tempo.
+        let sample_pos = self.sample_pos.load(Ordering::Relaxed);
+        let new_total_beats = (sample_pos as f64 / self.sample_rate() as f64) * (clamped / 60.0);
+        let new_current_beat = new_total_beats.floor() as u64;
+        self.last_crossed_beat
+            .store(new_current_beat, Ordering::Relaxed);
     }
 
     pub fn set_time_signature(&self, beats_per_bar: u8, beat_unit: u8) {
