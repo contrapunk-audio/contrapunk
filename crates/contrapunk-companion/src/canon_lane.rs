@@ -693,8 +693,20 @@ impl CanonLane {
                     }
                 };
                 if let Some(ve) = self.voice_engines.get_mut(voice_idx) {
-                    for (i, s) in ref_states.into_iter().enumerate() {
-                        ve.set_counterpoint_state(i, s);
+                    for (i, src_state) in ref_states.into_iter().enumerate() {
+                        // Preserve V_K's own species-specific FSM
+                        // (Species 4 suspension phase, Species 3
+                        // figure buffer, prev-strong-beat trackers,
+                        // species + strictness) by reading V_K's
+                        // current state and merging V_ref's rolling
+                        // history into it. Avoids clobbering an
+                        // in-flight suspension or ornamentation
+                        // pattern just because the cascade re-fired.
+                        let merged = match ve.counterpoint_state(i) {
+                            Some(own_state) => own_state.with_history_from(&src_state),
+                            None => src_state,
+                        };
+                        ve.set_counterpoint_state(i, merged);
                     }
                 }
             }

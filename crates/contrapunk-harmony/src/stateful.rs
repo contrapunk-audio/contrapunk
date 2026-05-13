@@ -266,6 +266,13 @@ pub struct CounterpointState {
     species: CounterpointSpecies,
     /// Strictness level.
     strictness: CounterpointStrictness,
+    // ───── Species-specific FSM (read by `process_with_beat` only)
+    //        These fields are NOT cascade-shareable — they encode
+    //        per-voice in-flight contracts (mid-suspension, mid-figure,
+    //        mid-bar). `CounterpointState::with_history_from(src)`
+    //        preserves these on `self` while inheriting `src`'s rolling
+    //        history buffers above. If you add another species-specific
+    //        field, slot it here AND mirror it in `with_history_from`.
     /// Previous strong-beat harmony (Species 2+).
     prev_strong_beat_harmony: Option<Note>,
     /// Previous strong-beat melody.
@@ -351,6 +358,55 @@ impl CounterpointState {
     /// been propagated across cascade voices in tests.
     pub fn harmony_pitch_buffer(&self) -> Vec<u8> {
         self.harmony_pitch_buffer.iter().copied().collect()
+    }
+
+    /// Build a new state that takes the **rolling history** (interval
+    /// buffer, contour, harmony pitch buffer, harmony range window,
+    /// recent-move trackers, last-melody/last-harmony) from `source`,
+    /// but keeps **this voice's species-specific FSM** (species,
+    /// strictness, Species 4 suspension phase + pitches + tick count,
+    /// Species 3 figure buffer, prev-strong-beat trackers).
+    ///
+    /// Use case: CanonLane cascade. V_K wants to *avoid parallels with*
+    /// V_ref's just-emitted history (so it merges V_ref's rolling
+    /// buffers), but V_K must NOT inherit V_ref's Species 4
+    /// suspension phase or Species 3 figure mid-flight — those are
+    /// per-voice contracts that V_K is half-way through executing.
+    ///
+    /// Previously CanonLane used a full `set_counterpoint_state` which
+    /// blew away V_K's FSM every NoteOn, leaving V_K unable to carry
+    /// a suspension across keystrokes. This is the fix.
+    pub fn with_history_from(&self, source: &CounterpointState) -> CounterpointState {
+        // Explicit field-by-field construction — half from `source`
+        // (rolling history we DO want to inherit), half from `self`
+        // (species-specific FSM we DO NOT). Avoids `source.clone()`
+        // followed by overwrite-with-self for the VecDeque<(u8, bool)>
+        // figure buffer, which would otherwise allocate twice on every
+        // cascade step. If you add a new field to CounterpointState,
+        // place it in whichever block matches its semantics — and
+        // mirror the species-specific FSM comment block on the struct.
+        CounterpointState {
+            // ── Rolling history (inherit from upstream cascade voice).
+            last_melody: source.last_melody,
+            last_harmony: source.last_harmony,
+            interval_history: source.interval_history.clone(),
+            melody_contour: source.melody_contour.clone(),
+            harmony_range_window: source.harmony_range_window.clone(),
+            last_harmony_move: source.last_harmony_move,
+            harmony_pitch_buffer: source.harmony_pitch_buffer.clone(),
+
+            // ── Per-voice species FSM (keep self's — these are
+            //    in-flight per-voice contracts, not cascade-shareable).
+            species: self.species,
+            strictness: self.strictness,
+            prev_strong_beat_harmony: self.prev_strong_beat_harmony,
+            prev_strong_beat_melody: self.prev_strong_beat_melody,
+            suspension_phase: self.suspension_phase,
+            preparation_pitch: self.preparation_pitch,
+            suspension_pitch: self.suspension_pitch,
+            suspension_tick_count: self.suspension_tick_count,
+            harmony_figure_buffer: self.harmony_figure_buffer.clone(),
+        }
     }
 
     // --- Helper methods for interval history ---
