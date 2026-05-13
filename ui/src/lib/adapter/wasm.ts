@@ -1361,7 +1361,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async getDelayState() {
-		return { enabled: false, mix: 0.3, timeMs: 375, feedback: 0.35 };
+		return {
+			enabled: false,
+			mix: 0.3,
+			timeMs: 375,
+			feedback: 0.35,
+			syncEnabled: false,
+			subdivision: '1/8d' as const
+		};
 	}
 	async setDelayEnabled(enabled: boolean): Promise<void> {
 		if (!enabled) {
@@ -1393,6 +1400,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 			/* */
 		}
 	}
+	// WASM embedAudio has no tempo-sync support yet — accept the calls
+	// so the UI works without errors, but they're no-ops on this surface.
+	async setDelaySyncEnabled(_enabled: boolean): Promise<void> {}
+	async setDelaySubdivision(_subdivision: string): Promise<void> {}
 
 	// -- Chain topology + CLAP (no native host in browser; stubs) --
 

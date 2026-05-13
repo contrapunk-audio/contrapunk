@@ -154,6 +154,8 @@ fn main() {
             commands::fx::set_delay_mix,
             commands::fx::set_delay_time_ms,
             commands::fx::set_delay_feedback,
+            commands::fx::set_delay_sync_enabled,
+            commands::fx::set_delay_subdivision,
             // Audio chain topology
             commands::chain::list_chain_blocks,
             commands::chain::remove_chain_block,

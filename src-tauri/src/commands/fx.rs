@@ -54,6 +54,8 @@ pub struct DelayState {
     pub mix: f32,
     pub time_ms: u32,
     pub feedback: f32,
+    pub sync_enabled: bool,
+    pub subdivision: String,
 }
 
 #[tauri::command]
@@ -64,6 +66,8 @@ pub fn get_delay_state(state: State<AppState>) -> DelayState {
         mix: p.mix(),
         time_ms: p.time_ms(),
         feedback: p.feedback(),
+        sync_enabled: p.sync_enabled(),
+        subdivision: p.subdivision().as_str().to_string(),
     }
 }
 
@@ -85,4 +89,20 @@ pub fn set_delay_time_ms(ms: u32, state: State<AppState>) {
 #[tauri::command]
 pub fn set_delay_feedback(value: f32, state: State<AppState>) {
     state.delay_params.set_feedback(value);
+}
+
+#[tauri::command]
+pub fn set_delay_sync_enabled(enabled: bool, state: State<AppState>) {
+    state.delay_params.set_sync_enabled(enabled);
+}
+
+/// Accepts the canonical subdivision tags from `Subdivision::as_str`:
+/// "1/4", "1/8d", "1/8", "1/8t", "1/16", "1/16t". Unknown shapes are
+/// ignored (no error returned) so a future UI typo doesn't crash the
+/// chain — the audio thread just keeps the current setting.
+#[tauri::command]
+pub fn set_delay_subdivision(subdivision: String, state: State<AppState>) {
+    if let Some(s) = contrapunk::fx::delay::Subdivision::from_str(&subdivision) {
+        state.delay_params.set_subdivision(s);
+    }
 }

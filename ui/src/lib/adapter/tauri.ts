@@ -15,6 +15,7 @@ import type {
 	ClapPluginDescriptor,
 	ContrapunkAdapter,
 	DelayState,
+	DelaySubdivision,
 	EngineState,
 	GuitarConfig,
 	HoldMode,
@@ -740,7 +741,9 @@ export class TauriAdapter implements ContrapunkAdapter {
 			enabled: raw.enabled as boolean,
 			mix: raw.mix as number,
 			timeMs: raw.time_ms as number,
-			feedback: raw.feedback as number
+			feedback: raw.feedback as number,
+			syncEnabled: (raw.sync_enabled as boolean) ?? false,
+			subdivision: ((raw.subdivision as DelaySubdivision) ?? '1/8d') as DelaySubdivision
 		};
 	}
 	async setDelayEnabled(enabled: boolean): Promise<void> {
@@ -754,6 +757,12 @@ export class TauriAdapter implements ContrapunkAdapter {
 	}
 	async setDelayFeedback(value: number): Promise<void> {
 		await invoke('set_delay_feedback', { value });
+	}
+	async setDelaySyncEnabled(enabled: boolean): Promise<void> {
+		await invoke('set_delay_sync_enabled', { enabled });
+	}
+	async setDelaySubdivision(subdivision: DelaySubdivision): Promise<void> {
+		await invoke('set_delay_subdivision', { subdivision });
 	}
 
 	// -- Chain topology --

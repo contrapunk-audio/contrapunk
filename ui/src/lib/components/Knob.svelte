@@ -21,6 +21,7 @@
 		format,
 		size = 72,
 		accent = 'var(--color-accent-cyan)',
+		disabled = false,
 		onchange
 	}: {
 		value: number;
@@ -32,6 +33,11 @@
 		format?: (v: number) => string;
 		size?: number;
 		accent?: string;
+		/** When true, the knob is rendered dimmed and ignores pointer /
+		 *  wheel input. Use for parameters that are temporarily
+		 *  overridden by another control (e.g. delay Time when Sync is
+		 *  on). */
+		disabled?: boolean;
 		onchange: (value: number) => void;
 	} = $props();
 
@@ -82,6 +88,7 @@
 	}
 
 	function onPointerDown(e: PointerEvent) {
+		if (disabled) return;
 		(e.currentTarget as Element).setPointerCapture(e.pointerId);
 		dragging = true;
 		startY = e.clientY;
@@ -90,6 +97,7 @@
 	}
 
 	function onPointerMove(e: PointerEvent) {
+		if (disabled) return;
 		if (!dragging) return;
 		const sensitivity = e.shiftKey ? 1500 : 200; // px for full range
 		const deltaPx = startY - e.clientY;
@@ -103,6 +111,7 @@
 	}
 
 	function onWheel(e: WheelEvent) {
+		if (disabled) return;
 		e.preventDefault();
 		const dir = e.deltaY < 0 ? 1 : -1;
 		const mul = e.shiftKey ? 0.1 : 1;
@@ -110,13 +119,14 @@
 	}
 
 	function onDoubleClick() {
+		if (disabled) return;
 		if (defaultValue !== undefined) {
 			onchange(clamp(snap(defaultValue)));
 		}
 	}
 </script>
 
-<div class="knob" style:width="{size}px">
+<div class="knob" class:disabled style:width="{size}px">
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div
 		class="knob-dial"
@@ -188,6 +198,11 @@
 		align-items: center;
 		gap: 4px;
 		user-select: none;
+	}
+
+	.knob.disabled {
+		opacity: 0.35;
+		pointer-events: none;
 	}
 
 	.knob-dial {

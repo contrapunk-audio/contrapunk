@@ -375,12 +375,21 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async setReverbDamping(_value: number): Promise<void> {}
 
 	async getDelayState() {
-		return { enabled: false, mix: 0.3, timeMs: 375, feedback: 0.35 };
+		return {
+			enabled: false,
+			mix: 0.3,
+			timeMs: 375,
+			feedback: 0.35,
+			syncEnabled: false,
+			subdivision: '1/8d' as const
+		};
 	}
 	async setDelayEnabled(_enabled: boolean): Promise<void> {}
 	async setDelayMix(_value: number): Promise<void> {}
 	async setDelayTimeMs(_ms: number): Promise<void> {}
 	async setDelayFeedback(_value: number): Promise<void> {}
+	async setDelaySyncEnabled(_enabled: boolean): Promise<void> {}
+	async setDelaySubdivision(_subdivision: string): Promise<void> {}
 
 	// -- Chain topology + CLAP (DAW handles plugin hosting; stubs) --
 

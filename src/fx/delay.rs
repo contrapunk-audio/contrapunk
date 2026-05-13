@@ -7,14 +7,90 @@
 //! # Params (lock-free atomics)
 //!
 //! - `mix`: 0..1 dry/wet
-//! - `time_ms`: 10..2000 ms delay time (clamped)
+//! - `time_ms`: 10..2000 ms delay time (clamped) — used in Free mode
 //! - `feedback`: 0..0.95 feedback amount (clamped below 1.0 to avoid runaway)
 //! - `enabled`: when false `process()` is a pass-through
+//! - `sync_enabled`: when true, the effective delay time is derived
+//!   from the transport BPM and `subdivision`, ignoring `time_ms`
+//! - `subdivision`: musical subdivision index (see `Subdivision`)
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
 
+use contrapunk_transport::Transport;
+
 use crate::chain::AudioBlock;
+
+/// Musical subdivisions for the tempo-synced delay. Indices match the
+/// stored atomic encoding — never renumber once shipped (state file
+/// compatibility). Beat fractions assume a quarter-note beat unit.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Subdivision {
+    /// 1/4 (one beat).
+    Quarter = 0,
+    /// 1/8 dotted (3/16 = 0.75 beats).
+    EighthDotted = 1,
+    /// 1/8 (half a beat).
+    Eighth = 2,
+    /// 1/8 triplet (1/3 of a beat).
+    EighthTriplet = 3,
+    /// 1/16 (quarter of a beat).
+    Sixteenth = 4,
+    /// 1/16 triplet (1/6 of a beat).
+    SixteenthTriplet = 5,
+}
+
+impl Subdivision {
+    /// Length of one tap in beats (quarter-note units).
+    pub fn beats(self) -> f32 {
+        match self {
+            Subdivision::Quarter => 1.0,
+            Subdivision::EighthDotted => 0.75,
+            Subdivision::Eighth => 0.5,
+            Subdivision::EighthTriplet => 1.0 / 3.0,
+            Subdivision::Sixteenth => 0.25,
+            Subdivision::SixteenthTriplet => 1.0 / 6.0,
+        }
+    }
+
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            0 => Subdivision::Quarter,
+            1 => Subdivision::EighthDotted,
+            2 => Subdivision::Eighth,
+            3 => Subdivision::EighthTriplet,
+            4 => Subdivision::Sixteenth,
+            5 => Subdivision::SixteenthTriplet,
+            _ => Subdivision::Quarter,
+        }
+    }
+
+    /// Canonical wire-format identifier used by Tauri / WASM commands
+    /// and the persisted UI state. Stable across releases.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Subdivision::Quarter => "1/4",
+            Subdivision::EighthDotted => "1/8d",
+            Subdivision::Eighth => "1/8",
+            Subdivision::EighthTriplet => "1/8t",
+            Subdivision::Sixteenth => "1/16",
+            Subdivision::SixteenthTriplet => "1/16t",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "1/4" => Some(Subdivision::Quarter),
+            "1/8d" => Some(Subdivision::EighthDotted),
+            "1/8" => Some(Subdivision::Eighth),
+            "1/8t" => Some(Subdivision::EighthTriplet),
+            "1/16" => Some(Subdivision::Sixteenth),
+            "1/16t" => Some(Subdivision::SixteenthTriplet),
+            _ => None,
+        }
+    }
+}
 
 /// Maximum supported delay time in seconds. Buffers are sized for this
 /// at construction and reused across `time_ms` changes.
@@ -29,6 +105,8 @@ pub struct DelayParams {
     mix_ppt: AtomicU32,
     time_ms: AtomicU32,
     feedback_ppt: AtomicU32,
+    sync_enabled: AtomicBool,
+    subdivision: AtomicU8,
 }
 
 impl Default for DelayParams {
@@ -38,6 +116,8 @@ impl Default for DelayParams {
             mix_ppt: AtomicU32::new(300),      // 0.30
             time_ms: AtomicU32::new(375),      // dotted 8th @ 120 bpm
             feedback_ppt: AtomicU32::new(350), // 0.35
+            sync_enabled: AtomicBool::new(false),
+            subdivision: AtomicU8::new(Subdivision::EighthDotted as u8),
         }
     }
 }
@@ -59,6 +139,12 @@ impl DelayParams {
     pub fn feedback(&self) -> f32 {
         self.feedback_ppt.load(Ordering::Relaxed) as f32 / 1000.0
     }
+    pub fn sync_enabled(&self) -> bool {
+        self.sync_enabled.load(Ordering::Relaxed)
+    }
+    pub fn subdivision(&self) -> Subdivision {
+        Subdivision::from_u8(self.subdivision.load(Ordering::Relaxed))
+    }
 
     pub fn set_enabled(&self, v: bool) {
         self.enabled.store(v, Ordering::Relaxed);
@@ -76,6 +162,27 @@ impl DelayParams {
             (v.clamp(0.0, MAX_FEEDBACK) * 1000.0) as u32,
             Ordering::Relaxed,
         );
+    }
+    pub fn set_sync_enabled(&self, v: bool) {
+        self.sync_enabled.store(v, Ordering::Relaxed);
+    }
+    pub fn set_subdivision(&self, s: Subdivision) {
+        self.subdivision.store(s as u8, Ordering::Relaxed);
+    }
+
+    /// Effective delay length in milliseconds. In sync mode, derived
+    /// from the transport BPM and the selected subdivision; otherwise
+    /// the free-running `time_ms` value. Clamped to the buffer's
+    /// `MAX_DELAY_SECS`.
+    pub fn effective_time_ms(&self, transport: &Transport) -> u32 {
+        if self.sync_enabled() {
+            let bpm = transport.bpm().max(1.0);
+            let beats = self.subdivision().beats() as f64;
+            let ms = beats * 60_000.0 / bpm;
+            (ms.round() as u32).clamp(1, (MAX_DELAY_SECS * 1000.0) as u32)
+        } else {
+            self.time_ms()
+        }
     }
 }
 
@@ -120,6 +227,7 @@ impl DelayLine {
 
 pub struct Delay {
     params: Arc<DelayParams>,
+    transport: Option<Arc<Transport>>,
     lines: Vec<DelayLine>,
     sample_rate: u32,
     name: String,
@@ -131,10 +239,23 @@ impl Delay {
         let lines = (0..MAX_CHANNELS).map(|_| DelayLine::new(cap)).collect();
         Self {
             params,
+            transport: None,
             lines,
             sample_rate,
             name: "Delay".to_string(),
         }
+    }
+
+    /// Build a Delay that knows about the transport, so the sync mode
+    /// can derive tap length from BPM. Pass-through to `new` otherwise.
+    pub fn with_transport(
+        params: Arc<DelayParams>,
+        transport: Arc<Transport>,
+        sample_rate: u32,
+    ) -> Self {
+        let mut d = Self::new(params, sample_rate);
+        d.transport = Some(transport);
+        d
     }
 
     pub fn params(&self) -> Arc<DelayParams> {
@@ -172,8 +293,16 @@ impl AudioBlock for Delay {
         let dry = 1.0 - mix;
         let wet = mix;
         let feedback = self.params.feedback().min(MAX_FEEDBACK);
-        let delay_samples =
-            ((self.params.time_ms() as f32 / 1000.0) * self.sample_rate as f32) as usize;
+        // Sync mode uses the transport BPM if available; otherwise the
+        // free-running time_ms value. Hard re-tap on BPM change — the
+        // new tap takes effect on the next block. Buffer contents are
+        // preserved; only the read offset moves, so the existing tail
+        // continues to play out at the old length until decayed.
+        let time_ms = match &self.transport {
+            Some(t) if self.params.sync_enabled() => self.params.effective_time_ms(t),
+            _ => self.params.time_ms(),
+        };
+        let delay_samples = ((time_ms as f32 / 1000.0) * self.sample_rate as f32) as usize;
 
         let use_channels = channels.min(self.lines.len());
         let frames = buffer.len() / channels;
@@ -320,5 +449,78 @@ mod tests {
         let p = Arc::new(DelayParams::default());
         p.set_feedback(2.0);
         assert!(p.feedback() <= MAX_FEEDBACK);
+    }
+
+    #[test]
+    fn subdivision_round_trips_through_str() {
+        for s in [
+            Subdivision::Quarter,
+            Subdivision::EighthDotted,
+            Subdivision::Eighth,
+            Subdivision::EighthTriplet,
+            Subdivision::Sixteenth,
+            Subdivision::SixteenthTriplet,
+        ] {
+            assert_eq!(Subdivision::from_str(s.as_str()), Some(s));
+            assert_eq!(Subdivision::from_u8(s as u8), s);
+        }
+        // Bogus tags fall back to None (caller keeps current setting).
+        assert_eq!(Subdivision::from_str("1/2"), None);
+        // Bogus indices fall back to Quarter — never crash on a junk byte.
+        assert_eq!(Subdivision::from_u8(99), Subdivision::Quarter);
+    }
+
+    #[test]
+    fn effective_time_ms_matches_daw_subdivisions_at_120bpm() {
+        let p = DelayParams::default();
+        p.set_sync_enabled(true);
+        let t = Transport::new(48_000);
+        // Transport defaults to 120 bpm → 1 beat = 500 ms.
+        let cases = [
+            (Subdivision::Quarter, 500u32),
+            (Subdivision::EighthDotted, 375u32),
+            (Subdivision::Eighth, 250u32),
+            (Subdivision::Sixteenth, 125u32),
+        ];
+        for (sub, expected) in cases {
+            p.set_subdivision(sub);
+            let actual = p.effective_time_ms(&t);
+            assert_eq!(
+                actual, expected,
+                "subdivision {:?} at 120 bpm should be {} ms, got {}",
+                sub, expected, actual
+            );
+        }
+        // Triplets round to the nearest ms; check they land on Ableton's
+        // canonical values (167 / 83).
+        p.set_subdivision(Subdivision::EighthTriplet);
+        assert_eq!(p.effective_time_ms(&t), 167);
+        p.set_subdivision(Subdivision::SixteenthTriplet);
+        assert_eq!(p.effective_time_ms(&t), 83);
+    }
+
+    #[test]
+    fn effective_time_ms_tracks_bpm_changes() {
+        let p = DelayParams::default();
+        p.set_sync_enabled(true);
+        p.set_subdivision(Subdivision::Quarter);
+        let t = Transport::new(48_000);
+        // 120 bpm → 1/4 = 500 ms; 60 bpm → 1/4 = 1000 ms.
+        assert_eq!(p.effective_time_ms(&t), 500);
+        t.set_bpm(60.0);
+        assert_eq!(p.effective_time_ms(&t), 1000);
+        t.set_bpm(240.0);
+        assert_eq!(p.effective_time_ms(&t), 250);
+    }
+
+    #[test]
+    fn sync_disabled_keeps_free_time_ms() {
+        let p = DelayParams::default();
+        p.set_sync_enabled(false);
+        p.set_time_ms(750);
+        let t = Transport::new(48_000);
+        // Even at 60 bpm, free mode ignores the transport entirely.
+        t.set_bpm(60.0);
+        assert_eq!(p.effective_time_ms(&t), 750);
     }
 }

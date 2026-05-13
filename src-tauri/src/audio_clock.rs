@@ -255,7 +255,7 @@ fn build_and_run_stream(
             // exist.
             let synth = Synth::new(synth_params, synth_rx, sample_rate);
             let reverb = Reverb::new(reverb_params, sample_rate);
-            let delay = Delay::new(delay_params, sample_rate);
+            let delay = Delay::with_transport(delay_params, Arc::clone(&transport), sample_rate);
             let mut chain = Chain::with_queue(sample_rate, chain_rx);
             chain.push(Box::new(synth));
             chain.push(Box::new(delay));

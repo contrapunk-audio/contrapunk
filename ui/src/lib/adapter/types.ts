@@ -137,12 +137,19 @@ export interface ReverbState {
 	damping: number;
 }
 
+/** Canonical subdivision tags accepted by `setDelaySubdivision`. */
+export type DelaySubdivision = '1/4' | '1/8d' | '1/8' | '1/8t' | '1/16' | '1/16t';
+
 /** Snapshot of built-in delay parameters. */
 export interface DelayState {
 	enabled: boolean;
 	mix: number;
 	timeMs: number;
 	feedback: number;
+	/** When true, the delay tap length is derived from the transport
+	 *  BPM and `subdivision`; otherwise `timeMs` is the free tap. */
+	syncEnabled: boolean;
+	subdivision: DelaySubdivision;
 }
 
 /** One block in the live audio chain. */
@@ -496,6 +503,8 @@ export interface ContrapunkAdapter {
 	setDelayMix(value: number): Promise<void>;
 	setDelayTimeMs(ms: number): Promise<void>;
 	setDelayFeedback(value: number): Promise<void>;
+	setDelaySyncEnabled(enabled: boolean): Promise<void>;
+	setDelaySubdivision(subdivision: DelaySubdivision): Promise<void>;
 
 	// -- Audio chain topology --
 

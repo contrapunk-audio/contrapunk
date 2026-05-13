@@ -230,6 +230,42 @@
 			</button>
 		</div>
 
+		<div class="delay-sync-row">
+			<button
+				class="pixel-btn sync-btn font-ui"
+				class:active={delay.syncEnabled}
+				onclick={() => delay.setSyncEnabled(!delay.syncEnabled)}
+				title={delay.syncEnabled
+					? 'Tap length is locked to transport BPM'
+					: 'Free mode — tap length set in ms'}
+			>
+				SYNC {delay.syncEnabled ? 'ON' : 'OFF'}
+			</button>
+			<select
+				class="sub-select font-code"
+				value={delay.subdivision}
+				disabled={!delay.syncEnabled}
+				onchange={(e) =>
+					delay.setSubdivision(
+						(e.currentTarget as HTMLSelectElement).value as
+							| '1/4'
+							| '1/8d'
+							| '1/8'
+							| '1/8t'
+							| '1/16'
+							| '1/16t'
+					)}
+				title="Tempo-synced tap subdivision"
+			>
+				<option value="1/4">1/4</option>
+				<option value="1/8d">1/8 dotted</option>
+				<option value="1/8">1/8</option>
+				<option value="1/8t">1/8 triplet</option>
+				<option value="1/16">1/16</option>
+				<option value="1/16t">1/16 triplet</option>
+			</select>
+		</div>
+
 		<div class="reverb-knobs">
 			<Knob
 				label="Mix"
@@ -253,6 +289,7 @@
 				size={56}
 				format={(v) => `${Math.round(v)}ms`}
 				accent="var(--color-accent-cyan)"
+				disabled={delay.syncEnabled}
 				onchange={(v) => delay.setTimeMs(Math.round(v))}
 			/>
 			<Knob
@@ -723,6 +760,38 @@
 		align-items: flex-start;
 		gap: 12px;
 		padding: 6px 4px 2px;
+	}
+
+	.delay-sync-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 8px 0;
+	}
+	.sync-btn {
+		font-size: var(--font-size-xs);
+		padding: 2px 8px;
+		border: 1px solid var(--color-border);
+		background: var(--color-widget-bg);
+		color: var(--color-text-dim);
+		cursor: pointer;
+	}
+	.sync-btn.active {
+		color: var(--color-accent-cyan);
+		border-color: var(--color-accent-cyan);
+		box-shadow: 0 0 4px var(--color-accent-cyan);
+	}
+	.sub-select {
+		flex: 1;
+		min-width: 0;
+		padding: 2px 6px;
+		border: 1px solid var(--color-border);
+		background: var(--color-widget-bg);
+		color: var(--color-text-primary);
+		font-size: var(--font-size-xs);
+	}
+	.sub-select:disabled {
+		opacity: 0.35;
 	}
 
 	/* Collapse rack-grid on narrow windows */

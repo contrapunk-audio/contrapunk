@@ -16,5 +16,5 @@
 pub mod delay;
 pub mod reverb;
 
-pub use delay::{Delay, DelayParams};
+pub use delay::{Delay, DelayParams, Subdivision};
 pub use reverb::{Reverb, ReverbParams};

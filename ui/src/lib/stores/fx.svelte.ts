@@ -7,6 +7,7 @@
  */
 
 import { adapter } from '$lib/adapter';
+import type { DelaySubdivision } from '$lib/adapter/types';
 
 class ReverbStore {
 	enabled = $state(false);
@@ -51,6 +52,8 @@ class DelayStore {
 	mix = $state(0.3);
 	timeMs = $state(375);
 	feedback = $state(0.35);
+	syncEnabled = $state(false);
+	subdivision = $state<DelaySubdivision>('1/8d');
 
 	async syncFromBackend() {
 		try {
@@ -59,6 +62,8 @@ class DelayStore {
 			this.mix = s.mix;
 			this.timeMs = s.timeMs;
 			this.feedback = s.feedback;
+			this.syncEnabled = s.syncEnabled;
+			this.subdivision = s.subdivision;
 		} catch {
 			// Backend not ready yet.
 		}
@@ -79,6 +84,14 @@ class DelayStore {
 	async setFeedback(v: number) {
 		this.feedback = v;
 		await adapter.setDelayFeedback(v);
+	}
+	async setSyncEnabled(v: boolean) {
+		this.syncEnabled = v;
+		await adapter.setDelaySyncEnabled(v);
+	}
+	async setSubdivision(v: DelaySubdivision) {
+		this.subdivision = v;
+		await adapter.setDelaySubdivision(v);
 	}
 }
 
