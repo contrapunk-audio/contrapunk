@@ -115,6 +115,15 @@ pub struct WorldState {
     /// Best-effort chord detection from `sounding_voices`. Default
     /// (no chord) is `DetectedChord::default()` — empty `display`.
     pub current_chord: Arc<Mutex<DetectedChord>>,
+
+    /// Companion's global default HoldMode for pending-emission
+    /// cancellation. Lanes read this on NoteOff to resolve the
+    /// effective mode when their own (and the voice's) override is
+    /// `None`. The `Companion` writes to it via
+    /// `set_global_hold_mode`. Shared via `Arc<Mutex>` rather than
+    /// `Arc<AtomicX>` because `HoldMode` is an enum with payload,
+    /// not a primitive.
+    pub global_hold_mode: Arc<Mutex<crate::lane::HoldMode>>,
 }
 
 impl WorldState {
@@ -127,6 +136,7 @@ impl WorldState {
             held_inputs: Arc::new(Mutex::new(HashMap::new())),
             sounding_voices: Arc::new(Mutex::new(HashMap::new())),
             current_chord: Arc::new(Mutex::new(DetectedChord::default())),
+            global_hold_mode: Arc::new(Mutex::new(crate::lane::HoldMode::default())),
         })
     }
 }

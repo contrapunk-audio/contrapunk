@@ -30,7 +30,10 @@ use wmidi::Note;
 
 use contrapunk_harmony::{CounterpointSpecies, CounterpointState, HarmonyMode, Key, ScaleMode};
 
-use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
+use super::lane::{
+    hold_mode_from_json, hold_mode_to_json, HoldMode, InputEvent, InputFilter, Lane, LaneOutput,
+    LanePhase,
+};
 use super::world::WorldState;
 use super::DispatchOp;
 use crate::voice_output::VoiceOutputTarget;
@@ -90,6 +93,11 @@ pub struct CounterpointLane {
     /// Player-note → emitted pitches map, so NoteOff releases the right
     /// set when Species 2/3 has emitted multiple pitches per input.
     held: HashMap<u8, HeldCpEntry>,
+    /// Lane-level HoldMode override. `None` = inherit Companion global.
+    /// Applies to every pending emission seeded by a player NoteOn when
+    /// that player note is released. See `lane::HoldMode` for the four
+    /// modes (Cancel / NearFuture / PhraseEnd / Forever).
+    pub hold_mode: Option<HoldMode>,
 }
 
 impl CounterpointLane {
@@ -109,6 +117,7 @@ impl CounterpointLane {
             pending_on: VecDeque::new(),
             pending_off: VecDeque::new(),
             held: HashMap::new(),
+            hold_mode: None,
         }
     }
 
@@ -331,27 +340,56 @@ impl Lane for CounterpointLane {
                 );
             }
             InputEvent::NoteOff { note, channel: _ } => {
-                // Cancel any pending NoteOns for this player note that
-                // haven't fired yet — otherwise we'd schedule their
-                // NoteOff at `now` (a no-op since the NoteOn comes
-                // later), and the orphan NoteOn would hang the synth.
-                // Common case: Species 2/3 passing tones scheduled at
-                // now + 0.25 / 0.5 / 0.75; the user releases the
-                // cantus before they fire.
+                // Resolve effective HoldMode (lane override > global).
+                // Pre-v1.2 CounterpointLane behavior was effectively
+                // HoldMode::Cancel (it dropped all pending NoteOns and
+                // released emitted notes at `now`). That stays the
+                // default *behavior* if mode resolves to Cancel — the
+                // FTUX continues to feel performative. Users who want
+                // canon-style sustained passing tones flip the toggle
+                // to Forever or NearFuture/PhraseEnd.
+                let global_hold = world
+                    .global_hold_mode
+                    .lock()
+                    .map(|g| *g)
+                    .unwrap_or_default();
+                let effective = self.hold_mode.unwrap_or(global_hold);
+                let beats_per_bar = world.transport.time_signature().0 as f64;
+                // PhraseEnd horizon: same idea as CanonLane — let
+                // pending emissions within the current bar fire.
+                let phrase_end = (now / beats_per_bar).floor() * beats_per_bar + beats_per_bar;
+
+                // Decide which pending NoteOns for this player note
+                // get cancelled vs let-fire, per the effective mode.
                 let mut canceled_pitches: Vec<u8> = Vec::new();
                 self.pending_on.retain(|p| {
-                    if p.player_note == note {
-                        canceled_pitches.push(p.note);
-                        false
-                    } else {
-                        true
+                    if p.player_note != note {
+                        return true;
                     }
+                    let keep = match effective {
+                        HoldMode::Forever => true,
+                        HoldMode::Cancel => false,
+                        HoldMode::NearFuture { tail_beats } => (p.fire_at - now) <= tail_beats,
+                        HoldMode::PhraseEnd => p.fire_at <= phrase_end,
+                    };
+                    if !keep {
+                        canceled_pitches.push(p.note);
+                    }
+                    keep
                 });
                 if let Some(mut held) = self.held.remove(&note) {
+                    // Cancelled NoteOns get no matching NoteOff — they
+                    // never produced sound. Already-emitted notes get
+                    // released at `now`, OR at `now + tail_beats` so
+                    // the lookahead / sustain semantics feel coherent.
                     held.emitted_notes.retain(|n| !canceled_pitches.contains(n));
+                    let release_at = match effective {
+                        HoldMode::NearFuture { tail_beats } => now + tail_beats,
+                        _ => now,
+                    };
                     for n in held.emitted_notes {
                         self.pending_off.push_back(PendingCpOff {
-                            fire_at: now,
+                            fire_at: release_at,
                             note: n,
                             channel: held.channel,
                         });
@@ -418,6 +456,7 @@ impl Lane for CounterpointLane {
             "species": species_str,
             "transpose_degrees": self.transpose_degrees,
             "prefer_above": self.prefer_above,
+            "hold_mode": self.hold_mode.map(hold_mode_to_json),
         })
     }
 
@@ -440,6 +479,16 @@ impl Lane for CounterpointLane {
         }
         if let Some(p) = state.get("prefer_above").and_then(|v| v.as_bool()) {
             self.prefer_above = p;
+        }
+        // Lane-level HoldMode override. Absent / unknown shape leaves
+        // existing mode untouched; explicit JSON null clears to None
+        // (inherit global).
+        if let Some(v) = state.get("hold_mode") {
+            if v.is_null() {
+                self.hold_mode = None;
+            } else if let Some(hm) = hold_mode_from_json(v) {
+                self.hold_mode = Some(hm);
+            }
         }
         Ok(())
     }

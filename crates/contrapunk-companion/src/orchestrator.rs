@@ -50,16 +50,6 @@ pub struct Companion {
     /// to empty results — Lanes don't run, no allocations.
     pub enabled: AtomicBool,
 
-    /// Global default for how lanes treat already-buffered emissions
-    /// when the player releases the seeding NoteOn. Lanes / voices
-    /// can override per-slot; this is the fallback. See
-    /// `lane::HoldMode` for semantics.
-    ///
-    /// Stored behind a mutex (not an atomic) because `HoldMode` is
-    /// an enum with a payload, not a primitive. Reads are infrequent
-    /// (once per NoteOff per lane), so the mutex cost is invisible.
-    pub hold_mode: std::sync::Mutex<crate::lane::HoldMode>,
-
     /// Shared observable.
     pub world: Arc<WorldState>,
 
@@ -77,18 +67,21 @@ impl Companion {
     pub fn new(world: Arc<WorldState>) -> Self {
         Self {
             enabled: AtomicBool::new(false),
-            hold_mode: std::sync::Mutex::new(crate::lane::HoldMode::default()),
             world,
             lanes: Vec::new(),
         }
     }
 
     /// Snapshot the global hold mode. Cheap (Mutex lock + Copy).
+    /// Delegates to the single owner on `WorldState` — lanes also
+    /// read from there during their NoteOff handling. Keeping one
+    /// source of truth avoids consistency bugs.
     pub fn global_hold_mode(&self) -> crate::lane::HoldMode {
         *self
-            .hold_mode
+            .world
+            .global_hold_mode
             .lock()
-            .expect("Companion.hold_mode mutex poisoned")
+            .expect("global_hold_mode mutex poisoned")
     }
 
     /// Replace the global hold mode default. New value applies to the
@@ -96,7 +89,7 @@ impl Companion {
     /// emissions follow the mode that was in effect when their NoteOn
     /// scheduled them (resolution is deferred to release-time).
     pub fn set_global_hold_mode(&self, mode: crate::lane::HoldMode) {
-        if let Ok(mut g) = self.hold_mode.lock() {
+        if let Ok(mut g) = self.world.global_hold_mode.lock() {
             *g = mode;
         }
     }

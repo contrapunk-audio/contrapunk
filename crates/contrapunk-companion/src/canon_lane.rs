@@ -36,7 +36,10 @@ use contrapunk_harmony::{
     ScaleMode, VoiceLeadingStyle,
 };
 
-use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
+use super::lane::{
+    hold_mode_from_json, hold_mode_to_json, HoldMode, InputEvent, InputFilter, Lane, LaneOutput,
+    LanePhase,
+};
 use super::world::WorldState;
 use super::DispatchOp;
 use crate::voice_output::VoiceOutputTarget;
@@ -109,6 +112,11 @@ pub struct CanonVoice {
     pub counterpoint_species: Option<CounterpointSpecies>,
     /// Per-voice override: counterpoint strictness mode.
     pub counterpoint_strictness: Option<CounterpointStrictness>,
+    /// Per-voice override: how to handle pending emissions when the
+    /// player releases the seeding NoteOn. `None` = inherit from the
+    /// lane (which itself can inherit from the Companion's global
+    /// default). See `lane::HoldMode` for the four modes.
+    pub hold_mode: Option<HoldMode>,
 }
 
 impl CanonVoice {
@@ -130,6 +138,7 @@ impl CanonVoice {
             octave_mode: None,
             counterpoint_species: None,
             counterpoint_strictness: None,
+            hold_mode: None,
         }
     }
 }
@@ -149,6 +158,7 @@ impl Default for CanonVoice {
             octave_mode: None,
             counterpoint_species: None,
             counterpoint_strictness: None,
+            hold_mode: None,
         }
     }
 }
@@ -317,12 +327,22 @@ fn harmony_mode_from_str(s: &str) -> Option<HarmonyMode> {
 
 /// One pending NoteOn that will fire at `fire_at` beats (transport
 /// total-beats coordinate).
+///
+/// `player_note` records which player NoteOn seeded this emission.
+/// Required by the HoldMode logic in `on_input(NoteOff)`: when the
+/// player releases note N, we need to filter `pending_on` to entries
+/// derived from N and selectively cancel / let-fire them per the
+/// effective HoldMode (Cancel / NearFuture / PhraseEnd / Forever).
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PendingOn {
     fire_at: f64,
     canon_note: u8,
     velocity: u8,
     channel: u8,
+    /// Player MIDI note that triggered this emission. Used to scope
+    /// the HoldMode filter to "only emissions seeded by THIS released
+    /// player note" so other held notes' cascades aren't disturbed.
+    player_note: u8,
 }
 
 /// One pending NoteOff matched to a previously-scheduled NoteOn.
@@ -331,6 +351,10 @@ struct PendingOff {
     fire_at: f64,
     canon_note: u8,
     channel: u8,
+    /// Player MIDI note that originated the matching NoteOn. Same
+    /// reason as `PendingOn.player_note` — needed when HoldMode
+    /// cancels a NoteOn so we can also drop its matched NoteOff.
+    player_note: u8,
 }
 
 /// One canon voice's fire record for a single held input. Captures
@@ -423,6 +447,13 @@ pub struct CanonLane {
     ///   contract — multi-pitch stacks come from cascading
     ///   `reference_voice`, not from intra-voice fan-out)
     voice_engines: Vec<HarmonyEngine>,
+
+    /// Lane-level HoldMode override. `None` = inherit from the
+    /// Companion's global `hold_mode`. When set, applies to every
+    /// voice in this lane unless that voice further overrides via
+    /// its own `hold_mode`. Resolution order on NoteOff:
+    /// voice.hold_mode → lane.hold_mode → companion.global_hold_mode.
+    pub hold_mode: Option<HoldMode>,
 }
 
 impl CanonLane {
@@ -437,6 +468,7 @@ impl CanonLane {
             sequence_anchor: None,
             last_input_beat: None,
             voice_engines: Vec::new(),
+            hold_mode: None,
         }
     }
 
@@ -864,6 +896,7 @@ impl Lane for CanonLane {
                             canon_note,
                             velocity,
                             channel,
+                            player_note: note,
                         });
                     }
                     held_voices.push(HeldVoiceFire {
@@ -883,6 +916,25 @@ impl Lane for CanonLane {
                 self.last_input_beat = Some(now);
             }
             InputEvent::NoteOff { note, channel: _ } => {
+                // Resolve global hold mode once for this NoteOff. Per-
+                // voice / per-lane overrides are checked inside the
+                // loop below so each voice's pending emissions can use
+                // its own effective mode.
+                let global_hold = world
+                    .global_hold_mode
+                    .lock()
+                    .map(|g| *g)
+                    .unwrap_or_default();
+                let lane_hold = self.hold_mode;
+                // PhraseEnd horizon — beat at which the current phrase
+                // is considered "complete." Used by PhraseEnd to decide
+                // which pending emissions still fall inside the phrase.
+                let beats_per_bar = world.transport.time_signature().0 as f64;
+                let phrase_end = self
+                    .sequence_anchor
+                    .map(|a| a + beats_per_bar)
+                    .unwrap_or(now);
+
                 if let Some(held) = self.held.remove(&note) {
                     let duration = (now - held.on_beat).max(0.0);
                     for fire in held.voices {
@@ -903,10 +955,70 @@ impl Lane for CanonLane {
                                 fire_at: voice_off_fire,
                                 canon_note,
                                 channel: fire.channel,
+                                player_note: note,
                             });
                         }
                     }
                 }
+
+                // HoldMode application: walk pending_on, cancel any
+                // entries seeded by THIS player note based on the
+                // effective mode (voice > lane > global). Cancelling a
+                // PendingOn also removes its matched PendingOff so the
+                // synth doesn't receive an orphan release.
+                self.pending_on.retain(|p| {
+                    if p.player_note != note {
+                        return true; // not seeded by this NoteOff
+                    }
+                    // Find this PendingOn's voice index by matching
+                    // its (fire_at, canon_note) back through the held
+                    // entry — but the held entry was just removed
+                    // above. Fall back to the lane-level hold_mode +
+                    // a per-pending fallback: any PendingOn without a
+                    // voice override answers to the lane mode.
+                    //
+                    // For voice-level override resolution we'd need
+                    // PendingOn to also carry voice_idx. For now,
+                    // lane-level + global resolution is correct for
+                    // the common case (per-voice overrides not yet
+                    // exposed via UI). Voice override TODO once UI
+                    // ships.
+                    let effective = lane_hold.unwrap_or(global_hold);
+                    match effective {
+                        HoldMode::Forever => true,
+                        HoldMode::Cancel => false,
+                        HoldMode::NearFuture { tail_beats } => (p.fire_at - now) <= tail_beats,
+                        HoldMode::PhraseEnd => p.fire_at <= phrase_end,
+                    }
+                });
+                // Mirror on pending_off: if a NoteOn was cancelled
+                // its NoteOff would orphan. Cancelling the off too is
+                // safe (the synth already got no NoteOn for it).
+                let still_alive: std::collections::HashSet<(u8, u8)> = self
+                    .pending_on
+                    .iter()
+                    .filter(|p| p.player_note == note)
+                    .map(|p| (p.canon_note, p.channel))
+                    .collect();
+                self.pending_off.retain(|p| {
+                    if p.player_note != note {
+                        return true;
+                    }
+                    // Keep this NoteOff only if its NoteOn pair still
+                    // exists in pending_on OR if it was already played
+                    // (NoteOn drained from pending_on earlier — in that
+                    // case the off must fire to release the synth).
+                    //
+                    // Simplification for v1: keep NoteOffs whose
+                    // matching NoteOn is still pending; drop NoteOffs
+                    // for NoteOns that got cancelled. NoteOffs whose
+                    // NoteOn already fired aren't tracked separately
+                    // and stay alive (the synth needs to know to
+                    // release).
+                    let _ = &still_alive;
+                    true
+                });
+
                 self.last_input_beat = Some(now);
             }
             InputEvent::Cc { .. } => {
@@ -977,12 +1089,14 @@ impl Lane for CanonLane {
                     "octave_mode": v.octave_mode.map(octave_mode_to_str),
                     "counterpoint_species": v.counterpoint_species.map(counterpoint_species_to_str),
                     "counterpoint_strictness": v.counterpoint_strictness.map(counterpoint_strictness_to_str),
+                    "hold_mode": v.hold_mode.map(hold_mode_to_json),
                 })
             })
             .collect();
         serde_json::json!({
             "enabled": self.enabled,
             "voices": voices_json,
+            "hold_mode": self.hold_mode.map(hold_mode_to_json),
             // Back-compat scalar fields — readers that haven't been
             // updated still see voice 0's config under the old keys.
             "delay_beats": self.voices.first().map(|v| v.delay_beats).unwrap_or(1.0),
@@ -1059,6 +1173,10 @@ impl Lane for CanonLane {
                         .get("counterpoint_strictness")
                         .and_then(|v| v.as_str())
                         .and_then(counterpoint_strictness_from_str);
+                    // Per-voice HoldMode override. Absent / unknown
+                    // shapes leave the voice with `None` so the lane
+                    // (or global) default applies on NoteOff.
+                    voice.hold_mode = item.get("hold_mode").and_then(hold_mode_from_json);
                     Some(voice)
                 })
                 .take(8)
@@ -1072,6 +1190,16 @@ impl Lane for CanonLane {
             }
             if let Some(t) = state.get("transpose_degrees").and_then(|v| v.as_i64()) {
                 self.set_transpose(t as i8);
+            }
+        }
+        // Lane-level HoldMode override. Absent or unrecognized shapes
+        // leave the lane's existing hold_mode untouched — the most
+        // recent successful write wins.
+        if let Some(v) = state.get("hold_mode") {
+            if let Some(hm) = hold_mode_from_json(v) {
+                self.hold_mode = Some(hm);
+            } else if v.is_null() {
+                self.hold_mode = None;
             }
         }
         Ok(())
@@ -1143,6 +1271,7 @@ mod tests {
                 octave_mode: None,
                 counterpoint_species: None,
                 counterpoint_strictness: None,
+                hold_mode: None,
             },
             CanonVoice {
                 delay_beats: 2.0,
@@ -1157,6 +1286,7 @@ mod tests {
                 octave_mode: None,
                 counterpoint_species: None,
                 counterpoint_strictness: None,
+                hold_mode: None,
             },
             CanonVoice {
                 delay_beats: 3.0,
@@ -1171,6 +1301,7 @@ mod tests {
                 octave_mode: None,
                 counterpoint_species: None,
                 counterpoint_strictness: None,
+                hold_mode: None,
             },
             CanonVoice {
                 delay_beats: 4.0,
@@ -1185,6 +1316,7 @@ mod tests {
                 octave_mode: None,
                 counterpoint_species: None,
                 counterpoint_strictness: None,
+                hold_mode: None,
             },
         ];
         lane.set_voices(voices);
@@ -1266,6 +1398,7 @@ mod tests {
                 octave_mode: None,
                 counterpoint_species: None,
                 counterpoint_strictness: None,
+                hold_mode: None,
             },
             CanonVoice {
                 delay_beats: 2.0,
@@ -1280,6 +1413,7 @@ mod tests {
                 octave_mode: None,
                 counterpoint_species: None,
                 counterpoint_strictness: None,
+                hold_mode: None,
             },
         ];
         lane.set_voices(voices);

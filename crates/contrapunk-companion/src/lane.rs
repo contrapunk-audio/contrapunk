@@ -74,6 +74,44 @@ impl Default for HoldMode {
     }
 }
 
+/// Serialize a HoldMode to a stable JSON object the Tauri / WASM /
+/// website state-restore paths can round-trip. Shape:
+///   {"kind":"cancel"}
+///   {"kind":"near_future","tail_beats":1.0}
+///   {"kind":"phrase_end"}
+///   {"kind":"forever"}
+pub fn hold_mode_to_json(m: HoldMode) -> serde_json::Value {
+    match m {
+        HoldMode::Cancel => serde_json::json!({ "kind": "cancel" }),
+        HoldMode::NearFuture { tail_beats } => {
+            serde_json::json!({ "kind": "near_future", "tail_beats": tail_beats })
+        }
+        HoldMode::PhraseEnd => serde_json::json!({ "kind": "phrase_end" }),
+        HoldMode::Forever => serde_json::json!({ "kind": "forever" }),
+    }
+}
+
+/// Inverse of `hold_mode_to_json`. Unknown / malformed shapes return
+/// `None` so callers can fall back to the lane's existing mode rather
+/// than a destructive reset.
+pub fn hold_mode_from_json(v: &serde_json::Value) -> Option<HoldMode> {
+    let kind = v.get("kind").and_then(|s| s.as_str())?;
+    match kind {
+        "cancel" => Some(HoldMode::Cancel),
+        "near_future" => {
+            let tail_beats = v
+                .get("tail_beats")
+                .and_then(|n| n.as_f64())
+                .unwrap_or(1.0)
+                .clamp(0.0, 32.0);
+            Some(HoldMode::NearFuture { tail_beats })
+        }
+        "phrase_end" => Some(HoldMode::PhraseEnd),
+        "forever" => Some(HoldMode::Forever),
+        _ => None,
+    }
+}
+
 /// Which orchestration phase a Lane participates in.
 ///
 /// The orchestrator runs all `Sense` lanes first, then all `Mutate`,
