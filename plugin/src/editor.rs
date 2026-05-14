@@ -11,6 +11,8 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use contrapunk_companion::Companion;
+
 use crate::{ContrapunkParams, PluginNoteState};
 
 /// Width and height of the plugin editor window.
@@ -25,6 +27,11 @@ pub struct ContrapunkEditorHandler {
     /// pushes a `noteUpdate` message so the Piano / Fretboard light
     /// up while the plugin is generating MIDI.
     note_state: Arc<Mutex<PluginNoteState>>,
+    /// Shared with the audio thread. Editor IPC handlers reach into
+    /// the Companion via `try_lock` to apply user config changes
+    /// (HoldMode, canon voices, etc.) without blocking the per-block
+    /// `tick_tagged` call in `process()`.
+    companion: Arc<Mutex<Companion>>,
     /// Last `noteUpdate` payload pushed. Used to suppress redundant
     /// sends when nothing changed — keeps the JS bridge quiet.
     last_note_json: String,
@@ -51,13 +58,17 @@ impl ContrapunkEditorHandler {
     /// payload matching the Tauri / WASM shape. Returns `None` if
     /// the snapshot matches the last one sent (no change → no IPC).
     fn note_update_json(&mut self) -> Option<String> {
-        let (input, harmony) = {
+        let (input, harmony, canon, counterpoint) = {
             let s = self.note_state.lock().ok()?;
             let mut input: Vec<u8> = s.input_notes.iter().copied().collect();
             let mut harmony: Vec<u8> = s.harmony_notes.iter().copied().collect();
+            let mut canon: Vec<u8> = s.canon_notes.iter().copied().collect();
+            let mut counterpoint: Vec<u8> = s.counterpoint_notes.iter().copied().collect();
             input.sort_unstable();
             harmony.sort_unstable();
-            (input, harmony)
+            canon.sort_unstable();
+            counterpoint.sort_unstable();
+            (input, harmony, canon, counterpoint)
         };
         let key = format!("{:?}", self.params.key.value());
         let empty: Vec<u8> = Vec::new();
@@ -66,10 +77,8 @@ impl ContrapunkEditorHandler {
             "inputNotes": input,
             "harmonyNotes": harmony,
             "borrowedNotes": empty,
-            // Plugin has no Companion lanes yet — these stay empty
-            // so the Piano falls back to generic harmony coloring.
-            "canonNotes": empty,
-            "counterpointNotes": empty,
+            "canonNotes": canon,
+            "counterpointNotes": counterpoint,
             "chordName": "",
             "lastBorrowedFrom": "",
             "currentKey": key,
@@ -159,6 +168,56 @@ impl EditorHandler for ContrapunkEditorHandler {
                     }
                 }
             }
+            // ─── Companion IPC ────────────────────────────────────
+            // All companion handlers use `try_lock` so a busy audio
+            // thread doesn't block the editor message dispatcher.
+            // UI commands are user-rate (≤10/sec); dropped messages
+            // are recoverable (user retries or on_params_changed
+            // resyncs).
+            "companionSetEnabled" => {
+                if let Some(enabled) = msg.get("value").and_then(|v| v.as_bool()) {
+                    if let Ok(c) = self.companion.try_lock() {
+                        c.enabled
+                            .store(enabled, std::sync::atomic::Ordering::Release);
+                    }
+                }
+            }
+            "companionSetGlobalHoldMode" => {
+                if let Some(hm_json) = msg.get("value") {
+                    if let Some(mode) =
+                        contrapunk_companion::lane::hold_mode_from_json(hm_json)
+                    {
+                        if let Ok(c) = self.companion.try_lock() {
+                            c.set_global_hold_mode(mode);
+                        }
+                    }
+                }
+            }
+            "canonConfigure" => {
+                if let Some(partial) = msg.get("value") {
+                    if let Ok(mut c) = self.companion.try_lock() {
+                        let _ = c.configure_lane("canon", partial.clone());
+                    }
+                }
+            }
+            "counterpointConfigure" => {
+                if let Some(partial) = msg.get("value") {
+                    if let Ok(mut c) = self.companion.try_lock() {
+                        let _ = c.configure_lane("counterpoint", partial.clone());
+                    }
+                }
+            }
+            "canonSetVoices" => {
+                // Voices arrive as the same JSON shape Tauri's
+                // canon_set_voices command builds. Delegate to the
+                // canon lane's configure_lane wrapped with { voices }.
+                if let Some(voices) = msg.get("value") {
+                    if let Ok(mut c) = self.companion.try_lock() {
+                        let payload = serde_json::json!({ "voices": voices });
+                        let _ = c.configure_lane("canon", payload);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -173,6 +232,7 @@ impl EditorHandler for ContrapunkEditorHandler {
 pub fn create_editor(
     params: Arc<ContrapunkParams>,
     note_state: Arc<Mutex<PluginNoteState>>,
+    companion: Arc<Mutex<Companion>>,
     state: &Arc<WebViewState>,
 ) -> WebViewEditor {
     let protocol = "contrapunk".to_string();
@@ -188,6 +248,7 @@ pub fn create_editor(
     let handler = ContrapunkEditorHandler {
         params,
         note_state,
+        companion,
         last_note_json: String::new(),
     };
 

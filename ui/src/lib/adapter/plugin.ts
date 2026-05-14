@@ -43,9 +43,9 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// Chain editor is Tauri-only — plugin chain is fixed by the
 		// nih-plug pipeline.
 		chainEditor: false,
-		// editor.rs frame loop pushes input/harmony notes via the
-		// `noteUpdate` message; canon/counterpoint stay empty (no
-		// Companion lanes in the plugin yet).
+		// editor.rs frame loop pushes input/harmony/canon/counterpoint
+		// notes via the `noteUpdate` message — Companion lanes are
+		// wired through the audio thread now.
 		noteUpdates: true,
 		// DAW is the master clock in plugin mode — our TransportBar
 		// would just be a frozen mirror of the host. Hide it.
@@ -57,11 +57,11 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// fire send() into the void because plugin/src/lib.rs has no
 		// audio FX params today. Hide until those land.
 		audioFx: false,
-		// Plugin core doesn't wire Companion (canon + counterpoint)
-		// yet — deferred to v1.4. Hide CompanionPanel and master
-		// HoldMode toggle so users don't tweak controls that go
-		// nowhere.
-		companionLanes: false
+		// Companion lanes (canon + counterpoint) are wired in the
+		// plugin's process() via Companion::tick_tagged. CompanionPanel
+		// IPC handlers in editor.rs route HoldMode / canon_configure /
+		// counterpoint_configure into the running plugin instance.
+		companionLanes: true
 	} as const;
 
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;
@@ -223,12 +223,15 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// No-op in plugin host today.
 	}
 
-	async canonConfigure(_partial: Record<string, unknown>): Promise<void> {
-		// No-op in plugin host today.
+	async canonConfigure(partial: Record<string, unknown>): Promise<void> {
+		// editor.rs's `canonConfigure` handler forwards `value` to
+		// `Companion::configure_lane("canon", _)`. UI uses this for
+		// per-lane HoldMode + voice-cascade config.
+		this.send('canonConfigure', partial);
 	}
 
-	async counterpointConfigure(_partial: Record<string, unknown>): Promise<void> {
-		// No-op in plugin host today.
+	async counterpointConfigure(partial: Record<string, unknown>): Promise<void> {
+		this.send('counterpointConfigure', partial);
 	}
 
 	async counterpointState(): Promise<{

@@ -183,6 +183,21 @@ impl Transport {
         self.last_crossed_beat.store(u64::MAX, Ordering::Relaxed);
     }
 
+    /// Seek `sample_pos` to an absolute value. Re-anchors
+    /// `last_crossed_beat` so beat-crossing detection doesn't fire
+    /// a retroactive burst (going forward) or stall (going backward).
+    /// Used by host-driven adapters (e.g. nih-plug plugins reading
+    /// `ProcessContext::transport().pos_samples()`) to follow DAW
+    /// loop / jump / locate events.
+    pub fn set_sample_pos(&self, sample_pos: u64) {
+        self.sample_pos.store(sample_pos, Ordering::Relaxed);
+        let bpm = self.bpm();
+        let total_beats = (sample_pos as f64 / self.sample_rate() as f64) * (bpm / 60.0);
+        let current_beat = total_beats.floor() as u64;
+        self.last_crossed_beat
+            .store(current_beat, Ordering::Relaxed);
+    }
+
     // ─── Audio-thread API ─────────────────────────────────────────
 
     /// Advance the clock by `frames` samples. Called from the audio

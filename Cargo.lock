@@ -749,6 +749,8 @@ name = "contrapunk_plugin"
 version = "1.2.0"
 dependencies = [
  "contrapunk",
+ "contrapunk-companion",
+ "contrapunk-transport",
  "nih_plug",
  "nih_plug_webview",
  "serde_json",

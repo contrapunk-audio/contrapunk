@@ -17,19 +17,23 @@ use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent 
 use contrapunk::harmony::{
     HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle,
 };
+use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
+use contrapunk_transport::Transport;
 
 /// Live note tracking shared between the audio thread and the
 /// editor's frame loop. The editor reads this every UI tick and
 /// pushes it to the JS side as a `noteUpdate` event so the Piano /
 /// Fretboard light up while the plugin is generating MIDI.
 ///
-/// Plugin doesn't host Companion lanes today, so `canon_notes` and
-/// `counterpoint_notes` stay empty — the Piano falls back to
-/// generic-harmony coloring for everything the engine emits.
+/// `canon_notes` and `counterpoint_notes` populate when the
+/// Companion's CanonLane / CounterpointLane emit `DispatchOp`s via
+/// `tick_tagged` or `on_input_tagged`. Piano colors them gold / lime.
 #[derive(Default)]
 pub struct PluginNoteState {
     pub input_notes: HashSet<u8>,
     pub harmony_notes: HashSet<u8>,
+    pub canon_notes: HashSet<u8>,
+    pub counterpoint_notes: HashSet<u8>,
 }
 
 // ── Parameter enums ──────────────────────────────────────────────────
@@ -197,7 +201,23 @@ impl Default for ContrapunkParams {
 
 struct ContrapunkPlugin {
     params: Arc<ContrapunkParams>,
-    engine: HarmonyEngine,
+    /// Engine wrapped in `Arc<Mutex<...>>` so the Companion's
+    /// `WorldState` (which expects `Arc<Mutex<HarmonyEngine>>`) and
+    /// the editor's IPC handlers (which need to read/write through
+    /// the same engine instance the audio thread sees) can share it.
+    /// Audio thread holds the lock briefly per block; editor uses
+    /// `try_lock` on the companion side to avoid blocking the
+    /// rendering callback.
+    engine: Arc<Mutex<HarmonyEngine>>,
+    /// Sample-driven transport. Synced from `ProcessContext::transport`
+    /// at the top of every `process()` call so canon lane scheduling
+    /// follows the DAW's master clock.
+    transport: Arc<Transport>,
+    /// Companion orchestrator owning the canon + counterpoint lanes.
+    /// Shared with the editor for IPC config changes (`canon_configure`
+    /// etc.); editor handlers use `try_lock` to avoid blocking the
+    /// audio thread's per-block tick.
+    companion: Arc<Mutex<Companion>>,
     guitar_input: Option<GuitarInput>,
     sample_rate: f32,
 
@@ -218,9 +238,29 @@ struct ContrapunkPlugin {
 
 impl Default for ContrapunkPlugin {
     fn default() -> Self {
+        // Build engine, transport, and Companion in the same order
+        // Tauri's AppState::default() uses (state.rs:152-168). The
+        // WorldState wraps Arc clones of both so the Companion sees
+        // the same engine instance the audio thread mutates.
+        let engine = Arc::new(Mutex::new(HarmonyEngine::new(
+            Key::C,
+            HarmonyMode::DiatonicThirds,
+        )));
+        let transport = Transport::new(48_000);
+        let world = WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
+        let companion = Arc::new(Mutex::new(Companion::new(world)));
+        {
+            let mut c = companion
+                .lock()
+                .expect("companion mutex poisoned at plugin init");
+            c.lanes.push(Box::new(CanonLane::new()));
+            c.lanes.push(Box::new(CounterpointLane::new()));
+        }
         Self {
             params: Arc::new(ContrapunkParams::default()),
-            engine: HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds),
+            engine,
+            transport,
+            companion,
             guitar_input: None,
             sample_rate: 48000.0,
             note_state: Arc::new(Mutex::new(PluginNoteState::default())),
@@ -237,47 +277,57 @@ impl Default for ContrapunkPlugin {
 
 impl ContrapunkPlugin {
     /// Sync DAW parameter values to the harmony engine.
-    /// Only updates when values actually change.
+    /// Only updates when values actually change. Holds the engine
+    /// lock for the duration of the param sync — DAW params change
+    /// at user-rate (<<1Hz typical), so the brief lock is fine.
     fn sync_params(&mut self) {
         let key = self.params.key.value();
+        let mode = self.params.harmony_mode.value();
+        let octave = self.params.octave_mode.value();
+        let voices = self.params.voice_count.value();
+        let vp = self.params.voice_position.value();
+        let auto_key = self.params.auto_key.value();
+        let vl = self.params.voice_leading.value();
+
+        // Skip the lock if nothing changed — common path on most blocks.
+        if key == self.last_key
+            && mode == self.last_mode
+            && octave == self.last_octave
+            && voices == self.last_voices
+            && vp == self.last_voice_pos
+            && auto_key == self.last_auto_key
+            && vl == self.last_voice_leading
+        {
+            return;
+        }
+
+        let mut engine = self.engine.lock().unwrap_or_else(|e| e.into_inner());
         if key != self.last_key {
-            self.engine.set_key(key.to_contrapunk());
+            engine.set_key(key.to_contrapunk());
             self.last_key = key;
         }
-
-        let mode = self.params.harmony_mode.value();
         if mode != self.last_mode {
-            self.engine.set_mode(mode.to_contrapunk());
+            engine.set_mode(mode.to_contrapunk());
             self.last_mode = mode;
         }
-
-        let octave = self.params.octave_mode.value();
         if octave != self.last_octave {
-            self.engine.set_octave_mode(octave.to_contrapunk());
+            engine.set_octave_mode(octave.to_contrapunk());
             self.last_octave = octave;
         }
-
-        let voices = self.params.voice_count.value();
         if voices != self.last_voices {
-            self.engine.set_voice_count(voices as usize);
+            engine.set_voice_count(voices as usize);
             self.last_voices = voices;
         }
-
-        let vp = self.params.voice_position.value();
         if vp != self.last_voice_pos {
-            self.engine.set_voice_position(vp as usize);
+            engine.set_voice_position(vp as usize);
             self.last_voice_pos = vp;
         }
-
-        let auto_key = self.params.auto_key.value();
         if auto_key != self.last_auto_key {
-            self.engine.set_auto_key(auto_key);
+            engine.set_auto_key(auto_key);
             self.last_auto_key = auto_key;
         }
-
-        let vl = self.params.voice_leading.value();
         if vl != self.last_voice_leading {
-            self.engine.set_voice_leading_enabled(vl);
+            engine.set_voice_leading_enabled(vl);
             self.last_voice_leading = vl;
         }
     }
@@ -292,7 +342,10 @@ impl ContrapunkPlugin {
         context: &mut impl ProcessContext<Self>,
     ) {
         let input_midi = u8::from(note);
-        let harmonized = self.engine.harmonize_note_on(note);
+        let harmonized = {
+            let mut engine = self.engine.lock().unwrap_or_else(|e| e.into_inner());
+            engine.harmonize_note_on(note)
+        };
         // Track for the editor's noteUpdate emission. Audio-thread
         // mutex; the lock is held briefly and the editor's read on
         // on_frame is best-effort. Lock failures degrade gracefully
@@ -321,6 +374,172 @@ impl ContrapunkPlugin {
         }
     }
 
+    /// Mirror nih-plug's host-provided `Transport` snapshot into our
+    /// sample-driven `contrapunk_transport::Transport`. Reads bpm /
+    /// play-state / pos_samples once per `process()` call. Loop and
+    /// locate events surface as a `pos_samples` jump bigger than a
+    /// few buffers — re-seat sample_pos via `set_sample_pos` so
+    /// beat-crossings stay aligned. Lock-free atomic writes only.
+    fn sync_dawtransport(&self, context: &mut impl ProcessContext<Self>) {
+        let dt = context.transport();
+        if let Some(tempo) = dt.tempo {
+            self.transport.set_bpm(tempo);
+        }
+        if let (Some(num), Some(_den)) = (dt.time_sig_numerator, dt.time_sig_denominator) {
+            // Contrapunk's Transport stores numerator + beat-unit
+            // separately; nih-plug uses i32 for both, we clamp.
+            self.transport
+                .set_time_signature(num.max(1) as u8, _den.max(1) as u8);
+        }
+        match (dt.playing, self.transport.is_running()) {
+            (true, false) => self.transport.play(),
+            (false, true) => self.transport.stop(),
+            _ => {}
+        }
+        if let Some(host_pos) = dt.pos_samples() {
+            let host_pos = host_pos.max(0) as u64;
+            let our_pos = self.transport.sample_pos();
+            let delta = host_pos as i64 - our_pos as i64;
+            // Threshold: anything beyond ~4 typical buffers (256 *
+            // 4 = 1024 samples) is a discontinuity, not natural
+            // drift. Re-seat to host position so canon scheduling
+            // doesn't lag through a loop wrap.
+            if delta < 0 || delta.unsigned_abs() > 1024 {
+                self.transport.set_sample_pos(host_pos);
+            }
+        }
+    }
+
+    /// Dispatch one MIDI input event through the Companion's lanes.
+    /// Returns `suppress_default` from `on_input_tagged` so the caller
+    /// can skip the regular harmony path when a lane fully owns this
+    /// event. Lock contention with the editor falls through to a
+    /// no-op (rare: editor IPC is user-rate, ~10Hz max).
+    fn companion_on_input(
+        &mut self,
+        ev: contrapunk_companion::InputEvent,
+        timing: u32,
+        context: &mut impl ProcessContext<Self>,
+    ) -> bool {
+        let (tagged, suppress) = {
+            let Ok(mut c) = self.companion.try_lock() else {
+                return false; // editor busy; skip companion this event
+            };
+            c.on_input_tagged(ev, &self.engine)
+        };
+        self.dispatch_tagged_ops(&tagged, timing, context);
+        suppress
+    }
+
+    /// Drain one block's worth of companion `tick_tagged` emissions.
+    /// Called once per `process()` after all MIDI input events have
+    /// been routed.
+    fn companion_tick(&mut self, context: &mut impl ProcessContext<Self>) {
+        let tagged = {
+            let Ok(mut c) = self.companion.try_lock() else {
+                return;
+            };
+            c.tick_tagged(&self.engine)
+        };
+        if !tagged.is_empty() {
+            self.dispatch_tagged_ops(&tagged, 0, context);
+        }
+    }
+
+    /// Translate a slice of `(lane_tag, DispatchOp)` into nih-plug
+    /// `NoteEvent`s and emit them via `context.send_event`. Also
+    /// updates the per-lane note-state HashSets so the editor's
+    /// `noteUpdate` payload colors the Piano correctly.
+    ///
+    /// MPE channel mapping: ch 2 = canon lane, ch 3 = counterpoint
+    /// lane, ch 1 reserved for the player melody. Future lanes get
+    /// added to the match.
+    fn dispatch_tagged_ops(
+        &mut self,
+        tagged: &[(&'static str, contrapunk_companion::DispatchOp)],
+        timing: u32,
+        context: &mut impl ProcessContext<Self>,
+    ) {
+        use contrapunk_companion::DispatchOp;
+        for (lane, op) in tagged {
+            match op {
+                DispatchOp::NoteOn {
+                    note,
+                    velocity,
+                    channel,
+                    ..
+                } => {
+                    let mpe_ch = match *lane {
+                        "canon" => 2,
+                        "counterpoint" => 3,
+                        _ => (*channel + 1).min(15),
+                    };
+                    context.send_event(NoteEvent::NoteOn {
+                        timing,
+                        voice_id: None,
+                        channel: mpe_ch,
+                        note: *note,
+                        velocity: *velocity as f32 / 127.0,
+                    });
+                    if let Ok(mut s) = self.note_state.lock() {
+                        match *lane {
+                            "canon" => {
+                                s.canon_notes.insert(*note);
+                            }
+                            "counterpoint" => {
+                                s.counterpoint_notes.insert(*note);
+                            }
+                            _ => {}
+                        }
+                        s.harmony_notes.insert(*note);
+                    }
+                }
+                DispatchOp::NoteOff { note, channel, .. } => {
+                    let mpe_ch = match *lane {
+                        "canon" => 2,
+                        "counterpoint" => 3,
+                        _ => (*channel + 1).min(15),
+                    };
+                    context.send_event(NoteEvent::NoteOff {
+                        timing,
+                        voice_id: None,
+                        channel: mpe_ch,
+                        note: *note,
+                        velocity: 0.0,
+                    });
+                    if let Ok(mut s) = self.note_state.lock() {
+                        match *lane {
+                            "canon" => {
+                                s.canon_notes.remove(note);
+                            }
+                            "counterpoint" => {
+                                s.counterpoint_notes.remove(note);
+                            }
+                            _ => {}
+                        }
+                        s.harmony_notes.remove(note);
+                    }
+                }
+                DispatchOp::AllNotesOff { .. } => {
+                    // Broadcast on every MPE channel — the DAW will
+                    // route to whichever synth is downstream.
+                    for ch in 0u8..16 {
+                        context.send_event(NoteEvent::MidiCC {
+                            timing,
+                            channel: ch,
+                            cc: 123, // All Notes Off
+                            value: 0.0,
+                        });
+                    }
+                    if let Ok(mut s) = self.note_state.lock() {
+                        s.canon_notes.clear();
+                        s.counterpoint_notes.clear();
+                    }
+                }
+            }
+        }
+    }
+
     /// Send harmonized NoteOff.
     fn send_harmonized_note_off(
         &mut self,
@@ -330,7 +549,10 @@ impl ContrapunkPlugin {
         context: &mut impl ProcessContext<Self>,
     ) {
         let input_midi = u8::from(note);
-        let released = self.engine.harmonize_note_off(note);
+        let released = {
+            let mut engine = self.engine.lock().unwrap_or_else(|e| e.into_inner());
+            engine.harmonize_note_off(note)
+        };
         if let Ok(mut s) = self.note_state.lock() {
             s.input_notes.remove(&input_midi);
             for (i, &h_note) in released.iter().enumerate() {
@@ -464,6 +686,7 @@ impl Plugin for ContrapunkPlugin {
         Some(Box::new(editor::create_editor(
             self.params.clone(),
             Arc::clone(&self.note_state),
+            Arc::clone(&self.companion),
             &self.params.webview_state,
         )))
     }
@@ -497,11 +720,27 @@ impl Plugin for ContrapunkPlugin {
         // Sync parameter changes to engine
         self.sync_params();
 
+        // Sync DAW transport → our sample-driven Transport so canon
+        // lane scheduling follows the host clock. Per-block snapshot:
+        // bpm, play/stop, sample_pos. Loop/jump discontinuities
+        // detected via delta-bigger-than-buffer-size heuristic.
+        self.sync_dawtransport(context);
+
+        // Advance our clock by this block. `sync_dawtransport` may
+        // have already seeked sample_pos to match the DAW; advance
+        // applies on top so beat-crossings fire normally for this
+        // block's worth of samples.
+        let frames = buffer.samples() as u32;
+        self.transport.advance(frames);
+
         let input_mode = self.params.input_mode.value();
 
         match input_mode {
             PluginInputMode::Midi => {
-                // MIDI-to-MIDI: harmonize incoming MIDI events
+                // MIDI-to-MIDI: each incoming MIDI event runs through
+                // the Companion (canon + counterpoint lanes) AND, if
+                // the companion doesn't suppress, the regular harmony
+                // path. Mirrors `commands/engine.rs:600-633` in Tauri.
                 while let Some(event) = context.next_event() {
                     match event {
                         NoteEvent::NoteOn {
@@ -510,8 +749,21 @@ impl Plugin for ContrapunkPlugin {
                             velocity,
                             ..
                         } => {
-                            if let Ok(wmidi_note) = wmidi::Note::try_from(note) {
-                                self.send_harmonized_note_on(timing, wmidi_note, velocity, context);
+                            let suppress = self.companion_on_input(
+                                contrapunk_companion::InputEvent::NoteOn {
+                                    note,
+                                    velocity: (velocity * 127.0) as u8,
+                                    channel: 0,
+                                },
+                                timing,
+                                context,
+                            );
+                            if !suppress {
+                                if let Ok(wmidi_note) = wmidi::Note::try_from(note) {
+                                    self.send_harmonized_note_on(
+                                        timing, wmidi_note, velocity, context,
+                                    );
+                                }
                             }
                         }
                         NoteEvent::NoteOff {
@@ -520,16 +772,30 @@ impl Plugin for ContrapunkPlugin {
                             velocity,
                             ..
                         } => {
-                            if let Ok(wmidi_note) = wmidi::Note::try_from(note) {
-                                self.send_harmonized_note_off(
-                                    timing, wmidi_note, velocity, context,
-                                );
+                            let suppress = self.companion_on_input(
+                                contrapunk_companion::InputEvent::NoteOff { note, channel: 0 },
+                                timing,
+                                context,
+                            );
+                            if !suppress {
+                                if let Ok(wmidi_note) = wmidi::Note::try_from(note) {
+                                    self.send_harmonized_note_off(
+                                        timing, wmidi_note, velocity, context,
+                                    );
+                                }
                             }
                         }
                         // Forward other events unchanged
                         other => context.send_event(other),
                     }
                 }
+
+                // Drain scheduled / delayed canon emissions for this
+                // block. `tick_tagged` returns the ops the lanes want
+                // dispatched this tick — translate each to a NoteEvent
+                // at timing=0 (block start). Sample-accurate scheduling
+                // within the block is a v1.4 problem.
+                self.companion_tick(context);
             }
             PluginInputMode::Audio => {
                 // Audio-to-MIDI: pitch detect from guitar audio, then harmonize
