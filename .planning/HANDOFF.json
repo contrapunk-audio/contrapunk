@@ -1,0 +1,209 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-14T15:32:27Z",
+  "context": "session-cleanup",
+  "phase": null,
+  "phase_name": null,
+  "phase_dir": null,
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "paused",
+  "milestone": "v1.3.x — HoldMode + tempo-sync delay + cross-surface hardening",
+  "v1_3_0_release_status": "NOT releasing per user 2026-05-14; all cleanup work shipping piecemeal to main instead",
+  "session_summary": "13-hour brutal-critic-driven cleanup pass. 10 commits since v1.2.0. Started with v1.3.0 release prep, found 10/21 audit items were phantom bugs from stale planning docs. Shipped real fixes + ported plugin Companion lanes (was deferred to v1.4). Currently scoping I/O tab redesign as the next user-driven feature, not for release.",
+  "commits_this_session": [
+    {"hash": "f580372", "subject": "fix(companion): HoldMode applies to already-playing canon notes (#11)", "summary": "C1+C2 in canon_lane NoteOff handler — orphan NoteOffs for unfired delayed voices in Cancel mode, plus retrigger dedup. 2 new regression tests."},
+    {"hash": "e7f59d3", "subject": "feat(fx): tempo-synced delay (transport-anchored, hard re-tap)", "summary": "DelayParams.sync_enabled + subdivision. Subdivisions match Ableton convention. Tauri-only; WASM/plugin stub the setters."},
+    {"hash": "73afe0e", "subject": "fix(tauri): wire per-lane note attribution to the Piano UI", "summary": "Tauri router uses tick_tagged + on_input_tagged; dispatch_companion_ops routes by lane tag into canon_notes/counterpoint_notes HashSets; NoteUpdatePayload carries them; tauri.ts maps; Piano colors lane-specific."},
+    {"hash": "8af66ff", "subject": "chore: untrack ui/node_modules + ui/build; add node_modules/, graphify-out/ to .gitignore", "summary": "11,443 node_modules files + 66 ui/build files were tracked in git. Untracked + added to gitignore."},
+    {"hash": "b065eb5", "subject": "fix: brutal-critic punch list — orphan NoteOffs, stuck presets, mutex consistency", "summary": "C1+C2 follow-up, per-lane HashSet cleanup on stop, load_preset raise_panic fix, 12 silent-drop mutex sites converted, Knob a11y, subdivision Result, AdapterCapabilities scaffolding."},
+    {"hash": "130b63e", "subject": "feat(plugin): emit noteUpdate from editor + hide DAW-managed UI sections", "summary": "PluginNoteState shared between audio thread and editor on_frame. transportControl/midiDevicePicker capabilities hide TransportBar + MIDI device pickers in plugin mode."},
+    {"hash": "54df700", "subject": "fix: brutal-critic v2 punch list — phantom-bug-aware Tier 1-3 fixes", "summary": "16 files. canon_lane .expect→unwrap_or, delay set_mix/feedback round instead of truncate, Subdivision::from_u8 eprintln, with_transport builder fix, type_id String alloc eliminated end-to-end via &'static str trait tightening, WasmAdapter destroy() RAF/interval cleanup, TauriAdapter listener double-start guard, load_preset regression test, poison-recovery test. audioFx + companionLanes capabilities added."},
+    {"hash": "279a613", "subject": "docs: refresh STATE.md, CLAUDE.md footgun #3, remove stale .continue-here.md", "summary": "STATE.md frontmatter advanced to v1.3.x. CLAUDE.md footgun #3 rewritten (was citing deleted src/audio_out/sine_synth.rs:192). .continue-here.md deleted (was stale). Orphaned worktree agent-a4e059e6 removed."},
+    {"hash": "fe83b54", "subject": "chore(tauri): delete dead calibration code (no consumer)", "summary": "-412 LOC. Tauri-side GuitarCalibrationProfile shim was unrelated to crates/contrapunk-audio's real struct AND had no consumer."},
+    {"hash": "e8aaff8", "subject": "feat(plugin): wire Companion lanes (canon + counterpoint) into VST3/CLAP", "summary": "6 phases. engine→Arc<Mutex<HarmonyEngine>>, Transport adapter for DAW context, on_input_tagged + tick_tagged per block, dispatch_tagged_ops→NoteEvent on MPE channels (canon=2, counterpoint=3), 5 IPC handlers in editor.rs (companionSetEnabled, companionSetGlobalHoldMode, canonConfigure, canonSetVoices, counterpointConfigure), noteUpdate now carries canon/counterpoint, plugin.ts noteUpdates + companionLanes capabilities flip to true. Added Transport::set_sample_pos. PluginAdapter setters wired to actual IPC instead of stubs."},
+    {"hash": "ef63d22", "subject": "style(plugin): cargo fmt drift from prior commit", "summary": "Whitespace only."}
+  ],
+  "completed_work": {
+    "v1_2_0_release": "shipped previously, in production",
+    "this_session_features_shipped_to_main": [
+      "HoldMode (#11) fully wired with regression tests covering all 4 modes × 3 scopes",
+      "Tempo-synced delay (Tauri only) with 4 subdivision math tests",
+      "Per-lane Piano colors on Tauri (was WASM only)",
+      "Plugin Companion lanes (canon + counterpoint) — previously deferred to v1.4, brought forward",
+      "Cross-surface AdapterCapabilities pattern: delayTempoSync, chainEditor, noteUpdates, transportControl, midiDevicePicker, audioFx, companionLanes"
+    ],
+    "bugs_fixed": [
+      "C1 orphan NoteOff in HoldMode::Cancel",
+      "C2 pending_off duplicates on rapid retrigger",
+      "Per-lane HashSet cleanup on stop_routing",
+      "load_preset missing raise_panic (stuck-MIDI-notes on preset switch)",
+      "12 silent-drop mutex lock patterns in router hot path",
+      "Knob a11y: tabindex + aria-disabled when disabled",
+      "set_delay_subdivision silently swallowed unknown tags",
+      "WasmAdapter destroy() ignored companionTickHandle/pollingHandle/_clockTimer/_audioCtx",
+      "TauriAdapter startRouting + init listener double-start leak",
+      "canon_lane.rs:860 .expect on housekeeping invariant",
+      "delay.rs set_mix/set_feedback truncated instead of rounded",
+      "guitarCapture.ts per-frame console.log spam (1.7×/sec in prod)",
+      "Tauri-side dead calibration code (412 LOC deleted)"
+    ],
+    "perf_wins": [
+      "type_id String alloc per-emitted-op per-tick eliminated (trait tightened to &'static str)",
+      "Subdivision: from_u8 eprintln on junk byte instead of silent fallback"
+    ],
+    "regression_tests_added": [
+      "hold_mode_cancel_drops_orphan_note_off_for_unfired_voice",
+      "rapid_retrigger_does_not_duplicate_pending_off",
+      "load_preset_raises_panic_pending",
+      "load_preset_unknown_name_does_not_raise_panic",
+      "test_drain_all_tracked_notes_survives_poisoned_lock (first poison-recovery test in project)"
+    ],
+    "docs_updates": [
+      "STATE.md frontmatter advanced to v1.3.x with completed v1.2.x Phase 2 issue table",
+      "CLAUDE.md footgun #3 rewritten — was citing deleted src/audio_out/sine_synth.rs",
+      ".planning/.continue-here.md deleted (was stale)",
+      "Orphaned .claude/worktrees/agent-a4e059e6 removed (was generating phantom dead-code reports)"
+    ],
+    "graphify_run": "graphify-out/graph.json built on full repo minus audio/video. 3833 nodes, 8204 edges, 180 communities (25 labeled). Use /graphify query for queries. Key god nodes: GuitarDataset (136 edges), WasmAdapter (108), PluginAdapter (89), TauriAdapter (88), HarmonyEngine (59)."
+  },
+  "remaining_work": {
+    "next_chunk_scoped_with_user": "I/O tab redesign + calibration port + voice input planning",
+    "scope_signed_off_2026_05_14": {
+      "1_new_io_tab": {
+        "description": "Add a new top-level tab 'I/O' between Play and Companion (or wherever appropriate) with a native subtab strip [Input | Output].",
+        "implementation_notes": "ui.activeTab gains 'io' variant. New ui.ioSubtab state ('input' | 'output'). Tab nav renders subtab strip only when activeTab='io'."
+      },
+      "2_input_subtab": {
+        "description": "Input subtab promotes MIDI device picker + guitar audio device picker + signal meter + Calibrate button to a single panel. Includes a source radio (MIDI / Guitar Audio / Voice).",
+        "components_to_build": ["InputPanel.svelte"],
+        "components_to_move": ["MidiDevices.svelte content", "GuitarInputPanel.svelte content"],
+        "voice_radio_state": "Greyed/coming-soon — radio option visible but disabled. Tooltip points to v1.4 ticket."
+      },
+      "3_output_subtab_VOICE_GEN_CHAIN_PRIMARY": {
+        "description": "PRIMARY VIEW: Voice Generation Chain visualization showing input → voice cards (canon/counterpoint/melody with hold mode + transpose + time offset + output destination) → output nodes. User said: 'this becomes the real UI at the end of the day'. Long-term may absorb Companion / Voices / Control panels into one canonical engine view.",
+        "components_to_build": ["VoiceGenerationChain.svelte", "VoiceCard.svelte", "OutputPanel.svelte"],
+        "components_to_move_into_output_subtab": ["Synth params from ChainPanel", "Delay + Reverb knobs from ChainPanel"],
+        "voice_card_shows": "type (Melody/Canon/Counterpoint), transpose (semitones or degrees), time offset (beats), hold mode (F/NF1/PE/C/-), output destination (Synth or external port)",
+        "click_to_edit": "Voice cards dispatch to CompanionPanel / VoicesPanel inline for that voice's config (don't reimplement, defer to detail editors)",
+        "v1_scope": "Static visualization, no live indicators, click-to-open-existing-detail-editor",
+        "v2_followup": "Live note pulse indicators when voice fires (use engine.canonNotes/counterpointNotes per-lane indexed sets)",
+        "v3_followup": "Inline drag-to-reorder, inline param editing"
+      },
+      "4_calibration_port": {
+        "description": "Port examples/guitar_calibrate.rs flow into a real Tauri command. Wire AudioNormalizer::from_profile() into GuitarBridge::start so per-string thresholds + noise floor + inharmonicity actually drive the pipeline. Add Calibrate button to Input subtab.",
+        "current_state": "crates/contrapunk-audio's GuitarCalibrationProfile struct exists, has correct shape, is computed correctly by examples/guitar_calibrate.rs, but no live consumer in src-tauri/src/guitar_bridge.rs, wasm/src/lib.rs, or plugin/src/lib.rs. The Tauri-side shim was deleted in fe83b54 (was a different struct, unrelated).",
+        "scope_estimate": "3-4 hours",
+        "risk": "AudioNormalizer::from_profile slot into GuitarBridge::start — need to verify clean integration. May require adding a load_calibration_profile() function that uses tauri::Manager.path().app_data_dir() and updates GuitarInputConfig at startup."
+      },
+      "5_remove_chain_tab": {
+        "description": "Chain tab merges into Output subtab. ChainPanel.svelte content moves into OutputPanel.svelte under the Voice Generation Chain.",
+        "tabs_after_change": "Play, Companion, Voices, I/O (was Chain)"
+      },
+      "6_voice_input_stub": {
+        "description": "Voice as third radio option in Input subtab. Greyed/disabled. Reserves the UI slot.",
+        "audio_pipeline_work_deferred": "v1.4 follow-up phase. Plan documented below."
+      }
+    },
+    "execution_order_signed_off": [
+      "1. Tab + subtab plumbing (ui.activeTab + ui.ioSubtab state, nav strip renders conditionally)",
+      "2. InputPanel.svelte (move MidiDevices + GuitarInputPanel content, add source radio)",
+      "3. VoiceGenerationChain.svelte + VoiceCard.svelte (read engine state, render flow)",
+      "4. OutputPanel.svelte (wrap chain viz + move synth/FX from ChainPanel)",
+      "5. Calibration port (Rust + Tauri command + wire GuitarBridge + UI button)",
+      "6. Remove Chain tab (merge content into Output subtab)",
+      "7. Voice input stub (greyed radio + tooltip)"
+    ],
+    "estimated_total": "~10 hours focused. Chain viz is biggest unknown (3-5 hours depending on SVG arrow iteration)."
+  },
+  "future_work_v1_4_or_later": {
+    "voice_input_pipeline": {
+      "reusable_from_guitar_80_pct": [
+        "crates/contrapunk-audio/src/detectors.rs — McLeod pitch detector handles vocal F0 well",
+        "crates/contrapunk-audio/src/onset.rs — spectral flux onset detection reusable",
+        "crates/contrapunk-audio/src/guitar_input.rs — ring buffer + processing block, source-agnostic"
+      ],
+      "new_for_voice_20_pct": [
+        "Vibrato pitch jitter smoothing: 5-7 sample centered median filter (~30 LOC)",
+        "Voiced/unvoiced detection: spectral flatness + harmonic-to-noise ratio (~50 LOC)",
+        "Vocal range constraint: per-register pitch clamping (Soprano 220-1000Hz, Alto 175-700, Tenor 130-525, Bass 80-330)",
+        "Smaller hop size: 128 vs 256 (latency budget — singers hear themselves)",
+        "Optional formant filter: high-shelf +6dB @ 1kHz pre-emphasis"
+      ],
+      "libraries_needed": [
+        "pitch_detection (already shipped) — McLeod",
+        "medians crate (~10kb) OR hand-rolled 30 lines for median filter",
+        "HNR computation: own impl from FFT, straightforward"
+      ],
+      "estimate": "~1 day focused work if guitar pipeline reused cleanly",
+      "plugin_implication": "PluginInputMode::Audio extends to support voice presets"
+    },
+    "export": {
+      "user_mentioned": "after we are done with some of this work we can work on exporting it",
+      "scope": "Export harmonized MIDI / audio. Separate feature.",
+      "options_to_explore": [
+        "MIDI file export of the multi-voice output",
+        "Audio render (offline) using built-in synth + FX",
+        "WAV export of just the input + harmony lanes",
+        "Loop / pattern capture (already partial with HistoryStrip)"
+      ]
+    },
+    "plugin_polish_for_v1_4": [
+      "Plugin audio FX wiring — currently UI hidden via audioFx: false capability",
+      "Plugin presets save/load wired",
+      "Plugin injectNoteOn actually routes through HarmonyEngine"
+    ],
+    "ScriptProcessorNode_fallback_removal": "guitarCapture.ts already uses AudioWorklet as primary. ScriptProcessor fallback could be deleted now that Safari ≥14.1 / Chrome ≥66 / Firefox ≥76 ship AudioWorklet. Cosmetic, ~1-2 hour cleanup.",
+    "humanizer_re_apply": "Slices 1+2 were shipped (9c59565 + 755eb22) then reverted with no body, then src/humanize/ entirely scrapped in bb6c691 for transport-reason. Re-apply candidate for v1.4. USER EXPLICITLY SAID SKIP for this session.",
+    "audio_thread_allocation_concerns": "tick_tagged returns Vec<DispatchOp> per block — heap alloc on audio thread. CONCERNS.md flags this. Pre-allocate scratch Vec on ContrapunkPlugin + Tauri router for v1.4 perf pass."
+  },
+  "decisions_made": [
+    {"decision": "NOT releasing v1.3.0 this session", "rationale": "User explicit decision 2026-05-14. Wants more work first.", "phase": null},
+    {"decision": "Skip ScriptProcessorNode cleanup", "rationale": "User said 'drop humaniser and audio worklyet for now'", "phase": null},
+    {"decision": "Skip humanizer re-apply", "rationale": "Same user message", "phase": null},
+    {"decision": "Port calibration NOW (not later)", "rationale": "User signed off — bundle with I/O restructure for coherence", "phase": null},
+    {"decision": "Voice input: plan + stub UI now, audio pipeline later", "rationale": "Three-step decision user signed off on: plan it out, figure libraries/techniques, then minimal implementation, then exporting", "phase": null},
+    {"decision": "Voice Generation Chain becomes PRIMARY view of Output subtab", "rationale": "User: 'this becomes the real UI at the end of the day'. Long-term: may absorb Companion/Voices/Control panels.", "phase": null},
+    {"decision": "Native subtab strip (not vertical split, not accordion)", "rationale": "User chose option 1. Familiar DAW pattern (Logic, Ableton)", "phase": null},
+    {"decision": "Plugin DAW channels: auto-detect read-only", "rationale": "User chose option 1. Plugin doesn't fight DAW routing", "phase": null},
+    {"decision": "Restructure first then voice (not voice first, not both at once)", "rationale": "Lower-risk staging. User chose option 1.", "phase": null},
+    {"decision": "Plugin Companion lanes shipped this session (was v1.4)", "rationale": "User wanted full sweep including plugin. Was 2.5-3 day estimate, fit in.", "phase": null}
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {"action": "DAW QA of plugin Companion path", "context": "Load the built VST3/CLAP in Logic/Ableton/Reaper/Bitwig; verify transport sync, canon/counterpoint emit, IPC handlers function. nih-plug doesn't ship a mock ProcessContext so manual is the only path.", "blocking": false},
+    {"action": "Restart Tauri (cargo tauri dev) to test session's binary changes", "context": "Multiple test points: HoldMode Cancel now actually cuts notes, per-lane Piano colors, tempo-synced delay BPM following, BPM input no longer snaps, metronome doesn't die on BPM change.", "blocking": false},
+    {"action": "Test ui/package-lock.json drift", "context": "Working tree shows ui/package-lock.json modified. Unrelated npm dep drift. Decide to commit or revert.", "blocking": false}
+  ],
+  "infrastructure_state": {
+    "tauri_dev_process": "Last instance bqfljuu3s exited mid-session. No instance running. Restart with: cd src-tauri && cargo tauri dev",
+    "macos_ci": "Building on every push. Last successful build was 130b63e. Most recent push was ef63d22.",
+    "graphify_out": "graphify-out/ contains current graph state. graph.json + GRAPH_REPORT.md current as of 2026-05-14 (graphify ran AFTER all session commits).",
+    "working_tree": "Only ui/package-lock.json modified. Unrelated to feature work. Decide separately.",
+    "background_tasks": "None running. Two .claude/worktrees/ entries exist (agent-a0f3ef94fc09399a7, agent-abd6f72596bdef84d) but are locked / valid."
+  },
+  "anti_patterns_discovered": [
+    {
+      "pattern": "Stale planning docs manufacturing phantom bugs",
+      "manifestation": "CLAUDE.md footgun #3 cited src/audio_out/sine_synth.rs:192 which was deleted in bb6c691. CONCERNS.md cited src/generator/, src/audio/inference.rs, src/humanize/ — all deleted. .planning/.continue-here.md cited #81 slice 3 as pending — already shipped. STATE.md frontmatter 3 update-cycles stale. Result: 10 of 21 brutal-critic audit items returned 'PHANTOM' verdicts after agents wasted time investigating non-existent code.",
+      "severity": "blocking",
+      "prevention_mechanism": "Update planning docs immediately after major refactors. Specifically: when src/X is moved to crates/Y, grep all .planning/**/*.md for src/X references and update or delete. Done partially in 279a613 but CONCERNS.md and STRUCTURE.md still cite deleted code — ~70% of CONCERNS.md is dead per critic #18."
+    },
+    {
+      "pattern": "Audit-bug-confidence-loop",
+      "manifestation": "Brutal-critic agents downstream cite stale docs as evidence, producing 'CONFIRMED REAL BUG' reports that are actually doc-rot artifacts. Three separate critics reported phantom bugs traceable to the same stale CLAUDE.md footgun.",
+      "severity": "advisory",
+      "prevention_mechanism": "Brutal-critic prompts should be instructed to verify file existence (Read or Grep) before treating an audit claim as real. Or run a doc-freshness audit before any brutal-critic dispatch."
+    },
+    {
+      "pattern": "Adapter capability flag should-flip-but-stays-stub",
+      "manifestation": "PluginAdapter had noteUpdates: false even after plugin emitted noteUpdates correctly — capability flag and implementation drift in opposite directions. Caught and fixed but worth structural mitigation.",
+      "severity": "advisory",
+      "prevention_mechanism": "When wiring a new feature, grep adapter capability files (ui/src/lib/adapter/*.ts) for related flags. Flip explicitly in the same commit."
+    }
+  ],
+  "context_notes": "User has clear vision: musicians-first UX, signal-flow visualization as central artifact, eventual absorption of multiple panels into Voice Generation Chain view. Session pace: rapid-fire decisions, prefers options-with-recommendations format. Test-first mindset (regression tests for every fix). Skeptical of audit claims (asked for brutal-critic verification of all 21 items, which surfaced the doc-rot pattern). v1.3 release deferred indefinitely; this work is feature-driven not release-driven.",
+  "uncommitted_files": ["ui/package-lock.json"],
+  "next_action": "Start with execution order step 1 — wire ui.activeTab to include 'io' variant + new ui.ioSubtab state + render subtab strip when activeTab='io'. File: ui/src/lib/stores/ui.svelte.ts. Then route in ui/src/routes/+page.svelte."
+}
