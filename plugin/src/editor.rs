@@ -9,9 +9,9 @@ use nih_plug_webview::{
 };
 use std::borrow::Cow;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use crate::ContrapunkParams;
+use crate::{ContrapunkParams, PluginNoteState};
 
 /// Width and height of the plugin editor window.
 const EDITOR_WIDTH: f64 = 900.0;
@@ -20,6 +20,14 @@ const EDITOR_HEIGHT: f64 = 700.0;
 /// Editor handler that bridges the Svelte UI to nih-plug parameters.
 pub struct ContrapunkEditorHandler {
     params: Arc<ContrapunkParams>,
+    /// Shared with the audio thread. Audio thread writes the active
+    /// input/harmony note sets here; the frame loop snapshots and
+    /// pushes a `noteUpdate` message so the Piano / Fretboard light
+    /// up while the plugin is generating MIDI.
+    note_state: Arc<Mutex<PluginNoteState>>,
+    /// Last `noteUpdate` payload pushed. Used to suppress redundant
+    /// sends when nothing changed — keeps the JS bridge quiet.
+    last_note_json: String,
 }
 
 impl ContrapunkEditorHandler {
@@ -38,11 +46,48 @@ impl ContrapunkEditorHandler {
         })
         .to_string()
     }
+
+    /// Snapshot the shared note state and build a noteUpdate JSON
+    /// payload matching the Tauri / WASM shape. Returns `None` if
+    /// the snapshot matches the last one sent (no change → no IPC).
+    fn note_update_json(&mut self) -> Option<String> {
+        let (input, harmony) = {
+            let s = self.note_state.lock().ok()?;
+            let mut input: Vec<u8> = s.input_notes.iter().copied().collect();
+            let mut harmony: Vec<u8> = s.harmony_notes.iter().copied().collect();
+            input.sort_unstable();
+            harmony.sort_unstable();
+            (input, harmony)
+        };
+        let key = format!("{:?}", self.params.key.value());
+        let empty: Vec<u8> = Vec::new();
+        let payload = serde_json::json!({
+            "type": "noteUpdate",
+            "inputNotes": input,
+            "harmonyNotes": harmony,
+            "borrowedNotes": empty,
+            // Plugin has no Companion lanes yet — these stay empty
+            // so the Piano falls back to generic harmony coloring.
+            "canonNotes": empty,
+            "counterpointNotes": empty,
+            "chordName": "",
+            "lastBorrowedFrom": "",
+            "currentKey": key,
+        })
+        .to_string();
+        if payload == self.last_note_json {
+            return None;
+        }
+        self.last_note_json = payload.clone();
+        Some(payload)
+    }
 }
 
 impl EditorHandler for ContrapunkEditorHandler {
-    fn on_frame(&mut self, _cx: &mut Context) {
-        // Could push real-time note state here if needed
+    fn on_frame(&mut self, cx: &mut Context) {
+        if let Some(json) = self.note_update_json() {
+            cx.send_message(json);
+        }
     }
 
     fn on_message(&mut self, cx: &mut Context, message: String) {
@@ -125,7 +170,11 @@ impl EditorHandler for ContrapunkEditorHandler {
 }
 
 /// Create the WebViewEditor for the plugin.
-pub fn create_editor(params: Arc<ContrapunkParams>, state: &Arc<WebViewState>) -> WebViewEditor {
+pub fn create_editor(
+    params: Arc<ContrapunkParams>,
+    note_state: Arc<Mutex<PluginNoteState>>,
+    state: &Arc<WebViewState>,
+) -> WebViewEditor {
     let protocol = "contrapunk".to_string();
     let config = WebViewConfig {
         title: "Contrapunk".to_string(),
@@ -136,7 +185,11 @@ pub fn create_editor(params: Arc<ContrapunkParams>, state: &Arc<WebViewState>) -
         workdir: PathBuf::from("/tmp/contrapunk-webview"),
     };
 
-    let handler = ContrapunkEditorHandler { params };
+    let handler = ContrapunkEditorHandler {
+        params,
+        note_state,
+        last_note_json: String::new(),
+    };
 
     WebViewEditor::new_with_webview(handler, state, config, move |w| {
         let proto = protocol.clone();

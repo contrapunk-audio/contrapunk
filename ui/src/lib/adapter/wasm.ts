@@ -88,7 +88,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 		chainEditor: false,
 		// dispatchOpsJson populates canon/counterpoint sets; piano
 		// colors work on WASM.
-		noteUpdates: true
+		noteUpdates: true,
+		// WASM runs its own Web Audio transport — the BPM/play UI
+		// drives the embedded audio context, so transportControl is
+		// authoritative on this surface.
+		transportControl: true,
+		// Web MIDI device pickers work in browsers that support the
+		// Web MIDI API; the UI gracefully degrades when not granted.
+		midiDevicePicker: true
 	} as const;
 
 	private initialized = false;

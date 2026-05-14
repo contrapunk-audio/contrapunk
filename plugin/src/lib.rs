@@ -8,7 +8,8 @@
 //! DAW-automatable plugin parameters.
 
 use nih_plug::prelude::*;
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
 mod editor;
 
@@ -16,6 +17,20 @@ use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent 
 use contrapunk::harmony::{
     HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle,
 };
+
+/// Live note tracking shared between the audio thread and the
+/// editor's frame loop. The editor reads this every UI tick and
+/// pushes it to the JS side as a `noteUpdate` event so the Piano /
+/// Fretboard light up while the plugin is generating MIDI.
+///
+/// Plugin doesn't host Companion lanes today, so `canon_notes` and
+/// `counterpoint_notes` stay empty — the Piano falls back to
+/// generic-harmony coloring for everything the engine emits.
+#[derive(Default)]
+pub struct PluginNoteState {
+    pub input_notes: HashSet<u8>,
+    pub harmony_notes: HashSet<u8>,
+}
 
 // ── Parameter enums ──────────────────────────────────────────────────
 
@@ -186,6 +201,11 @@ struct ContrapunkPlugin {
     guitar_input: Option<GuitarInput>,
     sample_rate: f32,
 
+    /// Shared with the editor for noteUpdate emission. Audio thread
+    /// writes on every send_harmonized_note_{on,off}; editor frame
+    /// loop reads on each tick.
+    note_state: Arc<Mutex<PluginNoteState>>,
+
     // Track last param values to detect changes
     last_key: PluginKey,
     last_mode: PluginMode,
@@ -203,6 +223,7 @@ impl Default for ContrapunkPlugin {
             engine: HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds),
             guitar_input: None,
             sample_rate: 48000.0,
+            note_state: Arc::new(Mutex::new(PluginNoteState::default())),
             last_key: PluginKey::C,
             last_mode: PluginMode::DiatonicThirds,
             last_octave: PluginOctaveMode::None,
@@ -270,7 +291,23 @@ impl ContrapunkPlugin {
         velocity: f32,
         context: &mut impl ProcessContext<Self>,
     ) {
+        let input_midi = u8::from(note);
         let harmonized = self.engine.harmonize_note_on(note);
+        // Track for the editor's noteUpdate emission. Audio-thread
+        // mutex; the lock is held briefly and the editor's read on
+        // on_frame is best-effort. Lock failures degrade gracefully
+        // (UI just stays on its last frame).
+        if let Ok(mut s) = self.note_state.lock() {
+            s.input_notes.insert(input_midi);
+            for (i, &h_note) in harmonized.iter().enumerate() {
+                // Skip i=0 — the engine returns the input pitch as the
+                // first element; that belongs in input_notes only.
+                if i == 0 {
+                    continue;
+                }
+                s.harmony_notes.insert(u8::from(h_note));
+            }
+        }
         for (i, &h_note) in harmonized.iter().enumerate() {
             // MPE: Ch 2 = melody (index 1), Ch 3+ = harmony voices
             let channel = (i + 1).min(15) as u8;
@@ -292,7 +329,17 @@ impl ContrapunkPlugin {
         velocity: f32,
         context: &mut impl ProcessContext<Self>,
     ) {
+        let input_midi = u8::from(note);
         let released = self.engine.harmonize_note_off(note);
+        if let Ok(mut s) = self.note_state.lock() {
+            s.input_notes.remove(&input_midi);
+            for (i, &h_note) in released.iter().enumerate() {
+                if i == 0 {
+                    continue;
+                }
+                s.harmony_notes.remove(&u8::from(h_note));
+            }
+        }
         for (i, &h_note) in released.iter().enumerate() {
             let channel = (i + 1).min(15) as u8;
             context.send_event(NoteEvent::NoteOff {
@@ -416,6 +463,7 @@ impl Plugin for ContrapunkPlugin {
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         Some(Box::new(editor::create_editor(
             self.params.clone(),
+            Arc::clone(&self.note_state),
             &self.params.webview_state,
         )))
     }

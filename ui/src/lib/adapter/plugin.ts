@@ -43,10 +43,16 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// Chain editor is Tauri-only — plugin chain is fixed by the
 		// nih-plug pipeline.
 		chainEditor: false,
-		// editor.rs doesn't push noteUpdates today — see plugin task
-		// #32. Flip this to `true` once the editor frame-loop emits
-		// canonNotes/counterpointNotes.
-		noteUpdates: false
+		// editor.rs frame loop pushes input/harmony notes via the
+		// `noteUpdate` message; canon/counterpoint stay empty (no
+		// Companion lanes in the plugin yet).
+		noteUpdates: true,
+		// DAW is the master clock in plugin mode — our TransportBar
+		// would just be a frozen mirror of the host. Hide it.
+		transportControl: false,
+		// DAW routes MIDI to/from the plugin via its own bus / track
+		// pickers; ours would be inert.
+		midiDevicePicker: false
 	} as const;
 
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;
@@ -65,6 +71,11 @@ export class PluginAdapter implements ContrapunkAdapter {
 						inputNotes: data.inputNotes ?? [],
 						harmonyNotes: data.harmonyNotes ?? [],
 						borrowedNotes: data.borrowedNotes ?? [],
+						// Plugin has no Companion lanes yet, but forward the
+						// fields anyway so the Piano store doesn't latch
+						// stale state from a prior surface.
+						canonNotes: data.canonNotes ?? [],
+						counterpointNotes: data.counterpointNotes ?? [],
 						chordName: data.chordName ?? '',
 						lastBorrowedFrom: data.lastBorrowedFrom ?? '',
 						currentKey: data.currentKey ?? 'C'

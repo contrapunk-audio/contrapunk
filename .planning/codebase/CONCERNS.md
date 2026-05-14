@@ -51,12 +51,10 @@
 
 ## Known Bugs
 
-**Stuck MIDI Notes on Settings Change Mid-Play**
-- Symptoms: Changing key, mode, scale, or voice settings while notes are held sends no Note-Off for the active harmony voices. The engine clears `active_notes` without first draining and sending Note-Off to outputs.
-- Files: `src/harmony/engine.rs:362,384,420,445,486,528,544,557,582,589,623,638` (all `.clear()` calls on `active_notes`)
-- Trigger: Play a sustained note, then change key or mode via UI.
-- Workaround: Stop routing, change settings, restart.
-- Noted in: `.planning/STATE.md:175` ("Pending Todos")
+**Stuck MIDI Notes on Settings Change Mid-Play** — **MOSTLY RESOLVED (v1.3.0)**
+- All 14 setter Tauri commands in `src-tauri/src/commands/harmony.rs` now pair with `raise_panic(&state)` after the engine mutation. The engine's `clear_active_for_reharm` (`crates/contrapunk-harmony/src/engine.rs:1417`) stashes held inputs into `pending_reharm_inputs` before clearing `active_notes`; the router-loop drain at `src-tauri/src/commands/engine.rs:463-558` replays each input, diffs old vs new harmonies, and broadcasts NoteOff for `to_release`. The codebase-mapper audit's claim of "12+ broken `.clear()` sites" was stale (only 2 `.clear()` hits in current engine.rs, both inside the safe helper).
+- One remaining gap shipped in v1.3.0 (`b065eb5`): `commands/presets.rs::load_preset` previously called 8 engine setters in sequence without raising `panic_pending`, so preset switches stranded the prior preset's harmony on external synths. Fixed by adding `state.panic_pending.store(true, Ordering::SeqCst)` after the setters.
+- **Test coverage gap (still open)**: no integration test exercises the full "change setting mid-play, verify NoteOff dispatched" path through the router thread. If a new setter is added to `harmony.rs` or `presets.rs` without raising panic, nothing catches it. Add a test that holds a note, calls a setter, asserts NoteOffs were dispatched.
 
 ---
 

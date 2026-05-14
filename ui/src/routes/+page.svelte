@@ -199,10 +199,15 @@
 				     `ui.viewMode`. -->
 				<div
 					class="content-area"
-					class:two-col={ui.panels.midi && ui.panels.controls}
-					class:one-col={(ui.panels.midi ? 1 : 0) + (ui.panels.controls ? 1 : 0) === 1}
+					class:two-col={ui.panels.midi &&
+						ui.panels.controls &&
+						adapter.capabilities.midiDevicePicker}
+					class:one-col={((ui.panels.midi && adapter.capabilities.midiDevicePicker
+						? 1
+						: 0) + (ui.panels.controls ? 1 : 0)) ===
+						1}
 				>
-					{#if ui.panels.midi}
+					{#if ui.panels.midi && adapter.capabilities.midiDevicePicker}
 						<div class="column column-left">
 							<MidiDevices>
 								{#if isGuitarAudioSelected}

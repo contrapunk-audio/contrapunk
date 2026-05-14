@@ -4,6 +4,7 @@
 	import { ui, PANELS } from '$lib/stores/ui.svelte';
 	import TransportBar from './TransportBar.svelte';
 	import { formatMusicalString } from '$lib/embed/music-utils';
+	import { adapter } from '$lib/adapter';
 
 	let chordDisplay = $derived(formatMusicalString(engine.chordName));
 	let borrowedDisplay = $derived(formatMusicalString(engine.lastBorrowedFrom));
@@ -59,8 +60,11 @@
 		{engine.isRunning ? 'ACTIVE' : 'STOPPED'}
 	</span>
 
-	<!-- Transport: play/stop + BPM + beat pips -->
-	<TransportBar />
+	<!-- Transport: play/stop + BPM + beat pips. Hidden in plugin mode
+	     where the DAW owns the master clock. -->
+	{#if adapter.capabilities.transportControl}
+		<TransportBar />
+	{/if}
 
 	<!-- Spacer -->
 	<div class="spacer"></div>

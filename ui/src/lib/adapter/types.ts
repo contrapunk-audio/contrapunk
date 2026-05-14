@@ -208,9 +208,17 @@ export interface AdapterCapabilities {
 	 *  from this surface. False on WASM + plugin. */
 	chainEditor: boolean;
 	/** Whether the surface emits per-note state updates so the Piano
-	 *  / Fretboard can light keys. False on plugin (DAW hosts the
-	 *  GUI separately from the audio path). */
+	 *  / Fretboard can light keys. True on Tauri + WASM + plugin
+	 *  (plugin emits via editor on_frame). */
 	noteUpdates: boolean;
+	/** Whether this surface owns the transport (play/stop, BPM, time
+	 *  signature). False in plugin mode — the DAW is the master
+	 *  clock and exposes its own transport UI; ours would be a lie. */
+	transportControl: boolean;
+	/** Whether this surface routes MIDI itself, so device pickers and
+	 *  the start/stop routing flow make sense. False in plugin mode
+	 *  — the DAW handles MIDI routing. */
+	midiDevicePicker: boolean;
 }
 
 export interface ContrapunkAdapter {

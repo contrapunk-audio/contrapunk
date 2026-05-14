@@ -89,7 +89,9 @@ export class TauriAdapter implements ContrapunkAdapter {
 	readonly capabilities = {
 		delayTempoSync: true,
 		chainEditor: true,
-		noteUpdates: true
+		noteUpdates: true,
+		transportControl: true,
+		midiDevicePicker: true
 	} as const;
 
 	private _isRunning = false;
