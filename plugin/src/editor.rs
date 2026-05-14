@@ -184,9 +184,7 @@ impl EditorHandler for ContrapunkEditorHandler {
             }
             "companionSetGlobalHoldMode" => {
                 if let Some(hm_json) = msg.get("value") {
-                    if let Some(mode) =
-                        contrapunk_companion::lane::hold_mode_from_json(hm_json)
-                    {
+                    if let Some(mode) = contrapunk_companion::lane::hold_mode_from_json(hm_json) {
                         if let Ok(c) = self.companion.try_lock() {
                             c.set_global_hold_mode(mode);
                         }
