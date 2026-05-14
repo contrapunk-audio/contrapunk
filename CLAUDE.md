@@ -58,9 +58,9 @@ If `.planning/STATE.md` says a feature is paused / deferred, don't restart it wi
 
 1. **Species 2-4 need a beat phase** — fixed in `fb3e7b9` (synthetic counter inside `HarmonyEngine`). External transport still wins. If you touch `harmonize_single*` or `process_with_beat`, run the regression tests `test_species2_differs_from_species1_without_transport` and `test_external_phase_wins_over_synthetic`.
 
-2. **Parameter changes mid-play can drop notes** — see `CONCERNS.md "Stuck MIDI Notes on Settings Change Mid-Play"`. The `pending_reharm_inputs` + diff mechanism in `run_tauri_router` is the intended fix path; don't add `active_notes.clear()` calls without going through `clear_active_for_reharm`.
+2. **Parameter changes mid-play can drop notes** — every harmony setter in `src-tauri/src/commands/harmony.rs` must pair with `raise_panic(&state)` so the router's reharm-diff replay (`commands/engine.rs:463-558`) drains stale harmonies. `presets.rs::load_preset` is the analog. New paths that mutate the engine need the same pairing; regression tests in `commands/presets.rs::tests` cover the contract. Don't add `active_notes.clear()` calls outside `clear_active_for_reharm`.
 
-3. **Audio callback must not allocate** — `src/audio_out/sine_synth.rs:192` has a known `vec![]` allocation per callback (CONCERNS.md). Don't add more. New code in the audio thread should pre-allocate at construction.
+3. **Audio callback must not allocate** — the synth voice processing lives in `src/synth/voice.rs` and the cpal callback runs `Chain::process` from `src-tauri/src/audio_clock.rs`. New code on the audio thread must pre-allocate scratch buffers at construction. (Earlier versions of this footgun cited `src/audio_out/sine_synth.rs:192` — that file was deleted in commit `bb6c691`.)
 
 4. **Tests in `crates/contrapunk-harmony/src/config.rs` doctests reference an external `contrapunk` crate** — they fail on the harmony crate alone (`cargo test -p contrapunk-harmony` shows 9 doctest failures). This is pre-existing; not your fault. Library tests (`--lib`) bypass them.
 

@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2.x
-milestone_name: Bugs + small features + plugin spike
-status: Phase 2 ~95% complete — #81/#65/#66 shipped this session, #8b unblocked, #9 Day 1 spike PASS on worktree
-stopped_at: 2026-05-11 evening — between #8b investigation and #8b implementation
-last_updated: "2026-05-11T21:00:00Z"
-last_activity: 2026-05-11 - #81 slice 3 (f1ab6ba), #65+#66 merge (096acea), wasm rebuild (27277be); issue #112 filed for HistoryStrip analysis overlay
+milestone: v1.3.x
+milestone_name: HoldMode + tempo-sync delay + cross-surface hardening
+status: v1.3.0 ready to tag — Phase 2 wrapped (9/13 issues shipped from v1.2.x), #11 HoldMode end-to-end, brutal-critic punch list cleared, plugin DAW UX hidden via capabilities
+stopped_at: 2026-05-14 — pre-tag review; user holding for QA before release
+last_updated: "2026-05-14T00:00:00Z"
+last_activity: 2026-05-14 — Tier 1-3 brutal-critic punch list applied (54df700); plugin DAW UX (130b63e); per-lane Piano attribution (73afe0e); tempo-synced delay (e7f59d3); HoldMode Cancel released playing notes (f580372); 13 commits cumulative
 progress:
   total_phases: 29
-  completed_phases: 17
+  completed_phases: 18
   total_plans: 82
-  completed_plans: 65
-  percent: 79
+  completed_plans: 80
+  percent: 98
 ---
 
 # Project State
@@ -25,33 +25,58 @@ See: .planning/PROJECT.md (updated 2026-01-28)
 
 ## Current Position
 
-Phase: between-phases (harmony-rework shipped, Audio Foundation ~10/11)
-Status: Shipped work not yet reflected in roadmap phases — reality reconciled 2026-04-15
-Last activity: 2026-04-15 - Codebase map refreshed (7 docs, commit `af7161e`); STATE.md reconciled with 2 weeks of shipped work
+Phase: v1.3.0 pre-tag — Phase 2 of v1.2.x wrapped, then the v1.3.x roll-up (HoldMode + tempo-synced delay + per-lane piano attribution + plugin DAW UX) landed in one session 2026-05-14. Awaiting user QA on the new binary before tag.
+Status: 13 commits queued on `main` since v1.2.0; brutal-critic punch list cleared via 21-agent parallel audit (10 issues turned out to be phantom-bugs from stale planning docs).
+Last activity: 2026-05-14 — Tier 1-3 fixes shipped (`54df700`); plugin emits noteUpdate + DAW-managed UI hidden via capabilities (`130b63e`); regression tests for panic_pending + poison-recovery (`54df700`).
 
-### Recently Shipped (since last STATE update on 2026-04-13)
+### Recently Shipped — 2026-05-14 session
 
-- **Harmony rework SHIPPED** — FunctionalHarmony + BachChorale (`dc25aaf`), Species 1-4 end-to-end (`5095525`), audit fixes C1-C4/S2-S7/Q1-Q5 (`2794e98`), 11-term suggestion scorer + piano/fretboard overlay (Plan 05)
-- **Humanizer + beat clock + metronome ported to WASM** (`4f695f6`) — browser parity for humanize achieved; closes half of "Desktop-only bugs" memory
-- **MIDI input now routed through humanized_note_on/off** (`7ff989f`) — humanization affects the played note, not just the harmony voices
-- **Windows desktop build infrastructure** (`1e15518`, PR #32) — Windows pivot from Apr 14 complete at the infra layer
-- **Audio Foundation Tasks 5-10 SHIPPED** (paused at 4/11 in memory, reality is 10/11):
-  - PolySynth polyphonic wrapper (`46797d5`)
-  - AudioOutEngine cpal stream lifecycle (`3efdcc9`)
-  - Harmony-note fanout to audio synth queue (`d1b12da`)
-  - Tauri `audio_out` commands (`62e1cfd`)
-  - Producer wired into router thread at startup (`1ff392c`)
-  - Svelte dev-grade toggle in Settings (`59589c2`), state sync + revert on error (`1b99add`)
-- **Tauri `beforeCommand` fallback order fixed** (`b699f0e`)
-- **Recovered stash@{4} "rigor-gate"** (`33a3621`) — flagged wip commit from Apr 15; 19 other rigor-gate stashes still exist (audit pending)
+**Core features (v1.3.0):**
+- **#11 HoldMode end-to-end** — enum + Companion scaffolding (`5aed550`), Rust core plumbing (`12fe5ec`), WASM/Tauri/JS bridge (`bfa6854`), master HoldMode picker (`32eac55`), 6-test regression suite (`725a270`), per-lane + per-voice overrides (`953fdd4`), Tauri pass-through tests (`738921d`), per-voice NoteOff fix (`1a484b8`), UI persistence + counterpoint lime recolor (`df50e0c`), C1+C2 orphan-NoteOff and dedup fix (`f580372`/`b065eb5`)
+- **Tempo-synced delay FX** (`e7f59d3`) — sync toggle + 6 subdivisions (1/4, 1/8d, 1/8, 1/8t, 1/16, 1/16t); transport-anchored hard re-tap on BPM change
+- **Per-lane piano colors on Tauri** (`73afe0e`) — canon = gold, counterpoint = lime; was WASM-only before today
+- **Transport metronome BPM re-anchor** (`d5e04be`) — fixes silent metronome death on BPM change mid-play
 
-### Not Yet Shipped / Deferred
+**Plugin parity work:**
+- **Plugin emits noteUpdate** (`130b63e`) — `PluginNoteState` shared between audio thread and editor `on_frame`; Piano + Fretboard light up in DAW
+- **DAW-managed sections hidden** via `transportControl` / `midiDevicePicker` / `audioFx` / `companionLanes` adapter capabilities (`130b63e`, `54df700`) — plugin webview no longer shows inert transport bar, MIDI pickers, synth/reverb/delay, or Companion tab
 
-- **Pitch detection** (JS McLeod beats Rust pipeline) — DEFERRED, revisit later
-- **Guitar input / Phase 10** — DEFERRED, revisit later
-- **Audio Foundation Task 11** — manual end-to-end smoke test + `milestone/audio-foundation` tag
-- **Generator WASM parity** — Rust `GeneratorEngine` exists, no WASM/Tauri binding, UI gated behind `{#if false}` (CONCERNS.md)
-- **Plugin hosting sub-project 2** — safe VST3 host layer, not started
+**Brutal-critic punch list (`54df700`):**
+- canon_lane `.expect` → `.unwrap_or(now)` (was trusting housekeeping invariant)
+- Delay set_mix/set_feedback truncation → round (was silently flooring 0.0009 → 0)
+- Subdivision::from_u8 eprintln on junk byte (was silent fallback to Quarter)
+- with_transport built via struct-update syntax (was fake builder)
+- type_id `&'static str` end-to-end (was allocating String per emitted op per tick)
+- WasmAdapter destroy() cancels companionTickHandle + pollingHandle + _clockTimer + closes _audioCtx
+- TauriAdapter startRouting + init drop pre-existing listener handles (was leaking on double-start)
+- Knob disabled gates tabindex + aria-disabled
+- guitarCapture.ts stripped 4 per-frame console.log calls (1.7×/sec in prod)
+- guitar.rs deleted dead-code calibration write to CWD (real save_calibration_profile uses app_data_dir)
+- presets.rs::load_preset raises panic_pending (commit b065eb5; regression test in `54df700`)
+
+**Tests + housekeeping:**
+- New: `load_preset_raises_panic_pending`, `load_preset_unknown_name_does_not_raise_panic`, `test_drain_all_tracked_notes_survives_poisoned_lock` (first poison-recovery test in project)
+- 30 canon_lane tests pass (was 28; +2 C1+C2 regression tests)
+- 29 Tauri command tests pass (was 22; +3 above + 4 from earlier b065eb5)
+- Untracked `ui/node_modules` (11,443 files) and `ui/build` (66 files) from git tracking; added to `.gitignore` (`8af66ff`)
+
+### Phase 2 issues from v1.2.x
+
+| # | Status |
+|---|---|
+| #81 Krumhansl auto-key (3 slices) | ✅ Shipped (slice 3 in `f1ab6ba`) |
+| #65 Presets UI redesign | ✅ Shipped (`3b516bb`); intentionally unmounted on main page per PERFORMANCE-VIEW.md design decision |
+| #66 Canonical embed wave 3+4 | ✅ Shipped (`4ec21c9`) — PianoEmbed + ChordReadout in tree; Piano.svelte wrapper-swap descoped |
+| #11 HoldMode (Companion + persistence) | ✅ Shipped this session |
+| #8b Per-voice phase offset | Shipped + reverted with no body in `bb6c691` (humanize scrap); SKIPPED for v1.3, re-apply candidate for v1.4 |
+| #9 Plugin spike | ✅ Shipped (VST3/CLAP scaffolding; Companion lanes deferred to v1.4) |
+
+### Deferred to v1.4 / later
+
+- **Plugin Companion lanes** — 2.5-3 days work; canon/counterpoint emission inside DAW. UI is already hidden via `companionLanes: false` capability so the visible-lie is solved.
+- **Plugin audio FX wiring** — synth/reverb/delay params in nih-plug; currently hidden via `audioFx: false` capability.
+- **Bonus: no `load_calibration_profile`** — the Tauri `save_calibration_profile` writes a struct that no consumer reads. Two unrelated `GuitarCalibrationProfile` types in the tree. Filed for triage.
+- **AudioWorklet fallback removal** — guitarCapture.ts already uses AudioWorklet as primary; ScriptProcessor is a vestigial fallback that could be deleted now that Safari ≥14.1 / Chrome ≥66 / Firefox ≥76 ship AudioWorklet.
 
 ## Performance Metrics
 
