@@ -361,6 +361,13 @@ struct PendingOff {
     /// reason as `PendingOn.player_note` — needed when HoldMode
     /// cancels a NoteOn so we can also drop its matched NoteOff.
     player_note: u8,
+    /// Index into `CanonLane.voices` of the voice that scheduled
+    /// the corresponding NoteOn. Needed so the orphan-NoteOff
+    /// cleanup at HoldMode resolution can pair PendingOff with the
+    /// PendingOn that just got cancelled — `(voice_idx, canon_note)`
+    /// is unique within a player_note, while `canon_note` alone is
+    /// not (two voices can emit the same pitch).
+    voice_idx: usize,
 }
 
 /// One canon voice's fire record for a single held input. Captures
@@ -942,6 +949,18 @@ impl Lane for CanonLane {
                     .map(|a| a + beats_per_bar)
                     .unwrap_or(now);
 
+                // Snapshot which (voice_idx, canon_note) pairs are
+                // STILL in pending_on at NoteOff entry — i.e. their
+                // NoteOn hasn't fired yet. Used below to drop orphan
+                // NoteOffs when HoldMode::Cancel kills the matching
+                // pending NoteOn (C1 regression fix).
+                let was_pending_on: std::collections::HashSet<(usize, u8)> = self
+                    .pending_on
+                    .iter()
+                    .filter(|p| p.player_note == note)
+                    .map(|p| (p.voice_idx, p.canon_note))
+                    .collect();
+
                 if let Some(held) = self.held.remove(&note) {
                     let duration = (now - held.on_beat).max(0.0);
                     for fire in held.voices {
@@ -976,11 +995,25 @@ impl Lane for CanonLane {
                         // at the same release_at — the canon voice's
                         // chord releases simultaneously.
                         for &canon_note in &fire.canon_notes {
+                            // C2 dedup: rapid retrigger of the same
+                            // player_note before the prior release
+                            // fires would otherwise accumulate
+                            // duplicate NoteOffs in the queue, leaking
+                            // memory and emitting double NoteOffs to
+                            // the synth. Drop any stale entry for this
+                            // (voice_idx, canon_note) pair before
+                            // pushing the new release.
+                            self.pending_off.retain(|p| {
+                                !(p.player_note == note
+                                    && p.voice_idx == fire.voice_idx
+                                    && p.canon_note == canon_note)
+                            });
                             self.pending_off.push(PendingOff {
                                 fire_at: release_at,
                                 canon_note,
                                 channel: fire.channel,
                                 player_note: note,
+                                voice_idx: fire.voice_idx,
                             });
                         }
                     }
@@ -1016,32 +1049,27 @@ impl Lane for CanonLane {
                         HoldMode::PhraseEnd => p.fire_at <= phrase_end,
                     }
                 });
-                // Mirror on pending_off: if a NoteOn was cancelled
-                // its NoteOff would orphan. Cancelling the off too is
-                // safe (the synth already got no NoteOn for it).
-                let still_alive: std::collections::HashSet<(u8, u8)> = self
+                // C1 fix: drop pending_off entries whose matching
+                // pending_on was just cancelled by the retain above.
+                // An entry is "orphaned" iff (voice_idx, canon_note)
+                // was in pending_on at NoteOff entry but isn't after
+                // the retain — HoldMode dropped the NoteOn, so the
+                // queued NoteOff would fire to a synth that never got
+                // a NoteOn. Entries that were never pending (NoteOn
+                // already fired pre-NoteOff) are kept — the synth
+                // still needs the release.
+                let survived: std::collections::HashSet<(usize, u8)> = self
                     .pending_on
                     .iter()
                     .filter(|p| p.player_note == note)
-                    .map(|p| (p.canon_note, p.channel))
+                    .map(|p| (p.voice_idx, p.canon_note))
                     .collect();
                 self.pending_off.retain(|p| {
                     if p.player_note != note {
                         return true;
                     }
-                    // Keep this NoteOff only if its NoteOn pair still
-                    // exists in pending_on OR if it was already played
-                    // (NoteOn drained from pending_on earlier — in that
-                    // case the off must fire to release the synth).
-                    //
-                    // Simplification for v1: keep NoteOffs whose
-                    // matching NoteOn is still pending; drop NoteOffs
-                    // for NoteOns that got cancelled. NoteOffs whose
-                    // NoteOn already fired aren't tracked separately
-                    // and stay alive (the synth needs to know to
-                    // release).
-                    let _ = &still_alive;
-                    true
+                    let key = (p.voice_idx, p.canon_note);
+                    !(was_pending_on.contains(&key) && !survived.contains(&key))
                 });
 
                 self.last_input_beat = Some(now);
@@ -2454,5 +2482,133 @@ mod tests {
                 off_at
             );
         }
+    }
+
+    /// C1 regression: when HoldMode::Cancel drops a still-PENDING
+    /// canon NoteOn (delayed voice that hadn't fired yet at release),
+    /// the matching pending_off MUST also be dropped — otherwise the
+    /// synth gets a NoteOff for a NoteOn it never received. Without
+    /// this fix, every Cancel on a delayed voice leaked an orphan
+    /// NoteOff per emission.
+    #[test]
+    fn hold_mode_cancel_drops_orphan_note_off_for_unfired_voice() {
+        let (mut lane, world, transport) = fixture_with_long_delay_voice();
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Cancel;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        // NoteOn is pending but NOT drained — fixture voice has
+        // delay_beats=4.0, so at beat 0.0 its fire_at is well in
+        // the future and tick() would not emit it yet.
+        assert!(
+            lane.pending_on.iter().any(|p| p.player_note == 60),
+            "fixture should leave a pending_on entry for the delayed voice"
+        );
+
+        advance_to_beat(&transport, 0.5);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        // Cancel must drop pending_on AND the matching pending_off
+        // we just pushed for the (unfired) voice. If either remains,
+        // the synth either fires a stale NoteOn (regression on
+        // pending_on side) or an orphan NoteOff (C1 bug).
+        assert!(
+            lane.pending_on.iter().all(|p| p.player_note != 60),
+            "Cancel must drop pending_on for player_note=60"
+        );
+        assert!(
+            lane.pending_off.iter().all(|p| p.player_note != 60),
+            "Cancel must drop orphan pending_off for unfired voice; got {:?}",
+            lane.pending_off
+        );
+    }
+
+    /// C2 regression: rapid retrigger of the same player_note before
+    /// the prior release drains must not accumulate duplicate
+    /// pending_off entries. Each (player_note, voice_idx, canon_note)
+    /// tuple should have at most one queued release at any time.
+    #[test]
+    fn rapid_retrigger_does_not_duplicate_pending_off() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        // Single voice, time_ratio=2 so voice_off_fire is well in the
+        // future and the pending_off doesn't drain naturally between
+        // the two release cycles below.
+        let voice = CanonVoice::with_time_ratio(0.0, 2, 2.0);
+        lane.set_voices(vec![voice]);
+        // Forever so we keep natural release scheduling on each cycle.
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Forever;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let _ = lane.tick(&world);
+        advance_to_beat(&transport, 0.1);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        let after_first = lane
+            .pending_off
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+
+        // Retrigger BEFORE the first release fires.
+        advance_to_beat(&transport, 0.2);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        let _ = lane.tick(&world);
+        advance_to_beat(&transport, 0.3);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        let after_second = lane
+            .pending_off
+            .iter()
+            .filter(|p| p.player_note == 60)
+            .count();
+
+        // The second cycle should REPLACE the first cycle's
+        // pending_off entries, not append. Same voice emits the same
+        // canon_note in both cycles, so dedup by (voice_idx, canon_note)
+        // keeps the count flat. Without C2 fix this grows linearly.
+        assert_eq!(
+            after_second, after_first,
+            "rapid retrigger should dedup pending_off; first={} second={}",
+            after_first, after_second
+        );
     }
 }

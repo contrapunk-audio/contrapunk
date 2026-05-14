@@ -79,6 +79,18 @@ function logCompanionEvent(label: string, payload: Record<string, unknown>): voi
 const GUITAR_AUDIO_SENTINEL = 999_997;
 
 export class WasmAdapter implements ContrapunkAdapter {
+	readonly capabilities = {
+		// embedAudio has no tempo-sync surface yet (see setDelaySync*
+		// stubs below) — hide the SYNC toggle on web to avoid a
+		// visible-lie until that ships.
+		delayTempoSync: false,
+		// listChainBlocks / removeChainBlock are no-ops on WASM.
+		chainEditor: false,
+		// dispatchOpsJson populates canon/counterpoint sets; piano
+		// colors work on WASM.
+		noteUpdates: true
+	} as const;
+
 	private initialized = false;
 	private _isRunning = false;
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;

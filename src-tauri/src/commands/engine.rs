@@ -544,10 +544,12 @@ fn run_tauri_router(
 
             // Replace UI tracking sets with the new harmony state. Input
             // notes stay as-is — user's still holding them.
-            if let Ok(mut h) = harmony_notes.lock() {
+            {
+                let mut h = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
                 *h = new_harmonies;
             }
-            if let Ok(mut b) = borrowed_notes.lock() {
+            {
+                let mut b = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
                 b.clear();
             }
 
@@ -708,14 +710,29 @@ fn run_tauri_router(
         }
     }
 
-    // Clear note state on exit.
-    if let Ok(mut notes) = input_notes.lock() {
+    // Clear note state on exit. Per-lane sets (canon_notes /
+    // counterpoint_notes) MUST also be cleared — otherwise stale
+    // gold/lime piano colors persist across stop/start cycles
+    // until a NoteOff for those exact pitches arrives via the
+    // next session.
+    {
+        let mut notes = input_notes.lock().unwrap_or_else(|e| e.into_inner());
         notes.clear();
     }
-    if let Ok(mut notes) = harmony_notes.lock() {
+    {
+        let mut notes = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
         notes.clear();
     }
-    if let Ok(mut notes) = borrowed_notes.lock() {
+    {
+        let mut notes = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
+        notes.clear();
+    }
+    {
+        let mut notes = canon_notes.lock().unwrap_or_else(|e| e.into_inner());
+        notes.clear();
+    }
+    {
+        let mut notes = counterpoint_notes.lock().unwrap_or_else(|e| e.into_inner());
         notes.clear();
     }
 
@@ -1207,14 +1224,14 @@ fn dispatch_companion_ops(
                 );
                 // Track in the unified harmony set so the Piano knows
                 // a note is sounding even without lane attribution.
-                if let Ok(mut h) = harmony_notes.lock() {
+                {
+                    let mut h = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
                     h.insert(*note);
                 }
                 // Plus the per-lane set so the Piano can color it.
                 if let Some(set) = lane_set {
-                    if let Ok(mut s) = set.lock() {
-                        s.insert(*note);
-                    }
+                    let mut s = set.lock().unwrap_or_else(|e| e.into_inner());
+                    s.insert(*note);
                 }
             }
             DispatchOp::NoteOff {
@@ -1233,13 +1250,13 @@ fn dispatch_companion_ops(
                     synth_tx,
                     output,
                 );
-                if let Ok(mut h) = harmony_notes.lock() {
+                {
+                    let mut h = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
                     h.remove(note);
                 }
                 if let Some(set) = lane_set {
-                    if let Ok(mut s) = set.lock() {
-                        s.remove(note);
-                    }
+                    let mut s = set.lock().unwrap_or_else(|e| e.into_inner());
+                    s.remove(note);
                 }
             }
             DispatchOp::AllNotesOff { .. } => {
@@ -1284,13 +1301,16 @@ fn drain_all_tracked_notes(
     };
     // Now clear each set (separate scope so the prior read locks
     // are dropped before we acquire write locks).
-    if let Ok(mut s) = input_notes.lock() {
+    {
+        let mut s = input_notes.lock().unwrap_or_else(|e| e.into_inner());
         s.clear();
     }
-    if let Ok(mut s) = harmony_notes.lock() {
+    {
+        let mut s = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
         s.clear();
     }
-    if let Ok(mut s) = borrowed_notes.lock() {
+    {
+        let mut s = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
         s.clear();
     }
     union

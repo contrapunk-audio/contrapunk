@@ -35,6 +35,20 @@ declare global {
 let currentParams: Record<string, unknown> = {};
 
 export class PluginAdapter implements ContrapunkAdapter {
+	readonly capabilities = {
+		// DAW hosts the audio path entirely; the delay FX in the
+		// plugin's process() isn't tempo-sync-aware (would need
+		// host-tempo plumbing through nih-plug).
+		delayTempoSync: false,
+		// Chain editor is Tauri-only — plugin chain is fixed by the
+		// nih-plug pipeline.
+		chainEditor: false,
+		// editor.rs doesn't push noteUpdates today — see plugin task
+		// #32. Flip this to `true` once the editor frame-loop emits
+		// canonNotes/counterpointNotes.
+		noteUpdates: false
+	} as const;
+
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;
 	private _detuneCents = 0;
 	private _isReady = false;

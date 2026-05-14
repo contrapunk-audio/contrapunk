@@ -3,6 +3,7 @@
 	import { synth, WAVEFORMS } from '$lib/stores/synth.svelte';
 	import { delay, reverb } from '$lib/stores/fx.svelte';
 	import { chainStore, parsePluginId } from '$lib/stores/chain.svelte';
+	import { adapter } from '$lib/adapter';
 	import Knob from './Knob.svelte';
 	import WaveformView from './WaveformView.svelte';
 	import EnvelopeView from './EnvelopeView.svelte';
@@ -230,6 +231,7 @@
 			</button>
 		</div>
 
+		{#if adapter.capabilities.delayTempoSync}
 		<div class="delay-sync-row">
 			<button
 				class="pixel-btn sync-btn font-ui"
@@ -265,6 +267,7 @@
 				<option value="1/16t">1/16 triplet</option>
 			</select>
 		</div>
+		{/if}
 
 		<div class="reverb-knobs">
 			<Knob

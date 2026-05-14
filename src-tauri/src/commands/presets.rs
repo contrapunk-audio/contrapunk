@@ -2,6 +2,8 @@
 //!
 //! List, load, save, and delete presets.
 
+use std::sync::atomic::Ordering;
+
 use serde::Serialize;
 use tauri::State;
 
@@ -54,15 +56,25 @@ pub fn load_preset(name: String, state: State<AppState>) -> Result<(), String> {
     manager.set_active(idx);
 
     // Apply preset to engine
-    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-    engine.set_key(preset.key);
-    engine.set_mode(preset.harmony_mode);
-    engine.set_octave_mode(preset.octave_mode);
-    engine.set_voice_leading_enabled(preset.voice_leading_enabled);
-    engine.set_voice_leading_style(preset.voice_leading_style);
-    engine.set_scale_mode(preset.scale_mode);
-    engine.set_interchange_enabled(preset.interchange_enabled);
-    engine.set_borrowing_range(preset.borrowing_range);
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_key(preset.key);
+        engine.set_mode(preset.harmony_mode);
+        engine.set_octave_mode(preset.octave_mode);
+        engine.set_voice_leading_enabled(preset.voice_leading_enabled);
+        engine.set_voice_leading_style(preset.voice_leading_style);
+        engine.set_scale_mode(preset.scale_mode);
+        engine.set_interchange_enabled(preset.interchange_enabled);
+        engine.set_borrowing_range(preset.borrowing_range);
+    }
+
+    // Mirror `raise_panic` from commands/harmony.rs — each of the 8
+    // setters above stashed held inputs into `pending_reharm_inputs`
+    // via `clear_active_for_reharm`. Without raising the panic flag
+    // the router's reharm-diff replay never fires, so external synths
+    // hold the prior preset's harmony forever (stuck-MIDI-notes on
+    // preset switch). 5-line miss that broke a major user flow.
+    state.panic_pending.store(true, Ordering::SeqCst);
 
     Ok(())
 }

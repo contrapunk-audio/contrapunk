@@ -194,7 +194,30 @@ export interface TransportState {
  * Svelte components call these methods without knowing whether the
  * backend is reached via Tauri IPC (desktop) or WASM direct calls (browser).
  */
+/** Feature gates exposed by an adapter so the UI can hide controls
+ *  that would otherwise no-op silently on a given surface. Add a
+ *  flag here when a feature ships on one surface before the others;
+ *  remove it once parity catches up. */
+export interface AdapterCapabilities {
+	/** Whether the delay FX honors `setDelaySyncEnabled` /
+	 *  `setDelaySubdivision`. False on WASM + plugin today — they
+	 *  stub the setters because their audio paths don't read the
+	 *  transport BPM. */
+	delayTempoSync: boolean;
+	/** Whether the audio chain topology (chain blocks) is editable
+	 *  from this surface. False on WASM + plugin. */
+	chainEditor: boolean;
+	/** Whether the surface emits per-note state updates so the Piano
+	 *  / Fretboard can light keys. False on plugin (DAW hosts the
+	 *  GUI separately from the audio path). */
+	noteUpdates: boolean;
+}
+
 export interface ContrapunkAdapter {
+	/** Per-surface capability flags. Read in the UI to gate controls
+	 *  that aren't wired on this adapter. */
+	readonly capabilities: AdapterCapabilities;
+
 	// -- Initialization --
 
 	/** Initialize the backend (WASM init or Tauri readiness check). */

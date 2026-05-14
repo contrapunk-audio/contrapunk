@@ -143,11 +143,12 @@
 		onwheel={onWheel}
 		ondblclick={onDoubleClick}
 		role="slider"
-		tabindex="0"
+		tabindex={disabled ? -1 : 0}
 		aria-valuemin={min}
 		aria-valuemax={max}
 		aria-valuenow={value}
 		aria-label={label}
+		aria-disabled={disabled}
 	>
 		{#if (hovering || dragging) && label}
 			<div class="knob-tooltip font-ui">

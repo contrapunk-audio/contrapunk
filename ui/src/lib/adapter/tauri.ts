@@ -86,6 +86,12 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 }
 
 export class TauriAdapter implements ContrapunkAdapter {
+	readonly capabilities = {
+		delayTempoSync: true,
+		chainEditor: true,
+		noteUpdates: true
+	} as const;
+
 	private _isRunning = false;
 	private _guitarSignalUnsub: UnlistenFn | null = null;
 	private _beatUpdateUnsub: UnlistenFn | null = null;
