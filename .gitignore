@@ -5,6 +5,15 @@ target/
 dist/
 ui/src/lib/wasm-pkg/
 
+# SvelteKit static build output
+ui/build/
+
+# Node dependencies (any location)
+node_modules/
+
+# graphify skill output (.claude/skills/graphify)
+graphify-out/
+
 # IDE
 .idea/
 .vscode/

@@ -1,1 +1,0 @@
-import{a as i,f as t}from"../chunks/eZFB7GD9.js";import{F as e,G as m}from"../chunks/nVkCXwlp.js";import{s as d}from"../chunks/CnfdKV5H.js";var p=t('<div class="diary-shell svelte-1mi82qd"><!></div>');function f(r,a){var o=p(),s=e(o);d(s,()=>a.children),m(o),i(r,o)}export{f as component};
