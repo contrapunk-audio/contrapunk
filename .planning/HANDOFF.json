@@ -119,25 +119,52 @@
   },
   "future_work_v1_4_or_later": {
     "voice_input_pipeline": {
-      "reusable_from_guitar_80_pct": [
-        "crates/contrapunk-audio/src/detectors.rs — McLeod pitch detector handles vocal F0 well",
-        "crates/contrapunk-audio/src/onset.rs — spectral flux onset detection reusable",
-        "crates/contrapunk-audio/src/guitar_input.rs — ring buffer + processing block, source-agnostic"
-      ],
-      "new_for_voice_20_pct": [
-        "Vibrato pitch jitter smoothing: 5-7 sample centered median filter (~30 LOC)",
-        "Voiced/unvoiced detection: spectral flatness + harmonic-to-noise ratio (~50 LOC)",
-        "Vocal range constraint: per-register pitch clamping (Soprano 220-1000Hz, Alto 175-700, Tenor 130-525, Bass 80-330)",
-        "Smaller hop size: 128 vs 256 (latency budget — singers hear themselves)",
-        "Optional formant filter: high-shelf +6dB @ 1kHz pre-emphasis"
-      ],
-      "libraries_needed": [
-        "pitch_detection (already shipped) — McLeod",
-        "medians crate (~10kb) OR hand-rolled 30 lines for median filter",
-        "HNR computation: own impl from FFT, straightforward"
-      ],
-      "estimate": "~1 day focused work if guitar pipeline reused cleanly",
-      "plugin_implication": "PluginInputMode::Audio extends to support voice presets"
+      "scope_rescoped_2026_05_14": "Phase 1 (MIDI harmonizer from voice F0) + Phase 2 (vocal harmonizer — PSOLA pitch-shift of voice signal to harmony pitches) bundled into one feature. User chose bundled scope to land the recognizable Imogen Heap / Bon Iver vocal-harmony effect, not just a synth playing harmonies driven by voice pitch.",
+      "phase_1_midi_harmonizer": {
+        "description": "Voice → F0 detection → HarmonyEngine → MIDI to internal synth or external. Same scaffold as guitar input mode, retuned for vocal source.",
+        "reusable_from_guitar_80_pct": [
+          "crates/contrapunk-audio/src/detectors.rs — McLeod pitch detector handles vocal F0 well",
+          "crates/contrapunk-audio/src/onset.rs — spectral flux onset detection reusable",
+          "crates/contrapunk-audio/src/guitar_input.rs — ring buffer + processing block, source-agnostic"
+        ],
+        "new_for_voice_20_pct": [
+          "Vibrato pitch jitter smoothing: 5-7 sample centered median filter (~30 LOC)",
+          "Voiced/unvoiced detection: spectral flatness + harmonic-to-noise ratio (~50 LOC)",
+          "Vocal range constraint: per-register pitch clamping (Soprano 220-1000Hz, Alto 175-700, Tenor 130-525, Bass 80-330)",
+          "Smaller hop size: 128 vs 256 (latency budget — singers hear themselves)",
+          "Optional formant filter for pitch detection: high-shelf +6dB @ 1kHz pre-emphasis"
+        ],
+        "estimate": "~1 day"
+      },
+      "phase_2_vocal_harmonizer": {
+        "description": "Audio thread pitch-shifts captured voice signal to each harmony pitch and mixes the shifted copies. Output: musician's own voice sounding in 2-, 3-, or 4-part harmony (the Imogen Heap / Bon Iver effect).",
+        "terminology_warning": "NOT a true vocoder (#3). This is a vocal harmonizer (#2). Common confusion. True vocoders are different scope.",
+        "pitch_shift_decision_locked": "Hand-rolled PSOLA in Rust (~300 LOC). MIT license. Real-time-safe with preallocated buffers. ~5ms latency.",
+        "alternatives_rejected": {
+          "rubberband_rs": "GPL license — would force us to GPL Contrapunk or buy commercial. REJECT.",
+          "phase_vocoder_fft": "Changes formants, sounds chipmunked on voice. Wrong tool.",
+          "world_vocoder": "Research-grade but too slow for real-time / too heavy for plugin. Skip."
+        },
+        "phase_2_components": [
+          "Real-time voice signal capture (tap existing ring buffer for raw samples, not just F0): ~50 LOC integration",
+          "PSOLA pitch-shifter (per voice): ~300 LOC hand-rolled",
+          "Voice mixing (sum N shifted copies + optional dry signal): ~30 LOC",
+          "Latency tuning to ≤15ms total round-trip"
+        ],
+        "output_mode_toggle": "Output subtab gains 'Harmony output: Synth / Voice / Both'. Defaults to Synth (Phase 1 behavior preserved). Voice mode uses pitch-shifted voice instead of synth for harmonies. Both = stack.",
+        "plugin_compatibility": "PSOLA with preallocated buffers fits nih-plug's strict real-time audio thread. RubberBand would NOT (it allocates). This locks the library choice further.",
+        "latency_budget_hard_constraint": "≤15ms total round-trip. Capture (2.6-5.3ms) + PSOLA (~5ms) + playback (2.6ms). Anything over ~20ms is unusable for live singers (they hear themselves).",
+        "estimate": "~3-4 days"
+      },
+      "combined_file_layout": {
+        "crates/contrapunk-audio/src/voice_input.rs": "Voice-tuned wrapper around the guitar pipeline. Vocal range clamp, vibrato median filter, voiced/unvoiced HNR gate.",
+        "src/fx/vocal_harmonizer.rs": "PSOLA-based pitch-shifting harmonizer block. Implements AudioBlock.",
+        "src/fx/psola.rs": "Pure PSOLA DSP — pitch-period detection, OLA buffers, resynthesis. Standalone, testable.",
+        "crates/contrapunk-audio/src/voice_input_tests.rs": "Pitch detection on vocal sample fixtures + voiced/unvoiced classification accuracy.",
+        "src/fx/psola_tests.rs": "PSOLA: roundtrip test (0 semitones = identity), latency measurement, formant preservation check."
+      },
+      "dependencies_on_io_tab_work": "When I/O tab redesign lands first (current chunk), the voice radio option in Input subtab becomes greyed/disabled. Phase 1+2 wires it up: flip radio enabled, add 'Harmony output mode' toggle to Output subtab, reuse device picker + signal meter + calibrate, voice cards show 'Voice ch N' destination when Voice Mode active.",
+      "total_estimate": "~4-5 days focused (Phase 1: 1 day, Phase 2: 3-4 days. PSOLA is biggest unknown — could land in 2 days if formants don't need correction, 5 if they do.)"
     },
     "export": {
       "user_mentioned": "after we are done with some of this work we can work on exporting it",
