@@ -244,9 +244,19 @@
 		{:else if ui.activeTab === 'companion'}
 			<!-- Companion tab: delayed-voice configuration (canon lanes
 			     + per-voice settings). The voice management UX lives
-			     here so the Play tab stays focused on real-time harmony. -->
+			     here so the Play tab stays focused on real-time harmony.
+			     Hidden in plugin mode where the plugin core doesn't wire
+			     Companion lanes yet — deferred to v1.4. -->
 			<div class="companion-area">
-				<CompanionPanel />
+				{#if adapter.capabilities.companionLanes}
+					<CompanionPanel />
+				{:else}
+					<div class="surface-unavailable font-ui">
+						Companion lanes (canon + counterpoint) are not yet
+						wired in plugin mode. Use the desktop app for now —
+						this will land in v1.4.
+					</div>
+				{/if}
 			</div>
 		{:else if ui.activeTab === 'voices'}
 			<!-- Voices tab: named voice presets (built-in SATB chorale
@@ -326,6 +336,14 @@
 		background: rgba(15, 14, 26, 0.88);
 		overflow-y: auto;
 		height: 100%;
+	}
+
+	.surface-unavailable {
+		padding: 32px;
+		color: var(--color-text-secondary);
+		max-width: 500px;
+		font-size: var(--font-size-sm);
+		line-height: 1.5;
 	}
 
 	.content-area {

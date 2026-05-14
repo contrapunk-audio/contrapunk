@@ -91,7 +91,9 @@ export class TauriAdapter implements ContrapunkAdapter {
 		chainEditor: true,
 		noteUpdates: true,
 		transportControl: true,
-		midiDevicePicker: true
+		midiDevicePicker: true,
+		audioFx: true,
+		companionLanes: true
 	} as const;
 
 	private _isRunning = false;
@@ -105,7 +107,17 @@ export class TauriAdapter implements ContrapunkAdapter {
 
 		// Subscribe once to transport beat-update events. The audio
 		// clock emits one per beat crossing; the store updates and
-		// components re-render via $effect on `pulse`.
+		// components re-render via $effect on `pulse`. Guard against
+		// re-init (HMR or programmatic re-call) leaking the previous
+		// listener.
+		if (this._beatUpdateUnsub) {
+			try {
+				this._beatUpdateUnsub();
+			} catch {
+				// best-effort
+			}
+			this._beatUpdateUnsub = null;
+		}
 		this._beatUpdateUnsub = await listen<{
 			total_beat: number;
 			beat_in_bar: number;
@@ -424,6 +436,19 @@ export class TauriAdapter implements ContrapunkAdapter {
 			const GUITAR_AUDIO_SENTINEL = 999_997;
 			if (inputIdx === GUITAR_AUDIO_SENTINEL) {
 				guitar.detecting = true;
+
+				// Double-start guard: if a previous start left a
+				// listener wired up (engine.start called twice without
+				// an intervening stop), drop it before subscribing
+				// fresh so the old handle doesn't leak forever.
+				if (this._guitarSignalUnsub) {
+					try {
+						this._guitarSignalUnsub();
+					} catch {
+						// best-effort
+					}
+					this._guitarSignalUnsub = null;
+				}
 
 				// Throttle note display updates to ~10fps to reduce UI jitter
 				let lastNoteUpdate = 0;

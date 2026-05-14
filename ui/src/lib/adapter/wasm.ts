@@ -95,7 +95,11 @@ export class WasmAdapter implements ContrapunkAdapter {
 		transportControl: true,
 		// Web MIDI device pickers work in browsers that support the
 		// Web MIDI API; the UI gracefully degrades when not granted.
-		midiDevicePicker: true
+		midiDevicePicker: true,
+		// WASM has its own Web Audio synth + FX path (embedAudio).
+		audioFx: true,
+		// WASM has Companion lanes via the WasmCompanion bridge.
+		companionLanes: true
 	} as const;
 
 	private initialized = false;
@@ -229,6 +233,25 @@ export class WasmAdapter implements ContrapunkAdapter {
 				// best-effort
 			}
 			this.guitarCapture = null;
+		}
+		// Tick / polling / clock all start RAF or setInterval loops
+		// that close over the *current* `engine` / `companion`. On
+		// HMR (and now plugin/test teardown) these must be cancelled
+		// or the loop keeps marching against stale references and
+		// pins the WASM instance from GC.
+		if (companionTickHandle !== null) {
+			cancelAnimationFrame(companionTickHandle);
+			companionTickHandle = null;
+		}
+		this.stopNotePolling();
+		this.stopClock();
+		if (this._audioCtx) {
+			try {
+				void this._audioCtx.close();
+			} catch {
+				// best-effort — context may already be closed
+			}
+			this._audioCtx = null;
 		}
 	}
 

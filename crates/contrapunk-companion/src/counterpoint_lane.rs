@@ -192,7 +192,7 @@ impl Lane for CounterpointLane {
     fn name(&self) -> &str {
         "Counterpoint"
     }
-    fn type_id(&self) -> &str {
+    fn type_id(&self) -> &'static str {
         "counterpoint"
     }
     fn phase(&self) -> LanePhase {

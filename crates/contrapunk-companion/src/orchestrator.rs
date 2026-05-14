@@ -148,7 +148,10 @@ impl Companion {
     /// surface per-lane note attribution to the UI (different piano
     /// colors per lane). Tauri callers still use the untagged `tick`
     /// for backward compatibility.
-    pub fn tick_tagged(&mut self, engine: &Mutex<HarmonyEngine>) -> Vec<(String, DispatchOp)> {
+    pub fn tick_tagged(
+        &mut self,
+        engine: &Mutex<HarmonyEngine>,
+    ) -> Vec<(&'static str, DispatchOp)> {
         if !self.enabled.load(Ordering::Acquire) {
             return Vec::new();
         }
@@ -183,10 +186,10 @@ impl Companion {
             .iter_mut()
             .filter(|l| l.phase() == LanePhase::Decide)
         {
-            let lane_id = lane.type_id().to_string();
+            let lane_id = lane.type_id();
             let out = lane.tick(&self.world);
             for op in out.ops {
-                tagged.push((lane_id.clone(), op));
+                tagged.push((lane_id, op));
             }
         }
         tagged
@@ -243,22 +246,22 @@ impl Companion {
         &mut self,
         ev: InputEvent,
         engine: &Mutex<HarmonyEngine>,
-    ) -> (Vec<(String, DispatchOp)>, bool) {
+    ) -> (Vec<(&'static str, DispatchOp)>, bool) {
         if !self.enabled.load(Ordering::Acquire) {
             return (Vec::new(), false);
         }
 
-        let mut tagged: Vec<(String, DispatchOp)> = Vec::new();
+        let mut tagged: Vec<(&'static str, DispatchOp)> = Vec::new();
         let mut suppress_default = false;
 
         for lane in self.lanes.iter_mut() {
             if !lane.input_filter().matches(&ev) {
                 continue;
             }
-            let lane_id = lane.type_id().to_string();
+            let lane_id = lane.type_id();
             let out = lane.on_input(ev, &self.world);
             for op in out.ops {
-                tagged.push((lane_id.clone(), op));
+                tagged.push((lane_id, op));
             }
             if out.suppress_default {
                 suppress_default = true;
@@ -447,7 +450,7 @@ mod tests {
         fn name(&self) -> &str {
             self.id
         }
-        fn type_id(&self) -> &str {
+        fn type_id(&self) -> &'static str {
             self.id
         }
         fn phase(&self) -> LanePhase {

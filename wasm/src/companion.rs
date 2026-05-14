@@ -261,13 +261,21 @@ fn serialize_ops(ops: &[DispatchOp]) -> Result<String, serde_json::Error> {
 /// (e.g. `"canon"` or `"counterpoint"`). Used by the JS adapter to
 /// attribute each emission to a lane so the UI can color piano keys
 /// per-lane.
-fn serialize_tagged_ops(tagged: &[(String, DispatchOp)]) -> Result<String, serde_json::Error> {
+fn serialize_tagged_ops(
+    tagged: &[(&'static str, DispatchOp)],
+) -> Result<String, serde_json::Error> {
     let values: Vec<serde_json::Value> = tagged
         .iter()
         .map(|(lane_id, op)| {
             let mut v = op_to_json(op);
             if let serde_json::Value::Object(ref mut map) = v {
-                map.insert("lane".into(), serde_json::Value::String(lane_id.clone()));
+                // serde_json::Value::String requires owned — one
+                // alloc here at JSON-encode time is unavoidable.
+                // Everything else in the dispatch path is alloc-free.
+                map.insert(
+                    "lane".into(),
+                    serde_json::Value::String((*lane_id).to_string()),
+                );
             }
             v
         })

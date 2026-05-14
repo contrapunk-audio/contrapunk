@@ -219,6 +219,15 @@ export interface AdapterCapabilities {
 	 *  the start/stop routing flow make sense. False in plugin mode
 	 *  — the DAW handles MIDI routing. */
 	midiDevicePicker: boolean;
+	/** Whether the surface drives the built-in synth + FX (reverb,
+	 *  delay). False in plugin mode — the DAW hosts audio and the
+	 *  plugin emits MIDI only; the synth/FX racks would be inert. */
+	audioFx: boolean;
+	/** Whether the surface supports Companion lanes (canon +
+	 *  counterpoint). False in plugin mode for v1.3.0 — plugin core
+	 *  doesn't wire Companion yet (deferred to v1.4). The
+	 *  CompanionPanel and master HoldMode toggle hide when false. */
+	companionLanes: boolean;
 }
 
 export interface ContrapunkAdapter {

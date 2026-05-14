@@ -291,10 +291,10 @@ fn run_calibration(device_name: &str, channel: usize) -> Result<GuitarCalibratio
         timestamp: chrono_timestamp(),
     };
 
-    // Save to disk
-    if let Ok(json) = serde_json::to_string_pretty(&profile) {
-        let _ = std::fs::write("guitar_calibration_profile.json", json);
-    }
+    // (Caller `start_guitar_calibration` already persists this via
+    // `save_calibration_profile` to app_data_dir. A second `std::fs::write`
+    // to a bare relative path used to live here — it wrote duplicate
+    // junk to the process CWD and swallowed errors. Removed.)
 
     Ok(profile)
 }

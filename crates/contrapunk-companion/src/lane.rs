@@ -240,7 +240,12 @@ pub trait Lane: Send + Sync {
     /// Stable identifier for rig serialization. Distinct Lanes of the
     /// same type may share `type_id` ("looper") but have different
     /// `name`s ("Loop A", "Loop B"). The Lane registry uses this.
-    fn type_id(&self) -> &str;
+    ///
+    /// Returns `&'static str` so the audio-adjacent dispatch path can
+    /// tag every emitted op without allocating per-tick. Every shipped
+    /// impl already returns a string literal — tightening the trait
+    /// makes the no-alloc contract enforced.
+    fn type_id(&self) -> &'static str;
 
     /// Which orchestration phase this Lane runs in.
     fn phase(&self) -> LanePhase;

@@ -68,9 +68,6 @@ function processAudioSamples(
 	// audio to process_block without pre-filtering)
 
 	frameCounter.count++;
-	if (frameCounter.count % 25 === 0) {
-		console.log(`[guitar] frame=${frameCounter.count} rms=${rms.toFixed(4)} ch=${channelUsed}`);
-	}
 
 	// Send raw audio directly to WASM — the Rust ring buffer handles windowing.
 	const eventsJson = dsp.process_block(samples);
@@ -81,10 +78,6 @@ function processAudioSamples(
 	} catch (err) {
 		console.error('[guitar] Failed to parse WASM events:', err);
 		return;
-	}
-
-	if (allEvents.length > 0) {
-		console.log(`[guitar] WASM events (${allEvents.length}):`, JSON.stringify(allEvents));
 	}
 
 	// Fire detection callback for UI
@@ -111,11 +104,9 @@ function processAudioSamples(
 	for (const e of allEvents) {
 		switch (e.type) {
 			case 'note_on':
-				console.log(`[midi] NOTE ON: ${midiToNoteName(e.note)} (${e.note}) vel=${e.velocity} ch=${e.channel}`);
 				callbacks.onNoteOn(e.note, e.velocity);
 				break;
 			case 'note_off':
-				console.log(`[midi] NOTE OFF: ${midiToNoteName(e.note)} (${e.note}) ch=${e.channel}`);
 				callbacks.onNoteOff(e.note);
 				break;
 			case 'pitch_bend':

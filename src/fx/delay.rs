@@ -62,7 +62,18 @@ impl Subdivision {
             3 => Subdivision::EighthTriplet,
             4 => Subdivision::Sixteenth,
             5 => Subdivision::SixteenthTriplet,
-            _ => Subdivision::Quarter,
+            // Out-of-range byte means either a state-file migration
+            // shipped before the receiver, or a junk value got
+            // written by some other path. Quarter is a safe-and-
+            // audible default. Print to stderr so it surfaces in
+            // dev but doesn't crash audio in prod.
+            other => {
+                eprintln!(
+                    "[delay] Subdivision::from_u8: unknown byte {} — defaulting to Quarter",
+                    other
+                );
+                Subdivision::Quarter
+            }
         }
     }
 
@@ -150,8 +161,12 @@ impl DelayParams {
         self.enabled.store(v, Ordering::Relaxed);
     }
     pub fn set_mix(&self, v: f32) {
-        self.mix_ppt
-            .store((v.clamp(0.0, 1.0) * 1000.0) as u32, Ordering::Relaxed);
+        // round, not truncate — 0.0009 floors to 0 with `as u32` which
+        // silently mutes the wet signal. Round preserves intent.
+        self.mix_ppt.store(
+            (v.clamp(0.0, 1.0) * 1000.0).round() as u32,
+            Ordering::Relaxed,
+        );
     }
     pub fn set_time_ms(&self, ms: u32) {
         let clamped = ms.clamp(10, (MAX_DELAY_SECS * 1000.0) as u32);
@@ -159,7 +174,7 @@ impl DelayParams {
     }
     pub fn set_feedback(&self, v: f32) {
         self.feedback_ppt.store(
-            (v.clamp(0.0, MAX_FEEDBACK) * 1000.0) as u32,
+            (v.clamp(0.0, MAX_FEEDBACK) * 1000.0).round() as u32,
             Ordering::Relaxed,
         );
     }
@@ -247,15 +262,17 @@ impl Delay {
     }
 
     /// Build a Delay that knows about the transport, so the sync mode
-    /// can derive tap length from BPM. Pass-through to `new` otherwise.
+    /// can derive tap length from BPM. Without this, `process()` falls
+    /// back to the free `time_ms` value regardless of the sync flag.
     pub fn with_transport(
         params: Arc<DelayParams>,
         transport: Arc<Transport>,
         sample_rate: u32,
     ) -> Self {
-        let mut d = Self::new(params, sample_rate);
-        d.transport = Some(transport);
-        d
+        Self {
+            transport: Some(transport),
+            ..Self::new(params, sample_rate)
+        }
     }
 
     pub fn params(&self) -> Arc<DelayParams> {

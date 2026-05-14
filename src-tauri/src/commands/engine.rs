@@ -1187,7 +1187,7 @@ fn midi_bytes_to_input_event(bytes: &[u8]) -> Option<crate::companion::InputEven
 /// is deferred until the audio-graph milestone introduces an
 /// `InstrumentId` model.
 fn dispatch_companion_ops(
-    tagged: &[(String, crate::companion::DispatchOp)],
+    tagged: &[(&'static str, crate::companion::DispatchOp)],
     num_ports: usize,
     synth_tx: &mpsc::Sender<SynthEvent>,
     output: &mut OutputRouter,
@@ -1199,7 +1199,7 @@ fn dispatch_companion_ops(
     for (lane, op) in tagged {
         // Per-lane set the note belongs to, if any. Other lane tags
         // (or AllNotesOff) leave both untouched.
-        let lane_set: Option<&Arc<Mutex<HashSet<u8>>>> = match lane.as_str() {
+        let lane_set: Option<&Arc<Mutex<HashSet<u8>>>> = match *lane {
             "canon" => Some(canon_notes),
             "counterpoint" => Some(counterpoint_notes),
             _ => None,
@@ -1594,6 +1594,48 @@ mod tests {
         let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
         let expected: HashSet<u8> = [60, 64].iter().copied().collect();
         assert_eq!(drained, expected);
+    }
+
+    /// Regression: `drain_all_tracked_notes` must recover from a
+    /// poisoned mutex via the established `unwrap_or_else(|e|
+    /// e.into_inner())` pattern (and equivalent), not panic. Without
+    /// this, a panic in any thread that holds these locks (e.g. an
+    /// inner unwrap fault during reharm) cascades into a dead router.
+    /// First poison-recovery test in the project — proves the
+    /// convention on one site is enough to prove it on all.
+    #[test]
+    fn test_drain_all_tracked_notes_survives_poisoned_lock() {
+        use std::thread;
+        let input = Arc::new(Mutex::new([60u8].iter().copied().collect::<HashSet<u8>>()));
+        let harmony = Arc::new(Mutex::new(
+            [60u8, 64].iter().copied().collect::<HashSet<u8>>(),
+        ));
+        let borrowed = Arc::new(Mutex::new(HashSet::<u8>::new()));
+
+        // Poison the middle lock from a spawned thread by holding it
+        // while panicking. .join() catches the panic so the test
+        // process survives.
+        let poisoner = {
+            let h = Arc::clone(&harmony);
+            thread::spawn(move || {
+                let _guard = h.lock().unwrap();
+                panic!("intentional poison for test");
+            })
+        };
+        let _ = poisoner.join();
+        assert!(
+            harmony.is_poisoned(),
+            "poisoner thread should have flagged the mutex"
+        );
+
+        // drain_all_tracked_notes must still see the wrapped data
+        // (60, 64 from the harmony set) instead of panicking.
+        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
+        let expected: HashSet<u8> = [60, 64].iter().copied().collect();
+        assert_eq!(
+            drained, expected,
+            "drain must recover via .unwrap_or_else(|e| e.into_inner()) on poisoned mutex"
+        );
     }
 
     /// MIDI NoteOn (status 0x9X) with non-zero velocity decodes to

@@ -52,7 +52,16 @@ export class PluginAdapter implements ContrapunkAdapter {
 		transportControl: false,
 		// DAW routes MIDI to/from the plugin via its own bus / track
 		// pickers; ours would be inert.
-		midiDevicePicker: false
+		midiDevicePicker: false,
+		// Plugin is MIDI-out only. The synth/reverb/delay UI knobs
+		// fire send() into the void because plugin/src/lib.rs has no
+		// audio FX params today. Hide until those land.
+		audioFx: false,
+		// Plugin core doesn't wire Companion (canon + counterpoint)
+		// yet — deferred to v1.4. Hide CompanionPanel and master
+		// HoldMode toggle so users don't tweak controls that go
+		// nowhere.
+		companionLanes: false
 	} as const;
 
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;

@@ -825,7 +825,7 @@ impl Lane for CanonLane {
         "Canon"
     }
 
-    fn type_id(&self) -> &str {
+    fn type_id(&self) -> &'static str {
         "canon"
     }
 
@@ -855,9 +855,11 @@ impl Lane for CanonLane {
         if needs_reset || self.sequence_anchor.is_none() {
             self.sequence_anchor = Some(now);
         }
-        let anchor = self
-            .sequence_anchor
-            .expect("anchor must be Some after housekeeping");
+        // The housekeeping above guarantees sequence_anchor is Some,
+        // but use `unwrap_or(now)` rather than `.expect()` so a future
+        // early-return added to that block can't panic the audio
+        // thread.
+        let anchor = self.sequence_anchor.unwrap_or(now);
 
         match ev {
             InputEvent::NoteOn {

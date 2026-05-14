@@ -70,6 +70,7 @@
 		</div>
 	</div>
 
+	{#if adapter.capabilities.audioFx}
 	<!-- Synth rack: Serum-inspired -->
 	<div class="rack">
 		<div class="rack-header">
@@ -363,6 +364,7 @@
 			/>
 		</div>
 	</div>
+	{/if}
 
 	<!-- One rack per loaded CLAP plugin -->
 	{#each chainStore.blocks as b, i (i + ':' + b.typeId)}
