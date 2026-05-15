@@ -4228,18 +4228,26 @@ mod tests {
         // Drift the EMA artificially up (simulating noisy room) so we
         // can prove set_calibration_profile RE-SEEDS it from the
         // normalizer's global_noise_floor instead of leaving the
-        // drifted value in place. With a default profile,
-        // global_noise_floor is 0.005.
+        // drifted value in place.
         pipe.noise_floor_ema = 0.5;
         pipe.set_calibration_profile(standard_profile());
         let after = pipe.noise_floor_ema;
+
+        // Compute the expected value the same way AudioNormalizer does
+        // — read it back from the live normalizer rather than
+        // hardcoding 0.005, so an algorithm change in `from_profile`
+        // is caught here too instead of silently absorbed by a wide
+        // band. This is the brutal-critic-flagged "wide-pass-band"
+        // tightening — was `0.0 < x < 0.5`, now `±1e-6` against the
+        // normalizer's own reported value.
+        let expected = pipe
+            .normalizer
+            .as_ref()
+            .expect("normalizer attached after profile load")
+            .global_noise_floor();
         assert!(
-            after < 0.5,
-            "noise_floor_ema must be re-seeded from calibration (was 0.5, after={after:.5})"
-        );
-        assert!(
-            after > 0.0,
-            "noise_floor_ema must be a positive value (got {after:.5})"
+            (after - expected).abs() < 1e-6,
+            "noise_floor_ema must equal AudioNormalizer.global_noise_floor() ({expected:.6}), got {after:.6}"
         );
     }
 
@@ -4258,25 +4266,54 @@ mod tests {
 
     #[test]
     fn adaptive_thresholds_consult_normalizer_when_present() {
-        // Set noise_floor_ema artificially low, then load a profile.
-        // The threshold should NOT drop below the calibrated floor even
-        // when the EMA is near zero (proving the .max() in the getter
-        // actually consults the normalizer).
-        let mut pipe = GuitarInput::with_defaults();
-        pipe.noise_floor_ema = 0.0001; // simulate over-aggressive EMA drift
-        pipe.set_calibration_profile(standard_profile());
-        // After set_calibration_profile, noise_floor_ema is re-seeded
-        // from global_noise_floor. The threshold should reflect that.
-        let onset = pipe.adaptive_onset_threshold();
-        let flux = pipe.adaptive_flux_threshold();
+        // The previous version of this test asserted `onset >= 0.005`
+        // and `flux >= 0.1` — but those are the hardcoded MIN clamps
+        // in the getter, so the test passed even if the normalizer
+        // was ignored entirely. Brutal-critic flagged it as
+        // tautological. Rewrite: build two profiles with measurably
+        // different noise floors, then assert the thresholds differ
+        // accordingly. If `adaptive_*_threshold` stops consulting the
+        // normalizer, this test fails.
+        let mut quiet_pipe = GuitarInput::with_defaults();
+        quiet_pipe.noise_floor_ema = 0.0001; // pin the EMA contribution near zero
+        let mut quiet_profile = standard_profile();
+        // Force a very low calibrated floor by zeroing soft samples.
+        for s in quiet_profile.strings.iter_mut() {
+            for sample in s.soft_samples.iter_mut() {
+                sample.rms = 0.001;
+            }
+        }
+        quiet_pipe.set_calibration_profile(quiet_profile);
+        // Re-pin EMA AFTER profile load (set_calibration_profile
+        // overwrites noise_floor_ema, so we re-overwrite to isolate
+        // the normalizer's contribution to the threshold).
+        quiet_pipe.noise_floor_ema = 0.0001;
+        let quiet_onset = quiet_pipe.adaptive_onset_threshold();
+
+        let mut loud_pipe = GuitarInput::with_defaults();
+        loud_pipe.noise_floor_ema = 0.0001;
+        let mut loud_profile = standard_profile();
+        for s in loud_profile.strings.iter_mut() {
+            for sample in s.soft_samples.iter_mut() {
+                sample.rms = 0.5; // much louder soft samples → higher floor
+            }
+        }
+        loud_pipe.set_calibration_profile(loud_profile);
+        loud_pipe.noise_floor_ema = 0.0001;
+        let loud_onset = loud_pipe.adaptive_onset_threshold();
+
+        // The threshold must respond to the normalizer's floor. Loud
+        // calibrations should not be quieter than quiet ones at the
+        // same EMA — if `adaptive_onset_threshold` ignored the
+        // normalizer, both would clamp to the 0.005 minimum and this
+        // would fail.
         assert!(
-            onset >= 0.005,
-            "onset threshold must clamp at the 0.005 minimum (got {onset:.5})"
+            loud_onset > quiet_onset,
+            "louder calibration profile must yield a higher onset threshold (loud={loud_onset:.5}, quiet={quiet_onset:.5})"
         );
-        assert!(
-            flux >= 0.1,
-            "flux threshold must clamp at the 0.1 minimum (got {flux:.5})"
-        );
+        // And both must respect the minimum clamp regardless.
+        assert!(quiet_onset >= 0.005);
+        assert!(loud_onset >= 0.005);
     }
 
     #[test]
@@ -4310,10 +4347,42 @@ mod tests {
 
     #[test]
     fn normalizer_accepts_no_profile_is_always_true() {
+        // No profile loaded → gate is a no-op (returns true for ALL
+        // inputs). Cover the obvious happy-path values plus the
+        // edge-case floats that real audio interfaces sometimes emit:
+        // 0, denormals, +inf, -inf, NaN. The gate must not panic on
+        // any of them, and the no-profile branch must not synthesize
+        // a rejection.
         let pipe = GuitarInput::with_defaults();
-        // No profile loaded; any signal accepts.
         assert!(pipe.normalizer_accepts(0.5, 0.3, 0.8));
         assert!(pipe.normalizer_accepts(0.0001, 0.0001, 0.0));
+        assert!(pipe.normalizer_accepts(0.0, 0.0, 0.0));
+        assert!(pipe.normalizer_accepts(f32::INFINITY, 0.0, 0.0));
+        assert!(pipe.normalizer_accepts(0.0, f32::INFINITY, 0.0));
+        assert!(pipe.normalizer_accepts(0.0, 0.0, f32::INFINITY));
+        assert!(pipe.normalizer_accepts(-1.0, -1.0, -1.0));
+        // NaN: must not panic, must not loop, must return true (no-op).
+        assert!(pipe.normalizer_accepts(f32::NAN, 0.5, 0.5));
+        assert!(pipe.normalizer_accepts(0.5, f32::NAN, 0.5));
+        assert!(pipe.normalizer_accepts(0.5, 0.5, f32::NAN));
+    }
+
+    #[test]
+    fn normalizer_accepts_with_profile_handles_nan_without_panic() {
+        // Even with a profile loaded, a single bad sample frame
+        // (NaN from a driver hiccup) must NOT panic or lock the
+        // gate into permanent-reject mode. Whether the gate
+        // returns true or false for NaN is implementation-defined
+        // (NaN comparisons are all-false, so likely-rejection),
+        // but the pipeline must keep running.
+        let mut pipe = GuitarInput::with_defaults();
+        pipe.set_calibration_profile(standard_profile());
+        let _ = pipe.normalizer_accepts(f32::NAN, 0.5, 0.9);
+        let _ = pipe.normalizer_accepts(0.5, f32::NAN, 0.9);
+        let _ = pipe.normalizer_accepts(0.5, 0.5, f32::NAN);
+        // Subsequent CLEAN input must still pass — the gate must not
+        // be stranded in a corrupted internal state by NaN exposure.
+        assert!(pipe.normalizer_accepts(0.2, 0.1, 0.9));
     }
 
     #[test]
