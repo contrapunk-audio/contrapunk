@@ -119,6 +119,40 @@
 	let manyNotesActive = $derived(
 		engine.inputNotes.length + engine.harmonyNotes.length >= 4
 	);
+
+	// WAI-ARIA tablist keyboard navigation. ArrowLeft/ArrowRight cycle
+	// through tabs; Home / End jump to ends. Roving-tabindex pattern.
+	type MainTab = 'play' | 'io' | 'companion' | 'voices';
+	const MAIN_TABS: MainTab[] = ['play', 'io', 'companion', 'voices'];
+
+	function focusTab(id: string) {
+		document.getElementById(id)?.focus();
+	}
+
+	function handleTabKeydown(e: KeyboardEvent, current: MainTab) {
+		const idx = MAIN_TABS.indexOf(current);
+		if (idx < 0) return;
+		let next = idx;
+		if (e.key === 'ArrowRight') next = (idx + 1) % MAIN_TABS.length;
+		else if (e.key === 'ArrowLeft') next = (idx - 1 + MAIN_TABS.length) % MAIN_TABS.length;
+		else if (e.key === 'Home') next = 0;
+		else if (e.key === 'End') next = MAIN_TABS.length - 1;
+		else return;
+		e.preventDefault();
+		const target = MAIN_TABS[next];
+		ui.setActiveTab(target);
+		queueMicrotask(() => focusTab(`tab-${target}`));
+	}
+
+	function handleSubtabKeydown(e: KeyboardEvent, current: 'input' | 'output') {
+		if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') {
+			return;
+		}
+		e.preventDefault();
+		const next: 'input' | 'output' = current === 'input' ? 'output' : 'input';
+		ui.setIoSubtab(next);
+		queueMicrotask(() => focusTab(`subtab-${next}`));
+	}
 </script>
 
 <!--
@@ -157,55 +191,62 @@
 	<SettingsModal />
 
 	{#if initDone}
-		<!-- Tab switcher (orthogonal to panel visibility — tabs decide
-		     content type, panels decide which Play surfaces render). -->
-		<div class="tab-strip">
+		{#snippet tabButton(tabId: 'play' | 'io' | 'companion' | 'voices', tabLabel: string)}
 			<button
 				class="tab-btn font-ui"
-				class:active={ui.activeTab === 'play'}
-				onclick={() => ui.setActiveTab('play')}
+				class:active={ui.activeTab === tabId}
+				role="tab"
+				type="button"
+				id="tab-{tabId}"
+				aria-selected={ui.activeTab === tabId}
+				aria-controls="panel-{tabId}"
+				tabindex={ui.activeTab === tabId ? 0 : -1}
+				onclick={() => ui.setActiveTab(tabId)}
+				onkeydown={(e) => handleTabKeydown(e, tabId)}
 			>
-				Harmony
+				{tabLabel}
 			</button>
-			<button
-				class="tab-btn font-ui"
-				class:active={ui.activeTab === 'io'}
-				onclick={() => ui.setActiveTab('io')}
-			>
-				I/O
-			</button>
-			<button
-				class="tab-btn font-ui"
-				class:active={ui.activeTab === 'companion'}
-				onclick={() => ui.setActiveTab('companion')}
-			>
-				Companion
-			</button>
-			<button
-				class="tab-btn font-ui"
-				class:active={ui.activeTab === 'voices'}
-				onclick={() => ui.setActiveTab('voices')}
-			>
-				Voices
-			</button>
+		{/snippet}
+
+		<!-- Tab switcher (WAI-ARIA tablist pattern: arrow keys move
+		     focus + activate; roving tabindex; aria-selected reflects
+		     state; each tab points at its panel via aria-controls). -->
+		<div class="tab-strip" role="tablist" aria-label="Main view">
+			{@render tabButton('play', 'Harmony')}
+			{@render tabButton('io', 'I/O')}
+			{@render tabButton('companion', 'Companion')}
+			{@render tabButton('voices', 'Voices')}
 		</div>
 
 		{#if ui.activeTab === 'io'}
 			<!-- I/O subtab strip — only rendered when I/O tab is active.
-			     Input subtab = MIDI/Guitar/Voice source pickers; Output
-			     subtab = Voice Generation Chain + synth/FX. -->
-			<div class="subtab-strip">
+			     Same tablist pattern as the main strip. -->
+			<div class="subtab-strip" role="tablist" aria-label="I/O subtab">
 				<button
 					class="subtab-btn font-ui"
 					class:active={ui.ioSubtab === 'input'}
+					role="tab"
+					type="button"
+					id="subtab-input"
+					aria-selected={ui.ioSubtab === 'input'}
+					aria-controls="iopanel-input"
+					tabindex={ui.ioSubtab === 'input' ? 0 : -1}
 					onclick={() => ui.setIoSubtab('input')}
+					onkeydown={(e) => handleSubtabKeydown(e, 'input')}
 				>
 					Input
 				</button>
 				<button
 					class="subtab-btn font-ui"
 					class:active={ui.ioSubtab === 'output'}
+					role="tab"
+					type="button"
+					id="subtab-output"
+					aria-selected={ui.ioSubtab === 'output'}
+					aria-controls="iopanel-output"
+					tabindex={ui.ioSubtab === 'output' ? 0 : -1}
 					onclick={() => ui.setIoSubtab('output')}
+					onkeydown={(e) => handleSubtabKeydown(e, 'output')}
 				>
 					Output
 				</button>
@@ -213,6 +254,7 @@
 		{/if}
 
 		{#if ui.activeTab === 'play'}
+		<div role="tabpanel" id="panel-play" aria-labelledby="tab-play">
 			{#if ui.panels.midi || ui.panels.controls}
 				<!-- Setup row: MIDI devices + Harmony controls. Each
 				     column is a togglable panel; the row collapses to
@@ -265,22 +307,26 @@
 					{#if ui.panels.piano}<Piano />{/if}
 				</div>
 			{/if}
+		</div>
 		{:else if ui.activeTab === 'io'}
 			<!-- I/O tab — subtabs hold Input (sources + calibration) and
-			     Output (Voice Generation Chain + synth/FX). The Output
-			     subtab fills in across steps 3-4 of the restructure. -->
-			<div class="io-area">
+			     Output (Voice Generation Chain + synth/FX). -->
+			<div class="io-area" role="tabpanel" id="panel-io" aria-labelledby="tab-io">
 				{#if ui.ioSubtab === 'input'}
-					{#if adapter.capabilities.inputSourcePicker}
-						<InputPanel />
-					{:else}
-						<div class="surface-unavailable font-ui">
-							Input source is owned by the DAW in plugin mode.
-							Route MIDI / audio to the plugin from your host.
-						</div>
-					{/if}
+					<div role="tabpanel" id="iopanel-input" aria-labelledby="subtab-input">
+						{#if adapter.capabilities.inputSourcePicker}
+							<InputPanel />
+						{:else}
+							<div class="surface-unavailable font-ui">
+								Input source is owned by the DAW in plugin mode.
+								Route MIDI / audio to the plugin from your host.
+							</div>
+						{/if}
+					</div>
 				{:else}
-					<OutputPanel />
+					<div role="tabpanel" id="iopanel-output" aria-labelledby="subtab-output">
+						<OutputPanel />
+					</div>
 				{/if}
 			</div>
 		{:else if ui.activeTab === 'companion'}
@@ -289,7 +335,7 @@
 			     here so the Play tab stays focused on real-time harmony.
 			     Hidden in plugin mode where the plugin core doesn't wire
 			     Companion lanes yet — deferred to v1.4. -->
-			<div class="companion-area">
+			<div class="companion-area" role="tabpanel" id="panel-companion" aria-labelledby="tab-companion">
 				{#if adapter.capabilities.companionLanes}
 					<CompanionPanel />
 				{:else}
@@ -304,7 +350,7 @@
 			<!-- Voices tab: named voice presets (built-in SATB chorale
 			     roles + user-defined). Canon voice cards pick from this
 			     library to apply a full harmony config to each voice. -->
-			<div class="voices-area">
+			<div class="voices-area" role="tabpanel" id="panel-voices" aria-labelledby="tab-voices">
 				<VoicesPanel />
 			</div>
 		{/if}

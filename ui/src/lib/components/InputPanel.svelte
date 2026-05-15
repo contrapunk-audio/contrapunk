@@ -13,34 +13,54 @@
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
 
-	type Source = 'midi' | 'guitar' | 'voice';
+	type Source = 'midi' | 'guitar' | 'voice' | 'none';
 
-	const sourceFromSelection = (sel: number | null): Source =>
-		sel === VIRTUAL_GUITAR_AUDIO ? 'guitar' : 'midi';
+	/** Map the (potentially null) midi.selectedInput onto a Source. A
+	 *  null selection now reports 'none' so the radio doesn't light up
+	 *  the MIDI tile when nothing is wired (brutal-critic #3). */
+	const sourceFromSelection = (sel: number | null): Source => {
+		if (sel === null) return 'none';
+		if (sel === VIRTUAL_GUITAR_AUDIO) return 'guitar';
+		return 'midi';
+	};
 
 	let source = $derived<Source>(sourceFromSelection(midi.selectedInput));
 
-	// Remember the user's last non-virtual / non-guitar MIDI selection so
-	// clicking the MIDI radio after a guitar session restores their
-	// physical device, instead of silently auto-selecting Computer
-	// Keyboard (which would turn the keyboard into a hot input mid-take).
+	// Remember the user's last PHYSICAL MIDI device so clicking the MIDI
+	// radio after a guitar session restores it, instead of either
+	// auto-selecting Computer Keyboard (hot keyboard mid-take) or
+	// dropping into Computer-Keyboard as "last MIDI device" (brutal-
+	// critic #6 — VCK is not a physical MIDI device).
+	function isPhysicalMidi(sel: number | null): boolean {
+		return (
+			sel !== null &&
+			sel !== VIRTUAL_GUITAR_AUDIO &&
+			sel !== VIRTUAL_COMPUTER_KEYBOARD
+		);
+	}
 	let lastMidiSelection = $state<number | null>(
-		midi.selectedInput !== null &&
-			midi.selectedInput !== VIRTUAL_GUITAR_AUDIO
-			? midi.selectedInput
-			: null
+		isPhysicalMidi(midi.selectedInput) ? midi.selectedInput : null
 	);
 	$effect(() => {
-		if (
-			midi.selectedInput !== null &&
-			midi.selectedInput !== VIRTUAL_GUITAR_AUDIO
-		) {
+		if (isPhysicalMidi(midi.selectedInput)) {
 			lastMidiSelection = midi.selectedInput;
 		}
 	});
 
+	// Transient feedback when the user clicks the disabled Voice tile.
+	// Clears on any other source click.
+	let voiceUnavailableHint = $state(false);
+
 	function selectSource(next: Source) {
-		if (next === 'voice') return; // Disabled in v1.3
+		if (next === 'none') return; // Nothing to do
+		if (next === 'voice') {
+			// Surface the v1.4 message inline so mobile/touch users (who
+			// can't hover for the tooltip) get feedback instead of a
+			// silent no-op (brutal-critic #3).
+			voiceUnavailableHint = true;
+			return;
+		}
+		voiceUnavailableHint = false;
 		if (next === 'guitar') {
 			midi.selectVirtualInput(VIRTUAL_GUITAR_AUDIO);
 			return;
@@ -147,10 +167,13 @@
 	     v1.4 vocal pipeline (PSOLA harmonizer). -->
 	<div class="source-radio pixel-card">
 		<div class="section-header font-ui">SOURCE</div>
-		<div class="radio-row">
+		<div class="radio-row" role="radiogroup" aria-label="Input source">
 			<button
 				class="source-btn pixel-btn font-ui"
 				class:active={source === 'midi'}
+				role="radio"
+				type="button"
+				aria-checked={source === 'midi'}
 				onclick={() => selectSource('midi')}
 				title="MIDI keyboard or computer-keyboard input"
 			>
@@ -159,6 +182,9 @@
 			<button
 				class="source-btn pixel-btn font-ui"
 				class:active={source === 'guitar'}
+				role="radio"
+				type="button"
+				aria-checked={source === 'guitar'}
 				onclick={() => selectSource('guitar')}
 				title="Live guitar audio in via cpal (pitch-detected)"
 			>
@@ -166,13 +192,21 @@
 			</button>
 			<button
 				class="source-btn pixel-btn font-ui source-disabled"
-				disabled
+				role="radio"
+				type="button"
+				aria-checked="false"
 				aria-disabled="true"
+				onclick={() => selectSource('voice')}
 				title="Voice input (PSOLA harmonizer) lands in v1.4"
 			>
 				Voice
 			</button>
 		</div>
+		{#if voiceUnavailableHint}
+			<p class="voice-hint font-ui">
+				Voice input (PSOLA harmonizer) lands in v1.4 — stay tuned.
+			</p>
+		{/if}
 	</div>
 
 	<!-- Web MIDI permission card. Browsers gate
@@ -317,6 +351,13 @@
 	.source-btn.source-disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.voice-hint {
+		margin: 4px 0 0;
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+		line-height: 1.4;
 	}
 
 	.midi-section {
