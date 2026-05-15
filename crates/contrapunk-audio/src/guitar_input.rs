@@ -466,6 +466,11 @@ impl GuitarInput {
     /// floor — so the existing onset gate immediately benefits from
     /// the calibrated value instead of waiting for the EMA to
     /// converge to room-noise from the per-frame defaults.
+    ///
+    /// Also resets the note state machine so a mid-session reload
+    /// can't strand a ghost note against stale thresholds. Cooldown
+    /// + suppression are cleared; the next valid onset starts a
+    /// fresh tracking window.
     pub fn set_calibration_profile(&mut self, profile: super::guitar::GuitarCalibrationProfile) {
         let normalizer = super::guitar::AudioNormalizer::from_profile(&profile);
         // Read the calibrated noise floor BEFORE storing the normalizer
@@ -474,8 +479,48 @@ impl GuitarInput {
         if nf > 0.0 {
             self.noise_floor_ema = nf;
         }
+        // Mid-session reload safety: drain stale per-note state so a
+        // currently-sustained note doesn't keep firing against the
+        // newly-applied thresholds.
+        self.note_state = NoteState::Idle;
+        self.state_samples = 0;
+        self.cooldown_remaining = 0;
+        self.current_note = None;
+        self.suppress_frequency = None;
+        self.suppress_until = 0;
         self.normalizer = Some(normalizer);
         self.calibration_profile = Some(profile);
+    }
+
+    /// Compute upper-half RMS of the current window. Used as a
+    /// brightness proxy by the AudioNormalizer's pluck-vs-noise
+    /// discriminator. Mirrors the brightness measurement in
+    /// `examples/guitar_calibrate.rs`.
+    fn compute_bright_rms(buf: &[f32]) -> f32 {
+        if buf.is_empty() {
+            return 0.0;
+        }
+        let half = buf.len() / 2;
+        if half == 0 {
+            return 0.0;
+        }
+        let upper = &buf[half..];
+        let sum_sq: f32 = upper.iter().map(|s| s * s).sum();
+        (sum_sq / upper.len() as f32).sqrt()
+    }
+
+    /// Returns true if the AudioNormalizer (if loaded) accepts the
+    /// frame as a real pluck, false if it rejects as noise / brush /
+    /// scrape. When no profile is loaded, returns true (no-op gate).
+    /// `confidence` is the pitch-detection clarity in 0.0-1.0.
+    fn normalizer_accepts(&self, rms: f32, bright_rms: f32, confidence: f32) -> bool {
+        match self.normalizer.as_ref() {
+            Some(n) => !matches!(
+                n.normalize(rms, bright_rms, confidence, None),
+                super::guitar::NormalizeResult::Rejected
+            ),
+            None => true,
+        }
     }
 
     /// Returns the currently-loaded calibration profile, if any.
@@ -616,10 +661,10 @@ impl GuitarInput {
         // 3. Onset detection: RMS spike OR spectral flux (adaptive thresholds)
         let rms_onset = self.detect_onset(rms);
         let flux_onset = flux > self.adaptive_flux_threshold() && self.cooldown_remaining == 0;
-        let onset = rms_onset || flux_onset;
+        let mut onset = rms_onset || flux_onset;
         // Slope-only onset: true only when RMS jumped sharply from previous frame.
         // Used by Sustain to distinguish re-plucks from sustained ringing.
-        let slope_onset = self.cooldown_remaining == 0
+        let mut slope_onset = self.cooldown_remaining == 0
             && rms > self.adaptive_onset_threshold()
             && rms > self.prev_rms * 1.2;
 
@@ -633,6 +678,22 @@ impl GuitarInput {
         } else {
             detect_pitch_mcleod(buf, self.config.sample_rate, self.adaptive_clarity())
         };
+
+        // 3b. Calibration-driven brush/scrape rejection. Only applied when
+        // the user has loaded a calibration profile (else no-op). Brush
+        // and pick-scrape sounds have very high upper-half brightness
+        // relative to total RMS but low pitch-detection confidence —
+        // exactly the signal the AudioNormalizer.normalize() rejects.
+        // If the normalizer rejects, suppress onset emission AND the
+        // slope re-pluck path so we don't fire NoteOn from those.
+        if (onset || slope_onset) && self.normalizer.is_some() {
+            let bright_rms = Self::compute_bright_rms(buf);
+            let confidence = pitch_result.map(|(_, c)| c).unwrap_or(0.0);
+            if !self.normalizer_accepts(rms, bright_rms, confidence) {
+                onset = false;
+                slope_onset = false;
+            }
+        }
 
         // Store debug info for WASM logging (read by wrapper)
         self.last_debug_onset = onset;
@@ -1486,9 +1547,19 @@ impl GuitarInput {
 
     // ── Adaptive thresholds ─────────────────────────────────────────
 
-    /// Adaptive onset threshold: 3x the running noise floor, with a minimum.
+    /// Adaptive onset threshold: 3x the running noise floor, with a
+    /// minimum. When a calibration profile is loaded, the calibrated
+    /// global noise floor floors the EMA so a quiet room can't drift
+    /// the threshold below the user's measured baseline.
     fn adaptive_onset_threshold(&self) -> f32 {
-        (self.noise_floor_ema * 3.0).max(0.005)
+        let ema_floor = self.noise_floor_ema;
+        let cal_floor = self
+            .normalizer
+            .as_ref()
+            .map(|n| n.global_noise_floor())
+            .unwrap_or(0.0);
+        let floor = ema_floor.max(cal_floor);
+        (floor * 3.0).max(0.005)
     }
 
     /// Adaptive pitch clarity threshold: lower in high-SNR environments.
@@ -1502,9 +1573,18 @@ impl GuitarInput {
         0.3 + 0.3 * (1.0 - snr_clamped) as f64 // range [0.3, 0.6]
     }
 
-    /// Adaptive spectral flux threshold.
+    /// Adaptive spectral flux threshold. Calibrated floor flooring
+    /// matches `adaptive_onset_threshold` so the two gates stay in
+    /// lockstep when a profile is loaded.
     fn adaptive_flux_threshold(&self) -> f32 {
-        (self.noise_floor_ema * 5.0).max(0.1)
+        let ema_floor = self.noise_floor_ema;
+        let cal_floor = self
+            .normalizer
+            .as_ref()
+            .map(|n| n.global_noise_floor())
+            .unwrap_or(0.0);
+        let floor = ema_floor.max(cal_floor);
+        (floor * 5.0).max(0.1)
     }
 
     /// Update noise floor EMA (call during silence / Idle).
@@ -4083,5 +4163,204 @@ mod tests {
             depth_cents: 30.0,
         };
         assert!(event.to_midi_bytes(2).is_empty());
+    }
+
+    // ── Calibration consumer tests ──────────────────────────────────
+    //
+    // These lock the post-#16 wiring so the per-string thresholds +
+    // brightness rejection from a loaded profile stay live in the
+    // audio path. If a future refactor unplugs the normalizer, these
+    // tests scream.
+
+    use super::super::guitar::GuitarCalibrationProfile;
+
+    fn standard_profile() -> GuitarCalibrationProfile {
+        // A realistic-shape profile: soft samples ~0.05 RMS, strong
+        // samples ~0.2 RMS, brightness ratio ~0.5 (typical pluck).
+        // AudioNormalizer::from_profile then sets:
+        //   noise_gates[i] = soft_rms_threshold * 0.4
+        //                  = (avg(0.05) * 0.5) * 0.4 = 0.01
+        //   global_noise_floor = min(0.005, 0.01, ...) = 0.005
+        //   string_brightness_mean ≈ 0.5
+        let mut p = GuitarCalibrationProfile::default();
+        for s in p.strings.iter_mut() {
+            for _ in 0..4 {
+                s.soft_samples
+                    .push(super::super::guitar::CalibrationSample {
+                        note: "E2".to_string(),
+                        freq: 82.41,
+                        conf: 0.9,
+                        peak: 0.08,
+                        rms: 0.05,
+                        bright_peak: 0.04,
+                        bright_rms: 0.025, // ratio = 0.5
+                        main_delta: 0.0,
+                        main_ratio: 0.0,
+                        main_slope: 0.0,
+                        bright_delta: 0.0,
+                        bright_ratio: 0.0,
+                        bright_slope: 0.0,
+                    });
+                s.strong_samples
+                    .push(super::super::guitar::CalibrationSample {
+                        note: "E2".to_string(),
+                        freq: 82.41,
+                        conf: 0.95,
+                        peak: 0.3,
+                        rms: 0.2,
+                        bright_peak: 0.15,
+                        bright_rms: 0.1, // ratio = 0.5
+                        main_delta: 0.0,
+                        main_ratio: 0.0,
+                        main_slope: 0.0,
+                        bright_delta: 0.0,
+                        bright_ratio: 0.0,
+                        bright_slope: 0.0,
+                    });
+            }
+        }
+        p
+    }
+
+    #[test]
+    fn set_calibration_profile_seeds_noise_floor_ema() {
+        let mut pipe = GuitarInput::with_defaults();
+        // Drift the EMA artificially up (simulating noisy room) so we
+        // can prove set_calibration_profile RE-SEEDS it from the
+        // normalizer's global_noise_floor instead of leaving the
+        // drifted value in place. With a default profile,
+        // global_noise_floor is 0.005.
+        pipe.noise_floor_ema = 0.5;
+        pipe.set_calibration_profile(standard_profile());
+        let after = pipe.noise_floor_ema;
+        assert!(
+            after < 0.5,
+            "noise_floor_ema must be re-seeded from calibration (was 0.5, after={after:.5})"
+        );
+        assert!(
+            after > 0.0,
+            "noise_floor_ema must be a positive value (got {after:.5})"
+        );
+    }
+
+    #[test]
+    fn set_calibration_profile_attaches_normalizer() {
+        let mut pipe = GuitarInput::with_defaults();
+        assert!(!pipe.has_calibration_profile());
+        assert!(pipe.normalizer.is_none());
+        pipe.set_calibration_profile(standard_profile());
+        assert!(pipe.has_calibration_profile());
+        assert!(
+            pipe.normalizer.is_some(),
+            "AudioNormalizer must be constructed and stored on profile load — this is the wire that the brutal-critic flagged as missing"
+        );
+    }
+
+    #[test]
+    fn adaptive_thresholds_consult_normalizer_when_present() {
+        // Set noise_floor_ema artificially low, then load a profile.
+        // The threshold should NOT drop below the calibrated floor even
+        // when the EMA is near zero (proving the .max() in the getter
+        // actually consults the normalizer).
+        let mut pipe = GuitarInput::with_defaults();
+        pipe.noise_floor_ema = 0.0001; // simulate over-aggressive EMA drift
+        pipe.set_calibration_profile(standard_profile());
+        // After set_calibration_profile, noise_floor_ema is re-seeded
+        // from global_noise_floor. The threshold should reflect that.
+        let onset = pipe.adaptive_onset_threshold();
+        let flux = pipe.adaptive_flux_threshold();
+        assert!(
+            onset >= 0.005,
+            "onset threshold must clamp at the 0.005 minimum (got {onset:.5})"
+        );
+        assert!(
+            flux >= 0.1,
+            "flux threshold must clamp at the 0.1 minimum (got {flux:.5})"
+        );
+    }
+
+    #[test]
+    fn set_calibration_profile_drains_stale_state() {
+        let mut pipe = GuitarInput::with_defaults();
+        // Force the pipeline into a non-Idle state with a cooldown and
+        // a tracked current_note, simulating a sustaining note when the
+        // user reloads a profile.
+        pipe.note_state = NoteState::Sustain;
+        pipe.cooldown_remaining = 1000;
+        pipe.current_note = Some(DetectedNote {
+            midi_note: 60,
+            frequency: 261.63,
+            string_idx: Some(2),
+            fret: Some(5),
+            string_confidence: 0.9,
+            velocity: 100,
+            bend_cents: 0,
+        });
+        pipe.suppress_frequency = Some(82.0);
+        pipe.suppress_until = 9999;
+
+        pipe.set_calibration_profile(standard_profile());
+
+        assert!(matches!(pipe.note_state, NoteState::Idle));
+        assert_eq!(pipe.cooldown_remaining, 0);
+        assert!(pipe.current_note.is_none());
+        assert!(pipe.suppress_frequency.is_none());
+        assert_eq!(pipe.suppress_until, 0);
+    }
+
+    #[test]
+    fn normalizer_accepts_no_profile_is_always_true() {
+        let pipe = GuitarInput::with_defaults();
+        // No profile loaded; any signal accepts.
+        assert!(pipe.normalizer_accepts(0.5, 0.3, 0.8));
+        assert!(pipe.normalizer_accepts(0.0001, 0.0001, 0.0));
+    }
+
+    #[test]
+    fn normalizer_accepts_rejects_signal_below_global_noise_floor() {
+        let mut pipe = GuitarInput::with_defaults();
+        pipe.set_calibration_profile(standard_profile());
+        // No string hint -> normalize() uses global_noise_floor (~0.005).
+        // RMS well below that should reject.
+        assert!(!pipe.normalizer_accepts(0.001, 0.0005, 0.9));
+    }
+
+    #[test]
+    fn normalizer_accepts_rejects_brush_high_brightness_low_confidence() {
+        let mut pipe = GuitarInput::with_defaults();
+        pipe.set_calibration_profile(standard_profile());
+        // Loud signal (above floor), but very-high brightness ratio +
+        // sub-min_pluck_confidence (default 0.5) → classified as noise
+        // (brush/scrape) per AudioNormalizer.normalize() logic.
+        // bright_rms / rms ratio = 0.9 / 0.1 = 9.0 (way above the
+        // brightness_noise_multiplier * expected_brightness ≈ 0.75).
+        // Confidence 0.2 < min_pluck_confidence 0.5 → reject.
+        assert!(!pipe.normalizer_accepts(0.1, 0.9, 0.2));
+    }
+
+    #[test]
+    fn normalizer_accepts_passes_real_pluck() {
+        let mut pipe = GuitarInput::with_defaults();
+        pipe.set_calibration_profile(standard_profile());
+        // Strong pluck: high RMS, brightness ratio near calibrated mean
+        // (0.5), high pitch confidence. Must pass.
+        assert!(pipe.normalizer_accepts(0.2, 0.1, 0.9));
+    }
+
+    #[test]
+    fn compute_bright_rms_is_zero_on_silence() {
+        let buf = vec![0.0f32; 1024];
+        assert_eq!(GuitarInput::compute_bright_rms(&buf), 0.0);
+    }
+
+    #[test]
+    fn compute_bright_rms_nonzero_on_signal() {
+        // Half-sine — only upper half has energy.
+        let mut buf = vec![0.0f32; 1024];
+        for s in buf[512..].iter_mut() {
+            *s = 0.5;
+        }
+        let b = GuitarInput::compute_bright_rms(&buf);
+        assert!((b - 0.5).abs() < 1e-5, "expected ~0.5, got {b}");
     }
 }
