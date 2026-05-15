@@ -49,6 +49,15 @@
 		return 'Synth';
 	}
 
+	// Canon + counterpoint emissions don't flow through the main engine's
+	// last_port_map(): each Companion DispatchOp carries its own
+	// VoiceOutputTarget baked in by the lane (src-tauri commands/engine.rs
+	// dispatch_companion_ops). The UI doesn't track per-canon-voice
+	// destinations in the midi store, so we surface a truthful "Companion"
+	// label instead of inventing a per-slot mapping. A v2 enhancement can
+	// expose the lane's target via canonState() once the backend includes it.
+	const COMPANION_OUTPUT = 'Companion';
+
 	function openCanonEditor() {
 		ui.setActiveTab('companion');
 	}
@@ -71,13 +80,13 @@
 			onclick: openMelodyEditor
 		});
 
-		// 2) Canon voices.
+		// 2) Canon voices. Output destination is "Companion" rather than
+		// a specific slot because canon DispatchOps carry their own
+		// VoiceOutputTarget; the UI doesn't track that per-canon-voice.
 		if (engine.companionEnabled && engine.canonEnabled) {
 			for (let i = 0; i < engine.canonVoices.length; i++) {
 				const v = engine.canonVoices[i];
 				const hold = v.hold_mode ?? engine.canonLaneHoldMode ?? engine.companionHoldMode;
-				// Canon voice i maps to engine output slot i+1 (slot 0
-				// is the melody / user position by convention).
 				out.push({
 					kind: 'canon',
 					label: v.preset_id ?? `Canon ${i + 1}`,
@@ -85,15 +94,13 @@
 					transpose: v.transpose_degrees,
 					timeOffsetBeats: v.delay_beats,
 					holdMode: hold,
-					output: outputForVoice(i + 1),
+					output: COMPANION_OUTPUT,
 					onclick: openCanonEditor
 				});
 			}
 		}
 
-		// 3) Counterpoint lane — adapter.counterpointState is async-fetched
-		// at panel open. For the v1 viz we surface lane-level config from
-		// the engine store; a full snapshot can come in a v2 enhancement.
+		// 3) Counterpoint lane.
 		if (engine.companionEnabled) {
 			out.push({
 				kind: 'counterpoint',
@@ -101,7 +108,7 @@
 				transpose: 0,
 				timeOffsetBeats: 0,
 				holdMode: engine.counterpointLaneHoldMode ?? engine.companionHoldMode,
-				output: 'Synth',
+				output: COMPANION_OUTPUT,
 				onclick: openCanonEditor
 			});
 		}

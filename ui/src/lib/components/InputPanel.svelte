@@ -19,6 +19,25 @@
 
 	let source = $derived<Source>(sourceFromSelection(midi.selectedInput));
 
+	// Remember the user's last non-virtual / non-guitar MIDI selection so
+	// clicking the MIDI radio after a guitar session restores their
+	// physical device, instead of silently auto-selecting Computer
+	// Keyboard (which would turn the keyboard into a hot input mid-take).
+	let lastMidiSelection = $state<number | null>(
+		midi.selectedInput !== null &&
+			midi.selectedInput !== VIRTUAL_GUITAR_AUDIO
+			? midi.selectedInput
+			: null
+	);
+	$effect(() => {
+		if (
+			midi.selectedInput !== null &&
+			midi.selectedInput !== VIRTUAL_GUITAR_AUDIO
+		) {
+			lastMidiSelection = midi.selectedInput;
+		}
+	});
+
 	// Browser-only permission card. Tauri / Plugin paths report
 	// `'granted'` from the adapter so this whole block disappears.
 	let enabling = $state(false);
@@ -42,10 +61,20 @@
 			midi.selectVirtualInput(VIRTUAL_GUITAR_AUDIO);
 			return;
 		}
-		// 'midi' — if we were on guitar, fall back to Computer Keyboard
-		// so the user is never left without a selection.
+		// 'midi' — restore the user's prior MIDI device if we have one,
+		// otherwise clear the selection so they can pick. Auto-selecting
+		// Computer Keyboard would surprise users mid-take by turning
+		// their keyboard into a hot input.
 		if (midi.selectedInput === VIRTUAL_GUITAR_AUDIO) {
-			midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
+			if (lastMidiSelection !== null) {
+				if (lastMidiSelection === VIRTUAL_COMPUTER_KEYBOARD) {
+					midi.selectVirtualInput(lastMidiSelection);
+				} else {
+					midi.selectInput(lastMidiSelection);
+				}
+			} else {
+				midi.clearInput();
+			}
 		}
 	}
 

@@ -332,9 +332,11 @@ class UiStore {
 				this.activeTab = tab;
 			} else if (tab === 'chain') {
 				// Legacy migration: the Chain tab merged into I/O Output.
-				// Land returning users on the new home for that surface.
-				this.activeTab = 'io';
-				this.ioSubtab = 'output';
+				// Use the setters so the localStorage entry overwrites
+				// 'chain' on the same restore (avoids re-migrating on
+				// every subsequent launch).
+				this.setActiveTab('io');
+				this.setIoSubtab('output');
 			}
 			const sub = localStorage.getItem(IO_SUBTAB_KEY);
 			if (sub === 'input' || sub === 'output') {
