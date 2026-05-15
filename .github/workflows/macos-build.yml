@@ -116,20 +116,45 @@ jobs:
           # + staple. Empty values short-circuit each step.
         run: cargo tauri build --target universal-apple-darwin --bundles dmg,app
 
-      - name: Verify signature on built .app
+      - name: Verify signature on built .app (strict on tagged releases)
         if: env.APPLE_SIGNING_IDENTITY != ''
         run: |
           APP_PATH="target/universal-apple-darwin/release/bundle/macos/Contrapunk.app"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           codesign --display --verbose=4 "$APP_PATH" | head -20
-          spctl --assess --type execute --verbose "$APP_PATH" || echo "spctl note: a fresh notarization ticket may need a moment to propagate"
+          # spctl assess: hard-fail on tagged releases (we're about to attach
+          # this to a public release), best-effort otherwise (a fresh
+          # notarization ticket may need a moment to propagate on main
+          # builds — that's fine for non-tagged work).
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            spctl --assess --type execute --verbose "$APP_PATH"
+          else
+            spctl --assess --type execute --verbose "$APP_PATH" || echo "spctl note: non-tag build, allowing ticket propagation delay"
+          fi
 
-      - name: Verify signature + staple on built .dmg
+      - name: Verify signature + staple on built .dmg (strict on tagged releases)
         if: env.APPLE_SIGNING_IDENTITY != ''
         run: |
           DMG_PATH=$(ls target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
           codesign --verify --verbose=2 "$DMG_PATH"
-          xcrun stapler validate "$DMG_PATH" || echo "stapler note: skipped if notarization disabled or in-progress"
+          # stapler validate: hard-fail on tagged releases. Stapling MUST
+          # be embedded before we ship a DMG — without it Gatekeeper still
+          # works (network check) but offline-install users see warnings.
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            xcrun stapler validate "$DMG_PATH"
+          else
+            xcrun stapler validate "$DMG_PATH" || echo "stapler note: non-tag build, skipping strict check"
+          fi
+
+      - name: Require signing on tagged releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [[ -z "${APPLE_SIGNING_IDENTITY}" ]]; then
+            echo "::error::Tagged release pushed without APPLE_SIGNING_IDENTITY secret."
+            echo "::error::Refusing to attach unsigned DMG to release. Set the 7 Apple secrets in repo Settings -> Secrets and retag."
+            exit 1
+          fi
+          echo "Signing identity present: ${APPLE_SIGNING_IDENTITY}"
 
       - name: Upload universal .dmg
         uses: actions/upload-artifact@v7
