@@ -461,11 +461,20 @@ impl GuitarInput {
 
     /// Apply a per-string calibration profile (from
     /// `examples/guitar_calibrate.rs` or the in-app live capture).
-    /// Builds an `AudioNormalizer` from the profile and stores it
-    /// alongside the profile itself. Both are read by downstream
-    /// matching code as those code paths land (#calibration-port).
+    /// Builds an `AudioNormalizer` from the profile, stores it, AND
+    /// seeds `noise_floor_ema` from the normalizer's global noise
+    /// floor — so the existing onset gate immediately benefits from
+    /// the calibrated value instead of waiting for the EMA to
+    /// converge to room-noise from the per-frame defaults.
     pub fn set_calibration_profile(&mut self, profile: super::guitar::GuitarCalibrationProfile) {
-        self.normalizer = Some(super::guitar::AudioNormalizer::from_profile(&profile));
+        let normalizer = super::guitar::AudioNormalizer::from_profile(&profile);
+        // Read the calibrated noise floor BEFORE storing the normalizer
+        // so we don't double-borrow.
+        let nf = normalizer.global_noise_floor();
+        if nf > 0.0 {
+            self.noise_floor_ema = nf;
+        }
+        self.normalizer = Some(normalizer);
         self.calibration_profile = Some(profile);
     }
 

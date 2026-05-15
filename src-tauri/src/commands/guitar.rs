@@ -172,22 +172,42 @@ pub fn load_calibration_profile(
 }
 
 /// Save a JSON-serialized calibration profile to `app_data_dir()` AND
-/// update the AppState slot. Replaces the previous file atomically.
+/// update the AppState slot. Replaces the previous file atomically via
+/// temp-file + `rename` so a crash mid-write can't leave a half-written
+/// JSON that the next `load_calibration_profile` would fail to parse.
 #[tauri::command]
 pub fn save_calibration_profile(
     profile_json: String,
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<CalibrationStatus, String> {
+    use std::io::Write;
     // Round-trip parse to validate the payload before persisting.
     let profile = GuitarCalibrationProfile::from_json(&profile_json)
         .map_err(|e| format!("Invalid calibration profile JSON: {}", e))?;
     let path = calibration_profile_path(&app)?;
-    let pretty = profile
+    let serialized = profile
         .to_json()
         .map_err(|e| format!("Failed to serialize profile: {}", e))?;
-    std::fs::write(&path, pretty.as_bytes())
-        .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+    let tmp_path = path.with_extension("json.tmp");
+    {
+        let mut f = std::fs::File::create(&tmp_path)
+            .map_err(|e| format!("Failed to create {}: {}", tmp_path.display(), e))?;
+        f.write_all(serialized.as_bytes())
+            .map_err(|e| format!("Failed to write {}: {}", tmp_path.display(), e))?;
+        f.sync_all()
+            .map_err(|e| format!("Failed to sync {}: {}", tmp_path.display(), e))?;
+    }
+    std::fs::rename(&tmp_path, &path).map_err(|e| {
+        // Best-effort cleanup of the temp file on rename failure.
+        let _ = std::fs::remove_file(&tmp_path);
+        format!(
+            "Failed to rename {} -> {}: {}",
+            tmp_path.display(),
+            path.display(),
+            e
+        )
+    })?;
     *state
         .calibration_profile
         .lock()

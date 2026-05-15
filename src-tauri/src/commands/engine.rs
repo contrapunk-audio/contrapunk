@@ -171,8 +171,13 @@ pub fn start_routing(
     let guitar_config_shared = Arc::clone(&state.guitar_config);
 
     // Snapshot the calibration profile at routing-start so the bridge
-    // applies it once at GuitarInput construction. Live mid-session
-    // re-apply isn't supported yet — restart routing after recalibrating.
+    // applies it once at GuitarInput construction. Mid-session changes
+    // (load_calibration_profile from the UI, or a source toggle from MIDI
+    // → guitar without restarting routing) do NOT propagate — the user
+    // must stop+restart routing for a recalibrated profile or a freshly
+    // selected guitar source to take effect. Mirrors the same restart
+    // semantics as `guitar_config` for fields it doesn't share via the
+    // Arc<Mutex<…>> live-edit path.
     let calibration_profile_snapshot = if is_guitar {
         Some(
             state
