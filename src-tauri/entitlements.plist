@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Hardened Runtime entitlements for Developer ID + notarization.
+	     Apple requires the hardened runtime on notarized binaries; the
+	     Tauri webview + JIT'd JavaScript engine need a few specific
+	     exceptions documented below. -->
+
+	<!-- WebView (WKWebView) needs JIT for the JS engine. Notarization
+	     fails without this on apps that embed any WKWebView. -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+
+	<!-- The webview also writes generated machine code into pages it
+	     then executes; the JIT entitlement above alone is not enough
+	     under hardened runtime. -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+
+	<!-- Real-time audio I/O via cpal (synth output + guitar input). -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+
+	<!-- MIDI I/O via midir (CoreMIDI). MIDI is not gated by a dedicated
+	     entitlement in the App Sandbox, but a future sandbox-mode build
+	     would need the appropriate temporary-exception entries. -->
+
+	<!-- File access for the calibration profile + presets (we read/write
+	     inside app_data_dir, so user-selected files aren't relevant; this
+	     keeps things minimal). -->
+</dict>
+</plist>

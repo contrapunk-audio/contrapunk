@@ -35,7 +35,7 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "entitlements": null,
+      "entitlements": "entitlements.plist",
       "minimumSystemVersion": "11.0"
     },
     "windows": {
