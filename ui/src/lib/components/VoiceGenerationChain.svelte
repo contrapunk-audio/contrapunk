@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
@@ -34,8 +35,66 @@
 		return `V${index + 1}`;
 	}
 
-	function outputForVoice(voiceIdx: number): string {
-		const t = midi.voiceOutputs[voiceIdx];
+	// Engine port_map snapshot — refreshed onMount + after engine config
+	// changes. Maps result-index i → arrangement slot. Empty when the
+	// engine has not processed a note yet (Idle); in that case
+	// `slotFor()` falls back to voicePosition-based mapping for the
+	// melody card and naive index-based mapping for harmonies.
+	let portMap = $state<number[]>([]);
+	async function refreshPortMap() {
+		try {
+			portMap = await adapter.getLastPortMap();
+		} catch {
+			portMap = [];
+		}
+	}
+
+	onMount(() => {
+		refreshPortMap();
+	});
+
+	// Re-fetch when config changes that affect routing. The store doesn't
+	// emit a single "port_map invalidated" event, so we depend on the
+	// individual scalars that drive it.
+	$effect(() => {
+		// Touch reactive fields so the effect re-runs on change.
+		void engine.voiceCount;
+		void engine.voicePosition;
+		void engine.octaveMode;
+		void engine.mode;
+		void engine.counterpointSpecies;
+		refreshPortMap();
+	});
+
+	/** Map result-index i (0=melody, 1..=harmony voices) → arrangement
+	 *  slot. Uses the engine's actual port_map when available; otherwise
+	 *  falls back to a config-derived best guess (melody at
+	 *  voicePosition, harmonies fill the remaining slots in order).
+	 *  This is the fix for brutal-critic #9. */
+	function slotFor(resultIdx: number): number {
+		if (resultIdx < portMap.length) {
+			return portMap[resultIdx];
+		}
+		// Fallback when engine hasn't populated port_map yet.
+		if (resultIdx === 0) return engine.voicePosition;
+		// Naive: result-index i (i > 0) fills slots 0..voiceCount-1 in
+		// order, skipping the user's voicePosition. Matches Pass-Through
+		// and simple voicings; non-trivial voicings re-fetch port_map.
+		let slot = 0;
+		let counted = 0;
+		for (let i = 0; i < 8; i++) {
+			if (i === engine.voicePosition) continue;
+			if (counted === resultIdx - 1) {
+				slot = i;
+				break;
+			}
+			counted++;
+		}
+		return slot;
+	}
+
+	function outputForSlot(slot: number): string {
+		const t = midi.voiceOutputs[slot];
 		if (!t || t.kind === 'synth') return 'Synth';
 		if (t.kind === 'off') return 'Off';
 		if (t.kind === 'midi_port') {
@@ -71,12 +130,16 @@
 
 	let rows = $derived.by<VoiceRow[]>(() => {
 		const out: VoiceRow[] = [];
-		// 1) Melody — the user's own voice. Always shown.
+		// 1) Melody — the user's own voice. The melody's actual output
+		// slot comes from the engine's port_map[0] (which honors
+		// non-default voicings like Species 2-4 and drop voicings);
+		// falls back to voicePosition when port_map is empty.
+		const melodySlot = slotFor(0);
 		out.push({
 			kind: 'melody',
-			label: voicePositionLabel(engine.voicePosition, engine.voiceCount),
+			label: voicePositionLabel(melodySlot, engine.voiceCount),
 			transpose: 0,
-			output: outputForVoice(engine.voicePosition),
+			output: outputForSlot(melodySlot),
 			onclick: openMelodyEditor
 		});
 
@@ -100,8 +163,11 @@
 			}
 		}
 
-		// 3) Counterpoint lane.
-		if (engine.companionEnabled) {
+		// 3) Counterpoint lane — only when Companion is enabled AND
+		// counterpoint mode is engaged. Previously the row was emitted
+		// whenever companionEnabled was true, advertising a lane the
+		// user might not actually have on (brutal-critic #9 follow-up).
+		if (engine.companionEnabled && engine.mode === 'StrictCounterpoint') {
 			out.push({
 				kind: 'counterpoint',
 				label: 'Counterpoint',
@@ -165,9 +231,15 @@
 				<div class="vgc-node out-node font-ui" title={out.label}>
 					<div class="node-title">{out.label}</div>
 					<div class="node-sub">
-						{out.label === 'Synth'
-							? adapter.capabilities.audioFx ? 'built-in' : 'host'
-							: out.label === 'Off' ? 'muted' : 'external'}
+						{#if out.label === 'Synth'}
+							{adapter.capabilities.audioFx ? 'built-in' : 'host'}
+						{:else if out.label === 'Off'}
+							muted
+						{:else if out.label === 'Companion'}
+							internal
+						{:else}
+							external
+						{/if}
 					</div>
 				</div>
 			{:else}

@@ -688,6 +688,15 @@ export class TauriAdapter implements ContrapunkAdapter {
 		return mapCalibrationStatus(raw);
 	}
 
+	async getLastPortMap(): Promise<number[]> {
+		try {
+			const raw = (await invoke('get_last_port_map')) as number[];
+			return Array.isArray(raw) ? raw : [];
+		} catch {
+			return [];
+		}
+	}
+
 	private _detuneCents = 0;
 
 	setDetune(cents: number): void {

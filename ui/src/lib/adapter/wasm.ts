@@ -1104,6 +1104,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 		return this.getCalibrationStatus();
 	}
 
+	async getLastPortMap(): Promise<number[]> {
+		// WASM engine doesn't expose its internal port_map yet; VGC
+		// falls back to voicePosition-derived mapping when empty.
+		return [];
+	}
+
 	/**
 	 * Set global detune in cents and send pitch bend to all outputs.
 	 * Assumes standard ±2 semitone pitch bend range in your DAW.

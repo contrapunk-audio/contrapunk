@@ -86,6 +86,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             // Harmony engine control
             commands::harmony::get_engine_state,
+            commands::harmony::get_last_port_map,
             commands::harmony::set_key,
             commands::harmony::set_mode,
             commands::harmony::set_scale_mode,

@@ -69,6 +69,20 @@ pub fn get_engine_state(state: State<AppState>) -> Result<EngineStateResponse, S
     })
 }
 
+/// Returns the engine's current port-map: for each result-index `i`
+/// (0 = the user's input/melody, 1..N = harmony voices), the arrangement
+/// slot the engine will route that voice through. The VGC reads this so
+/// per-voice output labels reflect the engine's actual routing, not the
+/// naive `voicePosition`-based guess.
+///
+/// May be empty if the engine has not processed any notes yet (Idle); in
+/// that case the UI should fall back to a config-derived mapping.
+#[tauri::command]
+pub fn get_last_port_map(state: State<AppState>) -> Result<Vec<usize>, String> {
+    let engine = state.engine.lock().map_err(|e| e.to_string())?;
+    Ok(engine.last_port_map().to_vec())
+}
+
 /// Sets the musical key.
 #[tauri::command]
 pub fn set_key(key: String, state: State<AppState>) -> Result<(), String> {

@@ -522,6 +522,16 @@ export interface ContrapunkAdapter {
 	/** Save a JSON-serialized calibration profile to disk. */
 	saveCalibrationProfile(profileJson: string): Promise<CalibrationStatus>;
 
+	/** Get the engine's current port-map: for each result-index `i`
+	 *  (0 = the user's input/melody, 1..N = harmony voices), the
+	 *  arrangement slot the engine will route that voice through.
+	 *  Empty when the engine has not processed any notes yet; UI should
+	 *  fall back to a config-derived mapping in that case. Used by the
+	 *  Voice Generation Chain to reflect the engine's ACTUAL routing
+	 *  for Species 2-4, drop voicings, and inversions rather than
+	 *  assuming `voicePosition` directly. */
+	getLastPortMap(): Promise<number[]>;
+
 	// -- Detune --
 
 	/** Set global detune in cents (sends pitch bend to all outputs). */
