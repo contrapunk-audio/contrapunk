@@ -92,11 +92,7 @@
 		// indirection — voice_outputs is the only routing source now.
 		const deviceIdx = parseInt(value, 10);
 		if (Number.isNaN(deviceIdx)) return;
-		const existingPort = midi.selectedOutputs.indexOf(deviceIdx);
-		const port =
-			existingPort >= 0
-				? existingPort
-				: (midi.selectedOutputs = [...midi.selectedOutputs, deviceIdx]).length - 1;
+		const port = midi.ensureOutputPort(deviceIdx);
 		midi.setVoiceOutput(slotIndex, { kind: 'midi_port', port });
 	}
 

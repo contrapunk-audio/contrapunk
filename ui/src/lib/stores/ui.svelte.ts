@@ -323,6 +323,7 @@ class UiStore {
 		if (typeof window === 'undefined') return;
 		try {
 			const tab = localStorage.getItem(ACTIVE_TAB_KEY);
+			let migrated = false;
 			if (
 				tab === 'play' ||
 				tab === 'io' ||
@@ -334,13 +335,18 @@ class UiStore {
 				// Legacy migration: the Chain tab merged into I/O Output.
 				// Use the setters so the localStorage entry overwrites
 				// 'chain' on the same restore (avoids re-migrating on
-				// every subsequent launch).
+				// every subsequent launch). Flag the migration so we
+				// don't subsequently overwrite ioSubtab='output' with a
+				// stale localStorage 'input' value (brutal-critic #1).
 				this.setActiveTab('io');
 				this.setIoSubtab('output');
+				migrated = true;
 			}
-			const sub = localStorage.getItem(IO_SUBTAB_KEY);
-			if (sub === 'input' || sub === 'output') {
-				this.ioSubtab = sub;
+			if (!migrated) {
+				const sub = localStorage.getItem(IO_SUBTAB_KEY);
+				if (sub === 'input' || sub === 'output') {
+					this.ioSubtab = sub;
+				}
 			}
 		} catch {
 			/* localStorage unavailable */

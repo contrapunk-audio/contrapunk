@@ -308,6 +308,22 @@ class MidiStore {
 	}
 
 	/**
+	 * Ensure a device is in the active output port pool and return the
+	 * port index (slot 0..selectedOutputs.length-1) for use in
+	 * `VoiceOutputTarget.midi_port`. Single source of truth for the
+	 * "find or append output port" pattern previously inlined in
+	 * MidiDevices + OutputPanel as a hidden assignment-in-expression
+	 * (`(midi.selectedOutputs = [...]).length - 1`) — brutal-critic #8.
+	 */
+	ensureOutputPort(deviceIdx: number): number {
+		const existing = this.selectedOutputs.indexOf(deviceIdx);
+		if (existing >= 0) return existing;
+		this.selectedOutputs = [...this.selectedOutputs, deviceIdx];
+		this.persist();
+		return this.selectedOutputs.length - 1;
+	}
+
+	/**
 	 * Set the output destination for a single voice.
 	 * Updates the reactive store, pushes to the backend via the adapter,
 	 * and persists to localStorage so the selection survives reloads.

@@ -33,7 +33,10 @@
 			case 'cancel':
 				return 'C';
 			case 'near_future':
-				return `NF${h.tail_beats === 1 ? '' : h.tail_beats}`;
+				// Always include the beat unit so "NF" alone (when
+				// tail_beats=1) doesn't look like a different state
+				// than "NF0.5"/"NF2"; trailing zeros stripped.
+				return `NF${parseFloat(h.tail_beats.toFixed(2))}b`;
 			case 'phrase_end':
 				return 'PE';
 			case 'forever':
@@ -43,8 +46,8 @@
 
 	function formatBeats(b: number | undefined): string {
 		if (b === undefined || b === 0) return 'live';
-		if (Number.isInteger(b)) return `+${b}b`;
-		return `+${b.toFixed(2)}b`;
+		// Strip trailing zeros (1.50 -> 1.5) for tighter card layout.
+		return `+${parseFloat(b.toFixed(2))}b`;
 	}
 
 	function transposeText(t: number): string {
@@ -52,14 +55,34 @@
 		return t > 0 ? `+${t}` : String(t);
 	}
 
-	let kindClass = $derived(`kind-${kind}`);
+	/** Composed accessible label so screen-reader users hear the same
+	 *  info sighted users get from the card body (the button consumes
+	 *  inner-span semantics by default). */
+	let ariaLabel = $derived.by(() => {
+		const parts = [
+			`${kind} voice`,
+			label,
+			`transpose ${transposeText(transpose)}`,
+			`output ${output}`
+		];
+		if (kind !== 'melody') {
+			parts.push(`time offset ${formatBeats(timeOffsetBeats)}`);
+			parts.push(`hold ${holdModeShort(holdMode)}`);
+		}
+		return parts.join(', ');
+	});
+
+	let cardTitle = $derived(
+		onclick ? `${label} — click to configure` : `${label} (read-only)`
+	);
 </script>
 
 <button
-	class="voice-card pixel-card {kindClass}"
+	class="voice-card pixel-card kind-{kind}"
 	type="button"
 	onclick={onclick}
-	title={onclick ? `Edit ${label}` : label}
+	title={cardTitle}
+	aria-label={ariaLabel}
 >
 	<div class="card-header">
 		<span class="kind-badge font-ui">
