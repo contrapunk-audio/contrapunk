@@ -136,6 +136,7 @@ fn main() {
             commands::guitar::list_audio_devices,
             commands::guitar::load_calibration_profile,
             commands::guitar::save_calibration_profile,
+            commands::guitar::delete_calibration_profile,
             commands::guitar::get_calibration_status,
             // Debug window
             commands::debug::open_debug_pipeline_window,

@@ -364,6 +364,10 @@ export class PluginAdapter implements ContrapunkAdapter {
 		return this.getCalibrationStatus();
 	}
 
+	async deleteCalibrationProfile() {
+		return this.getCalibrationStatus();
+	}
+
 	async getLastPortMap(): Promise<number[]> {
 		// Plugin host owns routing; per-voice port mapping doesn't apply.
 		return [];

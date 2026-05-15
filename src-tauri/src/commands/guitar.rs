@@ -188,15 +188,58 @@ pub fn apply_calibration_profile_from_disk(
 }
 
 /// Load the per-string calibration profile from `app_data_dir()` into
-/// AppState. Returns the loaded profile (or the default if no file was
-/// present on disk). Idempotent — safe to call at startup AND from the
-/// UI's "reload" affordance.
+/// AppState. Returns a `CalibrationStatus` directly so the UI doesn't
+/// need a follow-up `get_calibration_status` roundtrip (brutal-critic
+/// #13). Idempotent — safe to call at startup AND from the UI's
+/// "reload" affordance.
 #[tauri::command]
 pub fn load_calibration_profile(
     app: tauri::AppHandle,
     state: State<AppState>,
-) -> Result<GuitarCalibrationProfile, String> {
-    apply_calibration_profile_from_disk(&app, &state)
+) -> Result<CalibrationStatus, String> {
+    let path = calibration_profile_path(&app)?;
+    let profile = apply_calibration_profile_from_disk(&app, &state)?;
+    Ok(CalibrationStatus {
+        exists_on_disk: path.exists(),
+        path: path.to_string_lossy().into_owned(),
+        version: profile.version,
+        sample_counts: profile
+            .strings
+            .iter()
+            .map(|s| s.soft_samples.len() + s.strong_samples.len())
+            .collect(),
+    })
+}
+
+/// Delete the calibration profile from disk and reset AppState to the
+/// default profile. Brutal-critic #17 — gives the user a "Reset to
+/// Default" affordance for the case where a bad calibration sweep
+/// poisons the file and the user wants to start over without
+/// rummaging in `~/Library/Application Support`.
+#[tauri::command]
+pub fn delete_calibration_profile(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<CalibrationStatus, String> {
+    let path = calibration_profile_path(&app)?;
+    // Tolerate "not found" — already-deleted is success.
+    if let Err(e) = std::fs::remove_file(&path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            return Err(format!("Failed to delete {}: {}", path.display(), e));
+        }
+    }
+    let default_profile = GuitarCalibrationProfile::default();
+    *state
+        .calibration_profile
+        .lock()
+        .map_err(|e| e.to_string())? = default_profile.clone();
+    eprintln!("[calibration] profile deleted, AppState reset to defaults");
+    Ok(CalibrationStatus {
+        exists_on_disk: false,
+        path: path.to_string_lossy().into_owned(),
+        version: default_profile.version,
+        sample_counts: vec![0; 6],
+    })
 }
 
 /// Save a JSON-serialized calibration profile to `app_data_dir()` AND

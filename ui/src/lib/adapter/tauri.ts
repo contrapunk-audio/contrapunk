@@ -670,22 +670,43 @@ export class TauriAdapter implements ContrapunkAdapter {
 	}
 
 	async getCalibrationStatus(): Promise<CalibrationStatus> {
-		const raw = (await invoke('get_calibration_status')) as Record<string, unknown>;
-		return mapCalibrationStatus(raw);
+		try {
+			const raw = (await invoke('get_calibration_status')) as Record<string, unknown>;
+			return mapCalibrationStatus(raw);
+		} catch (e) {
+			throw new Error(`Failed to get calibration status: ${e}`);
+		}
 	}
 
 	async loadCalibrationProfile(): Promise<CalibrationStatus> {
-		// load returns the profile itself; follow up with get_status so the
-		// UI gets the same shape regardless of which method it called.
-		await invoke('load_calibration_profile');
-		return this.getCalibrationStatus();
+		// Backend returns CalibrationStatus directly (post brutal-critic
+		// #13 — no longer the legacy two-roundtrip dance).
+		try {
+			const raw = (await invoke('load_calibration_profile')) as Record<string, unknown>;
+			return mapCalibrationStatus(raw);
+		} catch (e) {
+			throw new Error(`Failed to load calibration profile: ${e}`);
+		}
 	}
 
 	async saveCalibrationProfile(profileJson: string): Promise<CalibrationStatus> {
-		const raw = (await invoke('save_calibration_profile', {
-			profileJson
-		})) as Record<string, unknown>;
-		return mapCalibrationStatus(raw);
+		try {
+			const raw = (await invoke('save_calibration_profile', {
+				profileJson
+			})) as Record<string, unknown>;
+			return mapCalibrationStatus(raw);
+		} catch (e) {
+			throw new Error(`Failed to save calibration profile: ${e}`);
+		}
+	}
+
+	async deleteCalibrationProfile(): Promise<CalibrationStatus> {
+		try {
+			const raw = (await invoke('delete_calibration_profile')) as Record<string, unknown>;
+			return mapCalibrationStatus(raw);
+		} catch (e) {
+			throw new Error(`Failed to delete calibration profile: ${e}`);
+		}
 	}
 
 	async getLastPortMap(): Promise<number[]> {

@@ -91,6 +91,7 @@
 		if (!adapter.capabilities.calibrationFlow) return;
 		try {
 			calibrationStatus = await adapter.getCalibrationStatus();
+			calibrationError = null;
 		} catch (e) {
 			calibrationError = `Status check failed: ${e}`;
 		}
@@ -109,10 +110,39 @@
 		}
 	}
 
+	async function resetCalibrationToDefault() {
+		if (calibrationBusy) return;
+		// Inline confirm: a real bad calibration is destructive to undo
+		// (the file is gone). Use a native confirm for now; a follow-up
+		// commit can promote this to an inline toggle-confirm.
+		const ok =
+			typeof window !== 'undefined' &&
+			window.confirm(
+				'Delete the saved calibration profile and reset to defaults? This cannot be undone.'
+			);
+		if (!ok) return;
+		calibrationBusy = true;
+		calibrationError = null;
+		try {
+			calibrationStatus = await adapter.deleteCalibrationProfile();
+		} catch (e) {
+			calibrationError = `Reset failed: ${e}`;
+		} finally {
+			calibrationBusy = false;
+		}
+	}
+
 	const totalSamples = $derived(
 		calibrationStatus
 			? calibrationStatus.sampleCounts.reduce((a, b) => a + b, 0)
 			: 0
+	);
+
+	/** Per-string sample distribution display, e.g. "12 8 7 9 6 5".
+	 *  Surfaces under the total so users see whether their calibration
+	 *  sweep covered every string (brutal-critic #5). */
+	const sampleDistribution = $derived(
+		calibrationStatus ? calibrationStatus.sampleCounts.join(' ') : ''
 	);
 
 	onMount(() => {
@@ -120,6 +150,14 @@
 			midi.refresh();
 		}
 		refreshCalibrationStatus();
+		// Re-check on window focus so a user who drops a profile file in
+		// from another app and tabs back sees the badge flip immediately
+		// (brutal-critic #5).
+		if (typeof window !== 'undefined') {
+			const onFocus = () => refreshCalibrationStatus();
+			window.addEventListener('focus', onFocus);
+			return () => window.removeEventListener('focus', onFocus);
+		}
 	});
 
 	let isComputerKeyboard = $derived(midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD);
@@ -279,6 +317,9 @@
 							v{calibrationStatus.version}
 						</span>
 					</div>
+					<div class="cal-distribution font-code" title="Per-string sample counts (E2 A D G B E4)">
+						strings [{sampleDistribution}]
+					</div>
 					<div class="cal-path font-code" title={calibrationStatus.path}>
 						{calibrationStatus.path || '—'}
 					</div>
@@ -293,7 +334,15 @@
 						disabled={calibrationBusy}
 						title="Re-read guitar_calibration_profile.json from app_data_dir"
 					>
-						{calibrationBusy ? 'LOADING…' : 'RELOAD PROFILE'}
+						{calibrationBusy ? 'LOADING…' : 'RELOAD'}
+					</button>
+					<button
+						class="permission-btn pixel-btn font-ui"
+						onclick={resetCalibrationToDefault}
+						disabled={calibrationBusy || !calibrationStatus?.existsOnDisk}
+						title="Delete the saved profile and reset to defaults"
+					>
+						RESET
 					</button>
 				</div>
 				<p class="cal-note font-ui">
@@ -465,6 +514,12 @@
 	.cal-stat {
 		font-size: var(--font-size-xs);
 		color: var(--color-text-secondary);
+	}
+
+	.cal-distribution {
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+		letter-spacing: 1px;
 	}
 
 	.cal-path {

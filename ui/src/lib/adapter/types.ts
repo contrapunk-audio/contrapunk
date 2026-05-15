@@ -522,6 +522,11 @@ export interface ContrapunkAdapter {
 	/** Save a JSON-serialized calibration profile to disk. */
 	saveCalibrationProfile(profileJson: string): Promise<CalibrationStatus>;
 
+	/** Delete the calibration profile from disk and reset to defaults.
+	 *  Gives users a "Reset to Default" affordance — useful when a
+	 *  bad calibration sweep poisons the file. */
+	deleteCalibrationProfile(): Promise<CalibrationStatus>;
+
 	/** Get the engine's current port-map: for each result-index `i`
 	 *  (0 = the user's input/melody, 1..N = harmony voices), the
 	 *  arrangement slot the engine will route that voice through.
