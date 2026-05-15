@@ -1,6 +1,28 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-04-15
+> **⚠️ STALE — pre-crate-split (2026-04-15)**
+>
+> The `src/audio/`, `src/audio_out/`, `src/harmony/`, `src/humanize/`, `src/midi/`,
+> and `src/generator/` paths cited below **no longer exist**. As of v1.2.x the
+> shared library was split into 7 workspace crates under `crates/`:
+>
+> - `crates/contrapunk-audio/` — guitar pipeline + AudioNormalizer
+> - `crates/contrapunk-harmony/` — harmony engine + voice leading + scales
+> - `crates/contrapunk-midi/` — MIDI wrappers
+> - `crates/contrapunk-transport/` — sample-accurate clock
+> - `crates/contrapunk-chord/` — chord detection
+> - `crates/contrapunk-companion/` — Companion + Canon/Counterpoint lanes
+> - `crates/contrapunk-preset/` — preset manager
+>
+> `src/` now contains only the binary entry points + chain, fx, plugin_host,
+> synth, server, router subdirs.
+>
+> **GeneratorPanel.svelte does not exist** in the current UI tree.
+>
+> **To regenerate this doc:** `/gsd-map-codebase` (project skill). Until then,
+> treat anything below as approximate intent, NOT a file-citation reference.
+
+**Analysis Date:** 2026-04-15 _(stamped STALE 2026-05-15 — see banner above)_
 
 ## Directory Layout
 

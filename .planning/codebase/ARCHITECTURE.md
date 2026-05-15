@@ -1,6 +1,22 @@
 # Architecture
 
-**Analysis Date:** 2026-04-15
+> **⚠️ STALE — pre-crate-split (2026-04-15)**
+>
+> File-level citations below (e.g. `src/audio/guitar_input.rs`,
+> `src/harmony/engine.rs`, `src/audio_out/sine_synth.rs`) point to paths that
+> have been moved. The shared library is now seven workspace crates under
+> `crates/contrapunk-{audio,harmony,midi,transport,chord,companion,preset}/`.
+>
+> The conceptual architecture (multi-target library + pluggable platform
+> adapters, lock-free SPSC for MIDI↔audio, etc.) is still accurate. Specific
+> "look here for X" line refs are NOT — verify via grep before relying on them.
+>
+> The WASM guitar path also changed: `ScriptProcessorNode` was replaced by
+> AudioWorklet as primary (ScriptProcessor remains as fallback).
+>
+> **To regenerate this doc:** `/gsd-map-codebase` (project skill).
+
+**Analysis Date:** 2026-04-15 _(stamped STALE 2026-05-15 — see banner above)_
 
 ## Pattern Overview
 

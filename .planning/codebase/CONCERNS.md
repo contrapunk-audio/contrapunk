@@ -1,6 +1,26 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-04-15
+> **⚠️ STALE — pre-crate-split + pre-I/O-tab-restructure (2026-04-15)**
+>
+> Brutal-critic confirmed ~95% of this file references code that has been moved
+> or deleted. Specifically the following items below are PHANTOM (do not waste
+> time investigating them):
+>
+> - "Generator Engine never wired" — `src/generator/` deleted; `GeneratorPanel.svelte` gone too
+> - "CNN Classifier 949-line inference" — `src/audio/inference.rs` deleted
+> - "PolySynth allocates in callback" — `src/audio_out/sine_synth.rs:192` deleted (see CLAUDE.md footgun #3 for current synth path)
+> - "MIDI queue 1024 cap" — `src/audio_out/midi_queue.rs` moved; check `src/synth/` instead
+> - Most `src/X` file:line citations — `X` is now under `crates/contrapunk-X/`
+>
+> What IS true after the I/O tab restructure (2026-05-14/15):
+>
+> - `AudioNormalizer::from_profile` now has a live caller chain (GuitarBridge → GuitarInput.set_calibration_profile), but the consumer wiring inside `process_block`/`analyze_window` is still incomplete (per-string thresholds + brightness rejection unused; only noise_floor_ema seeded). Tracked separately.
+> - Calibration startup auto-load is missing — saved profile silently ignored until UI Reload click.
+> - VGC slot-mapping uses `voicePosition` directly instead of the engine's `port_map[]`, lying on non-default voicings.
+>
+> **To regenerate this doc:** `/gsd-map-codebase` (project skill).
+
+**Analysis Date:** 2026-04-15 _(stamped STALE 2026-05-15 — see banner above)_
 
 ---
 
