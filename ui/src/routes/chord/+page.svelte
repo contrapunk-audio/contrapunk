@@ -34,7 +34,10 @@
 
 	async function onNoteOn(midi: number) {
 		try {
-			await adapter.noteOn(midi, 100);
+			// The chord-app uses the virtual-input injection path —
+			// `noteOn`/`noteOff` were renamed to `injectNoteOn`/
+			// `injectNoteOff` during the v1.2 adapter unification.
+			await adapter.injectNoteOn(midi, 100);
 		} catch (err) {
 			// Swallow — the page should keep rendering even if a single
 			// click fails. Real errors surface via initError above.
@@ -44,7 +47,7 @@
 
 	async function onNoteOff(midi: number) {
 		try {
-			await adapter.noteOff(midi);
+			await adapter.injectNoteOff(midi);
 		} catch (err) {
 			console.warn('[chord-app] noteOff failed', err);
 		}
