@@ -170,6 +170,21 @@ pub fn start_routing(
     // block — lets the debug window's edits take effect without a restart.
     let guitar_config_shared = Arc::clone(&state.guitar_config);
 
+    // Snapshot the calibration profile at routing-start so the bridge
+    // applies it once at GuitarInput construction. Live mid-session
+    // re-apply isn't supported yet — restart routing after recalibrating.
+    let calibration_profile_snapshot = if is_guitar {
+        Some(
+            state
+                .calibration_profile
+                .lock()
+                .map_err(|e| e.to_string())?
+                .clone(),
+        )
+    } else {
+        None
+    };
+
     // Shared state for note updates
     let input_notes = Arc::new(Mutex::new(HashSet::<u8>::new()));
     let harmony_notes = Arc::new(Mutex::new(HashSet::<u8>::new()));
@@ -244,6 +259,7 @@ pub fn start_routing(
             guitar_channel,
             guitar_config,
             guitar_config_shared,
+            calibration_profile_snapshot,
             tx,
             rx,
             in_notes,
@@ -305,6 +321,7 @@ fn run_tauri_router(
     guitar_channel: usize,
     guitar_config: GuitarInputConfig,
     guitar_config_shared: Arc<Mutex<Option<GuitarInputConfig>>>,
+    calibration_profile: Option<contrapunk::audio::guitar::GuitarCalibrationProfile>,
     tx: mpsc::Sender<Vec<u8>>,
     rx: mpsc::Receiver<Vec<u8>>,
     input_notes: Arc<Mutex<HashSet<u8>>>,
@@ -337,6 +354,7 @@ fn run_tauri_router(
             guitar_channel,
             guitar_config,
             guitar_config_shared,
+            calibration_profile,
             tx,
             Some(signal_tx),
         )

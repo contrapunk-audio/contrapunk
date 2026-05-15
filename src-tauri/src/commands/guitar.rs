@@ -5,11 +5,42 @@
 //! parameters before starting routing.
 
 use cpal::traits::{DeviceTrait, HostTrait};
-use tauri::State;
+use serde::Serialize;
+use tauri::{Manager, State};
 
+use contrapunk::audio::guitar::GuitarCalibrationProfile;
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 
 use crate::state::AppState;
+
+/// Filename used for the persisted per-string calibration profile inside
+/// the OS-specific app-data directory. Matches the filename produced by
+/// `examples/guitar_calibrate.rs` so users can drop a CLI-generated
+/// profile into the directory by hand and pick it up on next launch.
+const CALIBRATION_FILENAME: &str = "guitar_calibration_profile.json";
+
+/// Resolve the absolute path of the calibration profile file inside the
+/// app's per-user data directory. Creates the directory tree if missing.
+fn calibration_profile_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app_data_dir: {}", e))?;
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir app_data_dir: {}", e))?;
+    }
+    Ok(dir.join(CALIBRATION_FILENAME))
+}
+
+/// Status returned to the UI: whether a non-default profile is loaded,
+/// the absolute path the load/save uses, and per-string sample counts.
+#[derive(Debug, Clone, Serialize)]
+pub struct CalibrationStatus {
+    pub exists_on_disk: bool,
+    pub path: String,
+    pub version: u32,
+    pub sample_counts: Vec<usize>,
+}
 
 /// Returns the current guitar DSP pipeline configuration, or the engine
 /// defaults if the user has not configured one yet. Used by the debug
@@ -113,4 +144,87 @@ pub fn list_audio_devices() -> Result<Vec<String>, String> {
         .input_devices()
         .map_err(|e| format!("Failed to enumerate audio devices: {}", e))?;
     Ok(devices.map(|d| d.name().unwrap_or_default()).collect())
+}
+
+/// Load the per-string calibration profile from `app_data_dir()` into
+/// AppState. Returns the loaded profile (or the default if no file was
+/// present on disk). Idempotent — safe to call at startup AND from the
+/// UI's "reload" affordance.
+#[tauri::command]
+pub fn load_calibration_profile(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<GuitarCalibrationProfile, String> {
+    let path = calibration_profile_path(&app)?;
+    let profile = if path.exists() {
+        let raw = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+        GuitarCalibrationProfile::from_json(&raw)
+            .map_err(|e| format!("Failed to parse calibration profile: {}", e))?
+    } else {
+        GuitarCalibrationProfile::default()
+    };
+    *state
+        .calibration_profile
+        .lock()
+        .map_err(|e| e.to_string())? = profile.clone();
+    Ok(profile)
+}
+
+/// Save a JSON-serialized calibration profile to `app_data_dir()` AND
+/// update the AppState slot. Replaces the previous file atomically.
+#[tauri::command]
+pub fn save_calibration_profile(
+    profile_json: String,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<CalibrationStatus, String> {
+    // Round-trip parse to validate the payload before persisting.
+    let profile = GuitarCalibrationProfile::from_json(&profile_json)
+        .map_err(|e| format!("Invalid calibration profile JSON: {}", e))?;
+    let path = calibration_profile_path(&app)?;
+    let pretty = profile
+        .to_json()
+        .map_err(|e| format!("Failed to serialize profile: {}", e))?;
+    std::fs::write(&path, pretty.as_bytes())
+        .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+    *state
+        .calibration_profile
+        .lock()
+        .map_err(|e| e.to_string())? = profile.clone();
+    Ok(CalibrationStatus {
+        exists_on_disk: true,
+        path: path.to_string_lossy().into_owned(),
+        version: profile.version,
+        sample_counts: profile
+            .strings
+            .iter()
+            .map(|s| s.soft_samples.len() + s.strong_samples.len())
+            .collect(),
+    })
+}
+
+/// Inspect the current calibration profile and report whether a file
+/// exists at the canonical path. Used by the UI Input subtab to render
+/// a "calibrated / default" badge next to the Calibrate button.
+#[tauri::command]
+pub fn get_calibration_status(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<CalibrationStatus, String> {
+    let path = calibration_profile_path(&app)?;
+    let profile = state
+        .calibration_profile
+        .lock()
+        .map_err(|e| e.to_string())?;
+    Ok(CalibrationStatus {
+        exists_on_disk: path.exists(),
+        path: path.to_string_lossy().into_owned(),
+        version: profile.version,
+        sample_counts: profile
+            .strings
+            .iter()
+            .map(|s| s.soft_samples.len() + s.strong_samples.len())
+            .collect(),
+    })
 }

@@ -283,6 +283,18 @@ impl MidiEvent {
 pub struct GuitarInput {
     config: GuitarInputConfig,
     calibration: Option<GuitarCalibration>,
+    /// Optional per-string AudioNormalizer derived from a
+    /// `GuitarCalibrationProfile`. Loaded at routing start via
+    /// `set_calibration_profile`. The normalizer's downstream
+    /// consumers (per-string noise gates, brightness rejection)
+    /// will wire in incrementally — for now the profile loading +
+    /// storage is what closes the no-consumer gap flagged in the
+    /// v1.3 handoff.
+    normalizer: Option<super::guitar::AudioNormalizer>,
+    /// The profile the normalizer was built from. Kept so the UI can
+    /// surface sample-count / per-string stats without round-tripping
+    /// through `app_data_dir`.
+    calibration_profile: Option<super::guitar::GuitarCalibrationProfile>,
 
     // State
     current_note: Option<DetectedNote>,
@@ -376,6 +388,8 @@ impl GuitarInput {
         Self {
             config,
             calibration: None,
+            normalizer: None,
+            calibration_profile: None,
             current_note: None,
             prev_rms: 0.0,
             cooldown_remaining: 0,
@@ -443,6 +457,26 @@ impl GuitarInput {
     /// Get current calibration, if any.
     pub fn calibration(&self) -> Option<&GuitarCalibration> {
         self.calibration.as_ref()
+    }
+
+    /// Apply a per-string calibration profile (from
+    /// `examples/guitar_calibrate.rs` or the in-app live capture).
+    /// Builds an `AudioNormalizer` from the profile and stores it
+    /// alongside the profile itself. Both are read by downstream
+    /// matching code as those code paths land (#calibration-port).
+    pub fn set_calibration_profile(&mut self, profile: super::guitar::GuitarCalibrationProfile) {
+        self.normalizer = Some(super::guitar::AudioNormalizer::from_profile(&profile));
+        self.calibration_profile = Some(profile);
+    }
+
+    /// Returns the currently-loaded calibration profile, if any.
+    pub fn calibration_profile(&self) -> Option<&super::guitar::GuitarCalibrationProfile> {
+        self.calibration_profile.as_ref()
+    }
+
+    /// Returns whether a non-default calibration profile is loaded.
+    pub fn has_calibration_profile(&self) -> bool {
+        self.calibration_profile.is_some()
     }
 
     /// Get current config.

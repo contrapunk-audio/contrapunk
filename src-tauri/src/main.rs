@@ -117,6 +117,9 @@ fn main() {
             commands::guitar::get_full_guitar_config,
             commands::guitar::set_full_guitar_config,
             commands::guitar::list_audio_devices,
+            commands::guitar::load_calibration_profile,
+            commands::guitar::save_calibration_profile,
+            commands::guitar::get_calibration_status,
             // Debug window
             commands::debug::open_debug_pipeline_window,
             // Presets

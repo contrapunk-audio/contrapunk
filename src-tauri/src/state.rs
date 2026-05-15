@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
+use contrapunk::audio::guitar::GuitarCalibrationProfile;
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::chain::ChainCommander;
 use contrapunk::fx::{DelayParams, ReverbParams};
@@ -62,6 +63,12 @@ pub struct AppState {
 
     /// Guitar audio channel index (0-based, e.g. 0 = left, 1 = right)
     pub guitar_channel: Mutex<usize>,
+
+    /// Per-string calibration profile loaded from `app_data_dir()`. The
+    /// router thread reads this when constructing `GuitarBridge`; the
+    /// pipeline applies it via `GuitarInput::set_calibration_profile`.
+    /// Default is `GuitarCalibrationProfile::default()` (no samples).
+    pub calibration_profile: Arc<Mutex<GuitarCalibrationProfile>>,
 
     /// MIDI routing mode (channel-based MPE or port-based)
     pub routing_mode: Mutex<RoutingMode>,
@@ -173,6 +180,7 @@ impl Default for AppState {
             guitar_config: Arc::new(Mutex::new(None)),
             guitar_device: Mutex::new(String::new()),
             guitar_channel: Mutex::new(0),
+            calibration_profile: Arc::new(Mutex::new(GuitarCalibrationProfile::default())),
             routing_mode: Mutex::new(RoutingMode::default()),
             stop_signal: Mutex::new(None),
             router_tx: Mutex::new(None),

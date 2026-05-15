@@ -7,6 +7,7 @@
 //! Also sends signal info (RMS, pitch, state) via a separate channel
 //! for UI feedback in the Tauri frontend.
 
+use contrapunk::audio::guitar::GuitarCalibrationProfile;
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{mpsc, Arc, Mutex};
@@ -36,6 +37,7 @@ impl GuitarBridge {
         channel: usize,
         config: GuitarInputConfig,
         shared_config: Arc<Mutex<Option<GuitarInputConfig>>>,
+        calibration_profile: Option<GuitarCalibrationProfile>,
         tx: mpsc::Sender<Vec<u8>>,
         signal_tx: Option<mpsc::Sender<GuitarSignalInfo>>,
     ) -> Result<Self, String> {
@@ -88,7 +90,13 @@ impl GuitarBridge {
 
         // DSP state lives inside the cpal stream closure — no outer binding
         // needed, the closure owns the only Arc reference.
-        let pipeline = Arc::new(Mutex::new(GuitarInput::new(actual_config)));
+        let mut pipeline_inner = GuitarInput::new(actual_config);
+        if let Some(profile) = calibration_profile {
+            // Builds an AudioNormalizer from the profile and stores both
+            // (close the wiring gap flagged in v1.3 handoff caveat #5).
+            pipeline_inner.set_calibration_profile(profile);
+        }
+        let pipeline = Arc::new(Mutex::new(pipeline_inner));
 
         // Request small buffer (128 samples = ~2.7ms at 48kHz) for lower latency.
         // Falls back to driver default if the device doesn't support it.
