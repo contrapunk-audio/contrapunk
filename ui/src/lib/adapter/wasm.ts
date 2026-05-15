@@ -103,9 +103,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// WASM exposes MIDI + guitar-audio via Web MIDI + WebAudio
 		// (guitarCapture.ts). Voice option is disabled like everywhere.
 		inputSourcePicker: true,
-		// Web MIDI exposes per-output routing; setVoiceOutput pushes
-		// to the activeOutputs map for the chosen port.
-		perVoicePortRouting: true,
+		// Per-voice port routing is NOT honored on WASM today: the MIDI
+		// dispatch loop (search for `outs[i % outs.length]`) round-robins
+		// regardless of what `setVoiceOutput` was passed. Flip back to
+		// true once the dispatch loop consults `_voiceOutputs[i]` for
+		// kind/port. Brutal-critic #12 caveat — was advertising a
+		// capability we didn't have.
+		perVoicePortRouting: false,
 		// No persistence layer for the calibration profile on web yet
 		// — hide the Calibrate button + status badge.
 		calibrationFlow: false

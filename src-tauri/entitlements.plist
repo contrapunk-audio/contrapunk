@@ -5,29 +5,50 @@
 	<!-- Hardened Runtime entitlements for Developer ID + notarization.
 	     Apple requires the hardened runtime on notarized binaries; the
 	     Tauri webview + JIT'd JavaScript engine need a few specific
-	     exceptions documented below. -->
+	     exceptions documented below.
+
+	     SCOPE: Direct-download .dmg via Developer ID Application cert.
+	     Mac App Store (App Sandbox) is NOT supported — under sandbox
+	     there is no temporary-exception path for CoreMIDI virtual/network
+	     ports, and the CLAP plugin host (src/plugin_host/clap/) would
+	     need com.apple.security.cs.disable-library-validation which MAS
+	     does not permit for hosted third-party code. MAS submission is
+	     a separate milestone with a different bundle config. -->
 
 	<!-- WebView (WKWebView) needs JIT for the JS engine. Notarization
 	     fails without this on apps that embed any WKWebView. -->
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 
-	<!-- The webview also writes generated machine code into pages it
-	     then executes; the JIT entitlement above alone is not enough
-	     under hardened runtime. -->
+	<!-- Some Tauri 2 webview JIT modes generate executable memory that
+	     allow-jit alone doesn't cover. Brutal-critic #24 flagged this
+	     as over-permissive — verify on first notarized build whether
+	     dropping it still launches the webview. If yes, delete this
+	     entitlement and re-notarize. The risk of leaving it is widened
+	     attack surface (any RWX page accepted). -->
 	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
 	<true/>
 
-	<!-- Real-time audio I/O via cpal (synth output + guitar input). -->
+	<!-- Real-time audio I/O via cpal (synth output + guitar input).
+	     The corresponding NSMicrophoneUsageDescription must be present
+	     in Info.plist for the first-run permission prompt — Tauri 2
+	     generates one from bundle.macOS config; check the built .app's
+	     Info.plist on the first notarized build. -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
 
-	<!-- MIDI I/O via midir (CoreMIDI). MIDI is not gated by a dedicated
-	     entitlement in the App Sandbox, but a future sandbox-mode build
-	     would need the appropriate temporary-exception entries. -->
+	<!-- MIDI I/O via midir (CoreMIDI): hardened runtime does NOT
+	     require a CoreMIDI entitlement. This entitlements file is
+	     Developer-ID-only — see scope note above for MAS implications.
 
-	<!-- File access for the calibration profile + presets (we read/write
-	     inside app_data_dir, so user-selected files aren't relevant; this
-	     keeps things minimal). -->
+	     If we ever bring CLAP plugin hosting into the Tauri binary,
+	     add com.apple.security.cs.disable-library-validation here so
+	     notarization accepts the runtime-loaded .dylib plugins. -->
+
+	<!-- File access: read/write inside app_data_dir (calibration
+	     profile, presets) does not require an entitlement under
+	     hardened runtime. user-selected files would need
+	     com.apple.security.files.user-selected.read-write under App
+	     Sandbox — not relevant here. -->
 </dict>
 </plist>

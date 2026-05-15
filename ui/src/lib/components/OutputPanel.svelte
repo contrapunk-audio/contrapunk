@@ -121,6 +121,16 @@
 		     ChainPanel handles its own audioFx capability gating
 		     internally; we render it here whenever either flag is set. -->
 		<ChainPanel />
+	{:else if !adapter.capabilities.perVoicePortRouting}
+		<!-- Plugin mode (audioFx=false, chainEditor=false,
+		     perVoicePortRouting=false) → without this hint the Output
+		     subtab would be just the static VGC card and a lot of empty
+		     space, leading users to think the tab is broken.
+		     Brutal-critic #7. -->
+		<div class="surface-unavailable font-ui">
+			Your DAW owns audio output and MIDI routing in plugin mode.
+			Use the host's mixer + plugin chain instead of these controls.
+		</div>
 	{/if}
 </div>
 
@@ -189,5 +199,14 @@
 		font-size: var(--font-size-xs);
 		white-space: nowrap;
 		min-width: 96px;
+	}
+
+	.surface-unavailable {
+		padding: 16px 12px;
+		color: var(--color-text-secondary);
+		font-size: var(--font-size-xs);
+		line-height: 1.5;
+		background: rgba(15, 14, 26, 0.5);
+		border: 1px dashed var(--color-border);
 	}
 </style>
