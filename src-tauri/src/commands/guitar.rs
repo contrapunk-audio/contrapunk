@@ -283,15 +283,22 @@ pub fn save_calibration_profile(
         .calibration_profile
         .lock()
         .map_err(|e| e.to_string())? = profile.clone();
+    let summary: Vec<usize> = profile
+        .strings
+        .iter()
+        .map(|s| s.soft_samples.len() + s.strong_samples.len())
+        .collect();
+    eprintln!(
+        "[calibration] saved profile v{}: per-string={:?}, path={}",
+        profile.version,
+        summary,
+        path.display()
+    );
     Ok(CalibrationStatus {
         exists_on_disk: true,
         path: path.to_string_lossy().into_owned(),
         version: profile.version,
-        sample_counts: profile
-            .strings
-            .iter()
-            .map(|s| s.soft_samples.len() + s.strong_samples.len())
-            .collect(),
+        sample_counts: summary,
     })
 }
 

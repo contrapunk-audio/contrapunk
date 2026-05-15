@@ -98,6 +98,11 @@
 	}
 
 	async function reloadCalibrationProfile() {
+		// Defense in depth: even though the UI gates the button on the
+		// capability, route through the same check so any future call
+		// site (programmatic, dev console, future surface) can't slip
+		// past the capability contract.
+		if (!adapter.capabilities.calibrationFlow) return;
 		if (calibrationBusy) return;
 		calibrationBusy = true;
 		calibrationError = null;
@@ -111,6 +116,7 @@
 	}
 
 	async function resetCalibrationToDefault() {
+		if (!adapter.capabilities.calibrationFlow) return;
 		if (calibrationBusy) return;
 		// Inline confirm: a real bad calibration is destructive to undo
 		// (the file is gone). Use a native confirm for now; a follow-up

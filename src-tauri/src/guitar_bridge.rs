@@ -92,9 +92,20 @@ impl GuitarBridge {
         // needed, the closure owns the only Arc reference.
         let mut pipeline_inner = GuitarInput::new(actual_config);
         if let Some(profile) = calibration_profile {
+            let samples: usize = profile
+                .strings
+                .iter()
+                .map(|s| s.soft_samples.len() + s.strong_samples.len())
+                .sum();
+            eprintln!(
+                "[calibration] guitar_bridge applying profile v{}: {} samples",
+                profile.version, samples
+            );
             // Builds an AudioNormalizer from the profile and stores both
             // (close the wiring gap flagged in v1.3 handoff caveat #5).
             pipeline_inner.set_calibration_profile(profile);
+        } else {
+            eprintln!("[calibration] guitar_bridge: no profile (using defaults)");
         }
         let pipeline = Arc::new(Mutex::new(pipeline_inner));
 
