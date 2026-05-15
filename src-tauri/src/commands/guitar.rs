@@ -146,6 +146,47 @@ pub fn list_audio_devices() -> Result<Vec<String>, String> {
     Ok(devices.map(|d| d.name().unwrap_or_default()).collect())
 }
 
+/// Inner load helper — does the disk read + AppState mutation. Shared
+/// between the Tauri command wrapper and the app-startup hook in
+/// `main::setup`. Returns the loaded profile (or default when no file
+/// exists). Tolerant on a missing file; surfaces real read/parse errors.
+///
+/// This is the single source of truth for "apply calibration to the
+/// engine" — startup, UI reload, and post-save all funnel here so the
+/// badge can never disagree with what GuitarBridge sees.
+pub fn apply_calibration_profile_from_disk(
+    app: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<GuitarCalibrationProfile, String> {
+    let path = calibration_profile_path(app)?;
+    let profile = if path.exists() {
+        let raw = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+        GuitarCalibrationProfile::from_json(&raw)
+            .map_err(|e| format!("Failed to parse calibration profile: {}", e))?
+    } else {
+        GuitarCalibrationProfile::default()
+    };
+    let summary: Vec<usize> = profile
+        .strings
+        .iter()
+        .map(|s| s.soft_samples.len() + s.strong_samples.len())
+        .collect();
+    let total: usize = summary.iter().sum();
+    eprintln!(
+        "[calibration] applied profile v{}: {} samples total, per-string={:?}, path={}",
+        profile.version,
+        total,
+        summary,
+        path.display()
+    );
+    *state
+        .calibration_profile
+        .lock()
+        .map_err(|e| e.to_string())? = profile.clone();
+    Ok(profile)
+}
+
 /// Load the per-string calibration profile from `app_data_dir()` into
 /// AppState. Returns the loaded profile (or the default if no file was
 /// present on disk). Idempotent — safe to call at startup AND from the
@@ -155,20 +196,7 @@ pub fn load_calibration_profile(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<GuitarCalibrationProfile, String> {
-    let path = calibration_profile_path(&app)?;
-    let profile = if path.exists() {
-        let raw = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-        GuitarCalibrationProfile::from_json(&raw)
-            .map_err(|e| format!("Failed to parse calibration profile: {}", e))?
-    } else {
-        GuitarCalibrationProfile::default()
-    };
-    *state
-        .calibration_profile
-        .lock()
-        .map_err(|e| e.to_string())? = profile.clone();
-    Ok(profile)
+    apply_calibration_profile_from_disk(&app, &state)
 }
 
 /// Save a JSON-serialized calibration profile to `app_data_dir()` AND
@@ -227,12 +255,23 @@ pub fn save_calibration_profile(
 /// Inspect the current calibration profile and report whether a file
 /// exists at the canonical path. Used by the UI Input subtab to render
 /// a "calibrated / default" badge next to the Calibrate button.
+///
+/// IMPORTANT: This command re-applies the profile from disk before
+/// reporting. Brutal-critic #18 showed that the previous "stat only"
+/// implementation let AppState lie when the disk had a newer profile
+/// than what was loaded into memory. Now status truth and engine
+/// truth can never disagree.
 #[tauri::command]
 pub fn get_calibration_status(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<CalibrationStatus, String> {
     let path = calibration_profile_path(&app)?;
+    // Re-apply on status check so disk + AppState + engine are always
+    // in sync. Tolerant: a missing file produces a default profile,
+    // not an error. Read/parse errors DO bubble — they indicate a
+    // genuinely broken profile the user needs to know about.
+    let _profile = apply_calibration_profile_from_disk(&app, &state)?;
     let profile = state
         .calibration_profile
         .lock()

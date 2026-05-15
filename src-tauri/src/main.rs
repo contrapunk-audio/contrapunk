@@ -65,6 +65,22 @@ fn main() {
                     );
                 }
             }
+
+            // Startup auto-load of the guitar calibration profile, if
+            // present at `~/Library/Application Support/com.contrapunk.app/
+            // guitar_calibration_profile.json` (or platform equivalent).
+            // Brutal-critic #18 found the previous behavior silently
+            // ignored a saved profile on every launch until the user
+            // clicked Reload. Now the profile is picked up immediately so
+            // the first guitar routing session uses the calibrated
+            // thresholds. Errors are logged but don't fail setup —
+            // a missing or broken profile must not block app startup.
+            let handle = app.handle().clone();
+            match commands::guitar::apply_calibration_profile_from_disk(&handle, &state) {
+                Ok(_) => {}
+                Err(e) => eprintln!("[main] calibration auto-load skipped: {}", e),
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
