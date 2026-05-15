@@ -11,9 +11,10 @@
 	import Fretboard from '$lib/components/Fretboard.svelte';
 	import HistoryStrip from '$lib/components/HistoryStrip.svelte';
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
-	import ChainPanel from '$lib/components/ChainPanel.svelte';
 	import CompanionPanel from '$lib/components/CompanionPanel.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
+	import InputPanel from '$lib/components/InputPanel.svelte';
+	import OutputPanel from '$lib/components/OutputPanel.svelte';
 	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
@@ -45,6 +46,7 @@
 				ui.restoreAppearance();
 				ui.restorePanels();
 				ui.restoreViewMode();
+				ui.restoreTabs();
 				await adapter.init();
 				await engine.syncFromBackend();
 				await engine.restoreSettings();
@@ -161,32 +163,54 @@
 			<button
 				class="tab-btn font-ui"
 				class:active={ui.activeTab === 'play'}
-				onclick={() => (ui.activeTab = 'play')}
+				onclick={() => ui.setActiveTab('play')}
 			>
 				Harmony
 			</button>
 			<button
 				class="tab-btn font-ui"
+				class:active={ui.activeTab === 'io'}
+				onclick={() => ui.setActiveTab('io')}
+			>
+				I/O
+			</button>
+			<button
+				class="tab-btn font-ui"
 				class:active={ui.activeTab === 'companion'}
-				onclick={() => (ui.activeTab = 'companion')}
+				onclick={() => ui.setActiveTab('companion')}
 			>
 				Companion
 			</button>
 			<button
 				class="tab-btn font-ui"
 				class:active={ui.activeTab === 'voices'}
-				onclick={() => (ui.activeTab = 'voices')}
+				onclick={() => ui.setActiveTab('voices')}
 			>
 				Voices
 			</button>
-			<button
-				class="tab-btn font-ui"
-				class:active={ui.activeTab === 'chain'}
-				onclick={() => (ui.activeTab = 'chain')}
-			>
-				Chain
-			</button>
 		</div>
+
+		{#if ui.activeTab === 'io'}
+			<!-- I/O subtab strip — only rendered when I/O tab is active.
+			     Input subtab = MIDI/Guitar/Voice source pickers; Output
+			     subtab = Voice Generation Chain + synth/FX. -->
+			<div class="subtab-strip">
+				<button
+					class="subtab-btn font-ui"
+					class:active={ui.ioSubtab === 'input'}
+					onclick={() => ui.setIoSubtab('input')}
+				>
+					Input
+				</button>
+				<button
+					class="subtab-btn font-ui"
+					class:active={ui.ioSubtab === 'output'}
+					onclick={() => ui.setIoSubtab('output')}
+				>
+					Output
+				</button>
+			</div>
+		{/if}
 
 		{#if ui.activeTab === 'play'}
 			{#if ui.panels.midi || ui.panels.controls}
@@ -241,6 +265,24 @@
 					{#if ui.panels.piano}<Piano />{/if}
 				</div>
 			{/if}
+		{:else if ui.activeTab === 'io'}
+			<!-- I/O tab — subtabs hold Input (sources + calibration) and
+			     Output (Voice Generation Chain + synth/FX). The Output
+			     subtab fills in across steps 3-4 of the restructure. -->
+			<div class="io-area">
+				{#if ui.ioSubtab === 'input'}
+					{#if adapter.capabilities.inputSourcePicker}
+						<InputPanel />
+					{:else}
+						<div class="surface-unavailable font-ui">
+							Input source is owned by the DAW in plugin mode.
+							Route MIDI / audio to the plugin from your host.
+						</div>
+					{/if}
+				{:else}
+					<OutputPanel />
+				{/if}
+			</div>
 		{:else if ui.activeTab === 'companion'}
 			<!-- Companion tab: delayed-voice configuration (canon lanes
 			     + per-voice settings). The voice management UX lives
@@ -264,11 +306,6 @@
 			     library to apply a full harmony config to each voice. -->
 			<div class="voices-area">
 				<VoicesPanel />
-			</div>
-		{:else}
-			<!-- Chain tab: audio signal flow + synth params -->
-			<div class="chain-area">
-				<ChainPanel />
 			</div>
 		{/if}
 	{:else if !initError}
@@ -324,6 +361,38 @@
 		color: var(--color-accent-magenta);
 		border-bottom-color: var(--color-accent-magenta);
 		box-shadow: 0 2px 0 var(--color-accent-magenta) inset;
+	}
+
+	.subtab-strip {
+		display: flex;
+		background: rgba(10, 9, 18, 0.92);
+		border-bottom: 1px solid var(--color-border);
+		padding: 0 16px;
+	}
+
+	.subtab-btn {
+		background: transparent;
+		border: none;
+		border-bottom: 2px solid transparent;
+		color: var(--color-text-dim);
+		font-size: var(--font-size-xs);
+		padding: 4px 12px;
+		cursor: pointer;
+	}
+
+	.subtab-btn:hover {
+		color: var(--color-accent-cyan);
+	}
+
+	.subtab-btn.active {
+		color: var(--color-accent-cyan);
+		border-bottom-color: var(--color-accent-cyan);
+	}
+
+	.io-area {
+		background: rgba(15, 14, 26, 0.88);
+		overflow-y: auto;
+		height: 100%;
 	}
 
 	.chain-area {

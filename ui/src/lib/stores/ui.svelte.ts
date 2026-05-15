@@ -15,6 +15,8 @@ const NOTE_LABELS_KEY = 'contrapunk-show-note-labels';
 const NOTE_LINGERING_KEY = 'contrapunk-note-lingering';
 const PANELS_KEY = 'contrapunk-panels';
 const VIEW_MODE_KEY = 'contrapunk-view-mode';
+const ACTIVE_TAB_KEY = 'contrapunk-active-tab';
+const IO_SUBTAB_KEY = 'contrapunk-io-subtab';
 
 const MIN_SCALE = 0.75;
 const MAX_SCALE = 2.0;
@@ -59,6 +61,16 @@ const DEFAULT_PANELS: PanelVisibility = {
  *  render. The Performance view ignores `panels` entirely. */
 export type ViewMode = 'performance' | 'advanced';
 
+/** Top-level tab options. The legacy 'chain' tab was removed during the
+ *  v1.3 I/O restructure — its content now lives inside the I/O Output
+ *  subtab as the Voice Generation Chain + synth/FX racks. */
+export type ActiveTab = 'play' | 'io' | 'companion' | 'voices';
+
+/** I/O tab subtabs. 'input' hosts the source pickers (MIDI / Guitar /
+ *  Voice-disabled) + calibration. 'output' is the Voice Generation Chain
+ *  visualization + synth/FX racks. */
+export type IoSubtab = 'input' | 'output';
+
 // === UI Store (Svelte 5 runes) ===
 
 class UiStore {
@@ -76,11 +88,15 @@ class UiStore {
 	// -- Layout --
 	sidebarCollapsed = $state(false);
 	activePanel = $state<string>('play');
-	/** Main-view tab: 'play' (harmony UI) / 'companion' (delayed-voice
+	/** Main-view tab: 'play' (harmony UI) / 'io' (input source + output
+	 *  voice-generation chain + synth/FX) / 'companion' (delayed-voice
 	 *  configuration — canon lanes + per-voice settings) / 'voices'
-	 *  (named voice-preset library) / 'chain' (audio signal flow + synth
-	 *  params). */
-	activeTab = $state<'play' | 'companion' | 'voices' | 'chain'>('play');
+	 *  (named voice-preset library). */
+	activeTab = $state<ActiveTab>('play');
+
+	/** Active subtab within the I/O tab. Only meaningful when
+	 *  activeTab === 'io'. */
+	ioSubtab = $state<IoSubtab>('input');
 
 	// -- Settings modal --
 	settingsOpen = $state(false);
@@ -281,6 +297,52 @@ class UiStore {
 	/** Toggle between Performance and Advanced layouts. */
 	toggleViewMode() {
 		this.setViewMode(this.viewMode === 'performance' ? 'advanced' : 'performance');
+	}
+
+	// === Active tab + I/O subtab ===
+
+	setActiveTab(tab: ActiveTab) {
+		this.activeTab = tab;
+		try {
+			localStorage.setItem(ACTIVE_TAB_KEY, tab);
+		} catch {
+			/* localStorage unavailable */
+		}
+	}
+
+	setIoSubtab(sub: IoSubtab) {
+		this.ioSubtab = sub;
+		try {
+			localStorage.setItem(IO_SUBTAB_KEY, sub);
+		} catch {
+			/* localStorage unavailable */
+		}
+	}
+
+	restoreTabs() {
+		if (typeof window === 'undefined') return;
+		try {
+			const tab = localStorage.getItem(ACTIVE_TAB_KEY);
+			if (
+				tab === 'play' ||
+				tab === 'io' ||
+				tab === 'companion' ||
+				tab === 'voices'
+			) {
+				this.activeTab = tab;
+			} else if (tab === 'chain') {
+				// Legacy migration: the Chain tab merged into I/O Output.
+				// Land returning users on the new home for that surface.
+				this.activeTab = 'io';
+				this.ioSubtab = 'output';
+			}
+			const sub = localStorage.getItem(IO_SUBTAB_KEY);
+			if (sub === 'input' || sub === 'output') {
+				this.ioSubtab = sub;
+			}
+		} catch {
+			/* localStorage unavailable */
+		}
 	}
 
 	/** Hydrate viewMode from localStorage. Falls back to default if no

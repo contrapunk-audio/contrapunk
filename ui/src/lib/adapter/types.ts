@@ -228,6 +228,31 @@ export interface AdapterCapabilities {
 	 *  doesn't wire Companion yet (deferred to v1.4). The
 	 *  CompanionPanel and master HoldMode toggle hide when false. */
 	companionLanes: boolean;
+	/** Whether the InputPanel renders the three-way source picker
+	 *  (MIDI / Guitar Audio / Voice). False in plugin mode — the DAW
+	 *  routes audio in and chooses the input bus itself, so the picker
+	 *  would be inert. */
+	inputSourcePicker: boolean;
+	/** Whether the OutputPanel exposes per-voice MIDI port routing
+	 *  pickers. False in plugin mode — the DAW assigns plugin output
+	 *  channels and our per-voice picker would conflict. Tauri + WASM
+	 *  both expose real MIDI out via the adapter's setVoiceOutput. */
+	perVoicePortRouting: boolean;
+	/** Whether the surface supports loading + saving the per-string
+	 *  calibration profile to disk and applying it to the live guitar
+	 *  pipeline. Tauri only for v1 — uses `app_data_dir()`. WASM /
+	 *  plugin would need their own persistence story. */
+	calibrationFlow: boolean;
+}
+
+/** Status returned from `getCalibrationStatus`. `sampleCounts[i]` is the
+ *  total number of soft+strong calibration samples captured for string i
+ *  (index 0 = Low E, 5 = High E). */
+export interface CalibrationStatus {
+	existsOnDisk: boolean;
+	path: string;
+	version: number;
+	sampleCounts: number[];
 }
 
 export interface ContrapunkAdapter {
@@ -485,6 +510,17 @@ export interface ContrapunkAdapter {
 
 	/** Set the guitar DSP pipeline configuration. */
 	setGuitarConfig(config: GuitarConfig): Promise<void>;
+
+	/** Read the current calibration status (whether a profile exists on
+	 *  disk, where, and per-string sample counts). Stubbed on adapters
+	 *  whose `capabilities.calibrationFlow` is false. */
+	getCalibrationStatus(): Promise<CalibrationStatus>;
+
+	/** Force-reload the calibration profile from disk into AppState. */
+	loadCalibrationProfile(): Promise<CalibrationStatus>;
+
+	/** Save a JSON-serialized calibration profile to disk. */
+	saveCalibrationProfile(profileJson: string): Promise<CalibrationStatus>;
 
 	// -- Detune --
 

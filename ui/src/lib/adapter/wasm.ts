@@ -99,7 +99,16 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// WASM has its own Web Audio synth + FX path (embedAudio).
 		audioFx: true,
 		// WASM has Companion lanes via the WasmCompanion bridge.
-		companionLanes: true
+		companionLanes: true,
+		// WASM exposes MIDI + guitar-audio via Web MIDI + WebAudio
+		// (guitarCapture.ts). Voice option is disabled like everywhere.
+		inputSourcePicker: true,
+		// Web MIDI exposes per-output routing; setVoiceOutput pushes
+		// to the activeOutputs map for the chosen port.
+		perVoicePortRouting: true,
+		// No persistence layer for the calibration profile on web yet
+		// — hide the Calibrate button + status badge.
+		calibrationFlow: false
 	} as const;
 
 	private initialized = false;
@@ -1080,6 +1089,19 @@ export class WasmAdapter implements ContrapunkAdapter {
 	async setGuitarConfig(_config: GuitarConfig): Promise<void> {
 		// Browser-side pitch detection doesn't use these DSP params,
 		// but accept silently so shared UI code doesn't error.
+	}
+
+	async getCalibrationStatus() {
+		// No persistence layer in WASM yet; report a default-only profile.
+		return { existsOnDisk: false, path: '', version: 1, sampleCounts: [0, 0, 0, 0, 0, 0] };
+	}
+
+	async loadCalibrationProfile() {
+		return this.getCalibrationStatus();
+	}
+
+	async saveCalibrationProfile(_profileJson: string) {
+		return this.getCalibrationStatus();
 	}
 
 	/**

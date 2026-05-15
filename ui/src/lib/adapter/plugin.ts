@@ -61,7 +61,18 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// plugin's process() via Companion::tick_tagged. CompanionPanel
 		// IPC handlers in editor.rs route HoldMode / canon_configure /
 		// counterpoint_configure into the running plugin instance.
-		companionLanes: true
+		companionLanes: true,
+		// DAW owns audio + MIDI routing into the plugin. The source
+		// radio (MIDI / Guitar / Voice) doesn't apply — the host bus
+		// is the source. Hide the InputPanel entirely in plugin mode.
+		inputSourcePicker: false,
+		// DAW assigns plugin MIDI output channels; our per-voice port
+		// picker would conflict. Voice routing surfaces as MPE channels
+		// (canon=2, counterpoint=3) which the host owns.
+		perVoicePortRouting: false,
+		// Plugin guitar path runs through the DAW; calibration profile
+		// persistence isn't wired (would need host file access).
+		calibrationFlow: false
 	} as const;
 
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;
@@ -342,6 +353,16 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async setGuitarDevice(_deviceName: string, _channel: number): Promise<void> {}
 	async setGuitarConfig(_config: GuitarConfig): Promise<void> {}
+
+	async getCalibrationStatus() {
+		return { existsOnDisk: false, path: '', version: 1, sampleCounts: [0, 0, 0, 0, 0, 0] };
+	}
+	async loadCalibrationProfile() {
+		return this.getCalibrationStatus();
+	}
+	async saveCalibrationProfile(_profileJson: string) {
+		return this.getCalibrationStatus();
+	}
 
 	// -- Detune --
 

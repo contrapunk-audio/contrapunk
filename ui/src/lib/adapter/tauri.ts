@@ -11,6 +11,7 @@ import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
 import type {
 	AddedPlugin,
+	CalibrationStatus,
 	ChainBlock,
 	ClapPluginDescriptor,
 	ContrapunkAdapter,
@@ -28,6 +29,18 @@ import type {
 	TransportState,
 	VoiceOutputTarget
 } from './types';
+
+/** Map snake_case CalibrationStatus from the Tauri backend to camelCase. */
+function mapCalibrationStatus(raw: Record<string, unknown>): CalibrationStatus {
+	return {
+		existsOnDisk: Boolean(raw.exists_on_disk),
+		path: String(raw.path ?? ''),
+		version: Number(raw.version ?? 0),
+		sampleCounts: Array.isArray(raw.sample_counts)
+			? (raw.sample_counts as number[])
+			: []
+	};
+}
 
 /**
  * Maps the Tauri backend's snake_case response to our camelCase EngineState.
@@ -93,7 +106,16 @@ export class TauriAdapter implements ContrapunkAdapter {
 		transportControl: true,
 		midiDevicePicker: true,
 		audioFx: true,
-		companionLanes: true
+		companionLanes: true,
+		// Tauri renders the full I/O Input subtab source radio —
+		// MIDI / Guitar Audio (cpal backend) / Voice (disabled).
+		inputSourcePicker: true,
+		// Tauri owns MIDI routing via midir; per-voice port pickers
+		// drive setVoiceOutput end-to-end.
+		perVoicePortRouting: true,
+		// Calibration profile persists to app_data_dir() and applies on
+		// next routing start via GuitarBridge -> GuitarInput.
+		calibrationFlow: true
 	} as const;
 
 	private _isRunning = false;
@@ -645,6 +667,25 @@ export class TauriAdapter implements ContrapunkAdapter {
 		} catch (e) {
 			throw new Error(`Failed to set guitar config: ${e}`);
 		}
+	}
+
+	async getCalibrationStatus(): Promise<CalibrationStatus> {
+		const raw = (await invoke('get_calibration_status')) as Record<string, unknown>;
+		return mapCalibrationStatus(raw);
+	}
+
+	async loadCalibrationProfile(): Promise<CalibrationStatus> {
+		// load returns the profile itself; follow up with get_status so the
+		// UI gets the same shape regardless of which method it called.
+		await invoke('load_calibration_profile');
+		return this.getCalibrationStatus();
+	}
+
+	async saveCalibrationProfile(profileJson: string): Promise<CalibrationStatus> {
+		const raw = (await invoke('save_calibration_profile', {
+			profileJson
+		})) as Record<string, unknown>;
+		return mapCalibrationStatus(raw);
 	}
 
 	private _detuneCents = 0;
