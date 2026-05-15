@@ -232,5 +232,37 @@
   ],
   "context_notes": "User has clear vision: musicians-first UX, signal-flow visualization as central artifact, eventual absorption of multiple panels into Voice Generation Chain view. Session pace: rapid-fire decisions, prefers options-with-recommendations format. Test-first mindset (regression tests for every fix). Skeptical of audit claims (asked for brutal-critic verification of all 21 items, which surfaced the doc-rot pattern). v1.3 release deferred indefinitely; this work is feature-driven not release-driven.",
   "uncommitted_files": ["ui/package-lock.json"],
+  "caveats": [
+    {
+      "id": "timestamp_when_paused",
+      "summary": "HANDOFF.json.timestamp is when paused, not 'now'. If resumption is > 1 day later, re-verify git status + file paths match the plan before starting.",
+      "mitigation": "Check git log -1 --format=%ci on resume. If > 1 day gap, verify codebase still matches file-path locks in .continue-here.md UX section."
+    },
+    {
+      "id": "capability_flags_not_in_code_yet",
+      "summary": "Three new AdapterCapabilities flags (inputSourcePicker, calibrationFlow, perVoicePortRouting) are documented in the plan but NOT in ui/src/lib/adapter/types.ts yet. They get added DURING the I/O tab work (steps 2/5/4 respectively), not before.",
+      "mitigation": "When adding each flag to AdapterCapabilities interface, update all three adapter implementations (tauri.ts/wasm.ts/plugin.ts) in the SAME commit. Avoid the 'noteUpdates stayed false' anti-pattern documented in anti_patterns_discovered."
+    },
+    {
+      "id": "plugin_companion_daw_untested",
+      "summary": "e8aaff8 wired plugin Companion lanes but no DAW QA done. nih-plug has no mock ProcessContext; only verification is loading the built plugin into Logic/Ableton/Reaper/Bitwig. Listed in human_actions_pending[0].",
+      "mitigation": "Run DAW QA before any further plugin-side work to avoid stacking unverified changes."
+    },
+    {
+      "id": "graph_json_5_commits_stale",
+      "summary": "graphify-out/graph.json was built mid-session, before calibration deletion + plugin Companion wiring + 4 handoff commits. Useful for architectural orientation but ~5 commits behind HEAD.",
+      "mitigation": "Run /graphify --update on resume — cache is warm, takes ~30 seconds. Don't waste a full re-run."
+    },
+    {
+      "id": "ml_samples_deliberately_excluded",
+      "summary": "167 audio WAV files in ui/static/samples/by_class/ + demo.mp4 are skipped per user instruction. They appear as 'new' in /graphify --update but should continue to be excluded — ML training data, not features.",
+      "mitigation": "Always skip the 'video' category in graphify runs."
+    },
+    {
+      "id": "package_lock_drift_is_npm_not_features",
+      "summary": "ui/package-lock.json always shows modified — npm install side-effect. Not part of any feature work.",
+      "mitigation": "Decide separately. Commit if intentional dependency change, revert otherwise. Handoff commits intentionally exclude it."
+    }
+  ],
   "next_action": "Start with execution order step 1 — wire ui.activeTab to include 'io' variant + new ui.ioSubtab state + render subtab strip when activeTab='io'. File: ui/src/lib/stores/ui.svelte.ts. Then route in ui/src/routes/+page.svelte."
 }
