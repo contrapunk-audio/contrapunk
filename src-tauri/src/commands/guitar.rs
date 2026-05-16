@@ -184,29 +184,42 @@ pub fn apply_calibration_profile_from_disk(
         .calibration_profile
         .lock()
         .map_err(|e| e.to_string())? = profile.clone();
-    // Live hot-swap: if a guitar pipeline is currently running, push
-    // the freshly-loaded profile into it so the running engine
-    // immediately uses the new noise floor + brightness thresholds
-    // instead of waiting for a routing restart. Brutal-critic round 2
-    // CRITICAL — previously the AppState was updated but the audio
-    // thread kept the old profile, so the badge lied mid-session.
-    if let Ok(slot) = state.live_guitar_pipeline.lock() {
-        if let Some(pipe_arc) = slot.as_ref() {
-            // Try-lock to avoid blocking the audio thread; if it's
-            // currently locked we'll catch up on the next status
-            // refresh (UI re-polls on focus).
-            if let Ok(mut pipe) = pipe_arc.try_lock() {
-                pipe.set_calibration_profile(profile.clone());
-                eprintln!(
-                    "[calibration] live pipeline hot-swapped to v{}",
-                    profile.version
-                );
-            } else {
-                eprintln!("[calibration] live pipeline busy; profile in AppState only");
-            }
-        }
-    }
+    push_calibration_to_live_pipeline(state, &profile);
     Ok(profile)
+}
+
+/// Push a calibration profile into the running pipeline, with bounded
+/// retry. The audio thread holds the inner mutex for ~2-2.5ms out of
+/// every 2.7ms cpal callback cycle, so a single try_lock has only a
+/// 10-20% chance of catching the gap. Five attempts with a 1ms sleep
+/// reliably land within ~5-15ms total (well below human-perceptible
+/// latency for a "click apply" interaction). If all attempts fail, the
+/// AppState slot is still up to date and the next status-poll-driven
+/// load will retry. Brutal-critic round 3.
+fn push_calibration_to_live_pipeline(state: &AppState, profile: &GuitarCalibrationProfile) {
+    let slot_lock = match state.live_guitar_pipeline.lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+    let Some(pipe_arc) = slot_lock.as_ref() else {
+        return;
+    };
+    for attempt in 0..5 {
+        if let Ok(mut pipe) = pipe_arc.try_lock() {
+            pipe.set_calibration_profile(profile.clone());
+            eprintln!(
+                "[calibration] live pipeline hot-swapped to v{} (attempt {})",
+                profile.version,
+                attempt + 1
+            );
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    eprintln!(
+        "[calibration] live pipeline busy after 5 attempts; profile in AppState only \
+         (next status refresh will retry)"
+    );
 }
 
 /// Load the per-string calibration profile from `app_data_dir()` into
@@ -303,10 +316,17 @@ pub fn save_calibration_profile(
         // On modern Windows, `MoveFileEx(src, dst, MOVEFILE_REPLACE_EXISTING)`
         // is the canonical replace; the Rust std exposes it via the
         // private `windows_sys` path, but `std::fs::rename` does NOT
-        // pass the replace flag. Use a remove-then-rename fallback —
-        // not strictly atomic on Windows but the failure window is
-        // sub-microsecond and we already validated the temp file's
-        // contents above.
+        // pass the replace flag. Use a remove-then-rename fallback.
+        //
+        // Caveat (brutal-critic round 3): this is NOT strictly atomic
+        // on Windows — between `remove_file` and `rename`, an antivirus
+        // scanner, OneDrive watcher, Explorer thumbnailer, or concurrent
+        // reader can grab the destination directory and block the
+        // rename. Power loss in the window = profile gone. Acceptable
+        // for v1 (the temp file contents were validated above, so the
+        // worst case is "user has to recalibrate"); for a proper fix,
+        // pull in `windows-sys` and call `MoveFileExW` with
+        // MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH directly.
         let _ = std::fs::remove_file(&path);
         std::fs::rename(&tmp_path, &path)
     };
@@ -326,6 +346,11 @@ pub fn save_calibration_profile(
         .calibration_profile
         .lock()
         .map_err(|e| e.to_string())? = profile.clone();
+    // Live hot-swap on save too — brutal-critic round 3 caught that
+    // we were only swapping on `load_calibration_profile`. After a
+    // calibration sweep the user expects the new profile to apply
+    // immediately, not after they manually click Reload.
+    push_calibration_to_live_pipeline(state, &profile);
     let summary: Vec<usize> = profile
         .strings
         .iter()

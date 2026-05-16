@@ -11,12 +11,13 @@
 	);
 
 	async function onEnable() {
-		// Two guards: `enabling` debounces multi-clicks within the
-		// single-promise window; the permissionState check stops a
-		// late click after a granted response from re-firing
-		// requestMIDIAccess(). Both are needed — `enabling` flips back
-		// to false the instant the promise resolves; the user's mouse
-		// might land mid-render before the card unmounts.
+		// Round-3 critic note: the second guard is technically
+		// redundant in the single-thread JS model — if `enabling` is
+		// false then the promise has resolved AND `permissionState`
+		// has flipped to 'granted' AND the card has been unmounted.
+		// Keep both as defense-in-depth: they're free, and they
+		// document the two distinct invariants (don't double-fire,
+		// don't fire when granted) for the next reader.
 		if (enabling) return;
 		if (midi.permissionState === 'granted') return;
 		enabling = true;

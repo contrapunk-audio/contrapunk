@@ -117,17 +117,6 @@ impl GuitarBridge {
         }
         let pipeline = Arc::new(Mutex::new(pipeline_inner));
 
-        // Publish the pipeline handle for live hot-swap. The Tauri
-        // calibration commands lock-and-mutate this to push a freshly
-        // loaded profile into the running engine without forcing a
-        // routing restart. (Brutal-critic round 2 CRITICAL — the
-        // previous implementation only applied profiles at construction.)
-        if let Some(handle) = live_pipeline_handle.as_ref() {
-            if let Ok(mut slot) = handle.lock() {
-                *slot = Some(Arc::clone(&pipeline));
-            }
-        }
-
         // Request small buffer (128 samples = ~2.7ms at 48kHz) for lower latency.
         // Falls back to driver default if the device doesn't support it.
         let stream_config = cpal::StreamConfig {
@@ -193,6 +182,18 @@ impl GuitarBridge {
                 None,
             )
             .map_err(|e| format!("Failed to build audio stream: {}", e))?;
+
+        // Publish the pipeline handle for live hot-swap, AFTER the
+        // stream construction succeeded. If we'd published before
+        // and stream-build failed (device disappeared, sample rate
+        // unsupported), the slot would retain an Arc to a never-
+        // started pipeline — subsequent calibration commands would
+        // mutate a zombie. Brutal-critic round 3 CRITICAL.
+        if let Some(handle) = live_pipeline_handle.as_ref() {
+            if let Ok(mut slot) = handle.lock() {
+                *slot = Some(Arc::clone(&pipeline));
+            }
+        }
 
         Ok(Self {
             stream: Some(stream),

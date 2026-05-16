@@ -172,12 +172,14 @@ pub fn start_routing(
 
     // Snapshot the calibration profile at routing-start so the bridge
     // applies it once at GuitarInput construction. Mid-session changes
-    // (load_calibration_profile from the UI, or a source toggle from MIDI
-    // → guitar without restarting routing) do NOT propagate — the user
-    // must stop+restart routing for a recalibrated profile or a freshly
-    // selected guitar source to take effect. Mirrors the same restart
-    // semantics as `guitar_config` for fields it doesn't share via the
-    // Arc<Mutex<…>> live-edit path.
+    // (load_calibration_profile from the UI, or a save_calibration_profile
+    // after a sweep) DO propagate live now via state.live_guitar_pipeline
+    // — the bridge publishes its pipeline Arc on construction, and the
+    // calibration commands try-lock + push the new profile. A source
+    // toggle (MIDI → guitar) without restarting routing still requires
+    // a restart because we'd need to construct a new bridge. The snapshot
+    // here is the construction-time profile; runtime updates flow through
+    // the live_guitar_pipeline slot.
     let live_pipeline_handle = if is_guitar {
         Some(Arc::clone(&state.live_guitar_pipeline))
     } else {
@@ -207,6 +209,16 @@ pub fn start_routing(
         if let Some(prev) = prev_stop.take() {
             prev.store(true, Ordering::SeqCst);
         }
+    }
+    // Clear the live guitar pipeline slot unconditionally before
+    // starting the new router. If the previous routing was guitar
+    // and the new one is MIDI, the slot would otherwise retain an
+    // Arc to a dead pipeline — subsequent calibration commands
+    // would silently mutate the zombie. Brutal-critic round 3
+    // CRITICAL. The slot will be re-populated by GuitarBridge::new
+    // below when the new bridge succeeds.
+    if let Ok(mut slot) = state.live_guitar_pipeline.lock() {
+        *slot = None;
     }
 
     // Store the new stop signal so stop_routing can use it

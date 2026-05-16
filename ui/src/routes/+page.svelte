@@ -130,13 +130,26 @@
 	 *  effects flush in the same microtask queue, and on Safari the
 	 *  microtask-vs-DOM-update order is unreliable for focus targets
 	 *  that just had their tabindex flipped from -1 to 0. rAF is the
-	 *  pattern the WAI-ARIA APG examples use. */
+	 *  pattern the WAI-ARIA APG examples use.
+	 *
+	 *  Cancel any pending focus before scheduling new — mashed arrow
+	 *  keys would otherwise queue N callbacks per frame, each focusing
+	 *  an intermediate tab. Visually the user only sees the last
+	 *  movement, but a screen reader announces every intermediate
+	 *  focus change (a11y noise). Round-3 critic. */
+	let pendingFocus: number | null = null;
 	function deferFocus(id: string) {
-		if (typeof requestAnimationFrame === 'function') {
-			requestAnimationFrame(() => focusTab(id));
-		} else {
+		if (typeof requestAnimationFrame !== 'function') {
 			focusTab(id);
+			return;
 		}
+		if (pendingFocus !== null) {
+			cancelAnimationFrame(pendingFocus);
+		}
+		pendingFocus = requestAnimationFrame(() => {
+			pendingFocus = null;
+			focusTab(id);
+		});
 	}
 
 	function handleTabKeydown(e: KeyboardEvent, current: MainTab) {
