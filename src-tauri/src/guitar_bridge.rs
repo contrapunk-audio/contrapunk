@@ -117,6 +117,14 @@ impl GuitarBridge {
         }
         let pipeline = Arc::new(Mutex::new(pipeline_inner));
 
+        // Clone the Arc up front so the cpal closure can `move` one
+        // copy and we still hold a clone for hot-swap publishing
+        // after the stream succeeds. Round-3 critic CRITICAL #3:
+        // publishing must happen AFTER stream construction so a
+        // failed build doesn't leave a never-started zombie in the
+        // AppState slot.
+        let pipeline_for_publish = Arc::clone(&pipeline);
+
         // Request small buffer (128 samples = ~2.7ms at 48kHz) for lower latency.
         // Falls back to driver default if the device doesn't support it.
         let stream_config = cpal::StreamConfig {
@@ -191,7 +199,7 @@ impl GuitarBridge {
         // mutate a zombie. Brutal-critic round 3 CRITICAL.
         if let Some(handle) = live_pipeline_handle.as_ref() {
             if let Ok(mut slot) = handle.lock() {
-                *slot = Some(Arc::clone(&pipeline));
+                *slot = Some(pipeline_for_publish);
             }
         }
 

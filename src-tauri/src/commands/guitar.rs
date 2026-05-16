@@ -350,7 +350,7 @@ pub fn save_calibration_profile(
     // we were only swapping on `load_calibration_profile`. After a
     // calibration sweep the user expects the new profile to apply
     // immediately, not after they manually click Reload.
-    push_calibration_to_live_pipeline(state, &profile);
+    push_calibration_to_live_pipeline(&state, &profile);
     let summary: Vec<usize> = profile
         .strings
         .iter()
