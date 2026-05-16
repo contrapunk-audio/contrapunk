@@ -65,20 +65,27 @@
 			midi.selectVirtualInput(VIRTUAL_GUITAR_AUDIO);
 			return;
 		}
-		// 'midi' — restore the user's prior MIDI device if we have one,
-		// otherwise clear the selection so they can pick. Auto-selecting
-		// Computer Keyboard would surprise users mid-take by turning
-		// their keyboard into a hot input.
-		if (midi.selectedInput === VIRTUAL_GUITAR_AUDIO) {
-			if (lastMidiSelection !== null) {
-				if (lastMidiSelection === VIRTUAL_COMPUTER_KEYBOARD) {
-					midi.selectVirtualInput(lastMidiSelection);
-				} else {
-					midi.selectInput(lastMidiSelection);
-				}
+		// 'midi' — must enter MIDI mode from any non-MIDI state.
+		// Cases:
+		//   already-MIDI: no-op
+		//   from guitar with prior physical MIDI: restore it
+		//   from guitar without prior: clearInput (avoid hot-keyboard
+		//     mid-take surprise)
+		//   from null/none: default to Computer Keyboard so the user
+		//     immediately has a working input + visible picker (the
+		//     anti-keyboard rationale only applies during a live take)
+		if (source === 'midi') return;
+		const fromGuitar = midi.selectedInput === VIRTUAL_GUITAR_AUDIO;
+		if (lastMidiSelection !== null) {
+			if (lastMidiSelection === VIRTUAL_COMPUTER_KEYBOARD) {
+				midi.selectVirtualInput(lastMidiSelection);
 			} else {
-				midi.clearInput();
+				midi.selectInput(lastMidiSelection);
 			}
+		} else if (fromGuitar) {
+			midi.clearInput();
+		} else {
+			midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
 		}
 	}
 
