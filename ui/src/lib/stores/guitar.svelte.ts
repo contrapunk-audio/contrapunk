@@ -475,7 +475,7 @@ class GuitarInputStore {
 	/** Enumerate available audio input devices via the Web Audio API. */
 	async enumerateAudioDevices() {
 		if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
-			this.audioDeviceError = 'Audio devices not available';
+			this.audioDeviceError = 'Audio devices not available on this surface';
 			return;
 		}
 
@@ -497,8 +497,29 @@ class GuitarInputStore {
 				this.selectDevice(audient ? audient.deviceId : this.audioDevices[0].deviceId);
 			}
 		} catch (err) {
-			this.audioDeviceError =
-				err instanceof Error ? err.message : 'Failed to enumerate audio devices';
+			// Translate the raw browser/system error into something a
+			// musician can act on. The native `getUserMedia` error
+			// names are stable; map them to plain English. Anything we
+			// can't recognise falls through to a generic message with
+			// the original error appended for debugging.
+			const raw = err instanceof Error ? err : null;
+			const name = raw?.name ?? '';
+			const msg = raw?.message ?? String(err);
+			if (
+				name === 'NotAllowedError' ||
+				/denied permission|not allowed/i.test(msg)
+			) {
+				this.audioDeviceError =
+					'Microphone access denied. Allow it in macOS System Settings → Privacy & Security → Microphone, then re-open Contrapunk.';
+			} else if (name === 'NotFoundError' || /no.*device|not found/i.test(msg)) {
+				this.audioDeviceError =
+					'No audio input device detected. Plug in your interface, then click R to refresh.';
+			} else if (name === 'NotReadableError' || /in use|read.*err/i.test(msg)) {
+				this.audioDeviceError =
+					'Audio device is in use by another application. Close the other app, then click R to refresh.';
+			} else {
+				this.audioDeviceError = `Couldn't access the audio device (${msg}).`;
+			}
 		}
 	}
 

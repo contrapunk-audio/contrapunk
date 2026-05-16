@@ -218,40 +218,10 @@
 			{@render tabButton('voices', 'Voices')}
 		</div>
 
-		{#if ui.activeTab === 'io'}
-			<!-- I/O subtab strip — only rendered when I/O tab is active.
-			     Same tablist pattern as the main strip. -->
-			<div class="subtab-strip" role="tablist" aria-label="I/O subtab">
-				<button
-					class="subtab-btn font-ui"
-					class:active={ui.ioSubtab === 'input'}
-					role="tab"
-					type="button"
-					id="subtab-input"
-					aria-selected={ui.ioSubtab === 'input'}
-					aria-controls="iopanel-input"
-					tabindex={ui.ioSubtab === 'input' ? 0 : -1}
-					onclick={() => ui.setIoSubtab('input')}
-					onkeydown={(e) => handleSubtabKeydown(e, 'input')}
-				>
-					Input
-				</button>
-				<button
-					class="subtab-btn font-ui"
-					class:active={ui.ioSubtab === 'output'}
-					role="tab"
-					type="button"
-					id="subtab-output"
-					aria-selected={ui.ioSubtab === 'output'}
-					aria-controls="iopanel-output"
-					tabindex={ui.ioSubtab === 'output' ? 0 : -1}
-					onclick={() => ui.setIoSubtab('output')}
-					onkeydown={(e) => handleSubtabKeydown(e, 'output')}
-				>
-					Output
-				</button>
-			</div>
-		{/if}
+		<!-- Subtab strip moved INSIDE .io-area below — keeping it as a
+		     grid sibling here would steal the 1fr cell and push the
+		     panel content to the cramped auto cell at the bottom. -->
+		{#if false}{/if}
 
 		{#if ui.activeTab === 'play'}
 		<div role="tabpanel" id="panel-play" aria-labelledby="tab-play">
@@ -309,25 +279,57 @@
 			{/if}
 		</div>
 		{:else if ui.activeTab === 'io'}
-			<!-- I/O tab — subtabs hold Input (sources + calibration) and
-			     Output (Voice Generation Chain + synth/FX). -->
+			<!-- I/O tab — subtab strip + content live inside .io-area
+			     so the strip doesn't steal the parent grid's 1fr cell. -->
 			<div class="io-area" role="tabpanel" id="panel-io" aria-labelledby="tab-io">
-				{#if ui.ioSubtab === 'input'}
-					<div role="tabpanel" id="iopanel-input" aria-labelledby="subtab-input">
-						{#if adapter.capabilities.inputSourcePicker}
-							<InputPanel />
-						{:else}
-							<div class="surface-unavailable font-ui">
-								Input source is owned by the DAW in plugin mode.
-								Route MIDI / audio to the plugin from your host.
-							</div>
-						{/if}
-					</div>
-				{:else}
-					<div role="tabpanel" id="iopanel-output" aria-labelledby="subtab-output">
-						<OutputPanel />
-					</div>
-				{/if}
+				<div class="subtab-strip" role="tablist" aria-label="I/O subtab">
+					<button
+						class="subtab-btn font-ui"
+						class:active={ui.ioSubtab === 'input'}
+						role="tab"
+						type="button"
+						id="subtab-input"
+						aria-selected={ui.ioSubtab === 'input'}
+						aria-controls="iopanel-input"
+						tabindex={ui.ioSubtab === 'input' ? 0 : -1}
+						onclick={() => ui.setIoSubtab('input')}
+						onkeydown={(e) => handleSubtabKeydown(e, 'input')}
+					>
+						Input
+					</button>
+					<button
+						class="subtab-btn font-ui"
+						class:active={ui.ioSubtab === 'output'}
+						role="tab"
+						type="button"
+						id="subtab-output"
+						aria-selected={ui.ioSubtab === 'output'}
+						aria-controls="iopanel-output"
+						tabindex={ui.ioSubtab === 'output' ? 0 : -1}
+						onclick={() => ui.setIoSubtab('output')}
+						onkeydown={(e) => handleSubtabKeydown(e, 'output')}
+					>
+						Output
+					</button>
+				</div>
+				<div class="io-body">
+					{#if ui.ioSubtab === 'input'}
+						<div role="tabpanel" id="iopanel-input" aria-labelledby="subtab-input">
+							{#if adapter.capabilities.inputSourcePicker}
+								<InputPanel />
+							{:else}
+								<div class="surface-unavailable font-ui">
+									Input source is owned by the DAW in plugin mode.
+									Route MIDI / audio to the plugin from your host.
+								</div>
+							{/if}
+						</div>
+					{:else}
+						<div role="tabpanel" id="iopanel-output" aria-labelledby="subtab-output">
+							<OutputPanel />
+						</div>
+					{/if}
+				</div>
 			</div>
 		{:else if ui.activeTab === 'companion'}
 			<!-- Companion tab: delayed-voice configuration (canon lanes
@@ -437,8 +439,16 @@
 
 	.io-area {
 		background: rgba(15, 14, 26, 0.88);
-		overflow-y: auto;
 		height: 100%;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+
+	.io-body {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
 	}
 
 	.chain-area {
