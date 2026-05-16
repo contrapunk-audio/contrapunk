@@ -513,10 +513,20 @@ impl GuitarInput {
     /// frame as a real pluck, false if it rejects as noise / brush /
     /// scrape. When no profile is loaded, returns true (no-op gate).
     /// `confidence` is the pitch-detection clarity in 0.0-1.0.
-    fn normalizer_accepts(&self, rms: f32, bright_rms: f32, confidence: f32) -> bool {
+    /// `string_hint` is the 0-5 index (E2..E4) when the pipeline has
+    /// already identified which string is sounding — passing it lets
+    /// `AudioNormalizer.normalize()` use the per-string noise gate +
+    /// brightness mean instead of the conservative global floor.
+    fn normalizer_accepts(
+        &self,
+        rms: f32,
+        bright_rms: f32,
+        confidence: f32,
+        string_hint: Option<usize>,
+    ) -> bool {
         match self.normalizer.as_ref() {
             Some(n) => !matches!(
-                n.normalize(rms, bright_rms, confidence, None),
+                n.normalize(rms, bright_rms, confidence, string_hint),
                 super::guitar::NormalizeResult::Rejected
             ),
             None => true,
@@ -679,17 +689,30 @@ impl GuitarInput {
             detect_pitch_mcleod(buf, self.config.sample_rate, self.adaptive_clarity())
         };
 
-        // 3b. Calibration-driven brush/scrape rejection. Only applied when
-        // the user has loaded a calibration profile (else no-op). Brush
-        // and pick-scrape sounds have very high upper-half brightness
-        // relative to total RMS but low pitch-detection confidence —
-        // exactly the signal the AudioNormalizer.normalize() rejects.
-        // If the normalizer rejects, suppress onset emission AND the
-        // slope re-pluck path so we don't fire NoteOn from those.
-        if (onset || slope_onset) && self.normalizer.is_some() {
+        // 3b. Calibration-driven brush/scrape rejection.
+        //
+        // CRITICAL: only apply during Idle/Attack — NOT during Sustain.
+        // Brutal-critic round 2 surfaced this: during Sustain the
+        // McLeod path runs with adaptive_clarity() filter, so legit
+        // vibrato peaks and finger-flesh transients produce
+        // pitch_result == None → confidence == 0.0, and the
+        // normalizer would falsely reject them as "noise" even though
+        // the player is actively sustaining a real note. The gate
+        // only makes sense when we're trying to identify a FRESH
+        // attack (Idle→Attack onset, or a genuine re-pluck while
+        // Idle). Sustain re-plucks are handled by separate slope
+        // logic that doesn't need brush rejection.
+        let in_idle_or_attack = matches!(self.note_state, NoteState::Idle | NoteState::Attack);
+        if in_idle_or_attack && (onset || slope_onset) && self.normalizer.is_some() {
             let bright_rms = Self::compute_bright_rms(buf);
             let confidence = pitch_result.map(|(_, c)| c).unwrap_or(0.0);
-            if !self.normalizer_accepts(rms, bright_rms, confidence) {
+            // Hand the per-string index through so the normalizer
+            // applies per-string thresholds instead of collapsing to
+            // the global noise floor (the whole point of a per-string
+            // calibration profile). If no current note is identified,
+            // None falls through to global thresholds — same as before.
+            let string_hint = self.current_note.as_ref().and_then(|n| n.string_idx);
+            if !self.normalizer_accepts(rms, bright_rms, confidence, string_hint) {
                 onset = false;
                 slope_onset = false;
             }
@@ -4354,17 +4377,20 @@ mod tests {
         // any of them, and the no-profile branch must not synthesize
         // a rejection.
         let pipe = GuitarInput::with_defaults();
-        assert!(pipe.normalizer_accepts(0.5, 0.3, 0.8));
-        assert!(pipe.normalizer_accepts(0.0001, 0.0001, 0.0));
-        assert!(pipe.normalizer_accepts(0.0, 0.0, 0.0));
-        assert!(pipe.normalizer_accepts(f32::INFINITY, 0.0, 0.0));
-        assert!(pipe.normalizer_accepts(0.0, f32::INFINITY, 0.0));
-        assert!(pipe.normalizer_accepts(0.0, 0.0, f32::INFINITY));
-        assert!(pipe.normalizer_accepts(-1.0, -1.0, -1.0));
+        assert!(pipe.normalizer_accepts(0.5, 0.3, 0.8, None));
+        assert!(pipe.normalizer_accepts(0.0001, 0.0001, 0.0, None));
+        assert!(pipe.normalizer_accepts(0.0, 0.0, 0.0, None));
+        assert!(pipe.normalizer_accepts(f32::INFINITY, 0.0, 0.0, None));
+        assert!(pipe.normalizer_accepts(0.0, f32::INFINITY, 0.0, None));
+        assert!(pipe.normalizer_accepts(0.0, 0.0, f32::INFINITY, None));
+        assert!(pipe.normalizer_accepts(-1.0, -1.0, -1.0, None));
         // NaN: must not panic, must not loop, must return true (no-op).
-        assert!(pipe.normalizer_accepts(f32::NAN, 0.5, 0.5));
-        assert!(pipe.normalizer_accepts(0.5, f32::NAN, 0.5));
-        assert!(pipe.normalizer_accepts(0.5, 0.5, f32::NAN));
+        assert!(pipe.normalizer_accepts(f32::NAN, 0.5, 0.5, None));
+        assert!(pipe.normalizer_accepts(0.5, f32::NAN, 0.5, None));
+        assert!(pipe.normalizer_accepts(0.5, 0.5, f32::NAN, None));
+        // String hints are accepted with no profile too.
+        assert!(pipe.normalizer_accepts(0.5, 0.3, 0.8, Some(0)));
+        assert!(pipe.normalizer_accepts(0.5, 0.3, 0.8, Some(5)));
     }
 
     #[test]
@@ -4377,12 +4403,12 @@ mod tests {
         // but the pipeline must keep running.
         let mut pipe = GuitarInput::with_defaults();
         pipe.set_calibration_profile(standard_profile());
-        let _ = pipe.normalizer_accepts(f32::NAN, 0.5, 0.9);
-        let _ = pipe.normalizer_accepts(0.5, f32::NAN, 0.9);
-        let _ = pipe.normalizer_accepts(0.5, 0.5, f32::NAN);
+        let _ = pipe.normalizer_accepts(f32::NAN, 0.5, 0.9, None);
+        let _ = pipe.normalizer_accepts(0.5, f32::NAN, 0.9, None);
+        let _ = pipe.normalizer_accepts(0.5, 0.5, f32::NAN, None);
         // Subsequent CLEAN input must still pass — the gate must not
         // be stranded in a corrupted internal state by NaN exposure.
-        assert!(pipe.normalizer_accepts(0.2, 0.1, 0.9));
+        assert!(pipe.normalizer_accepts(0.2, 0.1, 0.9, None));
     }
 
     #[test]
@@ -4391,7 +4417,22 @@ mod tests {
         pipe.set_calibration_profile(standard_profile());
         // No string hint -> normalize() uses global_noise_floor (~0.005).
         // RMS well below that should reject.
-        assert!(!pipe.normalizer_accepts(0.001, 0.0005, 0.9));
+        assert!(!pipe.normalizer_accepts(0.001, 0.0005, 0.9, None));
+    }
+
+    #[test]
+    fn normalizer_accepts_with_string_hint_uses_per_string_gate() {
+        // With a string hint, normalize() consults string_noise_gates[i]
+        // instead of global_noise_floor. The standard_profile sets each
+        // string's soft samples to rms=0.05 → soft_rms_threshold = 0.025
+        // → noise_gate = 0.01. RMS of 0.005 should be rejected when
+        // checked against the per-string gate, even though it might
+        // pass the global floor (which can be lower).
+        let mut pipe = GuitarInput::with_defaults();
+        pipe.set_calibration_profile(standard_profile());
+        // Hinted: per-string gate kicks in.
+        assert!(!pipe.normalizer_accepts(0.005, 0.003, 0.9, Some(0)));
+        assert!(!pipe.normalizer_accepts(0.005, 0.003, 0.9, Some(5)));
     }
 
     #[test]
@@ -4404,7 +4445,7 @@ mod tests {
         // bright_rms / rms ratio = 0.9 / 0.1 = 9.0 (way above the
         // brightness_noise_multiplier * expected_brightness ≈ 0.75).
         // Confidence 0.2 < min_pluck_confidence 0.5 → reject.
-        assert!(!pipe.normalizer_accepts(0.1, 0.9, 0.2));
+        assert!(!pipe.normalizer_accepts(0.1, 0.9, 0.2, None));
     }
 
     #[test]
@@ -4413,7 +4454,7 @@ mod tests {
         pipe.set_calibration_profile(standard_profile());
         // Strong pluck: high RMS, brightness ratio near calibrated mean
         // (0.5), high pitch confidence. Must pass.
-        assert!(pipe.normalizer_accepts(0.2, 0.1, 0.9));
+        assert!(pipe.normalizer_accepts(0.2, 0.1, 0.9, None));
     }
 
     #[test]

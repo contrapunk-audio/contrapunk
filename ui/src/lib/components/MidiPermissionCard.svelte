@@ -11,7 +11,14 @@
 	);
 
 	async function onEnable() {
+		// Two guards: `enabling` debounces multi-clicks within the
+		// single-promise window; the permissionState check stops a
+		// late click after a granted response from re-firing
+		// requestMIDIAccess(). Both are needed — `enabling` flips back
+		// to false the instant the promise resolves; the user's mouse
+		// might land mid-render before the card unmounts.
 		if (enabling) return;
+		if (midi.permissionState === 'granted') return;
 		enabling = true;
 		try {
 			await midi.requestPermission();

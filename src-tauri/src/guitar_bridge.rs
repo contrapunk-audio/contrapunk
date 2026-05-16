@@ -32,12 +32,20 @@ impl GuitarBridge {
     /// `channel`: audio channel index (0-based)
     /// `config`: GuitarInput configuration
     /// `tx`: mpsc sender for MIDI bytes (same channel type as physical MIDI input)
+    /// `live_pipeline_handle`: optional outbound slot. If provided, the
+    /// constructed `Arc<Mutex<GuitarInput>>` is cloned into it so the
+    /// Tauri command layer can hot-reload the calibration profile into
+    /// the running pipeline without restarting routing. The bridge
+    /// retains the primary handle via the cpal closure; AppState keeps
+    /// a clone for hot-swap. Cleared by stop_routing flow if it
+    /// participates.
     pub fn new(
         device_name: &str,
         channel: usize,
         config: GuitarInputConfig,
         shared_config: Arc<Mutex<Option<GuitarInputConfig>>>,
         calibration_profile: Option<GuitarCalibrationProfile>,
+        live_pipeline_handle: Option<Arc<Mutex<Option<Arc<Mutex<GuitarInput>>>>>>,
         tx: mpsc::Sender<Vec<u8>>,
         signal_tx: Option<mpsc::Sender<GuitarSignalInfo>>,
     ) -> Result<Self, String> {
@@ -108,6 +116,17 @@ impl GuitarBridge {
             eprintln!("[calibration] guitar_bridge: no profile (using defaults)");
         }
         let pipeline = Arc::new(Mutex::new(pipeline_inner));
+
+        // Publish the pipeline handle for live hot-swap. The Tauri
+        // calibration commands lock-and-mutate this to push a freshly
+        // loaded profile into the running engine without forcing a
+        // routing restart. (Brutal-critic round 2 CRITICAL — the
+        // previous implementation only applied profiles at construction.)
+        if let Some(handle) = live_pipeline_handle.as_ref() {
+            if let Ok(mut slot) = handle.lock() {
+                *slot = Some(Arc::clone(&pipeline));
+            }
+        }
 
         // Request small buffer (128 samples = ~2.7ms at 48kHz) for lower latency.
         // Falls back to driver default if the device doesn't support it.

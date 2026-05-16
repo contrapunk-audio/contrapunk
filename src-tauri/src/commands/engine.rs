@@ -178,6 +178,11 @@ pub fn start_routing(
     // selected guitar source to take effect. Mirrors the same restart
     // semantics as `guitar_config` for fields it doesn't share via the
     // Arc<Mutex<…>> live-edit path.
+    let live_pipeline_handle = if is_guitar {
+        Some(Arc::clone(&state.live_guitar_pipeline))
+    } else {
+        None
+    };
     let calibration_profile_snapshot = if is_guitar {
         Some(
             state
@@ -265,6 +270,7 @@ pub fn start_routing(
             guitar_config,
             guitar_config_shared,
             calibration_profile_snapshot,
+            live_pipeline_handle,
             tx,
             rx,
             in_notes,
@@ -308,6 +314,13 @@ pub fn stop_routing(state: State<AppState>) -> Result<(), String> {
 
     state.is_running.store(false, Ordering::SeqCst);
 
+    // Drop the live pipeline handle so subsequent calibration commands
+    // know there's nothing running to hot-swap into. The cpal stream
+    // owned by GuitarBridge is dropped via the router-thread teardown.
+    if let Ok(mut slot) = state.live_guitar_pipeline.lock() {
+        *slot = None;
+    }
+
     Ok(())
 }
 
@@ -327,6 +340,9 @@ fn run_tauri_router(
     guitar_config: GuitarInputConfig,
     guitar_config_shared: Arc<Mutex<Option<GuitarInputConfig>>>,
     calibration_profile: Option<contrapunk::audio::guitar::GuitarCalibrationProfile>,
+    live_pipeline_handle: Option<
+        Arc<Mutex<Option<Arc<Mutex<contrapunk::audio::guitar_input::GuitarInput>>>>>,
+    >,
     tx: mpsc::Sender<Vec<u8>>,
     rx: mpsc::Receiver<Vec<u8>>,
     input_notes: Arc<Mutex<HashSet<u8>>>,
@@ -360,6 +376,7 @@ fn run_tauri_router(
             guitar_config,
             guitar_config_shared,
             calibration_profile,
+            live_pipeline_handle,
             tx,
             Some(signal_tx),
         )

@@ -125,6 +125,20 @@
 		document.getElementById(id)?.focus();
 	}
 
+	/** Defer focus until the DOM has the new tabindex applied. Use
+	 *  requestAnimationFrame instead of queueMicrotask — Svelte 5
+	 *  effects flush in the same microtask queue, and on Safari the
+	 *  microtask-vs-DOM-update order is unreliable for focus targets
+	 *  that just had their tabindex flipped from -1 to 0. rAF is the
+	 *  pattern the WAI-ARIA APG examples use. */
+	function deferFocus(id: string) {
+		if (typeof requestAnimationFrame === 'function') {
+			requestAnimationFrame(() => focusTab(id));
+		} else {
+			focusTab(id);
+		}
+	}
+
 	function handleTabKeydown(e: KeyboardEvent, current: MainTab) {
 		const idx = MAIN_TABS.indexOf(current);
 		if (idx < 0) return;
@@ -137,7 +151,7 @@
 		e.preventDefault();
 		const target = MAIN_TABS[next];
 		ui.setActiveTab(target);
-		queueMicrotask(() => focusTab(`tab-${target}`));
+		deferFocus(`tab-${target}`);
 	}
 
 	function handleSubtabKeydown(e: KeyboardEvent, current: 'input' | 'output') {
@@ -147,7 +161,7 @@
 		e.preventDefault();
 		const next: 'input' | 'output' = current === 'input' ? 'output' : 'input';
 		ui.setIoSubtab(next);
-		queueMicrotask(() => focusTab(`subtab-${next}`));
+		deferFocus(`subtab-${next}`);
 	}
 </script>
 

@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
 use contrapunk::audio::guitar::GuitarCalibrationProfile;
-use contrapunk::audio::guitar_input::GuitarInputConfig;
+use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig};
 use contrapunk::chain::ChainCommander;
 use contrapunk::fx::{DelayParams, ReverbParams};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
@@ -69,6 +69,20 @@ pub struct AppState {
     /// pipeline applies it via `GuitarInput::set_calibration_profile`.
     /// Default is `GuitarCalibrationProfile::default()` (no samples).
     pub calibration_profile: Arc<Mutex<GuitarCalibrationProfile>>,
+
+    /// Live handle to the running guitar pipeline, populated by
+    /// `GuitarBridge::new` and cleared on stop_routing. Wrapped as
+    /// `Arc<Mutex<Option<Arc<Mutex<GuitarInput>>>>>` because:
+    ///   - the outer Arc<Mutex<Option<...>>> is the AppState slot the
+    ///     bridge writes to and the calibration commands read from
+    ///   - the inner Arc<Mutex<GuitarInput>> is the cpal-callback-
+    ///     owned pipeline; cloning it lets command handlers lock and
+    ///     hot-swap the calibration profile mid-session.
+    /// Brutal-critic round 2 CRITICAL: previously, hot-reload via
+    /// `load_calibration_profile` only updated AppState — the live
+    /// audio pipeline kept its old normalizer until routing restart.
+    /// The status badge claimed "calibrated" while the engine was not.
+    pub live_guitar_pipeline: Arc<Mutex<Option<Arc<Mutex<GuitarInput>>>>>,
 
     /// MIDI routing mode (channel-based MPE or port-based)
     pub routing_mode: Mutex<RoutingMode>,
@@ -181,6 +195,7 @@ impl Default for AppState {
             guitar_device: Mutex::new(String::new()),
             guitar_channel: Mutex::new(0),
             calibration_profile: Arc::new(Mutex::new(GuitarCalibrationProfile::default())),
+            live_guitar_pipeline: Arc::new(Mutex::new(None)),
             routing_mode: Mutex::new(RoutingMode::default()),
             stop_signal: Mutex::new(None),
             router_tx: Mutex::new(None),
