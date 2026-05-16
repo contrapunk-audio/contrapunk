@@ -124,7 +124,7 @@
 		// "Melody" is the player's own input position. The Companion
 		// tab hosts the per-voice editor; for the user voice we route
 		// to the Harmony tab since voicePosition lives in the harmony
-		// surface ("you play" row in MidiDevices).
+		// surface ("you play" row in InputPanel).
 		ui.setActiveTab('play');
 	}
 

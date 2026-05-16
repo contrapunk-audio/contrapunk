@@ -27,9 +27,10 @@
 	  behind a user gesture, so on first visit (or any denied/unsupported
 	  state) the user needs an explicit affordance to trigger the prompt.
 
-	  Single source of truth — InputPanel + MidiDevices both render this so
-	  the prior dual-card bug (two cards, copy drift on the unsupported
-	  branch's "DOWNLOAD DESKTOP APP" link) can't reoccur.
+	  Single source of truth — only InputPanel renders this today, but
+	  the component stays factored so any future MIDI surface can drop
+	  it in without copy-paste (the prior dual-card bug had two
+	  inline copies that drifted on the unsupported-browser link).
 	-->
 	<div class="midi-section pixel-card midi-permission-card">
 		<div class="section-header font-ui">MIDI</div>

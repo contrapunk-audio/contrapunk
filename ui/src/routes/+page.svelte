@@ -48,7 +48,7 @@
 				await engine.restoreSettings();
 				// Browser path: only refreshes devices if the user previously
 				// granted Web MIDI access. First-time visitors see the
-				// "Enable MIDI" button in MidiDevices.svelte instead.
+				// "Enable MIDI" button in MidiPermissionCard.svelte instead.
 				// Tauri / Plugin: resolves immediately and refreshes.
 				await midi.hydratePermission();
 				await synth.syncFromBackend();
@@ -213,11 +213,6 @@
 			{@render tabButton('companion', 'Companion')}
 			{@render tabButton('voices', 'Voices')}
 		</div>
-
-		<!-- Subtab strip moved INSIDE .io-area below — keeping it as a
-		     grid sibling here would steal the 1fr cell and push the
-		     panel content to the cramped auto cell at the bottom. -->
-		{#if false}{/if}
 
 		{#if ui.activeTab === 'play'}
 		<div role="tabpanel" id="panel-play" aria-labelledby="tab-play">
@@ -433,8 +428,11 @@
 	.companion-area,
 	.voices-area {
 		background: rgba(15, 14, 26, 0.88);
-		overflow-y: auto;
 		height: 100%;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		overflow-y: auto;
 	}
 
 	.surface-unavailable {

@@ -9,7 +9,7 @@
 	import MidiPermissionCard from './MidiPermissionCard.svelte';
 
 	// Virtual input sentinel values — must match
-	// src-tauri/src/commands/engine.rs and MidiDevices.svelte.
+	// src-tauri/src/commands/engine.rs.
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
 
@@ -66,23 +66,39 @@
 			return;
 		}
 		// 'midi' — must enter MIDI mode from any non-MIDI state.
-		// Cases:
-		//   already-MIDI: no-op
-		//   from guitar with prior physical MIDI: restore it
-		//   from guitar without prior: clearInput (avoid hot-keyboard
-		//     mid-take surprise)
-		//   from null/none: default to Computer Keyboard so the user
-		//     immediately has a working input + visible picker (the
-		//     anti-keyboard rationale only applies during a live take)
+		// User pressed the MIDI radio: the intent is "be in MIDI mode."
+		// Every code path below MUST end with `source === 'midi'` so the
+		// radio lights up. The previous version had two failure modes:
+		//   1. unplugged-prior: midi.selectInput(idx) silently no-ops
+		//      when `inputs.some(d => d.index === idx)` is false →
+		//      selectedInput stays at the old value → radio still wrong.
+		//   2. from-guitar-without-prior: clearInput() left the user at
+		//      `none`, button click became a "deselect" instead of
+		//      "switch to MIDI."
+		// Fix: try to restore the prior physical device, but always
+		// fall through to Computer Keyboard if the restore can't
+		// establish a MIDI selection. The mid-take hot-keyboard concern
+		// only applies when the engine is RUNNING — gate on that
+		// instead of guessing from the previous source.
 		if (source === 'midi') return;
-		const fromGuitar = midi.selectedInput === VIRTUAL_GUITAR_AUDIO;
-		if (lastMidiSelection !== null) {
+		const wasRunning = engine.isRunning;
+		const tryRestorePrior = (): boolean => {
+			if (lastMidiSelection === null) return false;
 			if (lastMidiSelection === VIRTUAL_COMPUTER_KEYBOARD) {
 				midi.selectVirtualInput(lastMidiSelection);
-			} else {
-				midi.selectInput(lastMidiSelection);
+				return midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD;
 			}
-		} else if (fromGuitar) {
+			// Physical device — only succeeds if the device is still present.
+			midi.selectInput(lastMidiSelection);
+			return midi.selectedInput === lastMidiSelection;
+		};
+		if (tryRestorePrior()) return;
+		// Restore failed or no prior. If we're NOT mid-take, default
+		// to Computer Keyboard so the radio lights up + the user has
+		// a working input. If we ARE mid-take (engine running), clear
+		// instead — turning the typing keyboard into a hot input
+		// mid-phrase is worse than asking the user to pick.
+		if (wasRunning) {
 			midi.clearInput();
 		} else {
 			midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);

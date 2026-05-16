@@ -174,8 +174,9 @@ class MidiStore {
 	 * No-op when permission has not been granted on the browser path —
 	 * `navigator.requestMIDIAccess()` requires a user gesture, so a refresh
 	 * triggered at page load would silently leave the device list empty
-	 * and confuse the user. The "Enable MIDI" button in MidiDevices.svelte
-	 * provides the gesture and calls `requestPermission()` instead.
+	 * and confuse the user. The "Enable MIDI" button in
+	 * MidiPermissionCard.svelte provides the gesture and calls
+	 * `requestPermission()` instead.
 	 */
 	async refresh() {
 		if (this.permissionState !== 'granted') return;

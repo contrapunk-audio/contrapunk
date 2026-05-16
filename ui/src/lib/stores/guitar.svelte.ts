@@ -498,25 +498,43 @@ class GuitarInputStore {
 			}
 		} catch (err) {
 			// Translate the raw browser/system error into something a
-			// musician can act on. The native `getUserMedia` error
-			// names are stable; map them to plain English. Anything we
-			// can't recognise falls through to a generic message with
-			// the original error appended for debugging.
+			// musician can act on. Branch on the standard DOMException
+			// names from the MediaDevices spec; fall back to the raw
+			// message only when we can't classify it. Messages stay
+			// OS-agnostic so Linux/Windows users don't read macOS
+			// instructions.
 			const raw = err instanceof Error ? err : null;
 			const name = raw?.name ?? '';
 			const msg = raw?.message ?? String(err);
 			if (
 				name === 'NotAllowedError' ||
-				/denied permission|not allowed/i.test(msg)
+				name === 'SecurityError' ||
+				/denied permission|not allowed|permission/i.test(msg)
 			) {
 				this.audioDeviceError =
-					'Microphone access denied. Allow it in macOS System Settings → Privacy & Security → Microphone, then re-open Contrapunk.';
-			} else if (name === 'NotFoundError' || /no.*device|not found/i.test(msg)) {
+					"Microphone access denied. Open your system's microphone privacy settings, allow Contrapunk, then re-open the app.";
+			} else if (
+				name === 'NotFoundError' ||
+				/no.*device|not found|no audio/i.test(msg)
+			) {
 				this.audioDeviceError =
 					'No audio input device detected. Plug in your interface, then click R to refresh.';
-			} else if (name === 'NotReadableError' || /in use|read.*err/i.test(msg)) {
+			} else if (
+				name === 'NotReadableError' ||
+				name === 'AbortError' ||
+				/in use|read.*err|busy/i.test(msg)
+			) {
 				this.audioDeviceError =
-					'Audio device is in use by another application. Close the other app, then click R to refresh.';
+					'Audio device is in use or unreadable. Close the other app using it, then click R to refresh.';
+			} else if (
+				name === 'OverconstrainedError' ||
+				/constrain/i.test(msg)
+			) {
+				this.audioDeviceError =
+					"This device doesn't support the requested audio format. Try a different input device.";
+			} else if (name === 'TypeError') {
+				this.audioDeviceError =
+					'Audio request was rejected as malformed. This is a Contrapunk bug — please report it with your OS + browser version.';
 			} else {
 				this.audioDeviceError = `Couldn't access the audio device (${msg}).`;
 			}

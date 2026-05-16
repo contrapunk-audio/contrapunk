@@ -78,7 +78,7 @@
 
 	{#if adapter.capabilities.perVoicePortRouting}
 		<!-- Per-voice MIDI port routing — replicates the OUTPUTS section
-		     that lived in MidiDevices.svelte (Play tab). Hidden in plugin
+		     that previously lived in the Play tab. Hidden in plugin
 		     mode where the DAW owns routing. -->
 		<div class="routing-section pixel-card">
 			<div class="output-header-row">
