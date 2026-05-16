@@ -23,11 +23,13 @@ const MAX_SCALE = 2.0;
 const MIN_FONT_SCALE = 0.75;
 const MAX_FONT_SCALE = 1.5;
 
-/** Panels the user can show/hide independently. Replaces the old
- *  `ViewMode` packs (`full` / `performance` / `fretboard` / `piano`)
- *  with per-element toggles surfaced in the StatusBar pip row. */
+/** Panels the user can show/hide independently. The 'midi' panel was
+ *  removed in the I/O tab restructure — the MIDI device picker, guitar
+ *  input panel, calibration card, and per-voice routing all live in the
+ *  I/O tab now (Input + Output subtabs), so the Harmony tab no longer
+ *  needs a MIDI column. Old saves with `panels.midi: false` migrate
+ *  silently (the unknown id is ignored on restore). */
 export type PanelId =
-	| 'midi'
 	| 'controls'
 	| 'activeNotes'
 	| 'history'
@@ -35,7 +37,6 @@ export type PanelId =
 	| 'piano';
 
 export const PANELS: { id: PanelId; label: string }[] = [
-	{ id: 'midi', label: 'MIDI' },
 	{ id: 'controls', label: 'Controls' },
 	{ id: 'activeNotes', label: 'Notes' },
 	{ id: 'history', label: 'History' },
@@ -46,7 +47,6 @@ export const PANELS: { id: PanelId; label: string }[] = [
 export type PanelVisibility = Record<PanelId, boolean>;
 
 const DEFAULT_PANELS: PanelVisibility = {
-	midi: true,
 	controls: true,
 	activeNotes: true,
 	history: true,

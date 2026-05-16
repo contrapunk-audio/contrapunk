@@ -2,8 +2,6 @@
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import ControlPanel from '$lib/components/ControlPanel.svelte';
 	import Piano from '$lib/components/Piano.svelte';
-	import MidiDevices from '$lib/components/MidiDevices.svelte';
-	import GuitarInputPanel from '$lib/components/GuitarInputPanel.svelte';
 	import PerformanceView from '$lib/components/PerformanceView.svelte';
 	// PresetManager temporarily unmounted (backend + component file
 	// kept). Tracked in contrapunk#65 — will return with a redesigned UX.
@@ -23,12 +21,10 @@
 	import { transport } from '$lib/stores/transport.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
 
-	// Virtual input sentinels (must match MidiDevices.svelte and engine.rs)
+	// Virtual input sentinel — referenced by the keyboard-input gate
+	// and the FTUX auto-selection path. Must match the values in
+	// src-tauri/src/commands/engine.rs.
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
-	const VIRTUAL_GUITAR_AUDIO = 999_997;
-
-	// Derived: is Guitar Audio selected as input?
-	let isGuitarAudioSelected = $derived(midi.selectedInput === VIRTUAL_GUITAR_AUDIO);
 
 	// QWERTY keyboard input — see $lib/keyboard-input for the keymap.
 
@@ -225,42 +221,20 @@
 
 		{#if ui.activeTab === 'play'}
 		<div role="tabpanel" id="panel-play" aria-labelledby="tab-play">
-			{#if ui.panels.midi || ui.panels.controls}
-				<!-- Setup row: MIDI devices + Harmony controls. Each
-				     column is a togglable panel; the row collapses to
-				     a single column when only one is visible, and
-				     disappears entirely when both are off. The right
-				     column swaps between PerformanceView (8 knobs) and
-				     ControlPanel (today's full surface) based on
-				     `ui.viewMode`. -->
-				<div
-					class="content-area"
-					class:two-col={ui.panels.midi &&
-						ui.panels.controls &&
-						adapter.capabilities.midiDevicePicker}
-					class:one-col={((ui.panels.midi && adapter.capabilities.midiDevicePicker
-						? 1
-						: 0) + (ui.panels.controls ? 1 : 0)) ===
-						1}
-				>
-					{#if ui.panels.midi && adapter.capabilities.midiDevicePicker}
-						<div class="column column-left">
-							<MidiDevices>
-								{#if isGuitarAudioSelected}
-									<GuitarInputPanel />
-								{/if}
-							</MidiDevices>
-						</div>
-					{/if}
-					{#if ui.panels.controls}
-						<div class="column column-center">
-							{#if ui.viewMode === 'performance'}
-								<PerformanceView />
-							{:else}
-								<ControlPanel />
-							{/if}
-						</div>
-					{/if}
+			{#if ui.panels.controls}
+				<!-- Harmony controls only — MIDI/Guitar/Calibration
+				     all moved to the I/O tab so the Harmony surface
+				     stays focused on key/mode/scale/voicing. Toggle
+				     between the simplified 8-knob PerformanceView and
+				     the full ControlPanel via `ui.viewMode`. -->
+				<div class="content-area one-col">
+					<div class="column column-center">
+						{#if ui.viewMode === 'performance'}
+							<PerformanceView />
+						{:else}
+							<ControlPanel />
+						{/if}
+					</div>
 				</div>
 			{/if}
 
