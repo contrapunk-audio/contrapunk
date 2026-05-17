@@ -128,6 +128,11 @@ impl Voice {
     pub fn is_sustained(&self) -> bool {
         self.sustained
     }
+    /// Read-only access to the envelope's current output. Used by the
+    /// modulation matrix as the `AmpEnv` source.
+    pub fn env_value(&self) -> f32 {
+        self.env.value()
+    }
 
     /// Produce one sample. Returns 0.0 and self-deactivates when the
     /// envelope hits idle.

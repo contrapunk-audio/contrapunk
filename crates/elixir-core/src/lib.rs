@@ -5,17 +5,23 @@
 //! incrementally through phases A0..A6 without breaking the
 //! [`Engine::process`] signature locked at A0.
 //!
-//! Current phase: **A2** — 16-voice polyphony, voice stealing (Newest
-//! priority), kill ramps, sustain pedal.
+//! Current phase: **A3** — modulation matrix v1. One global LFO + a
+//! sparse route table; control-rate evaluation each block; click-free
+//! smoothed amounts. Mod-of-mod proven via the `AmpEnv → LfoRate`
+//! route.
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 pub mod env;
+pub mod lfo;
+pub mod modulation;
 pub mod osc;
 pub mod tables;
 pub mod util;
 pub mod voice;
 
+use crate::lfo::Lfo;
+use crate::modulation::{ModMatrix, ModRoute, ModSrc, MAX_GLOBAL_LFOS};
 use crate::tables::SineTable;
 use crate::voice::Voice;
 
@@ -41,6 +47,11 @@ pub struct Engine {
     master_gain: f32,
     sustain_pedal: bool,
     note_counter: u64,
+    /// Global modulation LFOs. A3 v1 wires up just LFO 0 by default;
+    /// the rest can be enabled by future routes / setters.
+    lfos: [Lfo; MAX_GLOBAL_LFOS],
+    /// Routing table + per-block destination accumulators.
+    pub matrix: ModMatrix,
 }
 
 impl Engine {
@@ -56,6 +67,8 @@ impl Engine {
             master_gain: 0.25,
             sustain_pedal: false,
             note_counter: 0,
+            lfos: core::array::from_fn(|_| Lfo::new()),
+            matrix: ModMatrix::new(),
         }
     }
 
@@ -68,6 +81,29 @@ impl Engine {
         for v in self.voices.iter_mut() {
             v.set_sample_rate(sr_f);
         }
+        for lfo in self.lfos.iter_mut() {
+            lfo.set_sample_rate(sr_f);
+        }
+    }
+
+    /// Convenience getters/setters for the global LFOs.
+    pub fn lfo(&self, idx: usize) -> Option<&Lfo> {
+        self.lfos.get(idx)
+    }
+    pub fn lfo_mut(&mut self, idx: usize) -> Option<&mut Lfo> {
+        self.lfos.get_mut(idx)
+    }
+
+    /// Add a modulation route. Returns the slot index, or `None` if the
+    /// matrix is full.
+    pub fn add_mod_route(&mut self, route: ModRoute) -> Option<usize> {
+        self.matrix.add_route(route)
+    }
+    pub fn remove_mod_route(&mut self, idx: usize) {
+        self.matrix.remove_route(idx);
+    }
+    pub fn clear_mod_routes(&mut self) {
+        self.matrix.clear();
     }
 
     /// Adjust the master output gain. Clamped to `[0, 1]`. Default is
@@ -166,18 +202,83 @@ impl Engine {
         self.sustain_pedal = false;
     }
 
+    /// Average per-voice amp-envelope value. Coarse — used as the
+    /// global `ModSrc::AmpEnv` feed in A3 v1.
+    fn average_amp_env(&self) -> f32 {
+        let mut sum = 0.0f32;
+        let mut n = 0u32;
+        for v in self.voices.iter() {
+            if v.is_active() {
+                sum += v.env_value();
+                n += 1;
+            }
+        }
+        if n == 0 {
+            0.0
+        } else {
+            sum / n as f32
+        }
+    }
+
     /// Render audio into the interleaved buffer.
+    ///
+    /// Per-block evaluation order matches `ELIXIR-DESIGN.md` §6:
+    ///   1. Reset destination accumulators.
+    ///   2. Snapshot global source values (envelope average).
+    ///   3. Route those into destinations (amount * src).
+    ///   4. Apply rate-mod to each LFO, advance LFO phase by `frames`.
+    ///   5. Re-evaluate matrix with the now-known LFO values.
+    ///   6. Render voices into the buffer; scale by master_gain * (1 +
+    ///      master_gain_mod).
     pub fn process(&mut self, buffer: &mut [f32], channels: usize) {
         if channels == 0 {
             return;
         }
         let frames = buffer.len() / channels;
+        if frames == 0 {
+            return;
+        }
+
+        // (1) reset; (2) snapshot non-LFO sources
+        self.matrix.reset_destinations();
+        let amp_env_avg = self.average_amp_env();
+
+        // (3) first pass: route everything that doesn't depend on LFOs
+        //     (LFO values aren't computed yet — feed 0 for them this
+        //     pass; they get picked up in pass two).
+        self.matrix.route_for_source(|src| match src {
+            ModSrc::Constant => 1.0,
+            ModSrc::AmpEnv => amp_env_avg,
+            ModSrc::Lfo(_) => 0.0,
+        });
+
+        // (4) push rate-mod into each LFO and advance one block.
+        let mut lfo_values = [0.0f32; MAX_GLOBAL_LFOS];
+        for (i, lfo) in self.lfos.iter_mut().enumerate() {
+            lfo.set_rate_mod_hz(self.matrix.lfo_rate_mod_hz[i]);
+            lfo_values[i] = lfo.tick_block(&self.sine_table, frames);
+        }
+
+        // (5) re-eval matrix now that LFO values are known. Pass 1's
+        //     LfoRate value has already been applied to the LFO in
+        //     step (4), so we can safely reset all destinations and
+        //     recompute everything from a single source of truth.
+        self.matrix.reset_destinations();
+        self.matrix.route_for_source(|src| match src {
+            ModSrc::Constant => 1.0,
+            ModSrc::AmpEnv => amp_env_avg,
+            ModSrc::Lfo(i) => lfo_values.get(i as usize).copied().unwrap_or(0.0),
+        });
+
+        // (6) render
+        let effective_gain =
+            (self.master_gain * (1.0 + self.matrix.master_gain_mod)).clamp(0.0, 2.0);
         for f in 0..frames {
             let mut mix = 0.0f32;
             for v in self.voices.iter_mut() {
                 mix += v.tick(&self.sine_table);
             }
-            mix *= self.master_gain;
+            mix *= effective_gain;
             let base = f * channels;
             for c in 0..channels {
                 buffer[base + c] = mix;
@@ -216,6 +317,7 @@ impl Default for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modulation::ModDest;
 
     fn rms(samples: &[f32]) -> f32 {
         if samples.is_empty() {
@@ -329,6 +431,86 @@ mod tests {
         assert_eq!(e.live_voice_count(), 1);
         e.note_on(60, 100); // same note again
         assert_eq!(e.live_voice_count(), 1);
+    }
+
+    // ─── A3 modulation matrix tests ─────────────────────────────────
+
+    #[test]
+    fn lfo_modulating_master_gain_produces_tremolo() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.lfo_mut(0).unwrap().set_rate_hz(8.0); // 8 Hz tremolo
+        e.add_mod_route(ModRoute::new(ModSrc::Lfo(0), ModDest::MasterGain, 0.5))
+            .unwrap();
+        e.note_on(69, 100);
+
+        // Render ~1 second in chunks; collect per-chunk RMS.
+        let mut chunk_rms = Vec::with_capacity(48);
+        for _ in 0..48 {
+            let mut buf = vec![0.0f32; 1000];
+            e.process(&mut buf, 2);
+            chunk_rms.push(rms(&buf));
+        }
+        let min = chunk_rms.iter().fold(f32::INFINITY, |a, b| a.min(*b));
+        let max = chunk_rms.iter().fold(0.0f32, |a, b| a.max(*b));
+        // Tremolo: peak/trough ratio should be visible.
+        assert!(max > min * 1.5, "tremolo not audible: min={min}, max={max}");
+    }
+
+    #[test]
+    fn amp_env_modulates_lfo_rate() {
+        // Verify ModDest::LfoRate gets a non-zero contribution from
+        // ModSrc::AmpEnv when a route is wired.
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.add_mod_route(ModRoute::new(ModSrc::AmpEnv, ModDest::LfoRate(0), 12.0))
+            .unwrap();
+        e.note_on(60, 100);
+        // Drive a few blocks so the envelope ramps up into Sustain.
+        let mut buf = vec![0.0f32; 4096];
+        for _ in 0..6 {
+            e.process(&mut buf, 2);
+        }
+        // Sustain level is 0.7 by default → expected rate mod = 0.7 * 12 = 8.4 Hz
+        let mod_hz = e.matrix.lfo_rate_mod_hz[0];
+        assert!(
+            mod_hz > 5.0 && mod_hz < 9.0,
+            "expected LFO rate mod near 8.4 Hz, got {mod_hz}"
+        );
+    }
+
+    #[test]
+    fn matrix_clear_removes_all_routes() {
+        use crate::modulation::MAX_ROUTES;
+        let mut e = Engine::new();
+        e.add_mod_route(ModRoute::new(ModSrc::Constant, ModDest::MasterGain, 0.1))
+            .unwrap();
+        e.add_mod_route(ModRoute::new(ModSrc::Lfo(0), ModDest::MasterGain, 0.2))
+            .unwrap();
+        assert_eq!(e.matrix.route_count(), 2);
+        e.clear_mod_routes();
+        assert_eq!(e.matrix.route_count(), 0);
+        // matrix should still accept new routes after clear
+        for _ in 0..MAX_ROUTES {
+            assert!(e
+                .add_mod_route(ModRoute::new(ModSrc::Constant, ModDest::MasterGain, 0.0))
+                .is_some());
+        }
+        assert!(e
+            .add_mod_route(ModRoute::new(ModSrc::Constant, ModDest::MasterGain, 0.0))
+            .is_none());
+    }
+
+    #[test]
+    fn no_routes_keeps_master_gain_steady() {
+        // Sanity: A3 must not change A1/A2 baseline when no routes exist.
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.note_on(69, 100);
+        let mut buf = vec![0.0f32; 4096];
+        e.process(&mut buf, 2);
+        assert!(rms(&buf) > 0.001);
+        assert_eq!(e.matrix.master_gain_mod, 0.0);
     }
 
     #[test]

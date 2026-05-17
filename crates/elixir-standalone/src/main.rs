@@ -23,6 +23,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleFormat;
 use midir::{Ignore, MidiInput};
 
+use elixir_core::modulation::{ModDest, ModRoute, ModSrc};
 use elixir_core::Engine;
 
 fn main() -> anyhow::Result<()> {
@@ -242,6 +243,26 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
         e.set_sustain_pedal(false); // pedal up → release
     }
     thread::sleep(Duration::from_millis(500));
+
+    println!("► Tremolo via LFO→MasterGain @ 8 Hz, amount 0.5 (2.5 s)");
+    let lfo_route_idx = {
+        let mut e = engine.lock().unwrap();
+        if let Some(lfo) = e.lfo_mut(0) {
+            lfo.set_rate_hz(8.0);
+        }
+        let idx = e
+            .add_mod_route(ModRoute::new(ModSrc::Lfo(0), ModDest::MasterGain, 0.5))
+            .expect("matrix has room");
+        e.note_on(72, 100);
+        idx
+    };
+    thread::sleep(Duration::from_millis(2500));
+    {
+        let mut e = engine.lock().unwrap();
+        e.note_off(72);
+        e.remove_mod_route(lfo_route_idx);
+    }
+    thread::sleep(Duration::from_millis(400));
 
     println!("done");
 }
