@@ -64,16 +64,24 @@
 					/* no transport adapter (browser w/o backend) */
 				}
 
-				// FTUX: if the user has no saved MIDI input and didn't
-				// pick one from the device list, default to the
-				// Computer-Keyboard virtual input and auto-start routing
-				// so the first note they play (typed) immediately
-				// produces audible companion voices. Skip auto-start if
-				// the user already has a real input selected (saved
-				// from a prior session — they may want to wire up before
-				// routing fires).
+				// FTUX:
+				// - No saved input → default to Computer Keyboard (the
+				//   user gets audible notes from typing immediately).
+				// - Saved Guitar Audio → reset to Computer Keyboard.
+				//   Auto-starting with guitar would open the mic as a
+				//   hot input on launch (the audio device picked up
+				//   ambient sound, possibly with default-untrimmed gain).
+				//   Guitar requires explicit configuration (device,
+				//   channel, calibration) and should be opt-in per
+				//   session via the I/O tab.
+				// - Saved real MIDI device → keep it (user previously
+				//   wired up a controller; respect that).
 				try {
-					if (midi.selectedInput === null) {
+					const GUITAR_SENTINEL = 999_997;
+					if (
+						midi.selectedInput === null ||
+						midi.selectedInput === GUITAR_SENTINEL
+					) {
 						midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
 					}
 					if (!engine.isRunning && midi.selectedInput !== null) {

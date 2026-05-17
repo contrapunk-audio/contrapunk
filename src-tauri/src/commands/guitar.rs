@@ -389,7 +389,17 @@ pub fn get_calibration_status(
     // in sync. Tolerant: a missing file produces a default profile,
     // not an error. Read/parse errors DO bubble — they indicate a
     // genuinely broken profile the user needs to know about.
-    let _profile = apply_calibration_profile_from_disk(&app, &state)?;
+    //
+    // Performance note: this used to re-apply the profile on every
+    // call. The UI polls status on focus / mount, which produced
+    // hot-swap spam (1-2 invocations per second visible in the log).
+    // Now we only re-apply when the disk mtime is newer than the
+    // last applied snapshot, so the steady state is just a stat()
+    // and a cached read. Brutal-critic round 3+ follow-up.
+    let needs_reapply = should_reapply_from_disk(&app, &state)?;
+    if needs_reapply {
+        let _ = apply_calibration_profile_from_disk(&app, &state)?;
+    }
     let profile = state
         .calibration_profile
         .lock()
@@ -404,4 +414,35 @@ pub fn get_calibration_status(
             .map(|s| s.soft_samples.len() + s.strong_samples.len())
             .collect(),
     })
+}
+
+/// Cached mtime of the last `apply_calibration_profile_from_disk` call,
+/// so `get_calibration_status` can skip the redundant re-apply when
+/// the disk file hasn't changed.
+static LAST_APPLIED_MTIME: std::sync::Mutex<Option<std::time::SystemTime>> =
+    std::sync::Mutex::new(None);
+
+fn should_reapply_from_disk(app: &tauri::AppHandle, _state: &AppState) -> Result<bool, String> {
+    let path = calibration_profile_path(app)?;
+    if !path.exists() {
+        // No file on disk: only reapply on the very first call (when
+        // cached mtime is None). Subsequent calls with no file are
+        // no-ops.
+        let mut last = LAST_APPLIED_MTIME.lock().map_err(|e| e.to_string())?;
+        if last.is_none() {
+            *last = Some(std::time::SystemTime::UNIX_EPOCH);
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let mtime = meta.modified().map_err(|e| e.to_string())?;
+    let mut last = LAST_APPLIED_MTIME.lock().map_err(|e| e.to_string())?;
+    match *last {
+        Some(prev) if prev >= mtime => Ok(false),
+        _ => {
+            *last = Some(mtime);
+            Ok(true)
+        }
+    }
 }
