@@ -29,6 +29,16 @@ impl ElixirSynthBlock {
         engine.prepare(sample_rate, DEFAULT_MAX_BLOCK);
         Self { engine }
     }
+
+    /// Set the voice-filter cutoff in Hz (A4). Pass-through to the
+    /// underlying engine.
+    pub fn set_filter_cutoff_hz(&mut self, hz: f32) {
+        self.engine.set_filter_cutoff_hz(hz);
+    }
+    /// Set the voice-filter resonance, `0..1`.
+    pub fn set_filter_resonance(&mut self, r: f32) {
+        self.engine.set_filter_resonance(r);
+    }
 }
 
 /// Conservative scratch-buffer bound. Chain `process` calls deliver

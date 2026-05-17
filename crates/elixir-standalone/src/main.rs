@@ -264,6 +264,40 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
     }
     thread::sleep(Duration::from_millis(400));
 
+    println!("► Filter sweep: LFO→Cutoff @ 0.6 Hz, amount 3 kHz, base 1.5 kHz");
+    let sweep_route_idx = {
+        let mut e = engine.lock().unwrap();
+        if let Some(lfo) = e.lfo_mut(0) {
+            lfo.set_rate_hz(0.6);
+        }
+        e.set_filter_cutoff_hz(1_500.0);
+        e.set_filter_resonance(0.55);
+        let idx = e
+            .add_mod_route(ModRoute::new(
+                ModSrc::Lfo(0),
+                ModDest::FilterCutoff,
+                3_000.0,
+            ))
+            .expect("matrix has room");
+        // A C-major chord with the filter sweeping — classic synth bread
+        // and butter.
+        for &n in &[48u8, 52, 55, 60, 64, 67] {
+            e.note_on(n, 80);
+        }
+        idx
+    };
+    thread::sleep(Duration::from_millis(4500));
+    {
+        let mut e = engine.lock().unwrap();
+        for &n in &[48u8, 52, 55, 60, 64, 67] {
+            e.note_off(n);
+        }
+        e.remove_mod_route(sweep_route_idx);
+        e.set_filter_cutoff_hz(8_000.0);
+        e.set_filter_resonance(0.0);
+    }
+    thread::sleep(Duration::from_millis(600));
+
     println!("done");
 }
 

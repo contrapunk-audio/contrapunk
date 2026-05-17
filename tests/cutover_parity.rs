@@ -7,8 +7,8 @@
 //!
 //! | Phase    | Threshold     | Why                                                |
 //! |----------|---------------|----------------------------------------------------|
-//! | A1 (now) | < -30 dBFS    | Legacy has a one-pole LP; Elixir doesn't yet.      |
-//! | A4       | < -60 dBFS    | Elixir adds an SVF — match cutoff & resonance.     |
+//! | A1       | < -30 dBFS    | Legacy has a one-pole LP; Elixir doesn't yet.      |
+//! | A4 (now) | < -50 dBFS    | Elixir has an SVF LP; matching cutoff in test.     |
 //! | A-Cut    | < -90 dBFS    | Full feature parity preset; cutover gate.          |
 //!
 //! Each test prints the actual RMS so we can watch it drop as more
@@ -27,7 +27,10 @@ const CHANNELS: usize = 2;
 const NOTE: u8 = 69; // A4 = 440 Hz
 const VELOCITY: u8 = 100;
 const FRAMES: usize = SAMPLE_RATE as usize; // one second
-const A1_RMS_DBFS_GATE: f32 = -30.0;
+/// Threshold tightened from -30 dBFS at A1 to -50 dBFS at A4 (Elixir
+/// now also has a LP filter; topology still differs from the legacy
+/// one-pole, so we don't yet expect the -90 dBFS A-Cut gate).
+const A1_RMS_DBFS_GATE: f32 = -50.0;
 
 fn rms(samples: &[f32]) -> f32 {
     if samples.is_empty() {
@@ -63,6 +66,11 @@ fn render_legacy_sine(buf: &mut [f32]) {
 
 fn render_elixir_sine(buf: &mut [f32]) {
     let mut e = ElixirSynthBlock::new(SAMPLE_RATE);
+    // Match the legacy LP filter setting so the test compares apples
+    // to apples. With both filters at 20 kHz and no resonance the
+    // 440 Hz signal sees near-identity response.
+    e.set_filter_cutoff_hz(20_000.0);
+    e.set_filter_resonance(0.0);
     e.midi_event(MidiBlockEvent::NoteOn {
         note: NOTE,
         velocity: VELOCITY,

@@ -38,6 +38,10 @@ pub enum ModDest {
     MasterGain,
     /// Adds to global LFO `i` rate in Hz.
     LfoRate(u8),
+    /// Adds to the global voice-filter cutoff in Hz (A4). All live
+    /// voices share the same cutoff modulation for now; per-voice
+    /// key-tracking and per-voice mod lands in an A4 follow-up.
+    FilterCutoff,
 }
 
 /// One routing entry. `amount` is the multiplier applied to the source
@@ -78,6 +82,7 @@ pub struct ModMatrix {
     /// Last-evaluated destination buffers. Indexed by ModDest variant.
     pub master_gain_mod: f32,
     pub lfo_rate_mod_hz: [f32; MAX_GLOBAL_LFOS],
+    pub filter_cutoff_mod_hz: f32,
 }
 
 impl ModMatrix {
@@ -87,6 +92,7 @@ impl ModMatrix {
             next_slot: 0,
             master_gain_mod: 0.0,
             lfo_rate_mod_hz: [0.0; MAX_GLOBAL_LFOS],
+            filter_cutoff_mod_hz: 0.0,
         }
     }
 
@@ -125,6 +131,7 @@ impl ModMatrix {
         self.next_slot = 0;
         self.master_gain_mod = 0.0;
         self.lfo_rate_mod_hz = [0.0; MAX_GLOBAL_LFOS];
+        self.filter_cutoff_mod_hz = 0.0;
     }
 
     pub fn route_count(&self) -> usize {
@@ -136,6 +143,7 @@ impl ModMatrix {
     pub fn reset_destinations(&mut self) {
         self.master_gain_mod = 0.0;
         self.lfo_rate_mod_hz = [0.0; MAX_GLOBAL_LFOS];
+        self.filter_cutoff_mod_hz = 0.0;
     }
 
     /// Iterate sources in the order the engine needs them. The engine
@@ -152,6 +160,7 @@ impl ModMatrix {
                         self.lfo_rate_mod_hz[idx] += v;
                     }
                 }
+                ModDest::FilterCutoff => self.filter_cutoff_mod_hz += v,
             }
         }
     }

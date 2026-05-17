@@ -13,6 +13,7 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 pub mod env;
+pub mod filter;
 pub mod lfo;
 pub mod modulation;
 pub mod osc;
@@ -20,6 +21,7 @@ pub mod tables;
 pub mod util;
 pub mod voice;
 
+use crate::filter::SvfCoeffs;
 use crate::lfo::Lfo;
 use crate::modulation::{ModMatrix, ModRoute, ModSrc, MAX_GLOBAL_LFOS};
 use crate::tables::SineTable;
@@ -52,6 +54,14 @@ pub struct Engine {
     lfos: [Lfo; MAX_GLOBAL_LFOS],
     /// Routing table + per-block destination accumulators.
     pub matrix: ModMatrix,
+    /// Base voice-filter cutoff in Hz. Modulation adds to this each
+    /// block; the sum is clamped to a safe range before coefficients
+    /// are derived. A4 default ≈ 8 kHz (wide-open) so an empty preset
+    /// sounds essentially unfiltered.
+    filter_cutoff_hz: f32,
+    /// Voice-filter resonance, `0..1`. `0.0` = flat lowpass; values
+    /// approaching `1.0` self-oscillate.
+    filter_resonance: f32,
 }
 
 impl Engine {
@@ -69,6 +79,8 @@ impl Engine {
             note_counter: 0,
             lfos: core::array::from_fn(|_| Lfo::new()),
             matrix: ModMatrix::new(),
+            filter_cutoff_hz: 8_000.0,
+            filter_resonance: 0.0,
         }
     }
 
@@ -110,6 +122,22 @@ impl Engine {
     /// `0.25` to leave headroom for stacked voices.
     pub fn set_master_gain(&mut self, gain: f32) {
         self.master_gain = gain.clamp(0.0, 1.0);
+    }
+
+    /// Set the base voice-filter cutoff (Hz). Modulation routes add to
+    /// this each block.
+    pub fn set_filter_cutoff_hz(&mut self, hz: f32) {
+        self.filter_cutoff_hz = hz.clamp(20.0, 22_000.0);
+    }
+    /// Set the voice-filter resonance, `0..1`.
+    pub fn set_filter_resonance(&mut self, r: f32) {
+        self.filter_resonance = r.clamp(0.0, 1.0);
+    }
+    pub fn filter_cutoff_hz(&self) -> f32 {
+        self.filter_cutoff_hz
+    }
+    pub fn filter_resonance(&self) -> f32 {
+        self.filter_resonance
     }
 
     /// Engage / release the sustain pedal (CC 64). When released, any
@@ -270,13 +298,21 @@ impl Engine {
             ModSrc::Lfo(i) => lfo_values.get(i as usize).copied().unwrap_or(0.0),
         });
 
-        // (6) render
+        // (6) compute filter coefficients from base + cutoff mod
+        let effective_cutoff = self.filter_cutoff_hz + self.matrix.filter_cutoff_mod_hz;
+        let coeffs = SvfCoeffs::from_params(
+            effective_cutoff,
+            self.filter_resonance,
+            self.sample_rate as f32,
+        );
+
+        // (7) render
         let effective_gain =
             (self.master_gain * (1.0 + self.matrix.master_gain_mod)).clamp(0.0, 2.0);
         for f in 0..frames {
             let mut mix = 0.0f32;
             for v in self.voices.iter_mut() {
-                mix += v.tick(&self.sine_table);
+                mix += v.tick(&self.sine_table, &coeffs);
             }
             mix *= effective_gain;
             let base = f * channels;
@@ -431,6 +467,77 @@ mod tests {
         assert_eq!(e.live_voice_count(), 1);
         e.note_on(60, 100); // same note again
         assert_eq!(e.live_voice_count(), 1);
+    }
+
+    // ─── A4 filter tests ────────────────────────────────────────────
+
+    #[test]
+    fn filter_default_is_wide_open() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        assert!(e.filter_cutoff_hz() > 5_000.0);
+        assert_eq!(e.filter_resonance(), 0.0);
+        // Render a held A4 — should produce a clean tone, not silence.
+        e.note_on(69, 100);
+        let mut buf = vec![0.0f32; 4096];
+        e.process(&mut buf, 2);
+        assert!(
+            rms(&buf) > 0.01,
+            "wide-open filter shouldn't kill the signal"
+        );
+    }
+
+    #[test]
+    fn low_cutoff_attenuates_output() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        // Same note rendered at different cutoffs; RMS should differ.
+        let render = |e: &mut Engine, cutoff: f32| -> f32 {
+            e.set_filter_cutoff_hz(cutoff);
+            e.all_notes_off();
+            let mut warm = vec![0.0f32; 8192];
+            e.process(&mut warm, 2); // settle filter
+            e.note_on(96, 100); // C7 ≈ 2093 Hz
+            let mut buf = vec![0.0f32; 16_000];
+            e.process(&mut buf, 2);
+            rms(&buf)
+        };
+        let high = render(&mut e, 10_000.0);
+        let low = render(&mut e, 400.0);
+        assert!(
+            low < high * 0.5,
+            "low cutoff should attenuate C7 vs open: high={high}, low={low}"
+        );
+    }
+
+    #[test]
+    fn lfo_modulating_filter_cutoff_changes_amplitude_over_time() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        // Park the cutoff near the signal frequency and modulate it
+        // ±1200 Hz with an LFO. The amplitude through the filter should
+        // swing as the cutoff sweeps past the signal.
+        e.set_filter_cutoff_hz(1_500.0);
+        e.lfo_mut(0).unwrap().set_rate_hz(4.0);
+        e.add_mod_route(ModRoute::new(
+            ModSrc::Lfo(0),
+            ModDest::FilterCutoff,
+            1_500.0,
+        ))
+        .unwrap();
+        e.note_on(81, 100); // A5 = 880 Hz
+        let mut chunk_rms = Vec::with_capacity(24);
+        for _ in 0..24 {
+            let mut buf = vec![0.0f32; 2000];
+            e.process(&mut buf, 2);
+            chunk_rms.push(rms(&buf));
+        }
+        let min = chunk_rms.iter().fold(f32::INFINITY, |a, b| a.min(*b));
+        let max = chunk_rms.iter().fold(0.0f32, |a, b| a.max(*b));
+        assert!(
+            max > min * 1.5,
+            "filter sweep didn't change amplitude: min={min}, max={max}"
+        );
     }
 
     // ─── A3 modulation matrix tests ─────────────────────────────────

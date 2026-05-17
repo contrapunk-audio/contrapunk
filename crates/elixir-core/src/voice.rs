@@ -14,6 +14,7 @@
 //! `f32x8` lane), per the design doc. Not required for correctness.
 
 use crate::env::AdsrEnvelope;
+use crate::filter::{Svf, SvfCoeffs};
 use crate::osc::Oscillator;
 use crate::tables::SineTable;
 use crate::util::midi_to_freq;
@@ -21,6 +22,7 @@ use crate::util::midi_to_freq;
 pub struct Voice {
     osc: Oscillator,
     env: AdsrEnvelope,
+    filter: Svf,
     active: bool,
     killing: bool,
     sustained: bool,
@@ -34,6 +36,7 @@ impl Voice {
         Self {
             osc: Oscillator::new(),
             env: AdsrEnvelope::new(),
+            filter: Svf::new(),
             active: false,
             killing: false,
             sustained: false,
@@ -57,6 +60,7 @@ impl Voice {
         self.osc.reset_phase();
         self.env.set_sample_rate(sample_rate);
         self.env.note_on();
+        self.filter.reset();
         self.age = age;
     }
 
@@ -135,9 +139,10 @@ impl Voice {
     }
 
     /// Produce one sample. Returns 0.0 and self-deactivates when the
-    /// envelope hits idle.
+    /// envelope hits idle. The voice signal path is
+    /// `osc → SVF lowpass → env*velocity` (A4).
     #[inline]
-    pub fn tick(&mut self, table: &SineTable) -> f32 {
+    pub fn tick(&mut self, table: &SineTable, filter_coeffs: &SvfCoeffs) -> f32 {
         if !self.active {
             return 0.0;
         }
@@ -149,7 +154,8 @@ impl Voice {
             return 0.0;
         }
         let osc_v = self.osc.tick(table);
-        osc_v * env_v * self.velocity
+        let filtered = self.filter.tick_lp(osc_v, filter_coeffs);
+        filtered * env_v * self.velocity
     }
 }
 
@@ -163,25 +169,35 @@ impl Default for Voice {
 mod tests {
     use super::*;
 
+    fn bypass_coeffs() -> SvfCoeffs {
+        // Practical bypass — cutoff at the top of the clamp range, no
+        // resonance. Audio band passes through with negligible
+        // attenuation. (`SvfCoeffs::identity()` is documentary-only;
+        // the SVF math collapses to v2=ic2eq with `a2=a3=0`.)
+        SvfCoeffs::from_params(20_000.0, 0.0, 48_000.0)
+    }
+
     #[test]
     fn fresh_voice_is_silent_and_inactive() {
         let table = SineTable::new();
+        let bypass = bypass_coeffs();
         let mut v = Voice::new();
         assert!(!v.is_active());
         for _ in 0..128 {
-            assert_eq!(v.tick(&table), 0.0);
+            assert_eq!(v.tick(&table, &bypass), 0.0);
         }
     }
 
     #[test]
     fn note_on_makes_voice_active_and_audible() {
         let table = SineTable::new();
+        let bypass = bypass_coeffs();
         let mut v = Voice::new();
         v.note_on(69, 100, 48_000.0, 0);
         assert!(v.is_active());
         let mut any_nonzero = false;
         for _ in 0..2048 {
-            if v.tick(&table).abs() > 1e-6 {
+            if v.tick(&table, &bypass).abs() > 1e-6 {
                 any_nonzero = true;
             }
         }
@@ -191,14 +207,15 @@ mod tests {
     #[test]
     fn note_off_sends_voice_to_idle() {
         let table = SineTable::new();
+        let bypass = bypass_coeffs();
         let mut v = Voice::new();
         v.note_on(60, 100, 48_000.0, 0);
         for _ in 0..(48_000 / 4) {
-            let _ = v.tick(&table);
+            let _ = v.tick(&table, &bypass);
         }
         v.note_off_or_sustain(60, false);
         for _ in 0..30_000 {
-            let _ = v.tick(&table);
+            let _ = v.tick(&table, &bypass);
         }
         assert!(!v.is_active());
     }
@@ -206,11 +223,12 @@ mod tests {
     #[test]
     fn note_off_only_releases_matching_note() {
         let table = SineTable::new();
+        let bypass = bypass_coeffs();
         let mut v = Voice::new();
         v.note_on(60, 100, 48_000.0, 0);
         v.note_off_or_sustain(72, false);
         for _ in 0..100 {
-            let _ = v.tick(&table);
+            let _ = v.tick(&table, &bypass);
         }
         assert!(v.is_active());
     }
@@ -218,11 +236,12 @@ mod tests {
     #[test]
     fn kill_demotes_voice_immediately_and_silences_within_5ms() {
         let table = SineTable::new();
+        let bypass = bypass_coeffs();
         let mut v = Voice::new();
         v.note_on(60, 127, 48_000.0, 0);
         // settle into sustain
         for _ in 0..2048 {
-            let _ = v.tick(&table);
+            let _ = v.tick(&table, &bypass);
         }
         assert!(v.is_live());
         v.kill();
@@ -230,7 +249,7 @@ mod tests {
         assert!(v.is_killing());
         // 5 ms = 240 samples at 48 kHz
         for _ in 0..400 {
-            let _ = v.tick(&table);
+            let _ = v.tick(&table, &bypass);
         }
         assert!(!v.is_active());
     }
@@ -238,24 +257,25 @@ mod tests {
     #[test]
     fn sustain_holds_through_note_off_and_releases_on_pedal_up() {
         let table = SineTable::new();
+        let bypass = bypass_coeffs();
         let mut v = Voice::new();
         v.note_on(60, 100, 48_000.0, 0);
         for _ in 0..2048 {
-            let _ = v.tick(&table);
+            let _ = v.tick(&table, &bypass);
         }
         // pedal down → note-off marks sustained, voice keeps playing
         v.note_off_or_sustain(60, true);
         assert!(v.is_sustained());
         assert!(v.is_live() || v.is_active());
         for _ in 0..2048 {
-            let _ = v.tick(&table);
+            let _ = v.tick(&table, &bypass);
         }
         assert!(v.is_active());
         // pedal up → release
         v.release_sustain();
         assert!(!v.is_sustained());
         for _ in 0..30_000 {
-            let _ = v.tick(&table);
+            let _ = v.tick(&table, &bypass);
         }
         assert!(!v.is_active());
     }
