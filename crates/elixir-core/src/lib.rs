@@ -5,8 +5,8 @@
 //! incrementally through phases A0..A6 without breaking the
 //! [`Engine::process`] signature locked at A0.
 //!
-//! Current phase: **A1** — single-voice sine oscillator, ADSR envelope,
-//! MIDI note routing.
+//! Current phase: **A2** — 16-voice polyphony, voice stealing (Newest
+//! priority), kill ramps, sustain pedal.
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
@@ -19,17 +19,28 @@ pub mod voice;
 use crate::tables::SineTable;
 use crate::voice::Voice;
 
+/// Voice pool capacity. `MAX_POLYPHONY` voices count as "live"; the
+/// extra slots hold killing voices that are still ringing out their
+/// 5 ms kill ramp. Sized so a steal can re-trigger immediately into a
+/// fresh slot.
+pub const MAX_POLYPHONY: usize = 16;
+pub const PARALLEL_VOICES: usize = 4;
+pub const MAX_VOICES: usize = MAX_POLYPHONY + PARALLEL_VOICES;
+
 /// The top-level Elixir engine.
 ///
-/// One instance per audio thread. Owns every per-voice and global
-/// processing block. A1 has one voice; A2 grows the field to a pool of
-/// `[Voice; 16]` SIMD-packed via `AggregateVoice`.
+/// One instance per audio thread. Owns the voice pool + a shared sine
+/// table. A1 was single-voice; A2 grows to a `[Voice; MAX_VOICES]`
+/// pool. A future A2 follow-up will SIMD-pack voices into
+/// `AggregateVoice` groups (two voices per `f32x8` lane).
 pub struct Engine {
     sample_rate: u32,
     max_block: usize,
-    voice: Voice,
+    voices: [Voice; MAX_VOICES],
     sine_table: SineTable,
     master_gain: f32,
+    sustain_pedal: bool,
+    note_counter: u64,
 }
 
 impl Engine {
@@ -40,9 +51,11 @@ impl Engine {
         Self {
             sample_rate: 0,
             max_block: 0,
-            voice: Voice::new(),
+            voices: core::array::from_fn(|_| Voice::new()),
             sine_table: SineTable::new(),
             master_gain: 0.25,
+            sustain_pedal: false,
+            note_counter: 0,
         }
     }
 
@@ -51,13 +64,28 @@ impl Engine {
     pub fn prepare(&mut self, sample_rate: u32, max_block: usize) {
         self.sample_rate = sample_rate;
         self.max_block = max_block;
-        self.voice.set_sample_rate(sample_rate as f32);
+        let sr_f = sample_rate as f32;
+        for v in self.voices.iter_mut() {
+            v.set_sample_rate(sr_f);
+        }
     }
 
     /// Adjust the master output gain. Clamped to `[0, 1]`. Default is
-    /// `0.25` to leave headroom for future stacked voices.
+    /// `0.25` to leave headroom for stacked voices.
     pub fn set_master_gain(&mut self, gain: f32) {
         self.master_gain = gain.clamp(0.0, 1.0);
+    }
+
+    /// Engage / release the sustain pedal (CC 64). When released, any
+    /// voices that were sustain-held drop into release.
+    pub fn set_sustain_pedal(&mut self, on: bool) {
+        let was_on = self.sustain_pedal;
+        self.sustain_pedal = on;
+        if was_on && !on {
+            for v in self.voices.iter_mut() {
+                v.release_sustain();
+            }
+        }
     }
 
     /// Trigger a note. No-op if the engine has not been prepared.
@@ -65,35 +93,94 @@ impl Engine {
         if self.sample_rate == 0 {
             return;
         }
-        self.voice.note_on(note, velocity, self.sample_rate as f32);
+        let sr = self.sample_rate as f32;
+        let age = self.note_counter;
+        self.note_counter = self.note_counter.wrapping_add(1);
+
+        // 1. Retrigger: same note already live → reuse slot, no steal.
+        for v in self.voices.iter_mut() {
+            if v.is_playing_note(note) {
+                v.note_on(note, velocity, sr, age);
+                return;
+            }
+        }
+
+        // 2. If we're at the live-polyphony cap, force-kill the oldest
+        //    live voice so a slot opens up.
+        let live_count = self.voices.iter().filter(|v| v.is_live()).count();
+        if live_count >= MAX_POLYPHONY {
+            let mut oldest_idx = 0usize;
+            let mut oldest_age = u64::MAX;
+            for (i, v) in self.voices.iter().enumerate() {
+                if v.is_live() && v.age() < oldest_age {
+                    oldest_age = v.age();
+                    oldest_idx = i;
+                }
+            }
+            self.voices[oldest_idx].kill();
+        }
+
+        // 3. Find a non-live slot. Prefer fully inactive over killing.
+        let mut inactive_idx: Option<usize> = None;
+        let mut killing_idx: Option<usize> = None;
+        for (i, v) in self.voices.iter().enumerate() {
+            if !v.is_active() {
+                inactive_idx = Some(i);
+                break;
+            } else if v.is_killing() && killing_idx.is_none() {
+                killing_idx = Some(i);
+            }
+        }
+        if let Some(i) = inactive_idx.or(killing_idx) {
+            self.voices[i].note_on(note, velocity, sr, age);
+            return;
+        }
+
+        // 4. Fallback (shouldn't reach): every slot is live. Steal the
+        //    oldest outright.
+        let mut oldest_idx = 0usize;
+        let mut oldest_age = u64::MAX;
+        for (i, v) in self.voices.iter().enumerate() {
+            if v.age() < oldest_age {
+                oldest_age = v.age();
+                oldest_idx = i;
+            }
+        }
+        self.voices[oldest_idx].note_on(note, velocity, sr, age);
     }
 
-    /// Release a note. Matches the active voice's note number; ignored
-    /// otherwise (in A2+ the voice handler routes the off to the right
-    /// pooled voice).
+    /// Release a note. If sustain is down, the matching voice goes
+    /// `sustained` instead of `released`.
     pub fn note_off(&mut self, note: u8) {
-        self.voice.note_off(note);
+        let pedal = self.sustain_pedal;
+        for v in self.voices.iter_mut() {
+            v.note_off_or_sustain(note, pedal);
+        }
     }
 
-    /// Force-release whatever voice is active.
+    /// Force-release every voice. Drops the sustain-pedal state too.
     pub fn all_notes_off(&mut self) {
-        self.voice.all_notes_off();
+        for v in self.voices.iter_mut() {
+            v.all_notes_off();
+        }
+        self.sustain_pedal = false;
     }
 
     /// Render audio into the interleaved buffer.
-    ///
-    /// Mono engine output is broadcast to every channel — stereo
-    /// spread / panning lands later (A5/A6 FX bus).
     pub fn process(&mut self, buffer: &mut [f32], channels: usize) {
         if channels == 0 {
             return;
         }
         let frames = buffer.len() / channels;
         for f in 0..frames {
-            let sample = self.voice.tick(&self.sine_table) * self.master_gain;
+            let mut mix = 0.0f32;
+            for v in self.voices.iter_mut() {
+                mix += v.tick(&self.sine_table);
+            }
+            mix *= self.master_gain;
             let base = f * channels;
             for c in 0..channels {
-                buffer[base + c] = sample;
+                buffer[base + c] = mix;
             }
         }
     }
@@ -107,8 +194,16 @@ impl Engine {
         self.max_block
     }
     #[inline]
-    pub fn voice_is_active(&self) -> bool {
-        self.voice.is_active()
+    pub fn live_voice_count(&self) -> usize {
+        self.voices.iter().filter(|v| v.is_live()).count()
+    }
+    #[inline]
+    pub fn active_voice_count(&self) -> usize {
+        self.voices.iter().filter(|v| v.is_active()).count()
+    }
+    #[inline]
+    pub fn sustain_pedal(&self) -> bool {
+        self.sustain_pedal
     }
 }
 
@@ -122,12 +217,22 @@ impl Default for Engine {
 mod tests {
     use super::*;
 
+    fn rms(samples: &[f32]) -> f32 {
+        if samples.is_empty() {
+            return 0.0;
+        }
+        let s: f64 = samples.iter().map(|x| (*x as f64).powi(2)).sum();
+        (s / samples.len() as f64).sqrt() as f32
+    }
+
     #[test]
     fn engine_new_is_idle() {
         let e = Engine::new();
         assert_eq!(e.sample_rate(), 0);
         assert_eq!(e.max_block(), 0);
-        assert!(!e.voice_is_active());
+        assert_eq!(e.active_voice_count(), 0);
+        assert_eq!(e.live_voice_count(), 0);
+        assert!(!e.sustain_pedal());
     }
 
     #[test]
@@ -156,28 +261,93 @@ mod tests {
         e.process(&mut buf, 2);
         let peak = buf.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         assert!(peak > 0.0, "expected audio after note_on, got silence");
-        // both channels should match (mono fan-out)
         for c in 0..buf.len() / 2 {
             assert_eq!(buf[c * 2], buf[c * 2 + 1]);
         }
     }
 
     #[test]
-    fn all_notes_off_releases_active_voice() {
+    fn all_notes_off_releases_active_voices() {
         let mut e = Engine::new();
         e.prepare(48_000, 256);
         e.note_on(60, 100);
+        e.note_on(64, 100);
+        e.note_on(67, 100);
+        assert_eq!(e.live_voice_count(), 3);
         e.all_notes_off();
-        // run through worst-case release (default 250 ms ≈ 12k samples)
         let mut buf = [0.0f32; 32_000];
         e.process(&mut buf, 2);
-        assert!(!e.voice_is_active());
+        assert_eq!(e.active_voice_count(), 0);
     }
 
     #[test]
     fn note_on_before_prepare_is_safe_noop() {
         let mut e = Engine::new();
-        e.note_on(69, 100); // engine not prepared yet
-        assert!(!e.voice_is_active());
+        e.note_on(69, 100);
+        assert_eq!(e.live_voice_count(), 0);
+    }
+
+    #[test]
+    fn sixteen_note_chord_plays_polyphonically() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        // C major scale spread across two octaves = 16 notes
+        let notes: [u8; 16] = [
+            48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74,
+        ];
+        for &n in &notes {
+            e.note_on(n, 90);
+        }
+        assert_eq!(e.live_voice_count(), MAX_POLYPHONY);
+        let mut buf = vec![0.0f32; 4096];
+        e.process(&mut buf, 2);
+        // Mix should be visibly louder than a single voice.
+        assert!(rms(&buf) > 0.01, "16-note chord rendered too quietly");
+    }
+
+    #[test]
+    fn seventeenth_note_steals_oldest_voice() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        for n in 48u8..(48 + MAX_POLYPHONY as u8) {
+            e.note_on(n, 90);
+        }
+        assert_eq!(e.live_voice_count(), MAX_POLYPHONY);
+        // Trigger one more — the oldest (note 48) should be killed.
+        e.note_on(80, 90);
+        // Still 16 live voices total (the new one replaces one stolen one).
+        assert_eq!(e.live_voice_count(), MAX_POLYPHONY);
+        // 17 active slots though: 16 live + 1 killing.
+        assert_eq!(e.active_voice_count(), MAX_POLYPHONY + 1);
+    }
+
+    #[test]
+    fn retrigger_same_note_does_not_consume_extra_slot() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.note_on(60, 100);
+        assert_eq!(e.live_voice_count(), 1);
+        e.note_on(60, 100); // same note again
+        assert_eq!(e.live_voice_count(), 1);
+    }
+
+    #[test]
+    fn sustain_pedal_holds_note_through_note_off() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.set_sustain_pedal(true);
+        e.note_on(60, 100);
+        e.note_off(60);
+        // Voice should still be active (held by sustain).
+        assert_eq!(e.live_voice_count(), 1);
+        // Render a chunk; voice keeps playing.
+        let mut buf = vec![0.0f32; 4096];
+        e.process(&mut buf, 2);
+        assert!(rms(&buf) > 0.001);
+        // Release pedal — voice now releases.
+        e.set_sustain_pedal(false);
+        let mut buf2 = vec![0.0f32; 32_000];
+        e.process(&mut buf2, 2);
+        assert_eq!(e.active_voice_count(), 0);
     }
 }

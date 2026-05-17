@@ -7,9 +7,19 @@
 /// FX blocks typically ignore everything (default impl is no-op).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MidiBlockEvent {
-    NoteOn { note: u8, velocity: u8 },
-    NoteOff { note: u8 },
+    NoteOn {
+        note: u8,
+        velocity: u8,
+    },
+    NoteOff {
+        note: u8,
+    },
     AllNotesOff,
+    /// CC 64 sustain pedal. `on=true` engages, `on=false` releases.
+    /// Blocks that don't model sustain (legacy synth, FX) should ignore.
+    SustainPedal {
+        on: bool,
+    },
     // Future: CC { controller: u8, value: u8 }, PitchBend { value: i16 }, etc.
 }
 

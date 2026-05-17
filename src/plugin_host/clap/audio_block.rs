@@ -174,6 +174,11 @@ impl ClapAudioBlock {
                     let pckn = Pckn::new(0u16, 0u16, Match::All, Match::All);
                     self.event_buf.push(&NoteOffEvent::new(0, pckn, 0.0));
                 }
+                MidiBlockEvent::SustainPedal { .. } => {
+                    // CLAP plugins receive sustain via the host's CC
+                    // event stream, not via this chain-level enum.
+                    // TODO when CC routing into hosted plugins lands.
+                }
             }
         }
     }

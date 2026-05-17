@@ -182,10 +182,18 @@ fn handle_midi(msg: &[u8], engine: &Arc<Mutex<Engine>>) {
             }
         }
         0xB0 => {
-            // CC 123 = all notes off, CC 120 = all sound off.
-            if msg.len() >= 3 && matches!(msg[1], 120 | 123) {
+            // Control Change. We care about:
+            //   CC 64 = sustain pedal (>= 64 → on, < 64 → off)
+            //   CC 120 = all sound off, CC 123 = all notes off
+            if msg.len() >= 3 {
+                let cc = msg[1];
+                let val = msg[2];
                 if let Ok(mut e) = engine.lock() {
-                    e.all_notes_off();
+                    match cc {
+                        64 => e.set_sustain_pedal(val >= 64),
+                        120 | 123 => e.all_notes_off(),
+                        _ => {}
+                    }
                 }
             }
         }
@@ -194,17 +202,47 @@ fn handle_midi(msg: &[u8], engine: &Arc<Mutex<Engine>>) {
 }
 
 fn run_demo(engine: &Arc<Mutex<Engine>>) {
-    println!("► C major arpeggio: C E G C (400 ms each)");
+    println!("► C major arpeggio: C E G C (300 ms each, mono)");
     for &note in &[60u8, 64, 67, 72] {
-        send_note(engine, note, 100, Duration::from_millis(400));
+        send_note(engine, note, 100, Duration::from_millis(300));
     }
 
-    thread::sleep(Duration::from_millis(300));
+    thread::sleep(Duration::from_millis(200));
 
-    println!("► A4 reference tone (440 Hz), 1500 ms");
-    send_note(engine, 69, 90, Duration::from_millis(1500));
+    println!("► C major chord (C E G C, 4-voice polyphony) — 1500 ms");
+    {
+        let mut e = engine.lock().unwrap();
+        for &n in &[60u8, 64, 67, 72] {
+            e.note_on(n, 90);
+        }
+    }
+    thread::sleep(Duration::from_millis(1500));
+    {
+        let mut e = engine.lock().unwrap();
+        for &n in &[60u8, 64, 67, 72] {
+            e.note_off(n);
+        }
+    }
+    thread::sleep(Duration::from_millis(400));
 
+    println!("► Sustain pedal demo: hold C, lift fingers, release pedal");
+    {
+        let mut e = engine.lock().unwrap();
+        e.set_sustain_pedal(true);
+        e.note_on(60, 100);
+    }
+    thread::sleep(Duration::from_millis(400));
+    {
+        let mut e = engine.lock().unwrap();
+        e.note_off(60); // key up, but pedal still down → still rings
+    }
+    thread::sleep(Duration::from_millis(800));
+    {
+        let mut e = engine.lock().unwrap();
+        e.set_sustain_pedal(false); // pedal up → release
+    }
     thread::sleep(Duration::from_millis(500));
+
     println!("done");
 }
 

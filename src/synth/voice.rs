@@ -273,6 +273,10 @@ impl AudioBlock for Synth {
             MidiBlockEvent::NoteOn { note, velocity } => self.note_on(note, velocity),
             MidiBlockEvent::NoteOff { note } => self.note_off(note),
             MidiBlockEvent::AllNotesOff => self.all_notes_off(),
+            // Legacy synth has no sustain-pedal modelling; the router
+            // thread historically held the keys until the user released
+            // the pedal. Ignore here; Elixir handles it.
+            MidiBlockEvent::SustainPedal { .. } => {}
         }
     }
 

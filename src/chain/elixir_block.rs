@@ -54,6 +54,7 @@ impl AudioBlock for ElixirSynthBlock {
             MidiBlockEvent::NoteOn { note, velocity } => self.engine.note_on(note, velocity),
             MidiBlockEvent::NoteOff { note } => self.engine.note_off(note),
             MidiBlockEvent::AllNotesOff => self.engine.all_notes_off(),
+            MidiBlockEvent::SustainPedal { on } => self.engine.set_sustain_pedal(on),
         }
     }
 
