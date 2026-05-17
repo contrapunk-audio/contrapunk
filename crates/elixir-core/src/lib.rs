@@ -67,6 +67,13 @@ pub struct Engine {
     /// Post-voice FX chain. Slots are processed in order; `FxSlot::Empty`
     /// is skipped. Reorder by swapping slots.
     pub fx_chain: [FxSlot; FX_SLOTS],
+    /// Canonical amp-envelope params. Pushed to every voice on every
+    /// `set_amp_*` call so the UI can drive ADSR without per-voice
+    /// plumbing.
+    amp_attack_secs: f32,
+    amp_decay_secs: f32,
+    amp_sustain: f32,
+    amp_release_secs: f32,
 }
 
 impl Engine {
@@ -87,7 +94,54 @@ impl Engine {
             filter_cutoff_hz: 8_000.0,
             filter_resonance: 0.0,
             fx_chain: core::array::from_fn(|_| FxSlot::Empty),
+            amp_attack_secs: 0.005,
+            amp_decay_secs: 0.120,
+            amp_sustain: 0.70,
+            amp_release_secs: 0.250,
         }
+    }
+
+    /// Engine-level amp ADSR setters. Each one is pushed into every
+    /// voice's envelope so the UI can drive ADSR without per-voice
+    /// plumbing.
+    pub fn set_amp_attack_secs(&mut self, s: f32) {
+        self.amp_attack_secs = s;
+        for v in self.voices.iter_mut() {
+            v.set_amp_attack_secs(s);
+        }
+    }
+    pub fn set_amp_decay_secs(&mut self, s: f32) {
+        self.amp_decay_secs = s;
+        for v in self.voices.iter_mut() {
+            v.set_amp_decay_secs(s);
+        }
+    }
+    pub fn set_amp_sustain(&mut self, l: f32) {
+        self.amp_sustain = l;
+        for v in self.voices.iter_mut() {
+            v.set_amp_sustain(l);
+        }
+    }
+    pub fn set_amp_release_secs(&mut self, s: f32) {
+        self.amp_release_secs = s;
+        for v in self.voices.iter_mut() {
+            v.set_amp_release_secs(s);
+        }
+    }
+    pub fn amp_attack_secs(&self) -> f32 {
+        self.amp_attack_secs
+    }
+    pub fn amp_decay_secs(&self) -> f32 {
+        self.amp_decay_secs
+    }
+    pub fn amp_sustain(&self) -> f32 {
+        self.amp_sustain
+    }
+    pub fn amp_release_secs(&self) -> f32 {
+        self.amp_release_secs
+    }
+    pub fn master_gain(&self) -> f32 {
+        self.master_gain
     }
 
     /// Replace the FX in slot `idx`. Returns the previous slot.

@@ -50,6 +50,19 @@ impl Voice {
         self.env.set_sample_rate(sr);
     }
 
+    pub fn set_amp_attack_secs(&mut self, s: f32) {
+        self.env.set_attack(s);
+    }
+    pub fn set_amp_decay_secs(&mut self, s: f32) {
+        self.env.set_decay(s);
+    }
+    pub fn set_amp_sustain(&mut self, l: f32) {
+        self.env.set_sustain(l);
+    }
+    pub fn set_amp_release_secs(&mut self, s: f32) {
+        self.env.set_release(s);
+    }
+
     pub fn note_on(&mut self, note: u8, velocity: u8, sample_rate: f32, age: u64) {
         self.active = true;
         self.killing = false;

@@ -1,39 +1,71 @@
-//! Elixir standalone — desktop demo (Phase 21.B0 + B1).
+//! Elixir standalone — desktop app (Phases 21.B0–B1–B6).
 //!
-//! Opens the default cpal output device and routes MIDI input into
-//! `elixir_core::Engine`. Behaviour:
+//! Default mode opens an `egui` window with knobs for ADSR, filter,
+//! and FX, plus a computer-keyboard fallback. Audio still streams via
+//! `cpal`; live MIDI still comes in via `midir` if a port is available.
 //!
-//! - If at least one MIDI input port is available, the first one is
-//!   opened and the binary stays open until Ctrl-C, playing whatever
-//!   you send it.
-//! - If no MIDI input is found (or `--demo` is passed), runs a hardcoded
-//!   C-major arpeggio + A4 reference tone and exits.
+//! CLI flags:
+//!   --demo      run the canned audible-demo sequence and exit
+//!   --headless  same as --demo (kept for scripting compatibility)
+//!   --list      enumerate MIDI input ports and exit
 //!
-//! Notes:
-//! - Mutex-guarded engine on the audio callback is demo-grade. Real
-//!   threading lands in B4 (lock-free param atoms + SPSC event ringbuf).
-//! - Only `f32` sample formats are handled; non-f32 devices error out.
+//! Mutex-guarded engine on every thread is intentionally demo-grade.
+//! Lock-free atomics + an SPSC ringbuf land in B4 alongside the plugin
+//! crate. For now the contention window is small (each lock is a few
+//! microseconds) and audible artifacts are nonexistent.
 
-use std::env;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleFormat;
-use midir::{Ignore, MidiInput};
+use midir::{Ignore, MidiInput, MidiInputConnection};
 
 use elixir_core::fx::{Delay, Drive, FxSlot, Reverb};
 use elixir_core::modulation::{ModDest, ModRoute, ModSrc};
 use elixir_core::Engine;
 
-fn main() -> anyhow::Result<()> {
-    println!("Elixir standalone v0.0.1 — Phase 21.A1 + B1");
+mod ui;
 
-    let args: Vec<String> = env::args().collect();
-    let force_demo = args.iter().any(|a| a == "--demo");
+fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    let force_demo = args.iter().any(|a| a == "--demo" || a == "--headless");
     let list_only = args.iter().any(|a| a == "--list");
 
+    println!("Elixir standalone v0.0.1 — Phase 21.A1..A5 + B0..B1 + B6");
+
+    let (engine, _stream) = open_audio()?;
+
+    let midi_ports = list_midi_ports();
+    if list_only {
+        return Ok(());
+    }
+
+    let _midi_conn = if midi_ports.is_empty() {
+        None
+    } else {
+        Some(connect_midi(&engine, &midi_ports[0])?)
+    };
+
+    if force_demo {
+        run_demo(&engine);
+        return Ok(());
+    }
+
+    println!();
+    println!("UI mode — close the window or hit Ctrl-C to quit.");
+    println!("Computer keyboard:");
+    println!("    a w s e d f t g y h u j k  → chromatic from C4");
+    println!("    z / x to drop / raise the octave");
+    println!();
+
+    ui::run(engine).map_err(|e| anyhow::anyhow!("eframe error: {e}"))?;
+
+    Ok(())
+}
+
+fn open_audio() -> anyhow::Result<(Arc<Mutex<Engine>>, cpal::Stream)> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -84,61 +116,18 @@ fn main() -> anyhow::Result<()> {
     )?;
     stream.play()?;
 
-    // Enumerate MIDI inputs.
-    let midi_ports = list_midi_ports();
-    if list_only {
-        return Ok(());
-    }
-
-    if force_demo || midi_ports.is_empty() {
-        if midi_ports.is_empty() {
-            println!("(no MIDI input ports detected — running canned demo)");
-        }
-        run_demo(&engine);
-        return Ok(());
-    }
-
-    // Connect to first MIDI input.
-    let (port_idx, port_name) = (0usize, midi_ports[0].clone());
-    let midi_in = MidiInput::new("elixir-standalone")?;
-    let port =
-        midi_in.ports().get(port_idx).cloned().ok_or_else(|| {
-            anyhow::anyhow!("MIDI port disappeared between enumeration and connect")
-        })?;
-
-    println!("► MIDI input: {}", port_name);
-    println!("  Play notes on your MIDI controller. Press Ctrl-C to exit.");
-    println!();
-
-    let engine_midi = Arc::clone(&engine);
-    let _conn = midi_in
-        .connect(
-            &port,
-            "elixir-in",
-            move |_ts, msg, _| {
-                handle_midi(msg, &engine_midi);
-            },
-            (),
-        )
-        .map_err(|e| anyhow::anyhow!("midir connect failed: {}", e))?;
-
-    // Sleep forever; audio + MIDI callbacks run on their own threads.
-    loop {
-        thread::sleep(Duration::from_secs(3600));
-    }
+    Ok((engine, stream))
 }
 
-/// Enumerate MIDI input ports and print them. Returns the list of port
-/// names (parallel to `MidiInput::ports()`).
 fn list_midi_ports() -> Vec<String> {
     let mut midi_in = match MidiInput::new("elixir-standalone-enum") {
         Ok(m) => m,
-        Err(_) => return vec![],
+        Err(_) => return Vec::new(),
     };
     midi_in.ignore(Ignore::None);
     let ports = midi_in.ports();
     if ports.is_empty() {
-        return vec![];
+        return Vec::new();
     }
     println!("MIDI input ports:");
     let mut names = Vec::with_capacity(ports.len());
@@ -153,7 +142,28 @@ fn list_midi_ports() -> Vec<String> {
     names
 }
 
-/// Parse a MIDI message and drive the engine.
+fn connect_midi(
+    engine: &Arc<Mutex<Engine>>,
+    port_name: &str,
+) -> anyhow::Result<MidiInputConnection<()>> {
+    let midi_in = MidiInput::new("elixir-standalone")?;
+    let port =
+        midi_in.ports().into_iter().next().ok_or_else(|| {
+            anyhow::anyhow!("MIDI port disappeared between enumeration and connect")
+        })?;
+    println!("► MIDI input: {}", port_name);
+    let engine_midi = Arc::clone(engine);
+    let conn = midi_in
+        .connect(
+            &port,
+            "elixir-in",
+            move |_ts, msg, _| handle_midi(msg, &engine_midi),
+            (),
+        )
+        .map_err(|e| anyhow::anyhow!("midir connect failed: {}", e))?;
+    Ok(conn)
+}
+
 fn handle_midi(msg: &[u8], engine: &Arc<Mutex<Engine>>) {
     if msg.is_empty() {
         return;
@@ -161,7 +171,6 @@ fn handle_midi(msg: &[u8], engine: &Arc<Mutex<Engine>>) {
     let status = msg[0] & 0xF0;
     match status {
         0x90 => {
-            // Note-on. Velocity 0 = note-off per MIDI 1.0.
             if msg.len() >= 3 {
                 let note = msg[1];
                 let vel = msg[2];
@@ -175,7 +184,6 @@ fn handle_midi(msg: &[u8], engine: &Arc<Mutex<Engine>>) {
             }
         }
         0x80 => {
-            // Note-off.
             if msg.len() >= 3 {
                 let note = msg[1];
                 if let Ok(mut e) = engine.lock() {
@@ -184,9 +192,6 @@ fn handle_midi(msg: &[u8], engine: &Arc<Mutex<Engine>>) {
             }
         }
         0xB0 => {
-            // Control Change. We care about:
-            //   CC 64 = sustain pedal (>= 64 → on, < 64 → off)
-            //   CC 120 = all sound off, CC 123 = all notes off
             if msg.len() >= 3 {
                 let cc = msg[1];
                 let val = msg[2];
@@ -227,7 +232,7 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
     }
     thread::sleep(Duration::from_millis(400));
 
-    println!("► Sustain pedal demo: hold C, lift fingers, release pedal");
+    println!("► Sustain pedal demo");
     {
         let mut e = engine.lock().unwrap();
         e.set_sustain_pedal(true);
@@ -236,17 +241,17 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
     thread::sleep(Duration::from_millis(400));
     {
         let mut e = engine.lock().unwrap();
-        e.note_off(60); // key up, but pedal still down → still rings
+        e.note_off(60);
     }
     thread::sleep(Duration::from_millis(800));
     {
         let mut e = engine.lock().unwrap();
-        e.set_sustain_pedal(false); // pedal up → release
+        e.set_sustain_pedal(false);
     }
     thread::sleep(Duration::from_millis(500));
 
     println!("► Tremolo via LFO→MasterGain @ 8 Hz, amount 0.5 (2.5 s)");
-    let lfo_route_idx = {
+    let tremolo_idx = {
         let mut e = engine.lock().unwrap();
         if let Some(lfo) = e.lfo_mut(0) {
             lfo.set_rate_hz(8.0);
@@ -261,12 +266,12 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
     {
         let mut e = engine.lock().unwrap();
         e.note_off(72);
-        e.remove_mod_route(lfo_route_idx);
+        e.remove_mod_route(tremolo_idx);
     }
     thread::sleep(Duration::from_millis(400));
 
-    println!("► Filter sweep: LFO→Cutoff @ 0.6 Hz, amount 3 kHz, base 1.5 kHz");
-    let sweep_route_idx = {
+    println!("► Filter sweep: LFO→Cutoff");
+    let sweep_idx = {
         let mut e = engine.lock().unwrap();
         if let Some(lfo) = e.lfo_mut(0) {
             lfo.set_rate_hz(0.6);
@@ -280,8 +285,6 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
                 3_000.0,
             ))
             .expect("matrix has room");
-        // A C-major chord with the filter sweeping — classic synth bread
-        // and butter.
         for &n in &[48u8, 52, 55, 60, 64, 67] {
             e.note_on(n, 80);
         }
@@ -293,19 +296,19 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
         for &n in &[48u8, 52, 55, 60, 64, 67] {
             e.note_off(n);
         }
-        e.remove_mod_route(sweep_route_idx);
+        e.remove_mod_route(sweep_idx);
         e.set_filter_cutoff_hz(8_000.0);
         e.set_filter_resonance(0.0);
     }
     thread::sleep(Duration::from_millis(600));
 
-    println!("► FX chain: Drive (gentle) → Delay (3/8) → Reverb (hall)");
+    println!("► FX chain: Drive → Delay → Reverb");
     {
         let mut e = engine.lock().unwrap();
         let mut drive = Drive::with_drive(2.5);
         drive.mix = 0.4;
-        let mut delay = Delay::new(48_000); // up to 1 s @ 48 kHz
-        delay.set_delay_secs(0.375, 48_000.0); // 3/8 of a bar at 120 BPM
+        let mut delay = Delay::new(48_000);
+        delay.set_delay_secs(0.375, 48_000.0);
         delay.set_feedback(0.55);
         delay.set_mix(0.30);
         let mut reverb = Reverb::new(48_000.0);
@@ -315,13 +318,11 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
         e.set_fx_slot(0, FxSlot::Drive(drive));
         e.set_fx_slot(1, FxSlot::Delay(delay));
         e.set_fx_slot(2, FxSlot::Reverb(reverb));
-        e.set_master_gain(0.22); // headroom for FX summing
+        e.set_master_gain(0.22);
     }
-    // Pluck a melody over the FX
     for &n in &[60u8, 64, 67, 72, 67, 64, 60] {
         send_note(engine, n, 100, Duration::from_millis(180));
     }
-    // Hold a chord and let the tail bloom
     {
         let mut e = engine.lock().unwrap();
         for &n in &[55u8, 59, 62, 67] {
@@ -335,7 +336,6 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
             e.note_off(n);
         }
     }
-    // Let the reverb / delay tail decay
     thread::sleep(Duration::from_millis(3000));
     {
         let mut e = engine.lock().unwrap();
