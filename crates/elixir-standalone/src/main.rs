@@ -23,6 +23,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleFormat;
 use midir::{Ignore, MidiInput};
 
+use elixir_core::fx::{Delay, Drive, FxSlot, Reverb};
 use elixir_core::modulation::{ModDest, ModRoute, ModSrc};
 use elixir_core::Engine;
 
@@ -297,6 +298,50 @@ fn run_demo(engine: &Arc<Mutex<Engine>>) {
         e.set_filter_resonance(0.0);
     }
     thread::sleep(Duration::from_millis(600));
+
+    println!("► FX chain: Drive (gentle) → Delay (3/8) → Reverb (hall)");
+    {
+        let mut e = engine.lock().unwrap();
+        let mut drive = Drive::with_drive(2.5);
+        drive.mix = 0.4;
+        let mut delay = Delay::new(48_000); // up to 1 s @ 48 kHz
+        delay.set_delay_secs(0.375, 48_000.0); // 3/8 of a bar at 120 BPM
+        delay.set_feedback(0.55);
+        delay.set_mix(0.30);
+        let mut reverb = Reverb::new(48_000.0);
+        reverb.set_decay(0.88);
+        reverb.set_damping(0.4);
+        reverb.set_mix(0.35);
+        e.set_fx_slot(0, FxSlot::Drive(drive));
+        e.set_fx_slot(1, FxSlot::Delay(delay));
+        e.set_fx_slot(2, FxSlot::Reverb(reverb));
+        e.set_master_gain(0.22); // headroom for FX summing
+    }
+    // Pluck a melody over the FX
+    for &n in &[60u8, 64, 67, 72, 67, 64, 60] {
+        send_note(engine, n, 100, Duration::from_millis(180));
+    }
+    // Hold a chord and let the tail bloom
+    {
+        let mut e = engine.lock().unwrap();
+        for &n in &[55u8, 59, 62, 67] {
+            e.note_on(n, 90);
+        }
+    }
+    thread::sleep(Duration::from_millis(2200));
+    {
+        let mut e = engine.lock().unwrap();
+        for &n in &[55u8, 59, 62, 67] {
+            e.note_off(n);
+        }
+    }
+    // Let the reverb / delay tail decay
+    thread::sleep(Duration::from_millis(3000));
+    {
+        let mut e = engine.lock().unwrap();
+        e.clear_fx_chain();
+        e.set_master_gain(0.30);
+    }
 
     println!("done");
 }

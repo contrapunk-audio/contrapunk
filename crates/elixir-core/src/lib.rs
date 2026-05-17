@@ -14,6 +14,7 @@
 
 pub mod env;
 pub mod filter;
+pub mod fx;
 pub mod lfo;
 pub mod modulation;
 pub mod osc;
@@ -22,6 +23,7 @@ pub mod util;
 pub mod voice;
 
 use crate::filter::SvfCoeffs;
+use crate::fx::{FxSlot, FX_SLOTS};
 use crate::lfo::Lfo;
 use crate::modulation::{ModMatrix, ModRoute, ModSrc, MAX_GLOBAL_LFOS};
 use crate::tables::SineTable;
@@ -62,6 +64,9 @@ pub struct Engine {
     /// Voice-filter resonance, `0..1`. `0.0` = flat lowpass; values
     /// approaching `1.0` self-oscillate.
     filter_resonance: f32,
+    /// Post-voice FX chain. Slots are processed in order; `FxSlot::Empty`
+    /// is skipped. Reorder by swapping slots.
+    pub fx_chain: [FxSlot; FX_SLOTS],
 }
 
 impl Engine {
@@ -81,6 +86,26 @@ impl Engine {
             matrix: ModMatrix::new(),
             filter_cutoff_hz: 8_000.0,
             filter_resonance: 0.0,
+            fx_chain: core::array::from_fn(|_| FxSlot::Empty),
+        }
+    }
+
+    /// Replace the FX in slot `idx`. Returns the previous slot.
+    pub fn set_fx_slot(&mut self, idx: usize, slot: FxSlot) -> FxSlot {
+        if idx < FX_SLOTS {
+            core::mem::replace(&mut self.fx_chain[idx], slot)
+        } else {
+            slot
+        }
+    }
+    pub fn clear_fx_slot(&mut self, idx: usize) {
+        if idx < FX_SLOTS {
+            self.fx_chain[idx] = FxSlot::Empty;
+        }
+    }
+    pub fn clear_fx_chain(&mut self) {
+        for slot in self.fx_chain.iter_mut() {
+            *slot = FxSlot::Empty;
         }
     }
 
@@ -306,19 +331,29 @@ impl Engine {
             self.sample_rate as f32,
         );
 
-        // (7) render
-        let effective_gain =
-            (self.master_gain * (1.0 + self.matrix.master_gain_mod)).clamp(0.0, 2.0);
+        // (7) render voices at unity into the interleaved buffer; FX
+        //     and master gain apply on top.
         for f in 0..frames {
             let mut mix = 0.0f32;
             for v in self.voices.iter_mut() {
                 mix += v.tick(&self.sine_table, &coeffs);
             }
-            mix *= effective_gain;
             let base = f * channels;
             for c in 0..channels {
                 buffer[base + c] = mix;
             }
+        }
+
+        // (8) FX chain in declared slot order
+        for slot in self.fx_chain.iter_mut() {
+            slot.process_inplace(buffer, channels);
+        }
+
+        // (9) master gain (post-FX so reverb / delay ride the same fader)
+        let effective_gain =
+            (self.master_gain * (1.0 + self.matrix.master_gain_mod)).clamp(0.0, 2.0);
+        for s in buffer.iter_mut() {
+            *s *= effective_gain;
         }
     }
 
@@ -467,6 +502,68 @@ mod tests {
         assert_eq!(e.live_voice_count(), 1);
         e.note_on(60, 100); // same note again
         assert_eq!(e.live_voice_count(), 1);
+    }
+
+    // ─── A5 FX chain tests ──────────────────────────────────────────
+
+    #[test]
+    fn fx_slot_set_and_clear() {
+        use crate::fx::{Drive, FxSlot};
+        let mut e = Engine::new();
+        e.set_fx_slot(0, FxSlot::Drive(Drive::with_drive(3.0)));
+        assert!(matches!(e.fx_chain[0], FxSlot::Drive(_)));
+        e.clear_fx_slot(0);
+        assert!(matches!(e.fx_chain[0], FxSlot::Empty));
+    }
+
+    #[test]
+    fn reverb_in_chain_extends_decay_tail() {
+        use crate::fx::{FxSlot, Reverb};
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        let mut rv = Reverb::new(48_000.0);
+        rv.set_mix(0.9);
+        rv.set_decay(0.9);
+        e.set_fx_slot(0, FxSlot::Reverb(rv));
+        // Short note: 50 ms.
+        e.note_on(60, 100);
+        let mut quick = vec![0.0f32; 48_000 / 20 * 2];
+        e.process(&mut quick, 2);
+        e.note_off(60);
+        // 300 ms after note-off: original synth would be near-silent
+        // (release 250 ms), but reverb tail should still ring.
+        let mut tail = vec![0.0f32; 48_000 / 5 * 2];
+        e.process(&mut tail, 2);
+        let r = rms(&tail);
+        assert!(r > 1e-4, "reverb tail too quiet at 300 ms after off: {r}");
+    }
+
+    #[test]
+    fn drive_in_chain_changes_signal() {
+        use crate::fx::{Drive, FxSlot};
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.note_on(69, 127);
+        // Render with empty chain
+        let mut buf_clean = vec![0.0f32; 4096];
+        e.process(&mut buf_clean, 2);
+        let rms_clean = rms(&buf_clean);
+
+        // Reset note, add drive
+        e.note_off(69);
+        let mut silence = vec![0.0f32; 32_000];
+        e.process(&mut silence, 2);
+        e.set_fx_slot(0, FxSlot::Drive(Drive::with_drive(20.0)));
+        e.note_on(69, 127);
+        let mut buf_driven = vec![0.0f32; 4096];
+        e.process(&mut buf_driven, 2);
+        let rms_driven = rms(&buf_driven);
+
+        // Heavily-driven sine should approach a square; RMS goes up.
+        assert!(
+            rms_driven > rms_clean * 1.2,
+            "drive didn't change signal level: clean={rms_clean}, driven={rms_driven}"
+        );
     }
 
     // ─── A4 filter tests ────────────────────────────────────────────
