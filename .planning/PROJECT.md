@@ -70,5 +70,18 @@ Real-time harmony generation with minimal latency — when you play a note, the 
 | Drop audio-to-MIDI feature | Reduces complexity, removes heavy dependencies, focus on core value | — Pending |
 | Drop algorithmic generation | Scope reduction for v1, can add later if needed | — Pending |
 
+### Elixir Milestone Decisions
+
+Locked decisions from `ELIXIR-PLAN.md` §10 — ingested 2026-05-18 via `/gsd-ingest-docs`. See also: [ELIXIR-DESIGN.md](../ELIXIR-DESIGN.md) and [ELIXIR-PLAN.md](../ELIXIR-PLAN.md).
+
+| Decision | Rationale | Outcome |
+|----------|-----------|---------|
+| **ELIX-DEC-01** — Workspace location: inside contrapunk workspace | One `cargo check` covers everything; existing CI (clippy, wasm build, tauri build, plugin build) covers Elixir for free; release infrastructure (codesign, notarization) reused. Sibling-repo extraction remains a future option (zero-refactor via `git filter-repo`) but not planned. | LOCKED (ELIXIR-PLAN.md §10 #1) |
+| **ELIX-DEC-02** — Cutover ambition: full feature parity at A-Cut (post-A6) | Shipping a partial Elixir as default would mean Contrapunk users lose features the design promises (spectral morphs, unison, chorus, phaser, full filter set) temporarily. The risk profile of "ship the new synth missing features" is worse than "ship old synth for 4 more weeks while we finish A6". Cutover week shifts ~8 → ~12. Track B `elixir-plugin` gives DAW users early access during build-out. | LOCKED (ELIXIR-PLAN.md §10 #2) |
+| **ELIX-DEC-03** — Track B UI: egui, separate process/window from Contrapunk | Heavy custom-paint surfaces (mod-matrix, wavetable editor) where browser DOM offers no advantage. Single widget set shared between standalone and plugin in-DAW window — no double UI maintenance. Two products serve different users; keeping them independent (quit one, keep the other open) requires separate UI surfaces. Does NOT affect Contrapunk's own Tauri+Svelte UI (Phase 06.10.1). | LOCKED (ELIXIR-PLAN.md §10 #3) |
+| **ELIX-DEC-04** — Track C scope for v1: all three plugin formats (CLAP + VST3 + AU) | Users routing harmony through hosted plugins (e.g., Diva, Pro-Q4) need format coverage that matches what they actually own. AU is mandatory on macOS for Logic users. AU module wrapped in `#[cfg(target_os = "macos")]`. Track C duration revised 8 wk → 9 wk. | LOCKED (ELIXIR-PLAN.md §10 #4) |
+| **ELIX-DEC-05** — `elixir-standalone` distribution: public, released from this repo | Shared infrastructure (codesigning, notarization) avoids duplication. Independent product lifecycles via namespaced tags (`elixir-v0.x` vs Contrapunk's `v1.x`). Bundle IDs reserved at `com.contrapunk.elixir` and `com.contrapunk.elixir.plugin`. Elixir tracks its own SemVer independent of Contrapunk's. | LOCKED (ELIXIR-PLAN.md §10 #5) |
+| **ELIX-DEC-06** — GSD milestone integration: ingest as real milestone | ELIXIR-PLAN.md and ELIXIR-DESIGN.md are ingested into `.planning/` via `/gsd-ingest-docs`, becoming a real GSD milestone with discuss/plan/execute phases. | LOCKED (ELIXIR-PLAN.md §10 #6) — Completed 2026-05-18 |
+
 ---
-*Last updated: 2026-01-28 after initialization*
+*Last updated: 2026-05-18 — Added Elixir Milestone Decisions subsection (six ELIX-DEC-0{1..6} locked entries) via `/gsd-ingest-docs` ingest.*

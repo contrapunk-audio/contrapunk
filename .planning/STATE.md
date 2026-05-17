@@ -2,32 +2,72 @@
 gsd_state_version: 1.0
 milestone: v1.3.x
 milestone_name: HoldMode + tempo-sync delay + cross-surface hardening
-status: v1.3.0 ready to tag — Phase 2 wrapped (9/13 issues shipped from v1.2.x), #11 HoldMode end-to-end, brutal-critic punch list cleared, plugin DAW UX hidden via capabilities
+status: v1.3.0 ready to tag — Phase 2 wrapped (9/13 issues shipped from v1.2.x), #11 HoldMode end-to-end, brutal-critic punch list cleared, plugin DAW UX hidden via capabilities. Elixir milestone (v1.5 / elixir-v0.1.0) ingested 2026-05-18; queued behind v1.3.0 tag.
 stopped_at: 2026-05-14 — pre-tag review; user holding for QA before release
-last_updated: "2026-05-14T00:00:00Z"
-last_activity: 2026-05-14 — Tier 1-3 brutal-critic punch list applied (54df700); plugin DAW UX (130b63e); per-lane Piano attribution (73afe0e); tempo-synced delay (e7f59d3); HoldMode Cancel released playing notes (f580372); 13 commits cumulative
+last_updated: "2026-05-18T00:00:00Z"
+last_activity: 2026-05-18 — Elixir milestone ingested via /gsd-ingest-docs (24 REQ-elixir-* requirements; 24 phase blocks across Tracks A/B/C; 6 LOCKED ELIX-DEC-0{1..6} decisions). Queued behind v1.3.0 tag — not yet active.
 progress:
-  total_phases: 29
+  total_phases: 53
   completed_phases: 18
   total_plans: 82
   completed_plans: 80
   percent: 98
+queued_milestones:
+  - milestone: v1.5 / elixir-v0.1.0
+    name: Elixir Milestone
+    ingested: 2026-05-18
+    tracks: 3 (A/B/C parallel)
+    new_phases: 24
+    new_requirements: 24
+    blocking_on: v1.3.0 tag
+    source_docs: ELIXIR-DESIGN.md + ELIXIR-PLAN.md
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-01-28)
+See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisions subsection)
 
 **Core value:** Real-time harmony generation with minimal latency
 **Current focus:** Routing + humanization/metronome polish (pitch detection & guitar input deferred)
+**Next milestone (queued):** Elixir v1.5 / elixir-v0.1.0 — three parallel tracks (synth engine replacement + standalone product + multi-plugin hosting). Behind v1.3.0 tag.
 
 ## Current Position
 
 Phase: v1.3.0 pre-tag — Phase 2 of v1.2.x wrapped, then the v1.3.x roll-up (HoldMode + tempo-synced delay + per-lane piano attribution + plugin DAW UX) landed in one session 2026-05-14. Awaiting user QA on the new binary before tag.
 Status: 13 commits queued on `main` since v1.2.0; brutal-critic punch list cleared via 21-agent parallel audit (10 issues turned out to be phantom-bugs from stale planning docs).
-Last activity: 2026-05-14 — Tier 1-3 fixes shipped (`54df700`); plugin emits noteUpdate + DAW-managed UI hidden via capabilities (`130b63e`); regression tests for panic_pending + poison-recovery (`54df700`).
+Last activity: 2026-05-18 — Elixir milestone ingested via /gsd-ingest-docs. Inserted 24 REQ-elixir-* requirements under "Elixir Milestone (v1.5 + elixir-v0.1.0)" section in REQUIREMENTS.md. Appended Phase 21 milestone block to ROADMAP.md with 24 sub-phases (Tracks A: A0→A7+A-Cut, B: B0→B9, C: C0→C4). Added 6 LOCKED ELIX-DEC-0{1..6} entries to PROJECT.md Key Decisions table.
+
+### Elixir Milestone Ingest — 2026-05-18
+
+**Source docs:** [ELIXIR-DESIGN.md](../ELIXIR-DESIGN.md), [ELIXIR-PLAN.md](../ELIXIR-PLAN.md)
+**Mode:** merge-into-existing-from-ingest
+**Status:** Queued behind v1.3.0 — NOT yet active
+
+**Track structure** (three parallel work streams sharing `Chain` / `AudioBlock` substrate):
+- **Track A** (~13 weeks): replace Contrapunk's built-in synth. Phases 21.A0 → 21.A7 + 21.A-Cut (9 phases)
+- **Track B** (~10 weeks parallel): public Elixir product (standalone + plugin + headless). Phases 21.B0 → 21.B9 (10 phases)
+- **Track C** (~9 weeks parallel): multi-plugin hosting in Contrapunk (CLAP + VST3 + AU). Phases 21.C0 → 21.C4 (5 phases)
+
+Realistic calendar window with concurrent tracks: **24-28 weeks**.
+
+**Cross-references:**
+- Track A replaces `src/synth/` (per ELIX-DEC-02, full feature parity at A-Cut post-A6, ~week 12)
+- Track C finishes existing `src/plugin_host/clap/` stubs (complementary to existing ROADMAP Phase 16 "VST3/CLAP/AU Plugin" which packages Contrapunk AS a plugin; Track C hosts OTHER plugins)
+- Cross-cutting: `elixir-core` MUST compile to wasm32 (REQ-elixir-wasm-core-compiles); plugin-hosting code is `cfg(not(target_arch = "wasm32"))`
+- Tag prefix routing: `elixir-` tags trigger Elixir CI matrix; `v` tags continue Contrapunk builds. Both share signing identities.
+- Bundle IDs reserved: `com.contrapunk.elixir` and `com.contrapunk.elixir.plugin`
+
+**Locked decisions (ELIX-DEC-0{1..6}):**
+1. Workspace location: inside contrapunk workspace
+2. Cutover ambition: full feature parity at A-Cut (post-A6, not post-A5)
+3. Track B UI: egui, separate process/window from Contrapunk (Contrapunk's Svelte UI unaffected)
+4. Track C v1 scope: all three plugin formats (CLAP + VST3 + AU)
+5. `elixir-standalone` distribution: public, released from this repo under `elixir-v0.1.0` tag
+6. GSD milestone integration: ingest as real milestone (this action)
+
+**Status for downstream:** Awaiting v1.3.0 tag. Once shipped, recommended start sequence per ELIXIR-PLAN.md §11 is A0 + B0 in Week 1, A1 + C0 prep in Week 2.
 
 ### Recently Shipped — 2026-05-14 session
 
@@ -77,6 +117,17 @@ Last activity: 2026-05-14 — Tier 1-3 fixes shipped (`54df700`); plugin emits n
 - **Plugin audio FX wiring** — synth/reverb/delay params in nih-plug; currently hidden via `audioFx: false` capability.
 - **Bonus: no `load_calibration_profile`** — the Tauri `save_calibration_profile` writes a struct that no consumer reads. Two unrelated `GuitarCalibrationProfile` types in the tree. Filed for triage.
 - **AudioWorklet fallback removal** — guitarCapture.ts already uses AudioWorklet as primary; ScriptProcessor is a vestigial fallback that could be deleted now that Safari ≥14.1 / Chrome ≥66 / Firefox ≥76 ship AudioWorklet.
+
+### Queued — Elixir Milestone (v1.5 / elixir-v0.1.0)
+
+See full structure in ROADMAP.md "Phase 21: Elixir Milestone" section.
+
+**Quick reference:**
+- 24 phase blocks (A0-A7+A-Cut, B0-B9, C0-C4) running in parallel as three tracks
+- 24 REQ-elixir-* requirements (Track A: 9, Track B: 10, Track C: 7, cross-cutting: 3 — 4 reqs span both Track C and cross-cutting buckets)
+- 6 LOCKED decisions in PROJECT.md Key Decisions table
+- Source docs: `ELIXIR-DESIGN.md` (precedence 0), `ELIXIR-PLAN.md` (precedence 1, LOCKED)
+- Sync intel under `.planning/intel/` (decisions.md, requirements.md, constraints.md, context.md, SYNTHESIS.md)
 
 ## Performance Metrics
 
@@ -232,6 +283,12 @@ Recent decisions affecting current work:
 - [06.10.1-09]: Keep server/client modes in main.rs binary (useful for network MIDI)
 - [06.10.1-09]: Remove all egui GUI router code from router.rs, keep CLI router for potential future use
 - [06.10.1-09]: Remove WASM-specific deps from root Cargo.toml (contrapunk-wasm crate has its own)
+- [ELIX-DEC-01]: Workspace location: inside contrapunk workspace (LOCKED)
+- [ELIX-DEC-02]: Cutover ambition: full feature parity at A-Cut, post-A6 not post-A5 (LOCKED)
+- [ELIX-DEC-03]: Track B UI: egui, separate process/window from Contrapunk (LOCKED)
+- [ELIX-DEC-04]: Track C v1 scope: all three plugin formats (CLAP + VST3 + AU) (LOCKED)
+- [ELIX-DEC-05]: elixir-standalone distribution: public, released from this repo (LOCKED)
+- [ELIX-DEC-06]: GSD milestone integration: ingest as real milestone (LOCKED — completed 2026-05-18)
 
 ### Prioritized Backlog (as of 2026-04-15)
 
@@ -272,6 +329,14 @@ Current state is minimal. `src/humanize/metronome.rs` is 35 lines: `enabled` boo
 6. **Tempo tap** — tap-tempo input to set BPM from the UI (common DAW feature, minimal effort in Svelte + Tauri event bridge).
 7. **Metronome UI parity** — expose all the above in `HumanizePanel.svelte`; metronome currently has no dedicated UI panel.
 
+**Q (Queued) — Elixir Milestone (v1.5 / elixir-v0.1.0)**
+
+Ingested 2026-05-18. Behind v1.3.0 tag. See ROADMAP.md Phase 21.
+
+Recommended start sequence per ELIXIR-PLAN.md §11 (once v1.3.0 ships):
+- **Week 1:** A0 (workspace bootstrap, 1d), B0 (skeleton standalone, 2d), bundle-ID reservation + release-patch skill extension (1d each)
+- **Week 2:** A1 (voice handler + wavetable osc + DAHDSR, 5d), C0 prep (2d reading `src/plugin_host/clap/block.rs` + `controller.rs` stubs to confirm 2-week C0 budget)
+
 ### Pending Todos (resolved in backlog above)
 
 _Previous entry — stuck MIDI notes — now tracked as P0 item 2._
@@ -310,6 +375,7 @@ _Previous entry — stuck MIDI notes — now tracked as P0 item 2._
 - Phase 10 added: Trackpad Beat Input — use trackpad as MIDI beat pad
 - Phase 11 added: Advanced Voice Leading — comprehensive jazz voicings, Neo-Riemannian, negative harmony, motion control, resolution-aware processing
 - Phase 12 added: Voice Leading Test Suite — automated tests for parallel motion, style differentiation, voice crossing, suspensions, integration with harmony modes
+- **Phase 21 added: Elixir Milestone (v1.5 / elixir-v0.1.0)** [2026-05-18] — ingested ELIXIR-DESIGN.md + ELIXIR-PLAN.md via `/gsd-ingest-docs`. Three parallel tracks (A: replace built-in synth, B: standalone product, C: multi-plugin hosting). 24 phase blocks across A0-A7+A-Cut, B0-B9, C0-C4. Queued behind v1.3.0 tag.
 
 ## Phase 1 Completion Summary
 
@@ -451,7 +517,7 @@ Verified: 13/13 must-haves passed.
 
 ## Session Continuity
 
-Last session: 2026-05-11T12:50:00.428Z
-Stopped at: context exhaustion at 90% (2026-05-11)
+Last session: 2026-05-18 — Elixir milestone ingested via /gsd-ingest-docs
+Previous session: 2026-05-14 — v1.3.0 pre-tag review
 Resume file: None
-Next: P0 item 1 (Audio Foundation Task 11: end-to-end smoke test + milestone tag) OR P0 item 2 (stuck MIDI notes fix), whichever you want to ship first.
+Next: User QA on v1.3.0 binary → tag v1.3.0 → then activate Phase 21 (Elixir Milestone) starting with parallel A0 + B0 per ELIXIR-PLAN.md §11 Week 1.

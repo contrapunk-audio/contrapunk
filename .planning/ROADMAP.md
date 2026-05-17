@@ -42,6 +42,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 18: Basic-Pitch Polyphonic Analysis** - tract-onnx integration for Performance Mode chord/key detection (GitHub #28)
 - [ ] **Phase 19: NeuralNote Real-Time Research** - Frame-by-frame CNN decomposition for real-time polyphonic detection (GitHub #29)
 - [ ] **Phase 20: Release Engineering** - Weekly patch + monthly minor releases, codename generator, backport workflow, Dependabot
+- [ ] **Phase 21: Elixir Milestone (v1.5 / elixir-v0.1.0)** - Synthesizer engine + standalone product + multi-plugin hosting. Three parallel tracks (A/B/C) sharing the `Chain`/`AudioBlock` substrate. Queued behind v1.3.0. (INGESTED 2026-05-18)
 
 ## Phase Details
 
@@ -588,11 +589,361 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 13 to break down)
 
+---
+
+## Phase 21: Elixir Milestone (v1.5 / elixir-v0.1.0)
+
+**Source:** [ELIXIR-DESIGN.md](../ELIXIR-DESIGN.md) + [ELIXIR-PLAN.md](../ELIXIR-PLAN.md)
+**Ingested:** 2026-05-18 via `/gsd-ingest-docs`
+**Status:** Queued behind v1.3.0 tag.
+
+**Overview:** Major new milestone with three PARALLEL tracks sharing the `Chain` / `AudioBlock` substrate in `src/chain/`. These tracks are NOT linear — they run concurrently against the same locked `AudioBlock` trait (locked at A0, additive-only after).
+
+- **Track A** (replace Contrapunk's built-in synth, ~13 weeks): 9 phases A0 → A7 + A-Cut
+- **Track B** (standalone Elixir product, ~10 weeks parallel): 10 phases B0 → B9
+- **Track C** (multi-plugin hosting in Contrapunk, ~9 weeks parallel): 5 phases C0 → C4
+
+Realistic calendar window with concurrent tracks: **24-28 weeks**.
+
+**Cross-cutting requirements** (not phase-specific): WASM core compile constraint, release-pipeline extension, bundle IDs reserved. See `REQ-elixir-wasm-core-compiles`, `REQ-elixir-release-pipeline-extension`, `REQ-elixir-bundle-ids-reserved` — these are assigned to A0 (bootstrap) and B9 (release) respectively.
+
+### Track A — Replace Contrapunk's built-in synth
+
+#### Phase 21.A0: Workspace Bootstrap
+**Goal**: New Elixir workspace exists and compiles to silence on all 4 surfaces with feature flag off
+**Depends on**: Nothing (foundation phase)
+**Requirements**: REQ-elixir-a0-workspace-bootstrap, REQ-elixir-wasm-core-compiles, REQ-elixir-bundle-ids-reserved
+**Success Criteria** (what must be TRUE):
+  1. `crates/elixir-core` exists with empty `Engine` exposing `prepare(sr, max_block)` and `process(&mut [f32], channels)` writing silence
+  2. `ElixirSynthBlock` wired as a feature-flagged `AudioBlock` in `src/chain/`
+  3. Both branches of `#[cfg(feature = "elixir-synth")]` compile
+  4. CI green on all 4 surfaces (CLI, Tauri, WASM, plugin) with flag off
+  5. `cargo check --target wasm32-unknown-unknown -p elixir-core` runs in CI on every PR
+  6. `AudioBlock` trait signature locked (additive-only changes thereafter)
+  7. Bundle IDs `com.contrapunk.elixir` and `com.contrapunk.elixir.plugin` reserved in App Store Connect
+**Effort**: 3 days
+**Plans**: TBD
+
+#### Phase 21.A1: Bare Oscillator
+**Goal**: Headphones-plugged-in moment — user plays MIDI notes via CLI and hears a sine
+**Depends on**: Phase 21.A0
+**Requirements**: REQ-elixir-a1-bare-oscillator
+**Success Criteria** (what must be TRUE):
+  1. Voice handler + one wavetable oscillator with Catmull-Rom interpolation + fixed-point phase
+  2. Spectral mip-mapping for anti-aliasing across the keyboard range
+  3. Single pre-baked sine wavetable; one DAHDSR envelope hard-coded to amp
+  4. User plays MIDI input through `cargo run --features elixir-synth` and hears the sine
+  5. No aliasing across keyboard range
+  6. A/B render against `src/synth/Sine` shows < -90 dBFS RMS difference
+**Effort**: 2 weeks
+**Plans**: TBD
+
+#### Phase 21.A2: Polyphony + Voice Management
+**Goal**: User can hold a 16-note chord cleanly with sustain pedal support
+**Depends on**: Phase 21.A1
+**Requirements**: REQ-elixir-a2-polyphony-voice-management
+**Success Criteria** (what must be TRUE):
+  1. 16-voice pool with SIMD-packed AggregateVoice (2 voices per `f32x8`)
+  2. Voice stealing on 17th note is click-free (Newest priority)
+  3. Sustain pedal works end-to-end through harmony engine output
+  4. Sample-accurate note-on within a block via per-block sample-offset
+**Effort**: 1 week
+**Plans**: TBD
+
+#### Phase 21.A3: Modulation Matrix v1
+**Goal**: LFOs and envelopes can route to any parameter without clicks or glitches
+**Depends on**: Phase 21.A2
+**Requirements**: REQ-elixir-a3-modulation-matrix-v1
+**Success Criteria** (what must be TRUE):
+  1. SoA `ModRoutes` storage with sparse fixed-bank addressing
+  2. Two LFOs (custom-waveform + random) and six envelopes per voice
+  3. `arc-swap` breakpoint-table hot-swap is click-free
+  4. UI→audio command queue (`rtrb`) handles route add/remove without dropout
+  5. Modulation-of-modulation works (LFO speed modded by envelope)
+**Effort**: 2 weeks
+**Plans**: TBD
+
+#### Phase 21.A4: Filter
+**Goal**: User hears warm analog ladder + crisp digital SVF + comb filters with audio-rate cutoff modulation
+**Depends on**: Phase 21.A3
+**Requirements**: REQ-elixir-a4-filter
+**Success Criteria** (what must be TRUE):
+  1. Digital SVF + analog ladder + comb filters implemented
+  2. Cutoff sweep tracks an LFO with no zipper noise
+  3. Resonance self-oscillates on the ladder
+  4. Comb filter tracks pitch
+  5. TPT coefficient LUT eliminates per-sample `tan()`
+**Effort**: 2 weeks
+**Plans**: TBD
+
+#### Phase 21.A5: FX Bus MVP
+**Goal**: User hears a full reverb tail, ping-pong delay, EQ, and drive without clipping at -1 dBFS
+**Depends on**: Phase 21.A4
+**Requirements**: REQ-elixir-a5-fx-bus-mvp
+**Success Criteria** (what must be TRUE):
+  1. 2× oversampling (upsampler + 3-pole halfband decimator)
+  2. Reorderable 4-slot FX chain (reverb, delay, EQ, distortion)
+  3. FDN-8 reverb produces audible tail
+  4. Ping-pong delay works in stereo
+  5. Drive at -1 dBFS without clipping
+  6. Reorder via test rig works without crackle
+**Effort**: 3 weeks
+**Plans**: TBD
+
+#### Phase 21.A6: Spectral + FX Completion
+**Goal**: Full design-doc feature set lands — all 12 spectral morphs, 9 phase-distortion modes, unison, full FX chain, FDN-16 reverb
+**Depends on**: Phase 21.A5
+**Requirements**: REQ-elixir-a6-spectral-and-fx-completion
+**Success Criteria** (what must be TRUE):
+  1. All 12 spectral morphs implemented (vocode, smear, harmonic-scale, phase-disperse, shepard, skew, etc.)
+  2. 9 phase-distortion modes work (FM, RM, sync, pulsewidth…)
+  3. Unison with 11 stack styles
+  4. Chorus, flanger, phaser, compressor effects available
+  5. FDN-16 reverb replaces FDN-8 (FDN-8 fallback retained for WASM)
+  6. Filter models complete: diode, dirty, formant, phaser-filter
+  7. Wavetable feature parity with design doc
+  8. New unit tests for each morph (golden WAV per morph) pass
+  9. All existing tests continue to pass
+**Effort**: 4 weeks
+**Plans**: TBD
+
+#### Phase 21.A-Cut: Full Parity Cutover
+**Goal**: Contrapunk's built-in synth flips to Elixir under `--features elixir-synth` with byte-for-byte parity on `Contrapunk-Default.elxprst`
+**Depends on**: Phase 21.A6, Phase 21.B3 (plugin shipping by this point)
+**Requirements**: REQ-elixir-a-cut-full-parity-cutover
+**Success Criteria** (what must be TRUE):
+  1. Every `SynthParams` setter mapped to an Elixir `ParamId`
+  2. `Contrapunk-Default.elxprst` factory preset embedded in the binary
+  3. Audio chain instantiates `ElixirSynthBlock` instead of `Synth` when `--features elixir-synth`
+  4. Existing `tests/audio_pipeline.rs` passes with `--features elixir-synth`
+  5. Manual A/B on a fixed MIDI file in Tauri shows no perceptual change
+  6. Plugin (VST3/CLAP) renders identically with the new synth
+  7. CLI binary renders identically
+**Effort**: 1 week
+**Plans**: TBD
+
+#### Phase 21.A7: Default Flip + Cleanup
+**Goal**: Elixir is the default synth shipped to all Contrapunk users; legacy `src/synth/` deleted
+**Depends on**: Phase 21.A-Cut
+**Requirements**: REQ-elixir-a7-default-flip-and-cleanup
+**Success Criteria** (what must be TRUE):
+  1. After 2 weeks of A-Cut opt-in, feature flag default flipped to ON
+  2. After another 2 weeks of no regressions, `src/synth/` deleted from tree
+  3. `git rm -r src/synth/`; CI green
+  4. No `--features` toggle needed by users
+  5. `src-tauri/src/commands/synth.rs` uses Elixir's typed params (old `SynthParams` shim dropped)
+  6. Release-notes line item for Contrapunk v1.5 (or whichever cycle ships this)
+**Effort**: 1 week
+**Plans**: TBD
+
+### Track B — Elixir as standalone product
+
+#### Phase 21.B0: Standalone Skeleton
+**Goal**: `elixir-standalone` binary exists, opens audio + MIDI + window in a separate process from Contrapunk
+**Depends on**: Phase 21.A0 (shares `elixir-core` substrate)
+**Requirements**: REQ-elixir-b0-standalone-skeleton
+**Success Criteria** (what must be TRUE):
+  1. Skeleton binary runs and exits cleanly
+  2. `cpal` opens default audio output
+  3. `midir` opens default MIDI input
+  4. Argv parsing via `clap`
+  5. `egui` window opens with "Hello Elixir" label
+  6. Window opens as a separate process from Contrapunk's desktop app
+**Effort**: 2 days
+**Plans**: TBD
+**UI hint**: yes
+
+#### Phase 21.B1: Standalone First Sound
+**Goal**: User can press a computer keyboard key and hear a note from `elixir-standalone`
+**Depends on**: Phase 21.B0, Phase 21.A1 (need oscillator)
+**Requirements**: REQ-elixir-b1-standalone-first-sound
+**Success Criteria** (what must be TRUE):
+  1. `elixir-standalone` produces sound — single voice, default preset
+  2. Computer-keyboard fallback works (`a w s e d f t g …` = chromatic)
+  3. Notes from MIDI input also produce sound
+**Effort**: 3 days
+**Plans**: TBD
+
+#### Phase 21.B2: Standalone Polyphony
+**Goal**: User can hold a 16-note chord cleanly in `elixir-standalone` with voice meter visible
+**Depends on**: Phase 21.B1, Phase 21.A2 (need polyphony from core)
+**Requirements**: REQ-elixir-b2-standalone-polyphony
+**Success Criteria** (what must be TRUE):
+  1. 16-note chord plays cleanly in standalone
+  2. Voice meter logged to stderr (active voices count visible)
+**Effort**: 1 day
+**Plans**: TBD
+
+#### Phase 21.B3: Plugin Skeleton
+**Goal**: `elixir-plugin` loads in Bitwig / Logic / Ableton with one automatable parameter
+**Depends on**: Phase 21.B2
+**Requirements**: REQ-elixir-b3-plugin-skeleton
+**Success Criteria** (what must be TRUE):
+  1. `elixir-plugin` skeleton built via nih-plug (VST3 + CLAP + AU + standalone wrapper)
+  2. Plugin loads in Bitwig (CLAP), Logic (AU), Ableton (VST3)
+  3. Master gain parameter automatable from each host
+**Effort**: 5 days
+**Plans**: TBD
+
+#### Phase 21.B4: Plugin Full Params
+**Goal**: Earliest point Contrapunk users can demo Elixir inside their DAW — full parameter set automatable and smooth
+**Depends on**: Phase 21.B3, Phase 21.A3 (need mod matrix), Phase 21.A4 (need filter)
+**Requirements**: REQ-elixir-b4-plugin-full-params
+**Success Criteria** (what must be TRUE):
+  1. `elixir-plugin` exposes full parameter set (envelope, filter, mod matrix amount, etc.)
+  2. Audio-thread parameter smoothing via nih-plug `SmoothedParam` is click-free
+  3. All params automatable from each tested host
+**Effort**: 1 week
+**Plans**: TBD
+
+#### Phase 21.B5: Preset Save/Load
+**Goal**: User can save a preset in `elixir-plugin` and load it in `elixir-standalone` (and vice versa); hot-swap is click-free
+**Depends on**: Phase 21.B4
+**Requirements**: REQ-elixir-b5-preset-save-load
+**Success Criteria** (what must be TRUE):
+  1. Preset save / load wired in plugin
+  2. Preset save / load wired in standalone
+  3. JSON format per design doc; embedded base64 PCM for wavetables and samples
+  4. ArcSwap preset hot-swap is click-free
+  5. Plugin-saved preset loads in standalone (and vice versa)
+**Effort**: 1 week
+**Plans**: TBD
+
+#### Phase 21.B6: Standalone UI v1
+**Goal**: User can twiddle knobs and see the synth respond — mod-matrix, oscillator, envelope, filter, FX panels work in both standalone and plugin in-DAW window
+**Depends on**: Phase 21.B5
+**Requirements**: REQ-elixir-b6-standalone-ui-v1
+**Success Criteria** (what must be TRUE):
+  1. Mod-matrix view renders and is functional
+  2. Oscillator panel renders and is functional
+  3. Envelope panel renders and is functional
+  4. Filter panel renders and is functional
+  5. FX chain panel renders and is functional
+  6. Same `egui` widget set works in both standalone and `elixir-plugin` in-DAW window
+  7. Factory wavetable bank loadable from UI (no editor yet)
+**Effort**: 4 weeks
+**Plans**: TBD
+**UI hint**: yes
+
+#### Phase 21.B7: Wavetable Editor
+**Goal**: User can drag wavetable points in time and frequency domains with live spectral morph preview
+**Depends on**: Phase 21.B6, Phase 21.A6 (need spectral morphs)
+**Requirements**: REQ-elixir-b7-wavetable-editor
+**Success Criteria** (what must be TRUE):
+  1. UI for editing wavetable frames in time-domain
+  2. UI for editing wavetable frames in frequency-domain
+  3. Spectral morph parameter live-previews while editing
+  4. Frame interpolation visualizes correctly during edit
+**Effort**: 2 weeks
+**Plans**: TBD
+**UI hint**: yes
+
+#### Phase 21.B8: Headless Renderer
+**Goal**: User can render `--midi foo.mid --preset bar.elxprst --out baz.wav --duration 60s` and get a deterministic WAV
+**Depends on**: Phase 21.B5 (need preset format)
+**Requirements**: REQ-elixir-b8-headless-renderer
+**Success Criteria** (what must be TRUE):
+  1. `elixir-headless` binary builds
+  2. CLI rendering produces a WAV from MIDI + preset
+  3. Output is deterministic (same input → same output bytes)
+  4. `--duration` flag is honored
+**Effort**: 3 days
+**Plans**: TBD
+
+#### Phase 21.B9: Public v0.1.0 Release
+**Goal**: Public v0.1.0 of Elixir released from this repo with signed/notarized artifacts on a GitHub Release under `elixir-v0.1.0` tag
+**Depends on**: Phase 21.B6, Phase 21.B8 (must have UI + headless before public release)
+**Requirements**: REQ-elixir-b9-public-v0-1-0-release, REQ-elixir-release-pipeline-extension
+**Success Criteria** (what must be TRUE):
+  1. `cargo test -p elixir-core`, `-p elixir-plugin`, `-p elixir-standalone` all pass
+  2. Build matrix: macOS arm64 + x86_64 universal, Windows x86_64, Linux x86_64
+  3. macOS artifacts signed (Developer ID) and notarized using existing Contrapunk certs
+  4. Windows artifacts signed (EV cert)
+  5. GitHub Release attaches: `elixir-standalone.dmg`, `Elixir.vst3`, `Elixir.clap`, `Elixir.component` (AU), `elixir-headless` binary
+  6. `release-patch` skill recognizes the `elixir-` tag prefix
+  7. CI workflow YAML pattern-matches the prefix and picks the right build matrix
+**Effort**: 1 week
+**Plans**: TBD
+
+### Track C — Multi-plugin hosting in Contrapunk
+
+**Cross-reference:** Track C is complementary to existing ROADMAP Phase 16 (VST3/CLAP/AU Plugin). Phase 16 = Contrapunk packaged AS a plugin. Track C = Contrapunk hosting OTHER plugins. They share `src/plugin_host/`-related plumbing but ship different products. Existing `src/plugin_host/clap/block.rs` and `controller.rs` stubs are finished by Phase 21.C0.
+
+#### Phase 21.C0: CLAP Activation
+**Goal**: User loads Surge XT (free CLAP) in Contrapunk, plays notes from the harmony engine, and hears it
+**Depends on**: Phase 21.A0 (need `AudioBlock` trait locked)
+**Requirements**: REQ-elixir-c0-clap-activation, REQ-elixir-c-plugin-discovery, REQ-elixir-c-ui-multi-plugin-strip
+**Success Criteria** (what must be TRUE):
+  1. Existing `block.rs` / `controller.rs` stubs in `src/plugin_host/clap/` filled in
+  2. A discovered CLAP plugin instantiates, activates, and processes audio through `ClapAudioBlock`
+  3. Chain's existing `PushBlock` queue routes audio through the plugin
+  4. User loads Surge XT, plays notes from harmony engine, hears it (no GUI yet; plugin opens its own OS window)
+  5. Plugin discovery scans standard OS paths and caches to `~/.config/contrapunk/plugins.json` with mtime invalidation
+  6. When ≥ 2 plugins loaded, Contrapunk's Svelte UI shows per-slot strip (name, format badge, bypass, latency, "open GUI", expander, "remove")
+**Effort**: 2 weeks (+ ~1 week UI strip)
+**Plans**: TBD
+**UI hint**: yes
+
+#### Phase 21.C1: Plugin GUI Embedding
+**Goal**: Surge XT GUI shows inside Contrapunk's desktop window with resize
+**Depends on**: Phase 21.C0
+**Requirements**: REQ-elixir-c1-plugin-gui-embedding
+**Success Criteria** (what must be TRUE):
+  1. CLAP `gui` extension flow implemented: query embedded-size hint
+  2. Child window created inside Tauri's main window (macOS NSView, Windows HWND, Linux X11)
+  3. Fallback to detached floating window when embed fails
+  4. Surge XT GUI renders inside Contrapunk's desktop window on macOS; resize works
+**Effort**: 2 weeks
+**Plans**: TBD
+**UI hint**: yes
+
+#### Phase 21.C2: CLAP Param Automation + State
+**Goal**: User can automate a hosted plugin's parameter from Contrapunk's mod matrix and save the plugin state in Contrapunk's session
+**Depends on**: Phase 21.C1, Phase 21.A3 (need mod matrix from Track A)
+**Requirements**: REQ-elixir-c2-clap-param-automation-state
+**Success Criteria** (what must be TRUE):
+  1. Plugin params mapped to Contrapunk's mod matrix (`ParamId::Hosted { slot, plugin_param_id }`)
+  2. LFO can drive a hosted plugin's filter cutoff
+  3. Plugin state serializes into Contrapunk's session file via CLAP `state` extension
+  4. Set up Diva CLAP, automate cutoff from Contrapunk's macro 1, save session, reload — automation and state survive
+**Effort**: 2 weeks
+**Plans**: TBD
+
+#### Phase 21.C3: VST3 Hosting
+**Goal**: User loads FabFilter Pro-Q4 VST3 in Contrapunk, routes harmony through it, GUI embeds, state saves
+**Depends on**: Phase 21.C2
+**Requirements**: REQ-elixir-c3-vst3-hosting
+**Success Criteria** (what must be TRUE):
+  1. New `src/plugin_host/vst3/` module exists
+  2. Rust VST3 host crate integrated (license-reviewed before this phase)
+  3. VST3 module mirrors CLAP module API surface (`discovery`, `host`, `block`, `controller`, `window`)
+  4. FabFilter Pro-Q4 VST3 loads, routes harmony through it
+  5. VST3 GUI embeds in Contrapunk window
+  6. VST3 state saves and reloads in Contrapunk session
+**Effort**: 3 weeks
+**Plans**: TBD
+**UI hint**: yes
+
+#### Phase 21.C4: AU Hosting
+**Goal**: macOS user loads Apple's stock AU instruments through Contrapunk and hears them
+**Depends on**: Phase 21.C3
+**Requirements**: REQ-elixir-c4-au-hosting
+**Success Criteria** (what must be TRUE):
+  1. `src/plugin_host/au/` exists, wrapped in `#[cfg(target_os = "macos")]`
+  2. `audio-unit` crate or hand-rolled `objc2` bindings work
+  3. Apple stock AU instruments load and play through Contrapunk
+  4. Windows/Linux builds skip the AU module cleanly
+**Effort**: 2 weeks
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
 Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2 -> 6.3 -> 6.4 -> 6.5 -> 6.6 -> 6.7 -> 6.8 -> 6.9 -> 6.10 -> 6.10.1 -> 7 -> 8 -> 9 -> 10
 (Phase 11 dropped. Phases 12, 13 closed — already implemented.)
+
+Phase 21 (Elixir Milestone) is QUEUED behind v1.3.0 release. The three tracks (A/B/C) run in parallel internally, sharing the `Chain`/`AudioBlock` substrate.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -629,6 +980,31 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 | 18. Basic-Pitch Polyphonic | 0/? | Research complete, tract-onnx path chosen | - |
 | 19. NeuralNote Research | 0/? | Research complete, NeuralNote frame-by-frame pattern documented | - |
 | 20. Release Engineering | ~80% | Workflows created, codename gen done, manual dispatch | 2026-04-10 |
+| **21. Elixir Milestone (v1.5 / elixir-v0.1.0)** | **0/24** | **Queued (ingested 2026-05-18; behind v1.3.0)** | **-** |
+| 21.A0 Workspace Bootstrap | 0/? | Queued | - |
+| 21.A1 Bare Oscillator | 0/? | Queued | - |
+| 21.A2 Polyphony + Voice Mgmt | 0/? | Queued | - |
+| 21.A3 Modulation Matrix v1 | 0/? | Queued | - |
+| 21.A4 Filter | 0/? | Queued | - |
+| 21.A5 FX Bus MVP | 0/? | Queued | - |
+| 21.A6 Spectral + FX Completion | 0/? | Queued | - |
+| 21.A-Cut Full Parity Cutover | 0/? | Queued | - |
+| 21.A7 Default Flip + Cleanup | 0/? | Queued | - |
+| 21.B0 Standalone Skeleton | 0/? | Queued | - |
+| 21.B1 Standalone First Sound | 0/? | Queued | - |
+| 21.B2 Standalone Polyphony | 0/? | Queued | - |
+| 21.B3 Plugin Skeleton | 0/? | Queued | - |
+| 21.B4 Plugin Full Params | 0/? | Queued | - |
+| 21.B5 Preset Save/Load | 0/? | Queued | - |
+| 21.B6 Standalone UI v1 | 0/? | Queued | - |
+| 21.B7 Wavetable Editor | 0/? | Queued | - |
+| 21.B8 Headless Renderer | 0/? | Queued | - |
+| 21.B9 Public v0.1.0 Release | 0/? | Queued | - |
+| 21.C0 CLAP Activation | 0/? | Queued | - |
+| 21.C1 Plugin GUI Embedding | 0/? | Queued | - |
+| 21.C2 CLAP Param Automation + State | 0/? | Queued | - |
+| 21.C3 VST3 Hosting | 0/? | Queued | - |
+| 21.C4 AU Hosting | 0/? | Queued | - |
 
 ## Known Cross-Cutting Issues (from memory, not phase-specific)
 
@@ -638,4 +1014,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 5.1 -> 6 -> 6.1 -> 6.2
 
 ---
 *Roadmap created: 2026-01-28*
-*Last updated: 2026-04-10 — Added Phases 16-20: plugin (VST3/CLAP/AU), integration test pipeline, basic-pitch polyphonic analysis, NeuralNote research, release engineering. Debug page at /debug/guitar-midi. Pitch accuracy benchmarks all passing (100%).*
+*Last updated: 2026-05-18 — Added Phase 21: Elixir Milestone (v1.5 / elixir-v0.1.0) via `/gsd-ingest-docs` from ELIXIR-DESIGN.md + ELIXIR-PLAN.md. Three parallel tracks (A: replace built-in synth, B: standalone product, C: multi-plugin hosting). 24 new phase blocks across A0-A7+A-Cut, B0-B9, C0-C4. Queued behind v1.3.0 tag.*

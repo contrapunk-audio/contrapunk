@@ -33,10 +33,16 @@ pub mod chain;
 pub mod command;
 pub mod commander;
 
+#[cfg(feature = "elixir-synth")]
+pub mod elixir_block;
+
 pub use block::{AudioBlock, MidiBlockEvent};
 pub use chain::Chain;
 pub use command::ChainCommand;
 pub use commander::{BlockDescriptor, ChainCommander};
+
+#[cfg(feature = "elixir-synth")]
+pub use elixir_block::ElixirSynthBlock;
 
 /// Consumer half of the chain command queue. Re-exported so downstream
 /// crates (e.g. the Tauri binary) can reference the type without a

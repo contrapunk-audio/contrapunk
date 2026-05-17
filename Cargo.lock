@@ -626,6 +626,7 @@ dependencies = [
  "contrapunk-preset",
  "contrapunk-transport",
  "cpal",
+ "elixir-core",
  "getrandom 0.2.17",
  "js-sys",
  "midir",
@@ -1275,6 +1276,23 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
+name = "elixir-core"
+version = "0.0.1"
+dependencies = [
+ "libm",
+]
+
+[[package]]
+name = "elixir-standalone"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cpal",
+ "elixir-core",
+ "midir",
+]
 
 [[package]]
 name = "embed-resource"

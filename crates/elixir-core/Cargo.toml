@@ -1,0 +1,23 @@
+[package]
+name = "elixir-core"
+version = "0.0.1"
+edition = "2021"
+description = "Elixir DSP engine — core (no host code). See ELIXIR-DESIGN.md."
+authors = ["Contrapunk Team"]
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "elixir_core"
+path = "src/lib.rs"
+
+[dependencies]
+# `libm` provides `sinf` / `powf` etc. for no_std builds — we need them
+# both for the sine table and for MIDI→Hz conversion. It is no_std-safe
+# and tiny (~70 KB compiled).
+libm = "0.2"
+
+[features]
+default = []
+# Opt-in std support for tests and downstream consumers that don't care
+# about no_std. The crate itself stays no_std otherwise.
+std = []

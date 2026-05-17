@@ -1,0 +1,31 @@
+{
+  "source_path": "/Users/vibhavbobade/go/src/github.com/contrapunk-audio/contrapunk/ELIXIR-DESIGN.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Elixir — Synthesizer Design Document",
+  "summary": "Technical specification for Elixir, a cross-platform spectral-warping wavetable synthesizer in Rust, covering DSP architecture, voicing, filters, effects, modulation, hosting, presets, concurrency, and a 9-phase implementation roadmap.",
+  "scope": [
+    "synthesizer engine",
+    "voice handler / polyphony",
+    "wavetable oscillator",
+    "spectral / FFT warping engine",
+    "filter topologies (Sallen-Key, Ladder, Diode, Dirty, SVF, Comb, Formant, Phaser)",
+    "reorderable 8-slot effects chain (chorus, flanger, phaser, distortion, EQ, compressor, reverb FDN, delay, filter-fx)",
+    "modulation sources (envelopes, LFOs, random LFOs, trigger random, line maps, MPE, macros)",
+    "modulation matrix and routing",
+    "build targets (VST3, CLAP, standalone, headless CLI)",
+    "MIDI / MPE / CC learn / tuning (.scl/.kbm/.tun)",
+    "preset format (JSON + base64 PCM, schema versioning)",
+    "audio-thread concurrency and lock-free state",
+    "real-time safety enforcement",
+    "Rust crate stack (nih-plug, cpal, midir, realfft, arc-swap, rtrb, bumpalo, serde, rand_chacha, hound, clap, enum_dispatch)",
+    "9-phase implementation roadmap"
+  ],
+  "cross_refs": [
+    "ELIXIR-PLAN.md"
+  ],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Manifest declares SPEC at precedence 0; content confirms — document is a prescriptive technical spec defining crate choices, data models, threading model, FFT pipeline, voicing contracts, preset schema, and audio-thread invariants. No explicit 'Locked' / 'Decision:' / 'by design' phrasing detected, but the prescriptive Rust implementation guidance functions as locked technical constraints. Status reads 'Draft v0.1' so locked=false per ADR convention. Cross-ref to ELIXIR-PLAN.md is implicit (per ingest context); no inline markdown links to other docs exist in the file."
+}

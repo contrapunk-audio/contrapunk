@@ -1,0 +1,17 @@
+[package]
+name = "elixir-standalone"
+version = "0.0.1"
+edition = "2021"
+description = "Elixir standalone synthesizer — desktop app (Phase 21.B0)."
+authors = ["Contrapunk Team"]
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "elixir-standalone"
+path = "src/main.rs"
+
+[dependencies]
+elixir-core = { path = "../elixir-core" }
+cpal = "0.17"
+midir = "0.11"
+anyhow = "1.0"
