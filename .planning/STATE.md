@@ -4,7 +4,7 @@ milestone: v1.5
 milestone_name: / elixir-v0.1.0)
 status: executing
 stopped_at: Proceeding to complete Elixir implementation; first code target is Phase 21.A6 spectral/FX completion.
-last_updated: "2026-05-18T17:05:52.380Z"
+last_updated: "2026-05-18T17:17:05.073Z"
 last_activity: 2026-05-18 — pi-gsd installed and project state reconciled. HANDOFF.json is treated as consumed after this update.
 progress:
   total_phases: 54
@@ -564,3 +564,25 @@ Next: Implement A6 incrementally with tests, then A-Cut/B-track plugin and relea
 
 1. Reserve bundle IDs `com.contrapunk.elixir.standalone` and `com.contrapunk.elixir.plugin` before B9 signing.
 2. Decide on backlog re-prioritization: continue Track A (A-Cut next) or open Track B/C in parallel.
+
+## A-Cut Closure — 2026-05-18 (this session)
+
+**Phase 21.A-Cut initial Tauri cutover complete behind feature flag.**
+
+- `src-tauri/Cargo.toml` now defines `elixir-synth = ["contrapunk/elixir-synth"]`.
+- `src-tauri/src/audio_clock.rs` selects the initial synth block by cfg:
+  - default: legacy `Synth` with descriptor `builtin.synth`
+  - `--features elixir-synth`: `ElixirSynthBlock` with descriptor `builtin.elixir-synth`
+- `src/chain/elixir_block.rs` now drains the existing router→audio `SynthEvent` receiver, so Tauri routing code can keep sending note events unchanged.
+- Existing `SynthParams` are bridged into Elixir each block: enabled, master gain, ADSR, filter cutoff/resonance, plus approximate waveform mapping into Elixir morph/phase controls. This prevents the existing synth UI controls from going inert under the feature flag.
+- Added regression tests for queued `SynthEvent::NoteOn` and `SynthParams::enabled(false)` mute behavior.
+
+**Validation:**
+
+- `cargo check -p contrapunk` — clean (pre-existing warnings only)
+- `cargo check -p contrapunk --features elixir-synth` — clean (pre-existing warnings only)
+- `cargo check -p contrapunk-tauri` — clean (pre-existing warnings only)
+- `cargo check -p contrapunk-tauri --features elixir-synth` — clean (pre-existing warnings only)
+- `cargo test -p contrapunk --features elixir-synth chain::elixir_block --lib` — 7 passed
+
+**Next:** B3 — create `elixir-plugin` skeleton using existing nih-plug plugin crate patterns, then B4 full params/preset surface.
