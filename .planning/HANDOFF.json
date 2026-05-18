@@ -1,64 +1,261 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-18T15:35:28.643Z",
+  "timestamp": "2026-05-18T16:30:46.494Z",
   "context": "phase",
   "phase": "21",
-  "phase_name": "Elixir Milestone (queued, partial implementation ongoing)",
-  "phase_dir": null,
-  "plan": null,
-  "task": null,
+  "phase_name": "Elixir Milestone (v1.5 / elixir-v0.1.0)",
+  "phase_dir": ".planning/phases/21-elixir-milestone",
+  "plan": "21.A6",
+  "task": "A6-core-scaffold",
   "total_tasks": 24,
   "status": "paused",
   "completed_tasks": [
-    {"id": "A0", "name": "Workspace bootstrap + feature flag", "status": "done", "commit": "6a36f311"},
-    {"id": "A1", "name": "Bare oscillator + ADSR + sine wavetable + Catmull-Rom", "status": "done", "commit": "6a36f311"},
-    {"id": "B0", "name": "Standalone cpal demo binary", "status": "done", "commit": "6a36f311"},
-    {"id": "B1", "name": "midir live MIDI input", "status": "done", "commit": "6a36f311"},
-    {"id": "A2", "name": "16-voice polyphony + steal + sustain + kill ramp", "status": "done", "commit": "880cc852"},
-    {"id": "A3", "name": "Modulation matrix v1 (LFO + routes + mod-of-mod)", "status": "done", "commit": "ee0b587d"},
-    {"id": "A4", "name": "SVF lowpass filter + cutoff modulation", "status": "done", "commit": "3f28adbd"},
-    {"id": "A5", "name": "FX bus (Drive + Delay + Reverb + 4-slot chain)", "status": "done", "commit": "52a34152"},
-    {"id": "B6", "name": "Standalone egui UI v1 (sliders)", "status": "done", "commit": "39cbf546"},
-    {"id": "B6.1", "name": "UI polish — cards + accent stripes + voice meter", "status": "done", "commit": "uncommitted"},
-    {"id": "B6.2", "name": "UI visual rewrite — knobs + ADSR curve + filter curve + piano keys", "status": "done", "commit": "uncommitted"},
-    {"id": "DESIGN-DOC", "name": "ELIXIR-DESIGN.md expanded with §§8-14 (UI, wavetable creator, cross-modulation, MPE, transport, plugin host, policy)", "status": "done", "commit": "uncommitted"}
+    {
+      "id": "A0",
+      "name": "Workspace bootstrap + feature flag",
+      "status": "done",
+      "commit": "6a36f311"
+    },
+    {
+      "id": "A1",
+      "name": "Bare oscillator + ADSR + sine wavetable + Catmull-Rom",
+      "status": "done",
+      "commit": "6a36f311"
+    },
+    {
+      "id": "B0",
+      "name": "Standalone cpal demo binary",
+      "status": "done",
+      "commit": "6a36f311"
+    },
+    {
+      "id": "B1",
+      "name": "midir live MIDI input",
+      "status": "done",
+      "commit": "6a36f311"
+    },
+    {
+      "id": "A2",
+      "name": "16-voice polyphony + voice stealing + sustain + kill ramp",
+      "status": "done",
+      "commit": "880cc852"
+    },
+    {
+      "id": "A3",
+      "name": "Modulation matrix v1, LFO + routes + mod-of-mod",
+      "status": "done",
+      "commit": "ee0b587d"
+    },
+    {
+      "id": "A4",
+      "name": "SVF lowpass filter + cutoff modulation",
+      "status": "done",
+      "commit": "3f28adbd"
+    },
+    {
+      "id": "A5",
+      "name": "FX bus: Drive + Delay + Reverb + 4-slot chain",
+      "status": "done",
+      "commit": "52a34152"
+    },
+    {
+      "id": "B6",
+      "name": "Standalone egui UI v1",
+      "status": "done",
+      "commit": "39cbf546"
+    },
+    {
+      "id": "B6.1/B6.2",
+      "name": "Standalone UI polish + visual rewrite",
+      "status": "done",
+      "commit": "71045556"
+    },
+    {
+      "id": "DESIGN-DOC",
+      "name": "ELIXIR-DESIGN.md expansion through policy/scope sections",
+      "status": "done",
+      "commit": "71045556"
+    },
+    {
+      "id": "GSD-PI",
+      "name": "Installed pi-gsd, reconciled Phase 21 state, set 400k context window and 90% pause threshold",
+      "status": "done",
+      "commit": "uncommitted"
+    },
+    {
+      "id": "A6.1",
+      "name": "A6 oscillator controls scaffold",
+      "status": "done",
+      "progress": "Added spectral morph, phase distortion, unison style enums/params; wired OscParams through Engine -> Voice -> Oscillator; added engine and oscillator tests."
+    },
+    {
+      "id": "A6.2",
+      "name": "A6 FX family scaffold",
+      "status": "done",
+      "progress": "Added Chorus, Flanger, Phaser, Compressor, FdnReverb variants; expanded FX_SLOTS to 8; added engine reachability tests; fixed FDN sample-rate/decay tracking."
+    },
+    {
+      "id": "A6.3",
+      "name": "A6 filter model scaffold",
+      "status": "done",
+      "progress": "Added FilterKind/FilterModel with DigitalSvf, Diode, Dirty, Formant, Phaser; wired through Engine/Voice; added model tests and engine integration tests."
+    },
+    {
+      "id": "REUSE-AUDIT",
+      "name": "Reuse audit to avoid reinventing existing Contrapunk pieces",
+      "status": "done",
+      "progress": "Parallel subagents audited root FX/chain/transport/MIDI/plugin/UI reuse. Decision: do not depend on root modules from elixir-core; extract no_std primitives into shared crates."
+    },
+    {
+      "id": "DSP-EXTRACT-1",
+      "name": "Created shared no_std contrapunk-dsp primitive crate",
+      "status": "done",
+      "progress": "Added pitch::midi_to_freq, window::equal_power/frac helpers, delay_line::StereoDelayLine, allpass::Allpass1, matrix::hadamard16, sat::quick_tanh; migrated elixir-core helpers to reuse these."
+    }
   ],
   "remaining_tasks": [
-    {"id": "A6", "name": "Spectral oscillator + FX completion (12 morphs, 9 phase distortion modes, FDN-16 reverb, chorus/flanger/phaser/compressor, dirty/diode/formant/phaser filters)", "status": "not_started"},
-    {"id": "A-Cut", "name": "CUTOVER — Elixir replaces src/synth/ in Contrapunk (post-A6 per locked decision §10.2)", "status": "not_started"},
-    {"id": "A7", "name": "Default flip + delete src/synth/", "status": "not_started"},
-    {"id": "B2", "name": "Polyphony status meter in standalone", "status": "not_started"},
-    {"id": "B3", "name": "elixir-plugin skeleton (nih-plug VST3/CLAP/AU)", "status": "not_started"},
-    {"id": "B4", "name": "elixir-plugin full param set + lock-free atoms", "status": "not_started"},
-    {"id": "B5", "name": "Preset save/load (JSON+base64 PCM, ArcSwap hot-swap)", "status": "not_started"},
-    {"id": "B7", "name": "Wavetable editor UI", "status": "not_started"},
-    {"id": "B8", "name": "elixir-headless renderer", "status": "not_started"},
-    {"id": "B9", "name": "Public v0.1.0 release (sign + notarize)", "status": "not_started"},
-    {"id": "C0", "name": "Finish CLAP activation in src/plugin_host/clap/", "status": "not_started"},
-    {"id": "C1", "name": "Plugin GUI embedding (CLAP) — Windows + Linux", "status": "not_started"},
-    {"id": "C2", "name": "CLAP param automation + state persistence", "status": "not_started"},
-    {"id": "C3", "name": "VST3 hosting (new src/plugin_host/vst3/)", "status": "not_started"},
-    {"id": "C4", "name": "AU hosting (macOS-only, new src/plugin_host/au/)", "status": "not_started"}
+    {
+      "id": "A6.4",
+      "name": "Hoist filter coefficient calculations out of per-sample/per-voice hot path",
+      "status": "not_started"
+    },
+    {
+      "id": "A6.5",
+      "name": "Add robust oscillator golden metric tests for all 12 morphs, 9 phase modes, and 11 unison styles",
+      "status": "not_started"
+    },
+    {
+      "id": "A6.6",
+      "name": "Expose A6 oscillator/filter/FX controls in elixir-standalone UI",
+      "status": "not_started"
+    },
+    {
+      "id": "A6.7",
+      "name": "Decide whether to extract contrapunk-fx now or keep only contrapunk-dsp primitives until A6 stabilizes",
+      "status": "not_started"
+    },
+    {
+      "id": "A6.8",
+      "name": "Document approximation vs final FFT/IFFT spectral wavetable parity",
+      "status": "not_started"
+    },
+    {
+      "id": "A-Cut",
+      "name": "Wire Elixir into Contrapunk built-in synth path behind feature flag after A6 parity",
+      "status": "not_started"
+    },
+    {
+      "id": "B3",
+      "name": "elixir-plugin skeleton using nih-plug patterns from existing plugin crate",
+      "status": "not_started"
+    },
+    {
+      "id": "B4-B9",
+      "name": "Plugin full params, preset format, wavetable editor, headless renderer, public release",
+      "status": "not_started"
+    },
+    {
+      "id": "C0-C4",
+      "name": "Multi-plugin hosting: reuse existing CLAP host path, then VST3/AU modules",
+      "status": "not_started"
+    }
   ],
-  "blockers": [],
+  "blockers": [
+    {
+      "description": "A6 filter model scaffold currently computes tanf/coefs in per-sample tick paths for several models; this is CPU-risky for 16 voices.",
+      "type": "technical",
+      "workaround": "Hoist per-block coefficients/prepared filter params before marking A6 real-time-ready."
+    },
+    {
+      "description": "A6 spectral morphs are scalar sine-table approximations, not final FFT/IFFT spectral wavetable parity.",
+      "type": "technical",
+      "workaround": "Keep labels/docs honest; add golden metric tests now and implement real wavetable/spectral infrastructure before claiming full A6 parity."
+    }
+  ],
   "human_actions_pending": [
-    {"action": "Decide commit strategy for the latest UI rewrite + design-doc expansion (single commit vs split)", "context": "Both files are uncommitted at handoff; latest 6 commits are local-only", "blocking": false},
-    {"action": "Reserve bundle IDs com.contrapunk.elixir.standalone and com.contrapunk.elixir.plugin in App Store Connect", "context": "Required before B9 release signing — not blocking current work", "blocking": false},
-    {"action": "Confirm Option A/B/C for Contrapunk FX reuse before A6 reverb work", "context": "Default plan: Option A (keep Elixir self-contained); revisit as Option B post A-Cut", "blocking": false}
+    {
+      "action": "Reserve bundle IDs com.contrapunk.elixir.standalone and com.contrapunk.elixir.plugin",
+      "context": "Required before B9 release signing/notarization",
+      "blocking": false
+    },
+    {
+      "action": "Decide whether to keep, move, or delete generated context.md reuse-audit artifact",
+      "context": "Subagent wrote repo-root context.md with reuse audit; likely should be moved to planning/docs or deleted before final commit.",
+      "blocking": false
+    },
+    {
+      "action": "Review/approve commit scope",
+      "context": "Working tree includes code, GSD install files, planning state, stop-hook config, and untracked rigor.yaml/context.md; should be split into sensible commits.",
+      "blocking": false
+    }
   ],
   "decisions": [
-    {"decision": "Track A (replace src/synth/) takes priority over Track B (standalone product); both share elixir-core", "rationale": "Locked decisions §10.1-§10.6 in ELIXIR-PLAN.md", "phase": "21"},
-    {"decision": "A-Cut waits for full feature parity (post-A6) not minimum-viable (post-A5)", "rationale": "Locked decision §10.2 — avoid shipping a partial synth as the new default", "phase": "21"},
-    {"decision": "Elixir UI uses egui in a separate window/process from Contrapunk's Tauri+Svelte UI", "rationale": "Locked decision §10.3 — different products, different UI surfaces", "phase": "21"},
-    {"decision": "Schroeder reverb in A5; FDN-16 deferred to A6", "rationale": "Schroeder ships in 379 lines and works; A6's design-doc-targeted FDN-16 supersedes it once spectral features land", "phase": "21"},
-    {"decision": "No DRM, no telemetry, no cloud features, no auto-update, no mobile in v1", "rationale": "Documented in ELIXIR-DESIGN.md §14 (Scope, Policies, Exclusions)", "phase": "21"},
-    {"decision": "Mutex-guarded Engine in elixir-standalone is demo-grade; lock-free atoms + SPSC ringbuf land in B4", "rationale": "Contention window is microseconds; no audible artifacts; deferred to plugin-shipping phase", "phase": "21"},
-    {"decision": "Contrapunk's existing src/fx/ NOT reused for Elixir's bundled FX (Option A in prior conversation)", "rationale": "Cleaner dep graph; A6 rewrites the reverb anyway; revisit post A-Cut as Option B (extract to contrapunk-fx crate)", "phase": "21"}
+    {
+      "decision": "Proceed A6-first toward Elixir core parity",
+      "rationale": "User asked to complete Elixir; locked plan says A-Cut waits for post-A6 full parity.",
+      "phase": "21"
+    },
+    {
+      "decision": "Keep Elixir FX self-contained through A6",
+      "rationale": "Avoid premature root FX coupling; revisit extraction/shared-FX after A-Cut or after primitive APIs stabilize.",
+      "phase": "21"
+    },
+    {
+      "decision": "Do not make elixir-core depend on root contrapunk/src/fx/src/chain/transport",
+      "rationale": "Would break no_std/wasm boundary and/or create dependency cycles; reuse via host adapters and neutral crates instead.",
+      "phase": "21"
+    },
+    {
+      "decision": "Start reuse extraction with contrapunk-dsp primitives",
+      "rationale": "Avoid reinventing low-level helpers while preserving clean core architecture.",
+      "phase": "21"
+    },
+    {
+      "decision": "Set context window to 400k and pause threshold to 90%",
+      "rationale": "User indicated current context window is likely 400k and requested pause at 90% context usage.",
+      "phase": "21"
+    }
+  ],
+  "background_processes": [],
+  "validation": [
+    {
+      "command": "cargo test -p contrapunk-dsp",
+      "status": "passed",
+      "details": "1 test passed"
+    },
+    {
+      "command": "cargo test -p elixir-core --lib",
+      "status": "passed",
+      "details": "82 tests passed"
+    },
+    {
+      "command": "cargo check -p elixir-core --target wasm32-unknown-unknown",
+      "status": "passed",
+      "details": "wasm/no_std check passed"
+    }
   ],
   "uncommitted_files": [
-    "ELIXIR-DESIGN.md (expanded with §§9-14; ~13k new words)",
-    "crates/elixir-standalone/src/ui.rs (B6.1 polish + B6.2 visual rewrite — knobs, curves, piano keys)"
+    "M .claude/hooks/stop-autoloop.sh",
+    " M .gitignore",
+    " D .planning/HANDOFF.json",
+    " M .planning/STATE.md",
+    " M .planning/config.json",
+    " M Cargo.lock",
+    " M Cargo.toml",
+    " M crates/elixir-core/Cargo.toml",
+    " M crates/elixir-core/src/filter.rs",
+    " M crates/elixir-core/src/fx/mod.rs",
+    " M crates/elixir-core/src/fx/reverb.rs",
+    " M crates/elixir-core/src/lib.rs",
+    " M crates/elixir-core/src/osc.rs",
+    " M crates/elixir-core/src/util.rs",
+    " M crates/elixir-core/src/voice.rs",
+    "?? .pi/",
+    "?? context.md",
+    "?? crates/contrapunk-dsp/",
+    "?? crates/elixir-core/src/fx/modulated.rs",
+    "?? rigor.yaml"
   ],
-  "next_action": "Decide commit strategy for uncommitted work. Then either A6 (spectral features, ~4 wk) or recommended B3+B4 (plugin scaffold, ~1.5 wk) to ship the engine into DAWs earlier.",
-  "context_notes": "Session built A0→A5 + B0→B1 + B6 + UI polish + visual rewrite end-to-end in 6 commits. ELIXIR-DESIGN.md grew from 9.5k to 22.5k words covering everything technical AND policy. Elixir standalone binary at target/release/elixir-standalone has knobs/curves/piano keys live; computer keyboard a w s e d f t g y h u j k plays chromatic from C4; midir auto-detects IAC Bus 1. A/B parity with legacy Synth at A4-with-matched-filter-cutoff measures -58.5 dBFS RMS diff. 58 elixir-core tests + 5 block tests + 3 parity tests all pass. WASM target compiles clean. No DRM/telemetry/mobile per §14. Six tracked-but-unpushed commits 6a36f311..39cbf546."
+  "next_action": "Start by hoisting A6 filter coefficient calculations out of per-sample FilterModel::tick paths, then rerun cargo test -p elixir-core --lib and cargo check -p elixir-core --target wasm32-unknown-unknown.",
+  "context_notes": "We paused after implementing a tested A6 scaffold and then performing a reuse audit. The key mental model: elixir-core remains host-agnostic/no_std; root Contrapunk infrastructure is reused at adapter layers; generic DSP helpers go into contrapunk-dsp. Do not import src/fx or src/chain into elixir-core. Before more UI/plugin work, address the hot-path filter coefficient CPU risk and decide how to handle the generated context.md artifact. Placeholder summary grep reported many historical placeholder hits in older phases; they are not current Phase 21 blockers. No background processes are running."
 }
