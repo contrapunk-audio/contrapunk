@@ -1,261 +1,228 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-18T16:30:46.494Z",
+  "timestamp": "2026-05-18T17:49:50.850Z",
   "context": "phase",
   "phase": "21",
   "phase_name": "Elixir Milestone (v1.5 / elixir-v0.1.0)",
   "phase_dir": ".planning/phases/21-elixir-milestone",
-  "plan": "21.A6",
-  "task": "A6-core-scaffold",
+  "plan": "21.B5",
+  "task": "manual-qa-standalone-and-integrated-synth",
   "total_tasks": 24,
   "status": "paused",
   "completed_tasks": [
     {
-      "id": "A0",
-      "name": "Workspace bootstrap + feature flag",
+      "id": "A6",
+      "name": "Spectral oscillator + FX completion",
       "status": "done",
-      "commit": "6a36f311"
+      "commit": "d030825e",
+      "progress": "A6.1-A6.8 complete: spectral morphs, phase distortion, unison, A6 FX family, filter models, hot-path coeff prep, UI exposure, approximation docs."
     },
     {
-      "id": "A1",
-      "name": "Bare oscillator + ADSR + sine wavetable + Catmull-Rom",
+      "id": "A-Cut.1",
+      "name": "Feature-gated Tauri Elixir synth cutover",
       "status": "done",
-      "commit": "6a36f311"
+      "commit": "eaffc09e",
+      "progress": "Tauri audio chain selects ElixirSynthBlock behind src-tauri elixir-synth feature."
     },
     {
-      "id": "B0",
-      "name": "Standalone cpal demo binary",
+      "id": "A-Cut.2",
+      "name": "Existing SynthEvent and SynthParams bridge",
       "status": "done",
-      "commit": "6a36f311"
+      "commit": "f8375b35",
+      "progress": "ElixirSynthBlock drains router SynthEvent receiver and maps existing built-in synth params to Elixir."
     },
     {
-      "id": "B1",
-      "name": "midir live MIDI input",
+      "id": "B3",
+      "name": "elixir-plugin nih-plug skeleton",
       "status": "done",
-      "commit": "6a36f311"
+      "commit": "193040f2",
+      "progress": "CLAP/VST3 instrument crate added with MIDI input, mono/stereo audio output, Elixir Engine rendering, and Gain param."
     },
     {
-      "id": "A2",
-      "name": "16-voice polyphony + voice stealing + sustain + kill ramp",
+      "id": "B4.1",
+      "name": "Core DAW automation params",
       "status": "done",
-      "commit": "880cc852"
+      "commit": "8c9b2bb6",
+      "progress": "Plugin exposes gain, amp ADSR, oscillator morph/phase/unison, and filter params."
     },
     {
-      "id": "A3",
-      "name": "Modulation matrix v1, LFO + routes + mod-of-mod",
+      "id": "B4.2",
+      "name": "FX DAW automation params",
       "status": "done",
-      "commit": "ee0b587d"
+      "commit": "0679c36a",
+      "progress": "Plugin exposes Drive/Delay/Reverb/FDN/Chorus/Flanger/Phaser/Compressor automation; FX allocated once, bypass via mix=0."
     },
     {
-      "id": "A4",
-      "name": "SVF lowpass filter + cutoff modulation",
+      "id": "B5.1",
+      "name": "Preset schema and Vital importer",
       "status": "done",
-      "commit": "3f28adbd"
+      "commit": "8f4bf7a1",
+      "progress": "elixir-preset crate parses .vital JSON and .vitalbank ZIPs, preserves raw settings, tracks .vitaltable paths."
     },
     {
-      "id": "A5",
-      "name": "FX bus: Drive + Delay + Reverb + 4-slot chain",
+      "id": "B5.2",
+      "name": "Standalone Vital import UI",
       "status": "done",
-      "commit": "52a34152"
+      "commit": "6aa08cab",
+      "progress": "Standalone PRESETS / VITAL IMPORT card scans ~/Downloads, imports loose .vital + .vitalbank, lists presets, applies mapped subset."
     },
     {
-      "id": "B6",
-      "name": "Standalone egui UI v1",
+      "id": "SKILLS",
+      "name": "Reusable patterns codified",
       "status": "done",
-      "commit": "39cbf546"
-    },
-    {
-      "id": "B6.1/B6.2",
-      "name": "Standalone UI polish + visual rewrite",
-      "status": "done",
-      "commit": "71045556"
-    },
-    {
-      "id": "DESIGN-DOC",
-      "name": "ELIXIR-DESIGN.md expansion through policy/scope sections",
-      "status": "done",
-      "commit": "71045556"
-    },
-    {
-      "id": "GSD-PI",
-      "name": "Installed pi-gsd, reconciled Phase 21 state, set 400k context window and 90% pause threshold",
-      "status": "done",
-      "commit": "uncommitted"
-    },
-    {
-      "id": "A6.1",
-      "name": "A6 oscillator controls scaffold",
-      "status": "done",
-      "progress": "Added spectral morph, phase distortion, unison style enums/params; wired OscParams through Engine -> Voice -> Oscillator; added engine and oscillator tests."
-    },
-    {
-      "id": "A6.2",
-      "name": "A6 FX family scaffold",
-      "status": "done",
-      "progress": "Added Chorus, Flanger, Phaser, Compressor, FdnReverb variants; expanded FX_SLOTS to 8; added engine reachability tests; fixed FDN sample-rate/decay tracking."
-    },
-    {
-      "id": "A6.3",
-      "name": "A6 filter model scaffold",
-      "status": "done",
-      "progress": "Added FilterKind/FilterModel with DigitalSvf, Diode, Dirty, Formant, Phaser; wired through Engine/Voice; added model tests and engine integration tests."
-    },
-    {
-      "id": "REUSE-AUDIT",
-      "name": "Reuse audit to avoid reinventing existing Contrapunk pieces",
-      "status": "done",
-      "progress": "Parallel subagents audited root FX/chain/transport/MIDI/plugin/UI reuse. Decision: do not depend on root modules from elixir-core; extract no_std primitives into shared crates."
-    },
-    {
-      "id": "DSP-EXTRACT-1",
-      "name": "Created shared no_std contrapunk-dsp primitive crate",
-      "status": "done",
-      "progress": "Added pitch::midi_to_freq, window::equal_power/frac helpers, delay_line::StereoDelayLine, allpass::Allpass1, matrix::hadamard16, sat::quick_tanh; migrated elixir-core helpers to reuse these."
+      "commit": "f5c9cd3d,193040f2,8f4bf7a1",
+      "progress": "Added skills for audio-chain cutover, nih-plug skeleton, and Vital preset import."
     }
   ],
   "remaining_tasks": [
     {
-      "id": "A6.4",
-      "name": "Hoist filter coefficient calculations out of per-sample/per-voice hot path",
+      "id": "QA-standalone",
+      "name": "Manual standalone test",
+      "status": "not_started",
+      "details": "Run elixir-standalone, test MIDI/audio, A6 controls, FX controls, Vital scan/apply from ~/Downloads."
+    },
+    {
+      "id": "QA-integrated-synth",
+      "name": "Manual integrated Tauri synth test",
+      "status": "not_started",
+      "details": "Run Tauri with --features elixir-synth, confirm built-in synth path uses Elixir and existing UI controls still affect sound."
+    },
+    {
+      "id": "B5.3",
+      "name": "Plugin preset state serialization/loading",
       "status": "not_started"
     },
     {
-      "id": "A6.5",
-      "name": "Add robust oscillator golden metric tests for all 12 morphs, 9 phase modes, and 11 unison styles",
+      "id": "B7",
+      "name": "Wavetable editor and full Vital wavetable/spectral parity",
       "status": "not_started"
     },
     {
-      "id": "A6.6",
-      "name": "Expose A6 oscillator/filter/FX controls in elixir-standalone UI",
+      "id": "B8",
+      "name": "Headless renderer",
       "status": "not_started"
     },
     {
-      "id": "A6.7",
-      "name": "Decide whether to extract contrapunk-fx now or keep only contrapunk-dsp primitives until A6 stabilizes",
-      "status": "not_started"
-    },
-    {
-      "id": "A6.8",
-      "name": "Document approximation vs final FFT/IFFT spectral wavetable parity",
-      "status": "not_started"
-    },
-    {
-      "id": "A-Cut",
-      "name": "Wire Elixir into Contrapunk built-in synth path behind feature flag after A6 parity",
-      "status": "not_started"
-    },
-    {
-      "id": "B3",
-      "name": "elixir-plugin skeleton using nih-plug patterns from existing plugin crate",
-      "status": "not_started"
-    },
-    {
-      "id": "B4-B9",
-      "name": "Plugin full params, preset format, wavetable editor, headless renderer, public release",
+      "id": "B9",
+      "name": "Public elixir-v0.1.0 release/signing",
       "status": "not_started"
     },
     {
       "id": "C0-C4",
-      "name": "Multi-plugin hosting: reuse existing CLAP host path, then VST3/AU modules",
+      "name": "Multi-plugin hosting tracks",
       "status": "not_started"
     }
   ],
   "blockers": [
     {
-      "description": "A6 filter model scaffold currently computes tanf/coefs in per-sample tick paths for several models; this is CPU-risky for 16 voices.",
-      "type": "technical",
-      "workaround": "Hoist per-block coefficients/prepared filter params before marking A6 real-time-ready."
+      "description": "Standalone and integrated Tauri Elixir synth have not been manually audio-tested after recent implementation commits.",
+      "type": "human_action",
+      "workaround": "Resume by doing manual QA before adding more feature surface."
     },
     {
-      "description": "A6 spectral morphs are scalar sine-table approximations, not final FFT/IFFT spectral wavetable parity.",
+      "description": "Vital import is intentionally subset-only; full .vitaltable wavetable and FFT/IFFT spectral parity is not implemented.",
       "type": "technical",
-      "workaround": "Keep labels/docs honest; add golden metric tests now and implement real wavetable/spectral infrastructure before claiming full A6 parity."
+      "workaround": "Raw Vital settings and wavetable paths are preserved for B7."
+    },
+    {
+      "description": "Plugin preset save/load/state serialization is not yet wired to elixir-preset.",
+      "type": "technical",
+      "workaround": "B5.3 should map ElixirParams <-> ElixirPreset and persist through nih-plug state."
     }
   ],
   "human_actions_pending": [
     {
+      "action": "Manually test elixir-standalone",
+      "context": "Need to verify sound, A6 controls, FX, and Vital import/apply from ~/Downloads work in a real UI/audio session.",
+      "blocking": true
+    },
+    {
+      "action": "Manually test Tauri integrated Elixir synth",
+      "context": "Need to verify `cd src-tauri && cargo tauri dev --features elixir-synth` or equivalent produces audio through the built-in synth path and UI params still work.",
+      "blocking": true
+    },
+    {
       "action": "Reserve bundle IDs com.contrapunk.elixir.standalone and com.contrapunk.elixir.plugin",
-      "context": "Required before B9 release signing/notarization",
-      "blocking": false
-    },
-    {
-      "action": "Decide whether to keep, move, or delete generated context.md reuse-audit artifact",
-      "context": "Subagent wrote repo-root context.md with reuse audit; likely should be moved to planning/docs or deleted before final commit.",
-      "blocking": false
-    },
-    {
-      "action": "Review/approve commit scope",
-      "context": "Working tree includes code, GSD install files, planning state, stop-hook config, and untracked rigor.yaml/context.md; should be split into sensible commits.",
+      "context": "Required before B9 signing/notarization.",
       "blocking": false
     }
   ],
   "decisions": [
     {
-      "decision": "Proceed A6-first toward Elixir core parity",
-      "rationale": "User asked to complete Elixir; locked plan says A-Cut waits for post-A6 full parity.",
+      "decision": "Defer contrapunk-fx extraction",
+      "rationale": "Elixir FX stay self-contained through A-Cut/B4; shared low-level primitives live in contrapunk-dsp.",
       "phase": "21"
     },
     {
-      "decision": "Keep Elixir FX self-contained through A6",
-      "rationale": "Avoid premature root FX coupling; revisit extraction/shared-FX after A-Cut or after primitive APIs stabilize.",
+      "decision": "A6 spectral morphs are scalar approximations until B7",
+      "rationale": "Full FFT/IFFT wavetable infrastructure belongs with the B7 wavetable editor; A6 remains allocation-free and honest in docs.",
       "phase": "21"
     },
     {
-      "decision": "Do not make elixir-core depend on root contrapunk/src/fx/src/chain/transport",
-      "rationale": "Would break no_std/wasm boundary and/or create dependency cycles; reuse via host adapters and neutral crates instead.",
+      "decision": "Vital import preserves raw settings and maps only a conservative subset now",
+      "rationale": "Lets users pull in real Downloads assets immediately while keeping full sonic parity queued for B7.",
       "phase": "21"
     },
     {
-      "decision": "Start reuse extraction with contrapunk-dsp primitives",
-      "rationale": "Avoid reinventing low-level helpers while preserving clean core architecture.",
+      "decision": "Plugin FX bypass uses mix=0 instead of replacing FxSlot",
+      "rationale": "Preserves delay/reverb/modulation state and avoids process-time allocation.",
       "phase": "21"
     },
     {
-      "decision": "Set context window to 400k and pause threshold to 90%",
-      "rationale": "User indicated current context window is likely 400k and requested pause at 90% context usage.",
+      "decision": "Create skills for reusable patterns",
+      "rationale": "User explicitly wants skills whenever patterns emerge; added audio-chain cutover, nih-plug skeleton, and Vital import skills.",
       "phase": "21"
     }
   ],
   "background_processes": [],
   "validation": [
     {
-      "command": "cargo test -p contrapunk-dsp",
-      "status": "passed",
-      "details": "1 test passed"
-    },
-    {
       "command": "cargo test -p elixir-core --lib",
       "status": "passed",
-      "details": "82 tests passed"
+      "details": "85 passed after A6."
     },
     {
-      "command": "cargo check -p elixir-core --target wasm32-unknown-unknown",
+      "command": "cargo check -p contrapunk --features elixir-synth",
       "status": "passed",
-      "details": "wasm/no_std check passed"
+      "details": "A-Cut feature-on root build clean (pre-existing warnings only)."
+    },
+    {
+      "command": "cargo check -p contrapunk-tauri --features elixir-synth",
+      "status": "passed",
+      "details": "Tauri feature-on build clean (pre-existing warnings only)."
+    },
+    {
+      "command": "cargo test -p contrapunk --features elixir-synth chain::elixir_block --lib",
+      "status": "passed",
+      "details": "7 passed."
+    },
+    {
+      "command": "cargo check -p elixir-plugin",
+      "status": "passed",
+      "details": "B4 plugin params/FX automation compile."
+    },
+    {
+      "command": "cargo test -p elixir-preset",
+      "status": "passed",
+      "details": "3 passed; Downloads test ignored by default."
+    },
+    {
+      "command": "cargo test -p elixir-preset --test downloads_vital -- --ignored",
+      "status": "passed",
+      "details": "Validated current ~/Downloads Vital assets: 6 loose .vital files + Vital Account.vitalbank (75 presets, 21 vitaltables)."
+    },
+    {
+      "command": "cargo check -p elixir-standalone",
+      "status": "passed",
+      "details": "Standalone Vital import UI compiles."
     }
   ],
   "uncommitted_files": [
-    "M .claude/hooks/stop-autoloop.sh",
-    " M .gitignore",
-    " D .planning/HANDOFF.json",
-    " M .planning/STATE.md",
-    " M .planning/config.json",
-    " M Cargo.lock",
-    " M Cargo.toml",
-    " M crates/elixir-core/Cargo.toml",
-    " M crates/elixir-core/src/filter.rs",
-    " M crates/elixir-core/src/fx/mod.rs",
-    " M crates/elixir-core/src/fx/reverb.rs",
-    " M crates/elixir-core/src/lib.rs",
-    " M crates/elixir-core/src/osc.rs",
-    " M crates/elixir-core/src/util.rs",
-    " M crates/elixir-core/src/voice.rs",
-    "?? .pi/",
-    "?? context.md",
-    "?? crates/contrapunk-dsp/",
-    "?? crates/elixir-core/src/fx/modulated.rs",
-    "?? rigor.yaml"
+    "M .planning/STATE.md (timestamp-only auto-update; not part of work)"
   ],
-  "next_action": "Start by hoisting A6 filter coefficient calculations out of per-sample FilterModel::tick paths, then rerun cargo test -p elixir-core --lib and cargo check -p elixir-core --target wasm32-unknown-unknown.",
-  "context_notes": "We paused after implementing a tested A6 scaffold and then performing a reuse audit. The key mental model: elixir-core remains host-agnostic/no_std; root Contrapunk infrastructure is reused at adapter layers; generic DSP helpers go into contrapunk-dsp. Do not import src/fx or src/chain into elixir-core. Before more UI/plugin work, address the hot-path filter coefficient CPU risk and decide how to handle the generated context.md artifact. Placeholder summary grep reported many historical placeholder hits in older phases; they are not current Phase 21 blockers. No background processes are running."
+  "placeholder_summary_findings": [
+    "Historical placeholder/TBD hits exist in older phase docs; no current Phase 21 placeholder summary blocker found."
+  ],
+  "next_action": "Start with manual QA: (1) run `cargo run -p elixir-standalone`, test audio/MIDI, A6 controls, FX, and Scan ~/Downloads for Vital + Apply selected; (2) run the Tauri app with `cd src-tauri && cargo tauri dev --features elixir-synth` (or cargo check/build if GUI launch is unavailable), verify built-in synth audio is Elixir and existing synth controls still affect sound.",
+  "context_notes": "Implementation has moved quickly and is committed through B5.2. Before adding B5.3/B7 work, user specifically wants to come back and test standalone plus integrated synth. Treat manual QA as the first resume task. Vital import is available but subset-only; do not claim full Vital parity until B7 wavetable infrastructure lands. Working tree should be clean except possible .planning/STATE.md timestamp churn."
 }
