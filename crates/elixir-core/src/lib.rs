@@ -22,10 +22,11 @@ pub mod tables;
 pub mod util;
 pub mod voice;
 
-use crate::filter::SvfCoeffs;
+use crate::filter::{FilterKind, FilterParams};
 use crate::fx::{FxSlot, FX_SLOTS};
 use crate::lfo::Lfo;
 use crate::modulation::{ModMatrix, ModRoute, ModSrc, MAX_GLOBAL_LFOS};
+use crate::osc::{OscParams, PhaseDistortionMode, SpectralMorph, UnisonStyle};
 use crate::tables::SineTable;
 use crate::voice::Voice;
 
@@ -56,6 +57,9 @@ pub struct Engine {
     lfos: [Lfo; MAX_GLOBAL_LFOS],
     /// Routing table + per-block destination accumulators.
     pub matrix: ModMatrix,
+    /// Engine-wide oscillator parameters (A6): spectral morph, phase
+    /// distortion, and unison stack. Defaults preserve the A1 sine path.
+    osc_params: OscParams,
     /// Base voice-filter cutoff in Hz. Modulation adds to this each
     /// block; the sum is clamped to a safe range before coefficients
     /// are derived. A4 default ≈ 8 kHz (wide-open) so an empty preset
@@ -64,6 +68,12 @@ pub struct Engine {
     /// Voice-filter resonance, `0..1`. `0.0` = flat lowpass; values
     /// approaching `1.0` self-oscillate.
     filter_resonance: f32,
+    /// A6 filter model and color controls.
+    filter_kind: FilterKind,
+    filter_drive: f32,
+    filter_gain: f32,
+    filter_morph_x: f32,
+    filter_morph_y: f32,
     /// Post-voice FX chain. Slots are processed in order; `FxSlot::Empty`
     /// is skipped. Reorder by swapping slots.
     pub fx_chain: [FxSlot; FX_SLOTS],
@@ -91,8 +101,14 @@ impl Engine {
             note_counter: 0,
             lfos: core::array::from_fn(|_| Lfo::new()),
             matrix: ModMatrix::new(),
+            osc_params: OscParams::default(),
             filter_cutoff_hz: 8_000.0,
             filter_resonance: 0.0,
+            filter_kind: FilterKind::DigitalSvf,
+            filter_drive: 1.0,
+            filter_gain: 1.0,
+            filter_morph_x: 0.0,
+            filter_morph_y: 0.0,
             fx_chain: core::array::from_fn(|_| FxSlot::Empty),
             amp_attack_secs: 0.005,
             amp_decay_secs: 0.120,
@@ -142,6 +158,33 @@ impl Engine {
     }
     pub fn master_gain(&self) -> f32 {
         self.master_gain
+    }
+
+    /// A6 oscillator params. Defaults are passthrough/single-voice sine,
+    /// preserving A1-A5 render behavior unless callers opt in.
+    pub fn osc_params(&self) -> OscParams {
+        self.osc_params
+    }
+    pub fn set_spectral_morph(&mut self, morph: SpectralMorph) {
+        self.osc_params.spectral_morph = morph;
+    }
+    pub fn set_morph_amount(&mut self, amount: f32) {
+        self.osc_params.morph_amount = amount.clamp(0.0, 1.0);
+    }
+    pub fn set_phase_distortion(&mut self, mode: PhaseDistortionMode) {
+        self.osc_params.phase_distortion = mode;
+    }
+    pub fn set_phase_amount(&mut self, amount: f32) {
+        self.osc_params.phase_amount = amount.clamp(0.0, 1.0);
+    }
+    pub fn set_unison_voices(&mut self, voices: u8) {
+        self.osc_params.unison_voices = voices.clamp(1, crate::osc::MAX_UNISON as u8);
+    }
+    pub fn set_unison_detune_cents(&mut self, cents: f32) {
+        self.osc_params.unison_detune_cents = cents.clamp(0.0, 1200.0);
+    }
+    pub fn set_unison_style(&mut self, style: UnisonStyle) {
+        self.osc_params.unison_style = style;
     }
 
     /// Replace the FX in slot `idx`. Returns the previous slot.
@@ -212,11 +255,39 @@ impl Engine {
     pub fn set_filter_resonance(&mut self, r: f32) {
         self.filter_resonance = r.clamp(0.0, 1.0);
     }
+    pub fn set_filter_kind(&mut self, kind: FilterKind) {
+        self.filter_kind = kind;
+        for v in self.voices.iter_mut() {
+            v.set_filter_kind(kind);
+        }
+    }
+    pub fn set_filter_drive(&mut self, drive: f32) {
+        self.filter_drive = drive.clamp(0.1, 32.0);
+    }
+    pub fn set_filter_gain(&mut self, gain: f32) {
+        self.filter_gain = gain.clamp(0.0, 4.0);
+    }
+    pub fn set_filter_morph(&mut self, x: f32, y: f32) {
+        self.filter_morph_x = x.clamp(0.0, 1.0);
+        self.filter_morph_y = y.clamp(0.0, 1.0);
+    }
     pub fn filter_cutoff_hz(&self) -> f32 {
         self.filter_cutoff_hz
     }
     pub fn filter_resonance(&self) -> f32 {
         self.filter_resonance
+    }
+    pub fn filter_kind(&self) -> FilterKind {
+        self.filter_kind
+    }
+    pub fn filter_drive(&self) -> f32 {
+        self.filter_drive
+    }
+    pub fn filter_gain(&self) -> f32 {
+        self.filter_gain
+    }
+    pub fn filter_morph(&self) -> (f32, f32) {
+        (self.filter_morph_x, self.filter_morph_y)
     }
 
     /// Engage / release the sustain pedal (CC 64). When released, any
@@ -377,20 +448,30 @@ impl Engine {
             ModSrc::Lfo(i) => lfo_values.get(i as usize).copied().unwrap_or(0.0),
         });
 
-        // (6) compute filter coefficients from base + cutoff mod
+        // (6) compute filter params from base + cutoff mod
         let effective_cutoff = self.filter_cutoff_hz + self.matrix.filter_cutoff_mod_hz;
-        let coeffs = SvfCoeffs::from_params(
-            effective_cutoff,
-            self.filter_resonance,
-            self.sample_rate as f32,
-        );
+        let filter_params = FilterParams {
+            kind: self.filter_kind,
+            cutoff_hz: effective_cutoff,
+            resonance: self.filter_resonance,
+            drive: self.filter_drive,
+            gain: self.filter_gain,
+            morph_x: self.filter_morph_x,
+            morph_y: self.filter_morph_y,
+            sample_rate: self.sample_rate as f32,
+        };
+
+        // (6b) prepare filter coefficients ONCE for the block. The hot
+        //      loop below is now `tanf`-free for every voice.
+        let filter_coeffs = filter_params.prepare_coeffs();
 
         // (7) render voices at unity into the interleaved buffer; FX
         //     and master gain apply on top.
         for f in 0..frames {
             let mut mix = 0.0f32;
             for v in self.voices.iter_mut() {
-                mix += v.tick(&self.sine_table, &coeffs);
+                mix +=
+                    v.tick_with_filter_coeffs(&self.sine_table, &filter_coeffs, &self.osc_params);
             }
             let base = f * channels;
             for c in 0..channels {
@@ -618,6 +699,143 @@ mod tests {
             rms_driven > rms_clean * 1.2,
             "drive didn't change signal level: clean={rms_clean}, driven={rms_driven}"
         );
+    }
+
+    #[test]
+    fn a6_fx_variants_are_engine_reachable() {
+        use crate::fx::{Chorus, Compressor, FdnReverb, Flanger, Phaser};
+        assert_eq!(FX_SLOTS, 8);
+        let clean = render_note_with(|_| {});
+        let variants = [
+            FxSlot::FdnReverb(FdnReverb::new(48_000.0)),
+            FxSlot::Chorus(Chorus::new(48_000.0)),
+            FxSlot::Flanger(Flanger::new(48_000.0)),
+            FxSlot::Phaser(Phaser::new(48_000.0)),
+            FxSlot::Compressor(Compressor::new(48_000.0)),
+        ];
+        for (idx, slot) in variants.into_iter().enumerate() {
+            let rendered = render_note_with(|e| {
+                e.set_fx_slot(idx, slot);
+            });
+            assert!(
+                rms_diff(&clean, &rendered) > 1.0e-5,
+                "{} did not affect engine render",
+                rendered.len()
+            );
+        }
+    }
+
+    // ─── A6 oscillator integration tests ────────────────────────────
+
+    fn render_note_with(configure: impl FnOnce(&mut Engine)) -> Vec<f32> {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        configure(&mut e);
+        e.note_on(60, 100);
+        let mut buf = vec![0.0f32; 4096];
+        e.process(&mut buf, 2);
+        buf
+    }
+
+    #[test]
+    fn engine_spectral_morph_control_changes_audio() {
+        let clean = render_note_with(|_| {});
+        let morphed = render_note_with(|e| {
+            e.set_spectral_morph(SpectralMorph::Skew);
+            e.set_morph_amount(1.0);
+        });
+        assert!(rms_diff(&clean, &morphed) > 1.0e-3);
+    }
+
+    #[test]
+    fn engine_phase_distortion_control_changes_audio() {
+        let clean = render_note_with(|_| {});
+        let bent = render_note_with(|e| {
+            e.set_phase_distortion(PhaseDistortionMode::Sync);
+            e.set_phase_amount(0.8);
+        });
+        assert!(rms_diff(&clean, &bent) > 1.0e-3);
+    }
+
+    #[test]
+    fn engine_unison_control_changes_audio_and_stays_bounded() {
+        let clean = render_note_with(|_| {});
+        let unison = render_note_with(|e| {
+            e.set_unison_voices(8);
+            e.set_unison_style(UnisonStyle::Wide);
+            e.set_unison_detune_cents(18.0);
+        });
+        let peak = unison.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        assert!(rms_diff(&clean, &unison) > 1.0e-4);
+        assert!(peak.is_finite() && peak <= 1.0, "bad unison peak {peak}");
+    }
+
+    fn rms_diff(a: &[f32], b: &[f32]) -> f32 {
+        (a.iter()
+            .zip(b)
+            .map(|(a, b)| {
+                let d = a - b;
+                d * d
+            })
+            .sum::<f32>()
+            / a.len().min(b.len()) as f32)
+            .sqrt()
+    }
+
+    // ─── A6 filter model integration tests ─────────────────────────
+
+    #[test]
+    fn engine_filter_kind_switch_keeps_audio_alive() {
+        for kind in FilterKind::ALL {
+            let mut e = Engine::new();
+            e.prepare(48_000, 256);
+            e.set_filter_kind(kind);
+            e.set_filter_cutoff_hz(1_200.0);
+            e.set_filter_resonance(0.55);
+            e.set_filter_drive(2.0);
+            e.note_on(60, 100);
+            let mut buf = vec![0.0f32; 4096];
+            e.process(&mut buf, 2);
+            let peak = buf.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+            assert!(peak.is_finite());
+            assert!(peak > 0.0, "filter kind {kind:?} rendered silence");
+        }
+    }
+
+    #[test]
+    fn engine_diode_filter_changes_render_vs_svf() {
+        let clean = render_note_with(|e| {
+            e.set_filter_kind(FilterKind::DigitalSvf);
+            e.set_filter_cutoff_hz(900.0);
+            e.set_filter_resonance(0.4);
+        });
+        let diode = render_note_with(|e| {
+            e.set_filter_kind(FilterKind::Diode);
+            e.set_filter_cutoff_hz(900.0);
+            e.set_filter_resonance(0.7);
+            e.set_filter_drive(4.0);
+        });
+        assert!(rms_diff(&clean, &diode) > 1.0e-4);
+    }
+
+    #[test]
+    fn engine_formant_and_phaser_filters_change_render_vs_svf() {
+        let clean = render_note_with(|e| {
+            e.set_filter_kind(FilterKind::DigitalSvf);
+            e.set_filter_cutoff_hz(2_000.0);
+        });
+        let formant = render_note_with(|e| {
+            e.set_filter_kind(FilterKind::Formant);
+            e.set_filter_cutoff_hz(1_000.0);
+            e.set_filter_morph(1.0, 0.0);
+        });
+        let phaser = render_note_with(|e| {
+            e.set_filter_kind(FilterKind::Phaser);
+            e.set_filter_cutoff_hz(1_500.0);
+            e.set_filter_resonance(0.8);
+        });
+        assert!(rms_diff(&clean, &formant) > 1.0e-4);
+        assert!(rms_diff(&clean, &phaser) > 1.0e-4);
     }
 
     // ─── A4 filter tests ────────────────────────────────────────────

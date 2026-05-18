@@ -45,3 +45,12 @@ au-wrapper/build/
 !.claude/skills/
 !.claude/agents/
 .claude/.stop-autoloop-state
+
+# Pi project-local packages/prompts. Keep GSD checked in so pi sessions
+# have project GSD prompts, but ignore future local pi runtime state.
+.pi/*
+!.pi/gsd/
+!.pi/gsd/**
+
+# Local rigor-gate config (ephemeral, per-checkout)
+rigor.yaml

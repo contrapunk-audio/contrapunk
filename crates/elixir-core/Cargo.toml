@@ -11,6 +11,7 @@ name = "elixir_core"
 path = "src/lib.rs"
 
 [dependencies]
+contrapunk-dsp = { path = "../contrapunk-dsp" }
 # `libm` provides `sinf` / `powf` etc. for no_std builds — we need them
 # both for the sine table and for MIDI→Hz conversion. It is no_std-safe
 # and tiny (~70 KB compiled).

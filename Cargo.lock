@@ -855,6 +855,7 @@ dependencies = [
  "clap",
  "contrapunk-audio",
  "contrapunk-chord",
+ "contrapunk-dsp",
  "contrapunk-harmony",
  "contrapunk-midi",
  "contrapunk-preset",
@@ -904,6 +905,13 @@ dependencies = [
  "serde",
  "serde_json",
  "wmidi",
+]
+
+[[package]]
+name = "contrapunk-dsp"
+version = "0.0.1"
+dependencies = [
+ "libm",
 ]
 
 [[package]]
@@ -1660,6 +1668,7 @@ dependencies = [
 name = "elixir-core"
 version = "0.0.1"
 dependencies = [
+ "contrapunk-dsp",
  "libm",
 ]
 

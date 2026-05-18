@@ -9,11 +9,15 @@ use std::sync::{Arc, Mutex};
 
 use eframe::egui::{
     self, vec2, Align2, Color32, FontId, Frame, Key, Pos2, Rect, Response, Rounding, Sense, Shape,
-    Stroke, Ui, Vec2,
+    Stroke, Ui,
 };
 
+use elixir_core::filter::FilterKind;
 use elixir_core::fx::{Delay, Drive, FxSlot, Reverb};
+use elixir_core::osc::{PhaseDistortionMode, SpectralMorph, UnisonStyle, MAX_UNISON};
 use elixir_core::{Engine, MAX_POLYPHONY};
+
+const ACCENT_OSC: Color32 = Color32::from_rgb(240, 200, 130);
 
 // ─── theme tokens ────────────────────────────────────────────────────
 
@@ -604,6 +608,18 @@ struct EngineSnapshot {
     amp_release_secs: f32,
     filter_cutoff_hz: f32,
     filter_resonance: f32,
+    filter_kind: FilterKind,
+    filter_drive: f32,
+    filter_gain: f32,
+    filter_morph_x: f32,
+    filter_morph_y: f32,
+    spectral_morph: SpectralMorph,
+    morph_amount: f32,
+    phase_distortion: PhaseDistortionMode,
+    phase_amount: f32,
+    unison_voices: u8,
+    unison_style: UnisonStyle,
+    unison_detune_cents: f32,
     drive_on: bool,
     drive_amount: f32,
     drive_mix: f32,
@@ -664,6 +680,8 @@ impl EngineSnapshot {
             FxSlot::Reverb(_) => (true, 0.85, 0.4, 0.30),
             _ => (false, 0.85, 0.4, 0.30),
         };
+        let osc = e.osc_params();
+        let (morph_x, morph_y) = e.filter_morph();
         Self {
             master_gain: e.master_gain(),
             amp_attack_secs: e.amp_attack_secs(),
@@ -672,6 +690,18 @@ impl EngineSnapshot {
             amp_release_secs: e.amp_release_secs(),
             filter_cutoff_hz: e.filter_cutoff_hz(),
             filter_resonance: e.filter_resonance(),
+            filter_kind: e.filter_kind(),
+            filter_drive: e.filter_drive(),
+            filter_gain: e.filter_gain(),
+            filter_morph_x: morph_x,
+            filter_morph_y: morph_y,
+            spectral_morph: osc.spectral_morph,
+            morph_amount: osc.morph_amount,
+            phase_distortion: osc.phase_distortion,
+            phase_amount: osc.phase_amount,
+            unison_voices: osc.unison_voices,
+            unison_style: osc.unison_style,
+            unison_detune_cents: osc.unison_detune_cents,
             drive_on,
             drive_amount,
             drive_mix,
@@ -878,9 +908,16 @@ impl eframe::App for ElixirApp {
 
                 ui.add_space(10.0);
 
+                // OSC card (A6)
+                card(ui, ACCENT_OSC, |ui| {
+                    self.draw_osc(ui);
+                });
+
+                ui.add_space(10.0);
+
                 // Filter card with frequency response curve
                 card(ui, ACCENT_FILTER, |ui| {
-                    section_title(ui, "FILTER (SVF LP)", ACCENT_FILTER);
+                    section_title(ui, "FILTER", ACCENT_FILTER);
                     filter_curve(
                         ui,
                         self.snapshot.filter_cutoff_hz,
@@ -888,34 +925,7 @@ impl eframe::App for ElixirApp {
                         ACCENT_FILTER,
                     );
                     ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        let mut c = self.snapshot.filter_cutoff_hz;
-                        if knob(
-                            ui,
-                            &mut c,
-                            &KnobSpec::log(50.0, 20_000.0, 8_000.0, "cutoff").with_fmt(KnobFmt::Hz),
-                            ACCENT_FILTER,
-                        )
-                        .changed()
-                        {
-                            if let Ok(mut e) = self.engine.lock() {
-                                e.set_filter_cutoff_hz(c);
-                            }
-                        }
-                        let mut q = self.snapshot.filter_resonance;
-                        if knob(
-                            ui,
-                            &mut q,
-                            &KnobSpec::linear(0.0, 0.99, 0.0, "Q").with_fmt(KnobFmt::Percent),
-                            ACCENT_FILTER,
-                        )
-                        .changed()
-                        {
-                            if let Ok(mut e) = self.engine.lock() {
-                                e.set_filter_resonance(q);
-                            }
-                        }
-                    });
+                    self.draw_filter_controls(ui);
                 });
 
                 ui.add_space(10.0);
@@ -1007,6 +1017,239 @@ impl eframe::App for ElixirApp {
 // ─── FX rows ─────────────────────────────────────────────────────────
 
 impl ElixirApp {
+    fn draw_osc(&mut self, ui: &mut Ui) {
+        section_title(ui, "OSCILLATOR (A6)", ACCENT_OSC);
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("morph").color(TEXT_DIM).small());
+            let mut morph = self.snapshot.spectral_morph;
+            egui::ComboBox::from_id_source("spectral_morph")
+                .selected_text(format!("{morph:?}"))
+                .show_ui(ui, |ui| {
+                    for m in SpectralMorph::ALL {
+                        if ui
+                            .selectable_value(&mut morph, m, format!("{m:?}"))
+                            .changed()
+                        {
+                            if let Ok(mut e) = self.engine.lock() {
+                                e.set_spectral_morph(m);
+                            }
+                        }
+                    }
+                });
+            let mut amt = self.snapshot.morph_amount;
+            if knob(
+                ui,
+                &mut amt,
+                &KnobSpec::linear(0.0, 1.0, 0.0, "amount").with_fmt(KnobFmt::Percent),
+                ACCENT_OSC,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_morph_amount(amt);
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("phase").color(TEXT_DIM).small());
+            let mut mode = self.snapshot.phase_distortion;
+            egui::ComboBox::from_id_source("phase_distortion")
+                .selected_text(format!("{mode:?}"))
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_value(&mut mode, PhaseDistortionMode::Off, "Off")
+                        .changed()
+                    {
+                        if let Ok(mut e) = self.engine.lock() {
+                            e.set_phase_distortion(PhaseDistortionMode::Off);
+                        }
+                    }
+                    for m in PhaseDistortionMode::ALL_A6 {
+                        if ui
+                            .selectable_value(&mut mode, m, format!("{m:?}"))
+                            .changed()
+                        {
+                            if let Ok(mut e) = self.engine.lock() {
+                                e.set_phase_distortion(m);
+                            }
+                        }
+                    }
+                });
+            let mut amt = self.snapshot.phase_amount;
+            if knob(
+                ui,
+                &mut amt,
+                &KnobSpec::linear(0.0, 1.0, 0.0, "amount").with_fmt(KnobFmt::Percent),
+                ACCENT_OSC,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_phase_amount(amt);
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("unison").color(TEXT_DIM).small());
+            let mut style = self.snapshot.unison_style;
+            egui::ComboBox::from_id_source("unison_style")
+                .selected_text(format!("{style:?}"))
+                .show_ui(ui, |ui| {
+                    for s in UnisonStyle::ALL {
+                        if ui
+                            .selectable_value(&mut style, s, format!("{s:?}"))
+                            .changed()
+                        {
+                            if let Ok(mut e) = self.engine.lock() {
+                                e.set_unison_style(s);
+                            }
+                        }
+                    }
+                });
+            let mut voices = self.snapshot.unison_voices as f32;
+            if knob(
+                ui,
+                &mut voices,
+                &KnobSpec::linear(1.0, MAX_UNISON as f32, 1.0, "voices"),
+                ACCENT_OSC,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_unison_voices(voices.round() as u8);
+                }
+            }
+            let mut det = self.snapshot.unison_detune_cents;
+            if knob(
+                ui,
+                &mut det,
+                &KnobSpec::linear(0.0, 100.0, 8.0, "detune"),
+                ACCENT_OSC,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_unison_detune_cents(det);
+                }
+            }
+        });
+    }
+
+    fn draw_filter_controls(&mut self, ui: &mut Ui) {
+        filter_curve(
+            ui,
+            self.snapshot.filter_cutoff_hz,
+            self.snapshot.filter_resonance,
+            ACCENT_FILTER,
+        );
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("model").color(TEXT_DIM).small());
+            let mut kind = self.snapshot.filter_kind;
+            egui::ComboBox::from_id_source("filter_kind")
+                .selected_text(format!("{kind:?}"))
+                .show_ui(ui, |ui| {
+                    for k in FilterKind::ALL {
+                        if ui
+                            .selectable_value(&mut kind, k, format!("{k:?}"))
+                            .changed()
+                        {
+                            if let Ok(mut e) = self.engine.lock() {
+                                e.set_filter_kind(k);
+                            }
+                        }
+                    }
+                });
+        });
+        ui.horizontal(|ui| {
+            let mut c = self.snapshot.filter_cutoff_hz;
+            if knob(
+                ui,
+                &mut c,
+                &KnobSpec::log(50.0, 20_000.0, 8_000.0, "cutoff").with_fmt(KnobFmt::Hz),
+                ACCENT_FILTER,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_filter_cutoff_hz(c);
+                }
+            }
+            let mut q = self.snapshot.filter_resonance;
+            if knob(
+                ui,
+                &mut q,
+                &KnobSpec::linear(0.0, 0.99, 0.0, "Q").with_fmt(KnobFmt::Percent),
+                ACCENT_FILTER,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_filter_resonance(q);
+                }
+            }
+            let mut drive = self.snapshot.filter_drive;
+            if knob(
+                ui,
+                &mut drive,
+                &KnobSpec::linear(0.1, 16.0, 1.0, "drive"),
+                ACCENT_FILTER,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_filter_drive(drive);
+                }
+            }
+            let mut gain = self.snapshot.filter_gain;
+            if knob(
+                ui,
+                &mut gain,
+                &KnobSpec::linear(0.0, 4.0, 1.0, "gain"),
+                ACCENT_FILTER,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_filter_gain(gain);
+                }
+            }
+        });
+        if matches!(
+            self.snapshot.filter_kind,
+            FilterKind::Formant | FilterKind::Phaser
+        ) {
+            ui.horizontal(|ui| {
+                let mut mx = self.snapshot.filter_morph_x;
+                if knob(
+                    ui,
+                    &mut mx,
+                    &KnobSpec::linear(0.0, 1.0, 0.0, "morph X").with_fmt(KnobFmt::Percent),
+                    ACCENT_FILTER,
+                )
+                .changed()
+                {
+                    if let Ok(mut e) = self.engine.lock() {
+                        e.set_filter_morph(mx, self.snapshot.filter_morph_y);
+                    }
+                }
+                let mut my = self.snapshot.filter_morph_y;
+                if knob(
+                    ui,
+                    &mut my,
+                    &KnobSpec::linear(0.0, 1.0, 0.0, "morph Y").with_fmt(KnobFmt::Percent),
+                    ACCENT_FILTER,
+                )
+                .changed()
+                {
+                    if let Ok(mut e) = self.engine.lock() {
+                        e.set_filter_morph(self.snapshot.filter_morph_x, my);
+                    }
+                }
+            });
+        }
+    }
+
     fn draw_drive(&mut self, ui: &mut Ui) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {

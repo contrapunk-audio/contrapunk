@@ -14,15 +14,15 @@
 //! `f32x8` lane), per the design doc. Not required for correctness.
 
 use crate::env::AdsrEnvelope;
-use crate::filter::{Svf, SvfCoeffs};
-use crate::osc::Oscillator;
+use crate::filter::{FilterCoeffs, FilterKind, FilterModel, FilterParams, SvfCoeffs};
+use crate::osc::{OscParams, Oscillator};
 use crate::tables::SineTable;
 use crate::util::midi_to_freq;
 
 pub struct Voice {
     osc: Oscillator,
     env: AdsrEnvelope,
-    filter: Svf,
+    filter: FilterModel,
     active: bool,
     killing: bool,
     sustained: bool,
@@ -36,7 +36,7 @@ impl Voice {
         Self {
             osc: Oscillator::new(),
             env: AdsrEnvelope::new(),
-            filter: Svf::new(),
+            filter: FilterModel::new(),
             active: false,
             killing: false,
             sustained: false,
@@ -61,6 +61,10 @@ impl Voice {
     }
     pub fn set_amp_release_secs(&mut self, s: f32) {
         self.env.set_release(s);
+    }
+
+    pub fn set_filter_kind(&mut self, kind: FilterKind) {
+        self.filter.set_kind(kind);
     }
 
     pub fn note_on(&mut self, note: u8, velocity: u8, sample_rate: f32, age: u64) {
@@ -156,6 +160,17 @@ impl Voice {
     /// `osc → SVF lowpass → env*velocity` (A4).
     #[inline]
     pub fn tick(&mut self, table: &SineTable, filter_coeffs: &SvfCoeffs) -> f32 {
+        self.tick_with_osc_params(table, filter_coeffs, &OscParams::default())
+    }
+
+    /// Produce one sample using the engine-level oscillator parameters.
+    #[inline]
+    pub fn tick_with_osc_params(
+        &mut self,
+        table: &SineTable,
+        filter_coeffs: &SvfCoeffs,
+        osc_params: &OscParams,
+    ) -> f32 {
         if !self.active {
             return 0.0;
         }
@@ -166,8 +181,61 @@ impl Voice {
             self.sustained = false;
             return 0.0;
         }
-        let osc_v = self.osc.tick(table);
-        let filtered = self.filter.tick_lp(osc_v, filter_coeffs);
+        let osc_v = self.osc.tick_with_params(table, osc_params);
+        let filtered = match &mut self.filter {
+            FilterModel::DigitalSvf(svf) => svf.tick_lp(osc_v, filter_coeffs),
+            other => other.tick(osc_v, &FilterParams::digital_svf(20_000.0, 0.0, 48_000.0)),
+        };
+        filtered * env_v * self.velocity
+    }
+
+    /// Produce one sample using engine-level oscillator and filter params.
+    /// **Slow path:** re-derives filter coefficients on every sample.
+    /// Prefer [`Voice::tick_with_filter_coeffs`] in the audio callback.
+    #[inline]
+    pub fn tick_with_filter_params(
+        &mut self,
+        table: &SineTable,
+        filter_params: &FilterParams,
+        osc_params: &OscParams,
+    ) -> f32 {
+        if !self.active {
+            return 0.0;
+        }
+        let env_v = self.env.tick();
+        if env_v <= 0.0 && self.env.is_idle() {
+            self.active = false;
+            self.killing = false;
+            self.sustained = false;
+            return 0.0;
+        }
+        let osc_v = self.osc.tick_with_params(table, osc_params);
+        let filtered = self.filter.tick(osc_v, filter_params);
+        filtered * env_v * self.velocity
+    }
+
+    /// Produce one sample using pre-computed per-block filter
+    /// coefficients. The audio-callback hot path — zero `tanf`, zero
+    /// allocation.
+    #[inline]
+    pub fn tick_with_filter_coeffs(
+        &mut self,
+        table: &SineTable,
+        filter_coeffs: &FilterCoeffs,
+        osc_params: &OscParams,
+    ) -> f32 {
+        if !self.active {
+            return 0.0;
+        }
+        let env_v = self.env.tick();
+        if env_v <= 0.0 && self.env.is_idle() {
+            self.active = false;
+            self.killing = false;
+            self.sustained = false;
+            return 0.0;
+        }
+        let osc_v = self.osc.tick_with_params(table, osc_params);
+        let filtered = self.filter.tick_prepared(osc_v, filter_coeffs);
         filtered * env_v * self.velocity
     }
 }

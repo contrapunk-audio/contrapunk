@@ -1,14 +1,9 @@
 //! Small math helpers.
 //!
-//! Kept separate so A2+ can extend without churning the engine surface.
+//! Generic DSP helpers live in `contrapunk-dsp`; this module preserves
+//! the original Elixir import path while avoiding duplicate math.
 
-/// Convert MIDI note number → frequency in Hz.
-///
-/// A4 = note 69 = 440 Hz; each semitone is `2^(1/12)`.
-#[inline]
-pub fn midi_to_freq(note: u8) -> f32 {
-    440.0 * libm::powf(2.0, (note as f32 - 69.0) / 12.0)
-}
+pub use contrapunk_dsp::pitch::midi_to_freq;
 
 #[cfg(test)]
 mod tests {

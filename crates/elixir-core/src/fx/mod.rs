@@ -8,11 +8,13 @@
 
 pub mod delay;
 pub mod drive;
+pub mod modulated;
 pub mod reverb;
 
 pub use delay::Delay;
 pub use drive::Drive;
-pub use reverb::Reverb;
+pub use modulated::{Chorus, Compressor, Flanger, Phaser};
+pub use reverb::{FdnReverb, Reverb};
 
 /// One slot of the FX chain. Empty slots are skipped during process.
 pub enum FxSlot {
@@ -20,6 +22,11 @@ pub enum FxSlot {
     Drive(Drive),
     Delay(Delay),
     Reverb(Reverb),
+    FdnReverb(FdnReverb),
+    Chorus(Chorus),
+    Flanger(Flanger),
+    Phaser(Phaser),
+    Compressor(Compressor),
 }
 
 impl FxSlot {
@@ -33,6 +40,11 @@ impl FxSlot {
             FxSlot::Drive(d) => d.process_inplace(buf),
             FxSlot::Delay(d) => d.process_inplace(buf, channels),
             FxSlot::Reverb(r) => r.process_inplace(buf, channels),
+            FxSlot::FdnReverb(r) => r.process_inplace(buf, channels),
+            FxSlot::Chorus(c) => c.process_inplace(buf, channels),
+            FxSlot::Flanger(f) => f.process_inplace(buf, channels),
+            FxSlot::Phaser(p) => p.process_inplace(buf, channels),
+            FxSlot::Compressor(c) => c.process_inplace(buf, channels),
         }
     }
 
@@ -42,6 +54,11 @@ impl FxSlot {
             FxSlot::Drive(_) => "drive",
             FxSlot::Delay(_) => "delay",
             FxSlot::Reverb(_) => "reverb",
+            FxSlot::FdnReverb(_) => "fdn-reverb",
+            FxSlot::Chorus(_) => "chorus",
+            FxSlot::Flanger(_) => "flanger",
+            FxSlot::Phaser(_) => "phaser",
+            FxSlot::Compressor(_) => "compressor",
         }
     }
 }
@@ -52,5 +69,6 @@ impl Default for FxSlot {
     }
 }
 
-/// Number of FX slots in the chain.
-pub const FX_SLOTS: usize = 4;
+/// Number of FX slots in the chain. A5 shipped four MVP slots; A6
+/// expands this to the design-doc eight-slot reorderable chain surface.
+pub const FX_SLOTS: usize = 8;

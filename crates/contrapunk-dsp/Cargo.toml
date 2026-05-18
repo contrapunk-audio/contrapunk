@@ -1,0 +1,18 @@
+[package]
+name = "contrapunk-dsp"
+version = "0.0.1"
+edition = "2021"
+description = "Shared no_std DSP primitives for Contrapunk and Elixir"
+authors = ["Contrapunk Team"]
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "contrapunk_dsp"
+path = "src/lib.rs"
+
+[dependencies]
+libm = "0.2"
+
+[features]
+default = []
+std = []

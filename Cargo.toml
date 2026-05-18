@@ -12,6 +12,7 @@ members = [
     "crates/contrapunk-audio",
     "crates/contrapunk-preset",
     "crates/contrapunk-companion",
+    "crates/contrapunk-dsp",
     "crates/elixir-core",
     "crates/elixir-standalone",
 ]
@@ -39,6 +40,7 @@ contrapunk-chord = { path = "crates/contrapunk-chord" }
 contrapunk-harmony = { path = "crates/contrapunk-harmony" }
 contrapunk-audio = { path = "crates/contrapunk-audio" }
 contrapunk-preset = { path = "crates/contrapunk-preset" }
+contrapunk-dsp = { path = "crates/contrapunk-dsp" }
 elixir-core = { path = "crates/elixir-core", optional = true }
 anyhow = "1.0"
 wmidi = "4.0"
