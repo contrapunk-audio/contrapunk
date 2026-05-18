@@ -4,7 +4,7 @@ milestone: v1.5
 milestone_name: / elixir-v0.1.0)
 status: executing
 stopped_at: Proceeding to complete Elixir implementation; first code target is Phase 21.A6 spectral/FX completion.
-last_updated: "2026-05-18T17:24:36.609Z"
+last_updated: "2026-05-18T17:29:25.687Z"
 last_activity: 2026-05-18 — pi-gsd installed and project state reconciled. HANDOFF.json is treated as consumed after this update.
 progress:
   total_phases: 54
@@ -624,3 +624,24 @@ Next: Implement A6 incrementally with tests, then A-Cut/B-track plugin and relea
 **Validation:** `cargo check -p elixir-plugin` = clean.
 
 **Next:** B4.2 — add allocation-safe FX automation for Drive/Delay/Reverb/FdnReverb/Chorus/Flanger/Phaser/Compressor.
+
+## B4.2 FX Automation — 2026-05-18 (this session)
+
+**Elixir plugin FX automation surface complete for current A6 FX family.**
+
+- Added DAW parameters for all eight Elixir FX slots:
+  - Drive: on / amount / mix
+  - Delay: on / time / feedback / mix
+  - Reverb: on / decay / damping / mix
+  - FDN Reverb: on / decay / damping / mix
+  - Chorus: on / rate / depth / mix
+  - Flanger: on / rate / depth / feedback / mix
+  - Phaser FX: on / rate / depth / feedback / mix
+  - Compressor: on / threshold / ratio / attack / release / makeup / mix
+- FX are installed into the engine once at plugin default/init time, not created from the audio `process()` path.
+- Bypass automation uses each effect's mix=0.0 rather than replacing `FxSlot`s, preserving delay/reverb/modulation state and avoiding process-time allocation.
+- `ElixirPlugin::sync_fx_params` mutates existing effect structs in-place at process-block start.
+
+**Validation:** `cargo check -p elixir-plugin` = clean.
+
+**Next:** B5 — preset format/state serialization for standalone + plugin; then B7 wavetable editor / full spectral parity.

@@ -2,12 +2,15 @@
 //!
 //! B3 introduced the minimal MIDI-triggered instrument shell. B4 expands
 //! the parameter surface so DAWs can automate the current A6 core:
-//! oscillator morph/phase/unison, amp ADSR, and filter model controls.
+//! oscillator morph/phase/unison, amp ADSR, filters, and the FX chain.
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use elixir_core::filter::FilterKind;
+use elixir_core::fx::{
+    Chorus, Compressor, Delay, Drive, FdnReverb, Flanger, FxSlot, Phaser, Reverb,
+};
 use elixir_core::osc::{PhaseDistortionMode, SpectralMorph, UnisonStyle};
 use elixir_core::Engine;
 use nih_plug::prelude::*;
@@ -201,23 +204,92 @@ struct ElixirParams {
     pub filter_morph_x: FloatParam,
     #[id = "filter_morph_y"]
     pub filter_morph_y: FloatParam,
+
+    #[id = "drive_on"]
+    pub drive_on: BoolParam,
+    #[id = "drive_amount"]
+    pub drive_amount: FloatParam,
+    #[id = "drive_mix"]
+    pub drive_mix: FloatParam,
+
+    #[id = "delay_on"]
+    pub delay_on: BoolParam,
+    #[id = "delay_time"]
+    pub delay_time: FloatParam,
+    #[id = "delay_feedback"]
+    pub delay_feedback: FloatParam,
+    #[id = "delay_mix"]
+    pub delay_mix: FloatParam,
+
+    #[id = "reverb_on"]
+    pub reverb_on: BoolParam,
+    #[id = "reverb_decay"]
+    pub reverb_decay: FloatParam,
+    #[id = "reverb_damping"]
+    pub reverb_damping: FloatParam,
+    #[id = "reverb_mix"]
+    pub reverb_mix: FloatParam,
+
+    #[id = "fdn_on"]
+    pub fdn_on: BoolParam,
+    #[id = "fdn_decay"]
+    pub fdn_decay: FloatParam,
+    #[id = "fdn_damping"]
+    pub fdn_damping: FloatParam,
+    #[id = "fdn_mix"]
+    pub fdn_mix: FloatParam,
+
+    #[id = "chorus_on"]
+    pub chorus_on: BoolParam,
+    #[id = "chorus_rate"]
+    pub chorus_rate: FloatParam,
+    #[id = "chorus_depth"]
+    pub chorus_depth: FloatParam,
+    #[id = "chorus_mix"]
+    pub chorus_mix: FloatParam,
+
+    #[id = "flanger_on"]
+    pub flanger_on: BoolParam,
+    #[id = "flanger_rate"]
+    pub flanger_rate: FloatParam,
+    #[id = "flanger_depth"]
+    pub flanger_depth: FloatParam,
+    #[id = "flanger_feedback"]
+    pub flanger_feedback: FloatParam,
+    #[id = "flanger_mix"]
+    pub flanger_mix: FloatParam,
+
+    #[id = "phaser_fx_on"]
+    pub phaser_fx_on: BoolParam,
+    #[id = "phaser_fx_rate"]
+    pub phaser_fx_rate: FloatParam,
+    #[id = "phaser_fx_depth"]
+    pub phaser_fx_depth: FloatParam,
+    #[id = "phaser_fx_feedback"]
+    pub phaser_fx_feedback: FloatParam,
+    #[id = "phaser_fx_mix"]
+    pub phaser_fx_mix: FloatParam,
+
+    #[id = "comp_on"]
+    pub comp_on: BoolParam,
+    #[id = "comp_threshold"]
+    pub comp_threshold: FloatParam,
+    #[id = "comp_ratio"]
+    pub comp_ratio: FloatParam,
+    #[id = "comp_attack"]
+    pub comp_attack: FloatParam,
+    #[id = "comp_release"]
+    pub comp_release: FloatParam,
+    #[id = "comp_makeup"]
+    pub comp_makeup: FloatParam,
+    #[id = "comp_mix"]
+    pub comp_mix: FloatParam,
 }
 
 impl Default for ElixirParams {
     fn default() -> Self {
         Self {
-            gain: FloatParam::new(
-                "Gain",
-                util::db_to_gain(-12.0),
-                FloatRange::Skewed {
-                    min: util::db_to_gain(-60.0),
-                    max: util::db_to_gain(0.0),
-                    factor: FloatRange::gain_skew_factor(-60.0, 0.0),
-                },
-            )
-            .with_unit(" dB")
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            gain: gain_param("Gain", -12.0, -60.0, 0.0),
 
             amp_attack: seconds_param("Attack", 0.005, 0.001, 4.0),
             amp_decay: seconds_param("Decay", 0.120, 0.001, 4.0),
@@ -268,8 +340,81 @@ impl Default for ElixirParams {
             ),
             filter_morph_x: percent_param("Filter Morph X", 0.0),
             filter_morph_y: percent_param("Filter Morph Y", 0.0),
+
+            drive_on: BoolParam::new("Drive", false),
+            drive_amount: FloatParam::new(
+                "Drive Amount",
+                2.5,
+                FloatRange::Linear {
+                    min: 0.5,
+                    max: 20.0,
+                },
+            ),
+            drive_mix: percent_param("Drive Mix", 0.4),
+
+            delay_on: BoolParam::new("Delay", false),
+            delay_time: seconds_param("Delay Time", 0.375, 0.001, 2.0),
+            delay_feedback: percent_param("Delay Feedback", 0.45),
+            delay_mix: percent_param("Delay Mix", 0.30),
+
+            reverb_on: BoolParam::new("Reverb", false),
+            reverb_decay: percent_param("Reverb Decay", 0.85),
+            reverb_damping: percent_param("Reverb Damping", 0.40),
+            reverb_mix: percent_param("Reverb Mix", 0.30),
+
+            fdn_on: BoolParam::new("FDN Reverb", false),
+            fdn_decay: seconds_param("FDN Decay", 2.8, 0.2, 20.0),
+            fdn_damping: percent_param("FDN Damping", 0.35),
+            fdn_mix: percent_param("FDN Mix", 0.35),
+
+            chorus_on: BoolParam::new("Chorus", false),
+            chorus_rate: hz_param("Chorus Rate", 0.35, 0.01, 8.0),
+            chorus_depth: ms_param("Chorus Depth", 8.0, 0.0, 40.0),
+            chorus_mix: percent_param("Chorus Mix", 0.35),
+
+            flanger_on: BoolParam::new("Flanger", false),
+            flanger_rate: hz_param("Flanger Rate", 0.18, 0.01, 8.0),
+            flanger_depth: ms_param("Flanger Depth", 2.5, 0.0, 10.0),
+            flanger_feedback: percent_param("Flanger Feedback", 0.45),
+            flanger_mix: percent_param("Flanger Mix", 0.40),
+
+            phaser_fx_on: BoolParam::new("Phaser FX", false),
+            phaser_fx_rate: hz_param("Phaser Rate", 0.20, 0.01, 8.0),
+            phaser_fx_depth: percent_param("Phaser Depth", 0.75),
+            phaser_fx_feedback: percent_param("Phaser Feedback", 0.65),
+            phaser_fx_mix: percent_param("Phaser Mix", 0.45),
+
+            comp_on: BoolParam::new("Compressor", false),
+            comp_threshold: db_linear_param("Comp Threshold", -18.0, -60.0, 0.0),
+            comp_ratio: FloatParam::new(
+                "Comp Ratio",
+                4.0,
+                FloatRange::Linear {
+                    min: 1.0,
+                    max: 40.0,
+                },
+            ),
+            comp_attack: ms_param("Comp Attack", 8.0, 0.1, 500.0),
+            comp_release: ms_param("Comp Release", 120.0, 1.0, 2000.0),
+            comp_makeup: db_linear_param("Comp Makeup", 4.0, -24.0, 24.0),
+            comp_mix: percent_param("Comp Mix", 1.0),
         }
     }
+}
+
+fn gain_param(name: &'static str, default_db: f32, min_db: f32, max_db: f32) -> FloatParam {
+    FloatParam::new(
+        name,
+        util::db_to_gain(default_db),
+        FloatRange::Skewed {
+            min: util::db_to_gain(min_db),
+            max: util::db_to_gain(max_db),
+            factor: FloatRange::gain_skew_factor(min_db, max_db),
+        },
+    )
+    .with_unit(" dB")
+    .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+    .with_string_to_value(formatters::s2v_f32_gain_to_db())
 }
 
 fn percent_param(name: &'static str, default: f32) -> FloatParam {
@@ -292,6 +437,27 @@ fn seconds_param(name: &'static str, default: f32, min: f32, max: f32) -> FloatP
     .with_unit(" s")
 }
 
+fn ms_param(name: &'static str, default: f32, min: f32, max: f32) -> FloatParam {
+    FloatParam::new(name, default, FloatRange::Linear { min, max }).with_unit(" ms")
+}
+
+fn hz_param(name: &'static str, default: f32, min: f32, max: f32) -> FloatParam {
+    FloatParam::new(
+        name,
+        default,
+        FloatRange::Skewed {
+            min,
+            max,
+            factor: 0.35,
+        },
+    )
+    .with_unit(" Hz")
+}
+
+fn db_linear_param(name: &'static str, default: f32, min: f32, max: f32) -> FloatParam {
+    FloatParam::new(name, default, FloatRange::Linear { min, max }).with_unit(" dB")
+}
+
 struct ElixirPlugin {
     params: Arc<ElixirParams>,
     engine: Engine,
@@ -301,16 +467,47 @@ struct ElixirPlugin {
 
 impl Default for ElixirPlugin {
     fn default() -> Self {
-        Self {
+        let mut plugin = Self {
             params: Arc::new(ElixirParams::default()),
             engine: Engine::new(),
             sample_rate: 48_000.0,
             max_block: 2048,
-        }
+        };
+        plugin.engine.prepare(48_000, 2048);
+        plugin.install_fx_chain();
+        plugin.sync_params();
+        plugin
     }
 }
 
 impl ElixirPlugin {
+    fn install_fx_chain(&mut self) {
+        let sr = self.sample_rate.max(1.0);
+        let mut delay = Delay::new((sr * 2.0) as usize);
+        delay.set_mix(0.0);
+        let mut reverb = Reverb::new(sr);
+        reverb.set_mix(0.0);
+        let mut fdn = FdnReverb::new(sr);
+        fdn.set_mix(0.0);
+        let mut chorus = Chorus::new(sr);
+        chorus.set_mix(0.0);
+        let mut flanger = Flanger::new(sr);
+        flanger.set_mix(0.0);
+        let mut phaser = Phaser::new(sr);
+        phaser.set_mix(0.0);
+        let mut compressor = Compressor::new(sr);
+        compressor.set_mix(0.0);
+
+        self.engine.set_fx_slot(0, FxSlot::Drive(Drive::new()));
+        self.engine.set_fx_slot(1, FxSlot::Delay(delay));
+        self.engine.set_fx_slot(2, FxSlot::Reverb(reverb));
+        self.engine.set_fx_slot(3, FxSlot::FdnReverb(fdn));
+        self.engine.set_fx_slot(4, FxSlot::Chorus(chorus));
+        self.engine.set_fx_slot(5, FxSlot::Flanger(flanger));
+        self.engine.set_fx_slot(6, FxSlot::Phaser(phaser));
+        self.engine.set_fx_slot(7, FxSlot::Compressor(compressor));
+    }
+
     fn sync_params(&mut self) {
         self.engine.set_master_gain(self.params.gain.value());
         self.engine
@@ -349,6 +546,87 @@ impl ElixirPlugin {
             self.params.filter_morph_x.value(),
             self.params.filter_morph_y.value(),
         );
+
+        self.sync_fx_params();
+    }
+
+    fn sync_fx_params(&mut self) {
+        if let FxSlot::Drive(drive) = &mut self.engine.fx_chain[0] {
+            drive.drive = self.params.drive_amount.value();
+            drive.mix = if self.params.drive_on.value() {
+                self.params.drive_mix.value()
+            } else {
+                0.0
+            };
+        }
+        if let FxSlot::Delay(delay) = &mut self.engine.fx_chain[1] {
+            delay.set_delay_secs(self.params.delay_time.value(), self.sample_rate);
+            delay.set_feedback(self.params.delay_feedback.value());
+            delay.set_mix(if self.params.delay_on.value() {
+                self.params.delay_mix.value()
+            } else {
+                0.0
+            });
+        }
+        if let FxSlot::Reverb(reverb) = &mut self.engine.fx_chain[2] {
+            reverb.set_decay(self.params.reverb_decay.value());
+            reverb.set_damping(self.params.reverb_damping.value());
+            reverb.set_mix(if self.params.reverb_on.value() {
+                self.params.reverb_mix.value()
+            } else {
+                0.0
+            });
+        }
+        if let FxSlot::FdnReverb(fdn) = &mut self.engine.fx_chain[3] {
+            fdn.set_decay_seconds(self.params.fdn_decay.value());
+            fdn.set_damping(self.params.fdn_damping.value());
+            fdn.set_mix(if self.params.fdn_on.value() {
+                self.params.fdn_mix.value()
+            } else {
+                0.0
+            });
+        }
+        if let FxSlot::Chorus(chorus) = &mut self.engine.fx_chain[4] {
+            chorus.set_rate_hz(self.params.chorus_rate.value());
+            chorus.set_depth_ms(self.params.chorus_depth.value());
+            chorus.set_mix(if self.params.chorus_on.value() {
+                self.params.chorus_mix.value()
+            } else {
+                0.0
+            });
+        }
+        if let FxSlot::Flanger(flanger) = &mut self.engine.fx_chain[5] {
+            flanger.set_rate_hz(self.params.flanger_rate.value());
+            flanger.set_depth_ms(self.params.flanger_depth.value());
+            flanger.set_feedback(self.params.flanger_feedback.value());
+            flanger.set_mix(if self.params.flanger_on.value() {
+                self.params.flanger_mix.value()
+            } else {
+                0.0
+            });
+        }
+        if let FxSlot::Phaser(phaser) = &mut self.engine.fx_chain[6] {
+            phaser.set_rate_hz(self.params.phaser_fx_rate.value());
+            phaser.set_depth(self.params.phaser_fx_depth.value());
+            phaser.set_feedback(self.params.phaser_fx_feedback.value());
+            phaser.set_mix(if self.params.phaser_fx_on.value() {
+                self.params.phaser_fx_mix.value()
+            } else {
+                0.0
+            });
+        }
+        if let FxSlot::Compressor(comp) = &mut self.engine.fx_chain[7] {
+            comp.set_threshold_db(self.params.comp_threshold.value());
+            comp.set_ratio(self.params.comp_ratio.value());
+            comp.set_attack_ms(self.params.comp_attack.value());
+            comp.set_release_ms(self.params.comp_release.value());
+            comp.set_makeup_db(self.params.comp_makeup.value());
+            comp.set_mix(if self.params.comp_on.value() {
+                self.params.comp_mix.value()
+            } else {
+                0.0
+            });
+        }
     }
 }
 
@@ -392,6 +670,8 @@ impl Plugin for ElixirPlugin {
         self.max_block = buffer_config.max_buffer_size as usize;
         self.engine
             .prepare(buffer_config.sample_rate as u32, self.max_block);
+        self.install_fx_chain();
+        self.sync_params();
         true
     }
 
