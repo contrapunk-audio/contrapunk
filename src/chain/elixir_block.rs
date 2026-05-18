@@ -12,15 +12,17 @@
 //! A5 FX bus, A6 spectral features) extend without touching this
 //! wrapper's `AudioBlock` interface.
 
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use super::block::{AudioBlock, MidiBlockEvent};
-use crate::synth::SynthEvent;
+use crate::synth::{SynthEvent, SynthParams, Waveform};
+use elixir_core::osc::{PhaseDistortionMode, SpectralMorph};
 use elixir_core::Engine;
 
 /// `AudioBlock` adapter for the Elixir engine.
 pub struct ElixirSynthBlock {
     engine: Engine,
+    params: Arc<SynthParams>,
     events: mpsc::Receiver<SynthEvent>,
 }
 
@@ -30,7 +32,7 @@ impl ElixirSynthBlock {
     /// prepare here so a fresh block is immediately usable.
     pub fn new(sample_rate: u32) -> Self {
         let (_tx, rx) = mpsc::channel();
-        Self::new_with_events(sample_rate, rx)
+        Self::new_with_params_and_events(sample_rate, Arc::new(SynthParams::new()), rx)
     }
 
     /// Construct an Elixir synth block wired to the existing router →
@@ -38,9 +40,25 @@ impl ElixirSynthBlock {
     /// can keep sending [`SynthEvent`] while the chain swaps the first
     /// block from legacy [`crate::synth::Synth`] to Elixir.
     pub fn new_with_events(sample_rate: u32, events: mpsc::Receiver<SynthEvent>) -> Self {
+        Self::new_with_params_and_events(sample_rate, Arc::new(SynthParams::new()), events)
+    }
+
+    /// Construct an Elixir synth block sharing the same public synth
+    /// params used by the legacy built-in synth. This keeps existing UI
+    /// commands meaningful under the feature flag while A6-specific
+    /// controls are introduced separately.
+    pub fn new_with_params_and_events(
+        sample_rate: u32,
+        params: Arc<SynthParams>,
+        events: mpsc::Receiver<SynthEvent>,
+    ) -> Self {
         let mut engine = Engine::new();
         engine.prepare(sample_rate, DEFAULT_MAX_BLOCK);
-        Self { engine, events }
+        Self {
+            engine,
+            params,
+            events,
+        }
     }
 
     fn drain_events(&mut self) {
@@ -62,6 +80,56 @@ impl ElixirSynthBlock {
     pub fn set_filter_resonance(&mut self, r: f32) {
         self.engine.set_filter_resonance(r);
     }
+
+    fn apply_params(&mut self, buffer: &mut [f32]) -> bool {
+        if !self.params.enabled() {
+            self.engine.all_notes_off();
+            for s in buffer.iter_mut() {
+                *s = 0.0;
+            }
+            return false;
+        }
+
+        self.engine.set_amp_attack_secs(self.params.attack_secs());
+        self.engine.set_amp_decay_secs(self.params.decay_secs());
+        self.engine.set_amp_sustain(self.params.sustain_level());
+        self.engine.set_amp_release_secs(self.params.release_secs());
+        self.engine.set_filter_cutoff_hz(self.params.cutoff_hz());
+        self.engine.set_filter_resonance(self.params.resonance());
+        self.engine.set_master_gain(self.params.master_gain());
+
+        // Compatibility mapping for the existing four-shape UI. These
+        // are musical approximations until the Elixir-specific UI owns
+        // the full oscillator surface end-to-end in Contrapunk.
+        match self.params.waveform() {
+            Waveform::Sine => {
+                self.engine.set_spectral_morph(SpectralMorph::Passthrough);
+                self.engine.set_morph_amount(0.0);
+                self.engine.set_phase_distortion(PhaseDistortionMode::Off);
+                self.engine.set_phase_amount(0.0);
+            }
+            Waveform::Saw => {
+                self.engine.set_spectral_morph(SpectralMorph::HarmonicScale);
+                self.engine.set_morph_amount(1.0);
+                self.engine.set_phase_distortion(PhaseDistortionMode::Off);
+                self.engine.set_phase_amount(0.0);
+            }
+            Waveform::Square => {
+                self.engine.set_spectral_morph(SpectralMorph::HighPass);
+                self.engine.set_morph_amount(0.75);
+                self.engine
+                    .set_phase_distortion(PhaseDistortionMode::PulseWidth);
+                self.engine.set_phase_amount(0.5);
+            }
+            Waveform::Triangle => {
+                self.engine.set_spectral_morph(SpectralMorph::LowPass);
+                self.engine.set_morph_amount(0.9);
+                self.engine.set_phase_distortion(PhaseDistortionMode::Bend);
+                self.engine.set_phase_amount(0.35);
+            }
+        }
+        true
+    }
 }
 
 /// Conservative scratch-buffer bound. Chain `process` calls deliver
@@ -80,7 +148,9 @@ impl AudioBlock for ElixirSynthBlock {
 
     fn process(&mut self, buffer: &mut [f32], channels: usize) {
         self.drain_events();
-        self.engine.process(buffer, channels);
+        if self.apply_params(buffer) {
+            self.engine.process(buffer, channels);
+        }
     }
 
     fn midi_event(&mut self, event: MidiBlockEvent) {
@@ -140,6 +210,22 @@ mod tests {
         b.process(&mut buf, 2);
         let peak = buf.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         assert!(peak > 0.0, "expected audio after NoteOn, got silence");
+    }
+
+    #[test]
+    fn shared_synth_params_can_mute_elixir() {
+        let params = Arc::new(SynthParams::new());
+        params.set_enabled(false);
+        let (tx, rx) = mpsc::channel();
+        let mut b = ElixirSynthBlock::new_with_params_and_events(48_000, params, rx);
+        tx.send(SynthEvent::NoteOn {
+            note: 69,
+            velocity: 100,
+        })
+        .unwrap();
+        let mut buf = [0.5f32; 1024];
+        b.process(&mut buf, 2);
+        assert!(buf.iter().all(|s| *s == 0.0));
     }
 
     #[test]

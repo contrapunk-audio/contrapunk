@@ -220,7 +220,11 @@ fn make_synth_block(
     events: mpsc::Receiver<SynthEvent>,
     sample_rate: u32,
 ) -> Box<dyn AudioBlock> {
-    Box::new(ElixirSynthBlock::new_with_events(sample_rate, events))
+    Box::new(ElixirSynthBlock::new_with_params_and_events(
+        sample_rate,
+        _params,
+        events,
+    ))
 }
 
 #[cfg(not(feature = "elixir-synth"))]
