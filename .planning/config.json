@@ -1,12 +1,15 @@
 {
   "mode": "yolo",
-  "depth": "quick",
   "parallelization": true,
   "commit_docs": true,
+  "context_window": 400000,
+  "pause_at_context_usage_pct": 90,
   "model_profile": "quality",
   "workflow": {
     "research": true,
     "plan_check": true,
-    "verifier": true
-  }
+    "verifier": true,
+    "_auto_chain_active": false
+  },
+  "granularity": "coarse"
 }

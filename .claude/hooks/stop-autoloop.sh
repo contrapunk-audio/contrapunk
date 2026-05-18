@@ -39,6 +39,10 @@ fi
 # most recent message's input-side fields plus its output. If we can't
 # read the transcript or parse it, default to 0 (which forces the
 # safest behavior: allow stop, don't block).
+#
+# The budget is configurable because pi/GSD sessions may run at 200k,
+# not Opus's 1M default. Set `.planning/config.json.context_window`
+# or `GSD_CONTEXT_WINDOW`; the hook pauses/allows stop at 90% usage.
 total_tokens=0
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
   total_tokens=$(jq -r -s '
@@ -53,7 +57,21 @@ if [ -n "$transcript" ] && [ -f "$transcript" ]; then
 fi
 [ -z "$total_tokens" ] || [ "$total_tokens" = "null" ] && total_tokens=0
 
-context_limit=1000000
+context_limit=${GSD_CONTEXT_WINDOW:-}
+if [ -z "$context_limit" ] && [ -f "$repo_root/.planning/config.json" ]; then
+  context_limit=$(jq -r '.context_window // empty' "$repo_root/.planning/config.json" 2>/dev/null)
+fi
+case "$context_limit" in
+  ''|*[!0-9]*) context_limit=200000 ;;
+esac
+pause_at=90
+if [ -f "$repo_root/.planning/config.json" ]; then
+  cfg_pause=$(jq -r '.pause_at_context_usage_pct // empty' "$repo_root/.planning/config.json" 2>/dev/null)
+  case "$cfg_pause" in
+    ''|*[!0-9]*) ;;
+    *) pause_at=$cfg_pause ;;
+  esac
+fi
 percent=$(( total_tokens * 100 / context_limit ))
 
 # 5. Roadmap presence check. The autoloop keeps going as long as there
@@ -81,12 +99,12 @@ do
 done
 
 # 6. Decision.
-#    - At/above 90% budget → allow stop (context exhausted).
+#    - At/above configured pause threshold (default 90%) → allow stop (context exhausted).
 #    - No roadmap with Phase markers → allow stop (no active milestone).
 #    - Otherwise → block with a continue instruction.
-if [ "$percent" -ge 90 ] || [ "$has_pending" != "true" ]; then
-  if [ "$percent" -ge 90 ]; then
-    echo "[stop-autoloop] context at ${percent}% of 1M budget — allowing stop" >&2
+if [ "$percent" -ge "$pause_at" ] || [ "$has_pending" != "true" ]; then
+  if [ "$percent" -ge "$pause_at" ]; then
+    echo "[stop-autoloop] context at ${percent}% of ${context_limit} budget — allowing stop" >&2
   fi
   exit 0
 fi
@@ -96,6 +114,6 @@ fi
 # the model continues its turn.
 roadmap_rel=${roadmap#"$repo_root"/}
 cat <<EOF
-{"decision": "block", "reason": "Context at ${percent}% of 1M budget — continuing autonomous execution per the user's stop-hook directive. Active roadmap: ${roadmap_rel}. Pick the next concrete task from the active Phase, execute it with the TDD workflow (.claude/skills/tdd-workflow/), commit it atomically. If you find no concrete tasks remaining, say so plainly and let this turn end — the hook will allow normal exit on subsequent stops when no Phase markers remain. Do not invent work. Do not loop on already-done tasks; check git log to confirm what's already shipped this session."}
+{"decision": "block", "reason": "Context at ${percent}% of ${context_limit} budget (pause threshold ${pause_at}%) — continuing autonomous execution per the user's stop-hook directive. Active roadmap: ${roadmap_rel}. Pick the next concrete task from the active Phase, execute it with the TDD workflow (.claude/skills/tdd-workflow/), commit it atomically. If you find no concrete tasks remaining, say so plainly and let this turn end — the hook will allow normal exit on subsequent stops when no Phase markers remain. Do not invent work. Do not loop on already-done tasks; check git log to confirm what's already shipped this session."}
 EOF
 exit 0
