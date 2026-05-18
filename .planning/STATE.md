@@ -4,7 +4,7 @@ milestone: v1.5
 milestone_name: / elixir-v0.1.0)
 status: executing
 stopped_at: Proceeding to complete Elixir implementation; first code target is Phase 21.A6 spectral/FX completion.
-last_updated: "2026-05-18T17:36:07.349Z"
+last_updated: "2026-05-18T17:39:29.796Z"
 last_activity: 2026-05-18 — pi-gsd installed and project state reconciled. HANDOFF.json is treated as consumed after this update.
 progress:
   total_phases: 54
@@ -684,3 +684,23 @@ Next: Implement A6 incrementally with tests, then A-Cut/B-track plugin and relea
 - `cargo check -p elixir-plugin` = clean after workspace/lock update.
 
 **Next:** Wire `elixir-preset` into standalone/plugin save/load state, then B7 full wavetable table import/parity.
+
+## B5.2 Standalone Vital Import UI — 2026-05-18 (this session)
+
+**Standalone can now pull Vital presets from `~/Downloads`.**
+
+- `elixir-standalone` depends on shared `elixir-preset`.
+- Added PRESETS / VITAL IMPORT card to the egui standalone:
+  - `Scan ~/Downloads for Vital` imports loose `.vital` files and `.vitalbank` archives.
+  - Imported presets are listed in a ComboBox.
+  - `Apply selected` maps the currently-supported Elixir subset into the running engine: filter cutoff/resonance/drive, delay mix/feedback, reverb mix.
+  - Status line reports imported count, bank count, and `.vitaltable` paths tracked for B7.
+- This is deliberately subset import, not full Vital sonic parity; full `.vitaltable`/wavetable mapping remains B7.
+
+**Validation:**
+
+- `cargo check -p elixir-standalone` = clean.
+- `cargo test -p elixir-preset` = clean.
+- `cargo test -p elixir-preset --test downloads_vital -- --ignored` = passed against current `~/Downloads` Vital assets.
+
+**Next:** Plugin preset state serialization / loading path, then B7 wavetable parity.

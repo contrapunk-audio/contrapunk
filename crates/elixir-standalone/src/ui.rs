@@ -5,6 +5,7 @@
 //! table editors land in B7+.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use eframe::egui::{
@@ -16,6 +17,7 @@ use elixir_core::filter::FilterKind;
 use elixir_core::fx::{Delay, Drive, FxSlot, Reverb};
 use elixir_core::osc::{PhaseDistortionMode, SpectralMorph, UnisonStyle, MAX_UNISON};
 use elixir_core::{Engine, MAX_POLYPHONY};
+use elixir_preset::{import_vital_bank_file, import_vital_file, ElixirPreset};
 
 const ACCENT_OSC: Color32 = Color32::from_rgb(240, 200, 130);
 
@@ -597,6 +599,9 @@ struct ElixirApp {
     mouse_note: Option<u8>,
     keyboard_octave: i32,
     snapshot: EngineSnapshot,
+    imported_presets: Vec<ElixirPreset>,
+    selected_preset: usize,
+    preset_status: String,
 }
 
 #[derive(Clone, Default)]
@@ -645,6 +650,9 @@ impl ElixirApp {
             mouse_note: None,
             keyboard_octave: 4,
             snapshot,
+            imported_presets: Vec::new(),
+            selected_preset: 0,
+            preset_status: "No Vital presets imported yet".to_string(),
         }
     }
 
@@ -944,6 +952,13 @@ impl eframe::App for ElixirApp {
 
                 ui.add_space(10.0);
 
+                // Presets / Vital import card (B5)
+                card(ui, ACCENT_MASTER, |ui| {
+                    self.draw_presets(ui);
+                });
+
+                ui.add_space(10.0);
+
                 // Piano keyboard card
                 Frame::none()
                     .fill(CARD)
@@ -1017,6 +1032,127 @@ impl eframe::App for ElixirApp {
 // ─── FX rows ─────────────────────────────────────────────────────────
 
 impl ElixirApp {
+    fn draw_presets(&mut self, ui: &mut Ui) {
+        section_title(ui, "PRESETS / VITAL IMPORT", ACCENT_MASTER);
+        ui.horizontal(|ui| {
+            if ui.button("Scan ~/Downloads for Vital").clicked() {
+                self.import_downloads_vital_presets();
+            }
+            if !self.imported_presets.is_empty() && ui.button("Apply selected").clicked() {
+                self.apply_selected_preset();
+            }
+        });
+        ui.label(
+            egui::RichText::new(&self.preset_status)
+                .small()
+                .color(TEXT_DIM),
+        );
+        if !self.imported_presets.is_empty() {
+            self.selected_preset = self.selected_preset.min(self.imported_presets.len() - 1);
+            let selected_name = self.imported_presets[self.selected_preset].name.clone();
+            egui::ComboBox::from_id_source("imported_vital_preset")
+                .selected_text(selected_name)
+                .show_ui(ui, |ui| {
+                    for (idx, preset) in self.imported_presets.iter().enumerate() {
+                        ui.selectable_value(&mut self.selected_preset, idx, &preset.name);
+                    }
+                });
+        }
+    }
+
+    fn import_downloads_vital_presets(&mut self) {
+        let Ok(home) = std::env::var("HOME") else {
+            self.preset_status = "HOME is not set; cannot scan Downloads".to_string();
+            return;
+        };
+        let downloads = PathBuf::from(home).join("Downloads");
+        let Ok(entries) = std::fs::read_dir(&downloads) else {
+            self.preset_status = format!("Could not read {}", downloads.display());
+            return;
+        };
+
+        let mut imported = Vec::new();
+        let mut bank_presets = 0usize;
+        let mut wavetable_paths = 0usize;
+        let mut errors = Vec::new();
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            match ext.to_ascii_lowercase().as_str() {
+                "vital" => match import_vital_file(&path) {
+                    Ok(preset) => imported.push(preset),
+                    Err(err) => errors.push(format!("{}: {err}", path.display())),
+                },
+                "vitalbank" => match import_vital_bank_file(&path) {
+                    Ok(bank) => {
+                        bank_presets += bank.presets.len();
+                        wavetable_paths += bank.wavetable_paths.len();
+                        errors.extend(bank.skipped_entries);
+                        imported.extend(bank.presets);
+                    }
+                    Err(err) => errors.push(format!("{}: {err}", path.display())),
+                },
+                _ => {}
+            }
+        }
+
+        imported.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        self.selected_preset = 0;
+        self.imported_presets = imported;
+        self.preset_status = if errors.is_empty() {
+            format!(
+                "Imported {} Vital presets ({} from banks), tracked {} wavetable paths for B7",
+                self.imported_presets.len(),
+                bank_presets,
+                wavetable_paths
+            )
+        } else {
+            format!(
+                "Imported {} Vital presets with {} errors; first: {}",
+                self.imported_presets.len(),
+                errors.len(),
+                errors[0]
+            )
+        };
+    }
+
+    fn apply_selected_preset(&mut self) {
+        let Some(preset) = self.imported_presets.get(self.selected_preset).cloned() else {
+            return;
+        };
+        if let Ok(mut engine) = self.engine.lock() {
+            if let Some(cutoff) = preset.patch.filter_cutoff {
+                engine.set_filter_cutoff_hz(cutoff);
+            }
+            if let Some(resonance) = preset.patch.filter_resonance {
+                engine.set_filter_resonance(resonance);
+            }
+            if let Some(drive) = preset.patch.filter_drive {
+                engine.set_filter_drive(drive);
+            }
+            if preset.patch.delay_mix.is_some() || preset.patch.delay_feedback.is_some() {
+                let mut delay = Delay::new((engine.sample_rate().max(1) * 2) as usize);
+                if let Some(feedback) = preset.patch.delay_feedback {
+                    delay.set_feedback(feedback);
+                }
+                if let Some(mix) = preset.patch.delay_mix {
+                    delay.set_mix(mix);
+                }
+                engine.set_fx_slot(1, FxSlot::Delay(delay));
+            }
+            if let Some(mix) = preset.patch.reverb_mix {
+                let mut reverb = Reverb::new(engine.sample_rate().max(1) as f32);
+                reverb.set_mix(mix);
+                engine.set_fx_slot(2, FxSlot::Reverb(reverb));
+            }
+        }
+        self.preset_status = format!("Applied Vital preset subset: {}", preset.name);
+    }
+
     fn draw_osc(&mut self, ui: &mut Ui) {
         section_title(ui, "OSCILLATOR (A6)", ACCENT_OSC);
         ui.horizontal(|ui| {

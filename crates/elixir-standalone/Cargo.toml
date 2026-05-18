@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 elixir-core = { path = "../elixir-core" }
+elixir-preset = { path = "../elixir-preset" }
 cpal = "0.17"
 midir = "0.11"
 anyhow = "1.0"

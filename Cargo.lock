@@ -1717,6 +1717,7 @@ dependencies = [
  "cpal",
  "eframe",
  "elixir-core",
+ "elixir-preset",
  "midir",
 ]
 
