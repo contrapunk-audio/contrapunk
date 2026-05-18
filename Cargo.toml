@@ -16,6 +16,7 @@ members = [
     "crates/elixir-core",
     "crates/elixir-standalone",
     "crates/elixir-plugin",
+    "crates/elixir-preset",
 ]
 resolver = "2"
 

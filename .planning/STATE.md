@@ -4,7 +4,7 @@ milestone: v1.5
 milestone_name: / elixir-v0.1.0)
 status: executing
 stopped_at: Proceeding to complete Elixir implementation; first code target is Phase 21.A6 spectral/FX completion.
-last_updated: "2026-05-18T17:29:25.687Z"
+last_updated: "2026-05-18T17:36:07.349Z"
 last_activity: 2026-05-18 — pi-gsd installed and project state reconciled. HANDOFF.json is treated as consumed after this update.
 progress:
   total_phases: 54
@@ -645,3 +645,42 @@ Next: Implement A6 incrementally with tests, then A-Cut/B-track plugin and relea
 **Validation:** `cargo check -p elixir-plugin` = clean.
 
 **Next:** B5 — preset format/state serialization for standalone + plugin; then B7 wavetable editor / full spectral parity.
+
+## B5.1 Preset Import + Vital Audit — 2026-05-18 (this session)
+
+**Initial B5 preset infrastructure created with Vital import support.**
+
+- Added workspace crate `crates/elixir-preset`.
+- Native schema: `ElixirPreset`, `ElixirPatch`, `PresetSource`, `VitalSource`.
+- `.vital` importer:
+  - Parses Vital JSON metadata (`author`, `comments`, `preset_name`, `preset_style`, `synth_version`, macros).
+  - Preserves full raw Vital `settings` dictionary for future B7 remapping/full parity.
+  - Maps a conservative subset into Elixir patch fields: filter, delay, chorus, reverb, compressor mix/feedback/cutoff-ish values.
+  - Falls back to filename-derived name for Vital presets missing `preset_name`.
+- `.vitalbank` importer:
+  - Opens Vital bank ZIPs.
+  - Imports every `.vital` entry.
+  - Records `.vitaltable` wavetable paths for B7; does not claim wavetable parity yet.
+  - Tracks skipped entries with error text.
+- Added ignored local validation test `crates/elixir-preset/tests/downloads_vital.rs` for the user's actual Downloads assets.
+- Captured reusable Vital import pattern in `.claude/skills/vital-preset-import/SKILL.md`.
+
+**Downloads audit:**
+
+- Found 6 loose Vital presets in `~/Downloads`:
+  - `Dear April Pad Preset.vital`
+  - `Cyberpunk 2077 Preset.vital`
+  - `Angular Keys Presets.vital`
+  - `Most Liked Preset FLOAT_KEYS_I.vital`
+  - `Particle Arts Lead Preset.vital`
+  - `Lofi Keys Preset.vital`
+- Found `Vital Account.vitalbank` (ZIP), currently imports 75 `.vital` presets and 21 `.vitaltable` wavetable paths.
+
+**Validation:**
+
+- `cargo test -p elixir-preset` = 3 passed + Downloads test ignored by default.
+- `cargo test -p elixir-preset --test downloads_vital -- --ignored` = passed against actual `~/Downloads` assets.
+- `cargo check -p elixir-preset` = clean.
+- `cargo check -p elixir-plugin` = clean after workspace/lock update.
+
+**Next:** Wire `elixir-preset` into standalone/plugin save/load state, then B7 full wavetable table import/parity.
