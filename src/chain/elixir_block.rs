@@ -12,12 +12,16 @@
 //! A5 FX bus, A6 spectral features) extend without touching this
 //! wrapper's `AudioBlock` interface.
 
+use std::sync::mpsc;
+
 use super::block::{AudioBlock, MidiBlockEvent};
+use crate::synth::SynthEvent;
 use elixir_core::Engine;
 
 /// `AudioBlock` adapter for the Elixir engine.
 pub struct ElixirSynthBlock {
     engine: Engine,
+    events: mpsc::Receiver<SynthEvent>,
 }
 
 impl ElixirSynthBlock {
@@ -25,9 +29,28 @@ impl ElixirSynthBlock {
     /// into the engine via [`AudioBlock::set_sample_rate`] later, but we
     /// prepare here so a fresh block is immediately usable.
     pub fn new(sample_rate: u32) -> Self {
+        let (_tx, rx) = mpsc::channel();
+        Self::new_with_events(sample_rate, rx)
+    }
+
+    /// Construct an Elixir synth block wired to the existing router →
+    /// audio-thread event channel. This is the A-Cut bridge: router code
+    /// can keep sending [`SynthEvent`] while the chain swaps the first
+    /// block from legacy [`crate::synth::Synth`] to Elixir.
+    pub fn new_with_events(sample_rate: u32, events: mpsc::Receiver<SynthEvent>) -> Self {
         let mut engine = Engine::new();
         engine.prepare(sample_rate, DEFAULT_MAX_BLOCK);
-        Self { engine }
+        Self { engine, events }
+    }
+
+    fn drain_events(&mut self) {
+        while let Ok(ev) = self.events.try_recv() {
+            match ev {
+                SynthEvent::NoteOn { note, velocity } => self.engine.note_on(note, velocity),
+                SynthEvent::NoteOff { note } => self.engine.note_off(note),
+                SynthEvent::AllNotesOff => self.engine.all_notes_off(),
+            }
+        }
     }
 
     /// Set the voice-filter cutoff in Hz (A4). Pass-through to the
@@ -56,6 +79,7 @@ impl AudioBlock for ElixirSynthBlock {
     }
 
     fn process(&mut self, buffer: &mut [f32], channels: usize) {
+        self.drain_events();
         self.engine.process(buffer, channels);
     }
 
@@ -66,6 +90,10 @@ impl AudioBlock for ElixirSynthBlock {
             MidiBlockEvent::AllNotesOff => self.engine.all_notes_off(),
             MidiBlockEvent::SustainPedal { on } => self.engine.set_sustain_pedal(on),
         }
+    }
+
+    fn reset(&mut self) {
+        self.engine.all_notes_off();
     }
 
     fn set_sample_rate(&mut self, sample_rate: u32) {
@@ -112,6 +140,24 @@ mod tests {
         b.process(&mut buf, 2);
         let peak = buf.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         assert!(peak > 0.0, "expected audio after NoteOn, got silence");
+    }
+
+    #[test]
+    fn synth_event_receiver_produces_audio() {
+        let (tx, rx) = mpsc::channel();
+        let mut b = ElixirSynthBlock::new_with_events(48_000, rx);
+        tx.send(SynthEvent::NoteOn {
+            note: 69,
+            velocity: 100,
+        })
+        .unwrap();
+        let mut buf = [0.0f32; 1024];
+        b.process(&mut buf, 2);
+        let peak = buf.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        assert!(
+            peak > 0.0,
+            "expected audio after queued SynthEvent::NoteOn, got silence"
+        );
     }
 
     #[test]

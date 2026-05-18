@@ -28,9 +28,13 @@ use cpal::SampleFormat;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use contrapunk::chain::{BlockDescriptor, Chain, ChainCommandConsumer, ChainCommander};
+#[cfg(feature = "elixir-synth")]
+use contrapunk::chain::ElixirSynthBlock;
+use contrapunk::chain::{AudioBlock, BlockDescriptor, Chain, ChainCommandConsumer, ChainCommander};
 use contrapunk::fx::{Delay, DelayParams, Reverb, ReverbParams};
-use contrapunk::synth::{Synth, SynthEvent, SynthParams};
+#[cfg(not(feature = "elixir-synth"))]
+use contrapunk::synth::Synth;
+use contrapunk::synth::{SynthEvent, SynthParams};
 use contrapunk::transport::{BeatCrossing, Transport};
 
 /// Payload for the `beat-update` Tauri event.
@@ -126,10 +130,7 @@ pub fn start(
     let (commander, chain_rx) = ChainCommander::new_split();
     let commander = Arc::new(commander);
     commander.register_initial_blocks(vec![
-        BlockDescriptor {
-            type_id: "builtin.synth".into(),
-            name: "Synth".into(),
-        },
+        initial_synth_descriptor(),
         BlockDescriptor {
             type_id: "builtin.delay".into(),
             name: "Delay".into(),
@@ -197,6 +198,40 @@ pub fn start(
     Ok(commander)
 }
 
+#[cfg(feature = "elixir-synth")]
+fn initial_synth_descriptor() -> BlockDescriptor {
+    BlockDescriptor {
+        type_id: "builtin.elixir-synth".into(),
+        name: "Elixir Synth".into(),
+    }
+}
+
+#[cfg(not(feature = "elixir-synth"))]
+fn initial_synth_descriptor() -> BlockDescriptor {
+    BlockDescriptor {
+        type_id: "builtin.synth".into(),
+        name: "Synth".into(),
+    }
+}
+
+#[cfg(feature = "elixir-synth")]
+fn make_synth_block(
+    _params: Arc<SynthParams>,
+    events: mpsc::Receiver<SynthEvent>,
+    sample_rate: u32,
+) -> Box<dyn AudioBlock> {
+    Box::new(ElixirSynthBlock::new_with_events(sample_rate, events))
+}
+
+#[cfg(not(feature = "elixir-synth"))]
+fn make_synth_block(
+    params: Arc<SynthParams>,
+    events: mpsc::Receiver<SynthEvent>,
+    sample_rate: u32,
+) -> Box<dyn AudioBlock> {
+    Box::new(Synth::new(params, events, sample_rate))
+}
+
 fn build_and_run_stream(
     transport: Arc<Transport>,
     metronome_enabled: Arc<AtomicBool>,
@@ -230,8 +265,9 @@ fn build_and_run_stream(
     let stream_config: cpal::StreamConfig = config.into();
     let click_total_samples = (sample_rate as f32 * CLICK_SECS) as u32;
 
-    // Build the synth — only wired on the F32 path below. If no rx was
-    // provided (non-default AppState), we still run with an empty one.
+    // Build the synth-event receiver — only wired on the F32 path below.
+    // If no rx was provided (non-default AppState), we still run with an
+    // empty one.
     let synth_rx = synth_rx.unwrap_or_else(|| {
         let (_tx, rx) = mpsc::channel();
         rx
@@ -253,11 +289,11 @@ fn build_and_run_stream(
             // blocks that shape its output in place. CLAP / VST3
             // plugin blocks are also pushed here once their hosts
             // exist.
-            let synth = Synth::new(synth_params, synth_rx, sample_rate);
+            let synth = make_synth_block(synth_params, synth_rx, sample_rate);
             let reverb = Reverb::new(reverb_params, sample_rate);
             let delay = Delay::with_transport(delay_params, Arc::clone(&transport), sample_rate);
             let mut chain = Chain::with_queue(sample_rate, chain_rx);
-            chain.push(Box::new(synth));
+            chain.push(synth);
             chain.push(Box::new(delay));
             chain.push(Box::new(reverb));
 
