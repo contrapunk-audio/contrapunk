@@ -15,6 +15,7 @@ members = [
     "crates/contrapunk-dsp",
     "crates/elixir-core",
     "crates/elixir-standalone",
+    "crates/elixir-plugin",
 ]
 resolver = "2"
 

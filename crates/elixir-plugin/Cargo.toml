@@ -1,0 +1,13 @@
+[package]
+name = "elixir-plugin"
+version = "0.0.1"
+edition = "2021"
+description = "Elixir standalone synth as VST3/CLAP plugin"
+authors = ["Contrapunk Team"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+elixir-core = { path = "../elixir-core", features = ["std"] }
+nih_plug = { git = "https://github.com/contrapunk-audio/nih-plug.git", features = ["assert_process_allocs"] }

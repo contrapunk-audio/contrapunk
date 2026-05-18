@@ -1673,6 +1673,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "elixir-plugin"
+version = "0.0.1"
+dependencies = [
+ "elixir-core",
+ "nih_plug",
+]
+
+[[package]]
 name = "elixir-standalone"
 version = "0.0.1"
 dependencies = [

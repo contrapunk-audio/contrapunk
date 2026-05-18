@@ -4,7 +4,7 @@ milestone: v1.5
 milestone_name: / elixir-v0.1.0)
 status: executing
 stopped_at: Proceeding to complete Elixir implementation; first code target is Phase 21.A6 spectral/FX completion.
-last_updated: "2026-05-18T17:17:05.073Z"
+last_updated: "2026-05-18T17:21:30.965Z"
 last_activity: 2026-05-18 — pi-gsd installed and project state reconciled. HANDOFF.json is treated as consumed after this update.
 progress:
   total_phases: 54
@@ -586,3 +586,22 @@ Next: Implement A6 incrementally with tests, then A-Cut/B-track plugin and relea
 - `cargo test -p contrapunk --features elixir-synth chain::elixir_block --lib` — 7 passed
 
 **Next:** B3 — create `elixir-plugin` skeleton using existing nih-plug plugin crate patterns, then B4 full params/preset surface.
+
+## B3 Skeleton — 2026-05-18 (this session)
+
+**Phase 21.B3 initial elixir-plugin skeleton created.**
+
+- Added workspace member `crates/elixir-plugin`.
+- New `elixir-plugin` crate exports CLAP + VST3 via nih-plug.
+- Plugin surface is intentionally minimal for B3:
+  - MIDI input (`MidiConfig::Basic`)
+  - mono/stereo instrument output layouts (no audio input)
+  - `elixir_core::Engine` renders audio
+  - one Gain parameter as the placeholder DAW parameter surface
+  - sample-accurate MIDI handling by iterating `buffer.iter_samples()` and applying events at their timing
+- No editor/preset matrix yet; B4/B5 own full parameter and preset expansion.
+- Captured reusable nih-plug skeleton pattern in `.claude/skills/contrapunk-nih-plug-skeleton/SKILL.md`.
+
+**Validation:** `cargo check -p elixir-plugin` = clean.
+
+**Next:** B4 — expose full Elixir oscillator/filter/FX/amp parameter surface to DAW automation, then B5 preset format.
