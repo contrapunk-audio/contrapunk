@@ -4,7 +4,7 @@ milestone: v1.5
 milestone_name: / elixir-v0.1.0)
 status: executing
 stopped_at: Proceeding to complete Elixir implementation; first code target is Phase 21.A6 spectral/FX completion.
-last_updated: "2026-05-18T17:21:30.965Z"
+last_updated: "2026-05-18T17:24:36.609Z"
 last_activity: 2026-05-18 — pi-gsd installed and project state reconciled. HANDOFF.json is treated as consumed after this update.
 progress:
   total_phases: 54
@@ -605,3 +605,22 @@ Next: Implement A6 incrementally with tests, then A-Cut/B-track plugin and relea
 **Validation:** `cargo check -p elixir-plugin` = clean.
 
 **Next:** B4 — expose full Elixir oscillator/filter/FX/amp parameter surface to DAW automation, then B5 preset format.
+
+## B4.1 DAW Param Surface — 2026-05-18 (this session)
+
+**Initial B4 parameter expansion complete for elixir-plugin.**
+
+- Replaced placeholder-only plugin params with DAW automation for:
+  - master gain
+  - amp ADSR
+  - spectral morph + morph amount
+  - phase distortion + phase amount
+  - unison style / voices / detune
+  - filter kind / cutoff / resonance / drive / gain / morph X/Y
+- Added plugin wrapper enums for Elixir core enums because nih-plug `EnumParam` needs local `Enum` derives.
+- `ElixirPlugin::sync_params` maps plugin values into `elixir_core::Engine` at process-block start.
+- B4 FX parameter automation intentionally remains next slice: avoid recreating delay/reverb/chorus buffers per block; implement with stateful toggle tracking.
+
+**Validation:** `cargo check -p elixir-plugin` = clean.
+
+**Next:** B4.2 — add allocation-safe FX automation for Drive/Delay/Reverb/FdnReverb/Chorus/Flanger/Phaser/Compressor.
