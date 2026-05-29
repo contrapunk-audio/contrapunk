@@ -1,0 +1,16 @@
+[package]
+name = "golem-tauri"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone Svelte/Tauri host for Golem"
+authors = ["Contrapunk Team"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+cpal = "0.17"
+contrapunk-audio = { path = "../../../crates/contrapunk-audio" }
+golem-core = { path = "../../../crates/golem-core" }
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "2", features = ["devtools"] }

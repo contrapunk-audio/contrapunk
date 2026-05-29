@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "Golem",
+  "version": "0.1.0",
+  "identifier": "com.contrapunk.golem",
+  "build": {
+    "beforeDevCommand": "npm --prefix .. run dev -- --host 127.0.0.1",
+    "beforeBuildCommand": "npm --prefix .. run build",
+    "devUrl": "http://127.0.0.1:5174",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Golem",
+        "width": 1180,
+        "height": 760,
+        "resizable": false,
+        "maximizable": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all"
+  }
+}

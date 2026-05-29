@@ -2358,6 +2358,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "golem-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "golem-tauri"
+version = "0.1.0"
+dependencies = [
+ "contrapunk-audio",
+ "cpal",
+ "golem-core",
+ "serde",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
 name = "gtk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -17,6 +17,8 @@ members = [
     "crates/elixir-standalone",
     "crates/elixir-plugin",
     "crates/elixir-preset",
+    "crates/golem-core",
+    "apps/golem/src-tauri",
 ]
 resolver = "2"
 

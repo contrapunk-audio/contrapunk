@@ -11,6 +11,9 @@ ui/build/
 # Node dependencies (any location)
 node_modules/
 
+# Tauri generated schemas
+**/src-tauri/gen/
+
 # graphify skill output (.claude/skills/graphify)
 graphify-out/
 
