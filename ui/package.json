@@ -12,13 +12,13 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.60.0",
     "@sveltejs/adapter-static": "^3.0.0",
-    "@sveltejs/kit": "^2.59.0",
+    "@sveltejs/kit": "^2.61.1",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "@tailwindcss/vite": "^4.2.4",
-    "svelte": "^5.55.5",
-    "svelte-check": "^4.4.7",
+    "@tailwindcss/vite": "^4.3.0",
+    "svelte": "^5.56.0",
+    "svelte-check": "^4.4.8",
     "tailwindcss": "^4.0.0",
     "typescript": "^6.0.3",
     "vite": "^6.0.0",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
-    "posthog-js": "^1.372.6",
+    "posthog-js": "^1.376.6",
     "vexflow": "^5.0.0"
   },
   "type": "module"
