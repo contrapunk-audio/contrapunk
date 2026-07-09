@@ -49,13 +49,13 @@ set(CLAP_WRAPPER_BUILD_AUV2 ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(clap-wrapper)
 
 # ── Path to pre-built CLAP bundle ────────────────────────────────────
-set(CLAP_BUNDLE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../target/bundled/contrapunk_plugin.clap"
+set(CLAP_BUNDLE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../target/bundled/Contrapunk.clap"
     CACHE PATH "Path to pre-built .clap bundle")
 
 if (NOT EXISTS "${CLAP_BUNDLE_PATH}")
     message(FATAL_ERROR
         "CLAP bundle not found at ${CLAP_BUNDLE_PATH}\n"
-        "Build it first: cargo xtask bundle contrapunk_plugin --release")
+        "Build it first: cargo xtask bundle contrapunk_plugin --release --features embed-ui")
 endif()
 
 # ── AUv2 wrapper target ──────────────────────────────────────────────

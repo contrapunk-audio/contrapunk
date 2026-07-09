@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build Contrapunk AU (Audio Unit) plugin
 #
-# Prerequisites: cargo xtask bundle contrapunk_plugin --release
+# Prerequisites: CONTRAPUNK_PLUGIN_UI_DIR=ui/build cargo xtask bundle contrapunk_plugin --release --features embed-ui
 # Output: build/Contrapunk.component
 #
 # Install (automatic with --install):
@@ -23,11 +23,11 @@ for arg in "$@"; do
 done
 
 # Step 1: Ensure CLAP is built
-CLAP_PATH="$PROJECT_ROOT/target/bundled/contrapunk_plugin.clap"
+CLAP_PATH="$PROJECT_ROOT/target/bundled/Contrapunk.clap"
 if [ ! -d "$CLAP_PATH" ]; then
     echo "Building CLAP plugin first..."
     cd "$PROJECT_ROOT"
-    cargo xtask bundle contrapunk_plugin --release
+    cargo xtask bundle contrapunk_plugin --release --features embed-ui
 fi
 
 # Step 2: CMake configure + build
@@ -37,7 +37,8 @@ cd "$BUILD_DIR"
 
 cmake "$SCRIPT_DIR" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+    -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+    -DCLAP_BUNDLE_PATH="$CLAP_PATH"
 
 echo "Building AU wrapper..."
 cmake --build . --config Release -j "$(sysctl -n hw.ncpu)"
@@ -49,8 +50,13 @@ if [ -z "$COMPONENT_PATH" ]; then
     exit 1
 fi
 
+echo "Embedding CLAP..."
+rm -rf "$COMPONENT_PATH/Contents/PlugIns/Contrapunk.clap"
+ditto "$CLAP_PATH" "$COMPONENT_PATH/Contents/PlugIns/Contrapunk.clap"
+
 echo "Signing AU component..."
-codesign --force --deep -s - "$COMPONENT_PATH"
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+codesign --force --deep --options runtime -s "$CODESIGN_IDENTITY" "$COMPONENT_PATH"
 
 echo ""
 echo "AU plugin built at:"

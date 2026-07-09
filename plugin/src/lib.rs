@@ -14,11 +14,30 @@ use std::sync::{Arc, Mutex};
 mod editor;
 
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
-use contrapunk::harmony::{
-    HarmonyEngine, HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle,
-};
+use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode};
 use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
 use contrapunk_transport::Transport;
+
+const MELODY_CHANNEL: u8 = 0;
+const FIRST_HARMONY_CHANNEL: u8 = 1;
+const CANON_CHANNEL: u8 = 5;
+const COUNTERPOINT_CHANNEL: u8 = 6;
+
+fn harmony_output_channel(result_index: usize) -> u8 {
+    if result_index == 0 {
+        MELODY_CHANNEL
+    } else {
+        (FIRST_HARMONY_CHANNEL + (result_index as u8) - 1).min(CANON_CHANNEL - 1)
+    }
+}
+
+fn lane_output_channel(lane: &str, fallback_channel: u8) -> u8 {
+    match lane {
+        "canon" => CANON_CHANNEL,
+        "counterpoint" => COUNTERPOINT_CHANNEL,
+        _ => fallback_channel.min(15),
+    }
+}
 
 /// Live note tracking shared between the audio thread and the
 /// editor's frame loop. The editor reads this every UI tick and
@@ -333,7 +352,9 @@ impl ContrapunkPlugin {
     }
 
     /// Send a harmonized NoteOn through the plugin's MIDI output.
-    /// Melody goes on channel 1 (index 1), harmonies on channels 2-6.
+    /// Channel map is stable and zero-indexed for nih-plug:
+    /// ch1 = melody, ch2-ch5 = harmony voices, ch6 = canon,
+    /// ch7 = counterpoint.
     fn send_harmonized_note_on(
         &mut self,
         timing: u32,
@@ -362,12 +383,10 @@ impl ContrapunkPlugin {
             }
         }
         for (i, &h_note) in harmonized.iter().enumerate() {
-            // MPE: Ch 2 = melody (index 1), Ch 3+ = harmony voices
-            let channel = (i + 1).min(15) as u8;
             context.send_event(NoteEvent::NoteOn {
                 timing,
                 voice_id: None,
-                channel,
+                channel: harmony_output_channel(i),
                 note: u8::from(h_note),
                 velocity,
             });
@@ -451,9 +470,9 @@ impl ContrapunkPlugin {
     /// updates the per-lane note-state HashSets so the editor's
     /// `noteUpdate` payload colors the Piano correctly.
     ///
-    /// MPE channel mapping: ch 2 = canon lane, ch 3 = counterpoint
-    /// lane, ch 1 reserved for the player melody. Future lanes get
-    /// added to the match.
+    /// MIDI channel mapping: ch1 = melody, ch2-ch5 = harmony,
+    /// ch6 = canon, ch7 = counterpoint. Future lanes get added to
+    /// `lane_output_channel()`.
     fn dispatch_tagged_ops(
         &mut self,
         tagged: &[(&'static str, contrapunk_companion::DispatchOp)],
@@ -469,15 +488,10 @@ impl ContrapunkPlugin {
                     channel,
                     ..
                 } => {
-                    let mpe_ch = match *lane {
-                        "canon" => 2,
-                        "counterpoint" => 3,
-                        _ => (*channel + 1).min(15),
-                    };
                     context.send_event(NoteEvent::NoteOn {
                         timing,
                         voice_id: None,
-                        channel: mpe_ch,
+                        channel: lane_output_channel(lane, *channel),
                         note: *note,
                         velocity: *velocity as f32 / 127.0,
                     });
@@ -495,15 +509,10 @@ impl ContrapunkPlugin {
                     }
                 }
                 DispatchOp::NoteOff { note, channel, .. } => {
-                    let mpe_ch = match *lane {
-                        "canon" => 2,
-                        "counterpoint" => 3,
-                        _ => (*channel + 1).min(15),
-                    };
                     context.send_event(NoteEvent::NoteOff {
                         timing,
                         voice_id: None,
-                        channel: mpe_ch,
+                        channel: lane_output_channel(lane, *channel),
                         note: *note,
                         velocity: 0.0,
                     });
@@ -563,11 +572,10 @@ impl ContrapunkPlugin {
             }
         }
         for (i, &h_note) in released.iter().enumerate() {
-            let channel = (i + 1).min(15) as u8;
             context.send_event(NoteEvent::NoteOff {
                 timing,
                 voice_id: None,
-                channel,
+                channel: harmony_output_channel(i),
                 note: u8::from(h_note),
                 velocity,
             });
@@ -618,7 +626,7 @@ impl ContrapunkPlugin {
                     let normalized = 0.5 + (cents as f32 / (bend_range * 100.0));
                     context.send_event(NoteEvent::MidiPitchBend {
                         timing: 0,
-                        channel: channel + 1, // offset for MPE member channels
+                        channel: channel.min(15),
                         value: normalized.clamp(0.0, 1.0),
                     });
                 }
@@ -629,7 +637,7 @@ impl ContrapunkPlugin {
                 } => {
                     context.send_event(NoteEvent::MidiCC {
                         timing: 0,
-                        channel: channel + 1,
+                        channel: channel.min(15),
                         cc: controller,
                         value: value as f32 / 127.0,
                     });
@@ -639,7 +647,7 @@ impl ContrapunkPlugin {
                 } => {
                     context.send_event(NoteEvent::MidiChannelPressure {
                         timing: 0,
-                        channel: channel + 1,
+                        channel: channel.min(15),
                         pressure: pressure as f32 / 127.0,
                     });
                 }
@@ -834,3 +842,17 @@ impl Vst3Plugin for ContrapunkPlugin {
 
 nih_export_clap!(ContrapunkPlugin);
 nih_export_vst3!(ContrapunkPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plugin_channel_map_is_stable() {
+        assert_eq!(harmony_output_channel(0), 0);
+        assert_eq!(harmony_output_channel(1), 1);
+        assert_eq!(harmony_output_channel(4), 4);
+        assert_eq!(lane_output_channel("canon", 0), 5);
+        assert_eq!(lane_output_channel("counterpoint", 0), 6);
+    }
+}

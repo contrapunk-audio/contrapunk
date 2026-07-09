@@ -67,8 +67,8 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// is the source. Hide the InputPanel entirely in plugin mode.
 		inputSourcePicker: false,
 		// DAW assigns plugin MIDI output channels; our per-voice port
-		// picker would conflict. Voice routing surfaces as MPE channels
-		// (canon=2, counterpoint=3) which the host owns.
+		// picker would conflict. Plugin emits ch1 melody, ch2-ch5 harmony,
+		// ch6 canon, ch7 counterpoint.
 		perVoicePortRouting: false,
 		// Plugin guitar path runs through the DAW; calibration profile
 		// persistence isn't wired (would need host file access).
@@ -199,13 +199,13 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('companionSetGlobalHoldMode', holdMode);
 	}
 	async canonSetEnabled(enabled: boolean): Promise<void> {
-		this.send('canonSetEnabled', enabled);
+		this.send('canonConfigure', { enabled });
 	}
 	async canonSetDelay(beats: number): Promise<void> {
-		this.send('canonSetDelay', beats);
+		this.send('canonConfigure', { delay_beats: beats });
 	}
 	async canonSetTranspose(degrees: number): Promise<void> {
-		this.send('canonSetTranspose', degrees);
+		this.send('canonConfigure', { transpose_degrees: degrees });
 	}
 	async canonSetVoices(
 		voices: Array<{
@@ -225,13 +225,13 @@ export class PluginAdapter implements ContrapunkAdapter {
 	): Promise<void> {
 		this.send('canonSetVoices', voices);
 	}
-	async counterpointSetConfig(_config: {
+	async counterpointSetConfig(config: {
 		enabled?: boolean;
 		species?: string;
 		transpose_degrees?: number;
 		prefer_above?: boolean;
 	}): Promise<void> {
-		// No-op in plugin host today.
+		this.send('counterpointConfigure', config);
 	}
 
 	async canonConfigure(partial: Record<string, unknown>): Promise<void> {
