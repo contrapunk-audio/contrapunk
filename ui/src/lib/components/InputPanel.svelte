@@ -51,58 +51,45 @@
 	// Clears on any other source click.
 	let voiceUnavailableHint = $state(false);
 
-	function selectSource(next: Source) {
-		if (next === 'none') return; // Nothing to do
+	async function switchInput(select: () => void) {
+		const restart = engine.isRunning;
+		midi.error = null;
+		try {
+			if (restart) await engine.stop();
+			select();
+			if (restart && midi.selectedInput !== null) {
+				await engine.start(midi.selectedInput, midi.selectedOutputs);
+			}
+		} catch (e) {
+			midi.error = `Failed to switch input: ${e}`;
+		}
+	}
+
+	async function selectSource(next: Source) {
+		if (next === 'none') return;
 		if (next === 'voice') {
-			// Surface the v1.4 message inline so mobile/touch users (who
-			// can't hover for the tooltip) get feedback instead of a
-			// silent no-op (brutal-critic #3).
 			voiceUnavailableHint = true;
 			return;
 		}
 		voiceUnavailableHint = false;
 		if (next === 'guitar') {
-			midi.selectVirtualInput(VIRTUAL_GUITAR_AUDIO);
+			await switchInput(() => midi.selectVirtualInput(VIRTUAL_GUITAR_AUDIO));
 			return;
 		}
-		// 'midi' — must enter MIDI mode from any non-MIDI state.
-		// User pressed the MIDI radio: the intent is "be in MIDI mode."
-		// Every code path below MUST end with `source === 'midi'` so the
-		// radio lights up. The previous version had two failure modes:
-		//   1. unplugged-prior: midi.selectInput(idx) silently no-ops
-		//      when `inputs.some(d => d.index === idx)` is false →
-		//      selectedInput stays at the old value → radio still wrong.
-		//   2. from-guitar-without-prior: clearInput() left the user at
-		//      `none`, button click became a "deselect" instead of
-		//      "switch to MIDI."
-		// Fix: try to restore the prior physical device, but always
-		// fall through to Computer Keyboard if the restore can't
-		// establish a MIDI selection. The mid-take hot-keyboard concern
-		// only applies when the engine is RUNNING — gate on that
-		// instead of guessing from the previous source.
-		if (source === 'midi') return;
-		const wasRunning = engine.isRunning;
-		const tryRestorePrior = (): boolean => {
-			if (lastMidiSelection === null) return false;
-			if (lastMidiSelection === VIRTUAL_COMPUTER_KEYBOARD) {
-				midi.selectVirtualInput(lastMidiSelection);
-				return midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD;
-			}
-			// Physical device — only succeeds if the device is still present.
-			midi.selectInput(lastMidiSelection);
-			return midi.selectedInput === lastMidiSelection;
-		};
-		if (tryRestorePrior()) return;
-		// Restore failed or no prior. If we're NOT mid-take, default
-		// to Computer Keyboard so the radio lights up + the user has
-		// a working input. If we ARE mid-take (engine running), clear
-		// instead — turning the typing keyboard into a hot input
-		// mid-phrase is worse than asking the user to pick.
-		if (wasRunning) {
-			midi.clearInput();
-		} else {
-			midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
+		if (source === 'midi') {
+			await midi.refresh();
+			return;
 		}
+		await switchInput(() => {
+			let restored = false;
+			if (lastMidiSelection !== null) {
+				midi.selectInput(lastMidiSelection);
+				restored = midi.selectedInput === lastMidiSelection;
+			}
+			if (!restored) {
+				midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
+			}
+		});
 	}
 
 	// Calibration profile status (Tauri-only — gated by capability flag).
@@ -198,17 +185,19 @@
 		{ value: String(VIRTUAL_COMPUTER_KEYBOARD), label: 'Computer Keyboard' }
 	]);
 
-	function handleMidiInputChange(value: string) {
-		if (value === '') {
-			midi.clearInput();
-			return;
-		}
-		const idx = parseInt(value, 10);
-		if (idx === VIRTUAL_COMPUTER_KEYBOARD) {
-			midi.selectVirtualInput(idx);
-		} else {
-			midi.selectInput(idx);
-		}
+	async function handleMidiInputChange(value: string) {
+		await switchInput(() => {
+			if (value === '') {
+				midi.clearInput();
+				return;
+			}
+			const idx = parseInt(value, 10);
+			if (idx === VIRTUAL_COMPUTER_KEYBOARD) {
+				midi.selectVirtualInput(idx);
+			} else {
+				midi.selectInput(idx);
+			}
+		});
 	}
 
 	function voiceLabel(index: number, count: number): string {
