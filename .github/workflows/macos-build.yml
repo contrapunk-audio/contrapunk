@@ -146,12 +146,23 @@ jobs:
             xcrun stapler validate "$DMG_PATH" || echo "stapler note: non-tag build, skipping strict check"
           fi
 
-      - name: Require signing on tagged releases
+      - name: Require signing + notarization on tagged releases
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          if [[ -z "${APPLE_SIGNING_IDENTITY}" ]]; then
-            echo "::error::Tagged release pushed without APPLE_SIGNING_IDENTITY secret."
-            echo "::error::Refusing to attach unsigned DMG to release. Set the 7 Apple secrets in repo Settings -> Secrets and retag."
+          missing=()
+          for name in \
+            APPLE_CERTIFICATE_BASE64 \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_TEAM_ID \
+            APPLE_API_KEY \
+            APPLE_API_ISSUER \
+            APPLE_API_KEY_BASE64
+          do
+            if [[ -z "${!name}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} )); then
+            printf '::error::Missing release secret: %s\n' "${missing[@]}"
+            echo "::error::Refusing to attach unsigned/unnotarized DMG to release. Set Apple release secrets and retag."
             exit 1
           fi
           echo "Signing identity present: ${APPLE_SIGNING_IDENTITY}"

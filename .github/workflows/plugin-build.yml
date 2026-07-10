@@ -1,0 +1,379 @@
+name: Plugin Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+    paths:
+      - 'au-wrapper/**'
+      - 'plugin/**'
+      - 'ui/**'
+      - 'wasm/**'
+      - 'bundler.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/plugin-build.yml'
+  workflow_dispatch:
+
+jobs:
+  macos-plugins:
+    name: Build signed macOS plugin installer
+    runs-on: macos-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_INSTALLER_CERTIFICATE_BASE64: ${{ secrets.APPLE_INSTALLER_CERTIFICATE_BASE64 }}
+      APPLE_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_INSTALLER_CERTIFICATE_PASSWORD }}
+      APPLE_INSTALLER_SIGNING_IDENTITY: ${{ secrets.APPLE_INSTALLER_SIGNING_IDENTITY }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust stable + macOS + wasm targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin,wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-plugin
+          workspaces: |
+            .
+            src-tauri
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build UI for embedded plugin editor
+        working-directory: ui
+        run: npm run build
+
+      - name: Import Developer ID Application certificate
+        if: env.APPLE_CERTIFICATE_BASE64 != ''
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ env.APPLE_CERTIFICATE_BASE64 }}
+          p12-password: ${{ env.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Import Developer ID Installer certificate
+        if: env.APPLE_INSTALLER_CERTIFICATE_BASE64 != ''
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ env.APPLE_INSTALLER_CERTIFICATE_BASE64 }}
+          p12-password: ${{ env.APPLE_INSTALLER_CERTIFICATE_PASSWORD }}
+
+      - name: Write App Store Connect API key
+        if: env.APPLE_API_KEY_BASE64 != ''
+        run: |
+          mkdir -p "$HOME/private_keys"
+          echo "${APPLE_API_KEY_BASE64}" | base64 --decode > "$HOME/private_keys/AuthKey.p8"
+          chmod 600 "$HOME/private_keys/AuthKey.p8"
+          echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey.p8" >> "$GITHUB_ENV"
+
+      - name: Require signing + notarization secrets on tagged releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          missing=()
+          for name in \
+            APPLE_CERTIFICATE_BASE64 \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_INSTALLER_SIGNING_IDENTITY \
+            APPLE_API_KEY \
+            APPLE_API_ISSUER \
+            APPLE_API_KEY_BASE64
+          do
+            if [[ -z "${!name}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} )); then
+            printf '::error::Missing release secret: %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+      - name: Build universal VST3 + CLAP
+        env:
+          CONTRAPUNK_PLUGIN_UI_DIR: ${{ github.workspace }}/ui/build
+        run: cargo xtask bundle-universal contrapunk_plugin --release --features embed-ui
+
+      - name: Sign VST3 + CLAP bundles
+        if: env.APPLE_SIGNING_IDENTITY != ''
+        run: |
+          codesign --force --deep --options runtime -s "$APPLE_SIGNING_IDENTITY" \
+            target/bundled/Contrapunk.vst3 \
+            target/bundled/Contrapunk.clap
+          codesign --verify --deep --strict target/bundled/Contrapunk.vst3
+          codesign --verify --deep --strict target/bundled/Contrapunk.clap
+
+      - name: Build AU wrapper
+        run: CODESIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:--}" ./au-wrapper/build.sh
+
+      - name: Build macOS plugin installer pkg
+        run: |
+          set -euo pipefail
+          VERSION=$(python3 - <<'PY'
+          import tomllib
+          print(tomllib.load(open('plugin/Cargo.toml', 'rb'))['package']['version'])
+          PY
+          )
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          PKGROOT="dist/macos-plugin-pkgroot"
+          SCRIPTS="dist/macos-plugin-scripts"
+          PKG="dist/Contrapunk-Plugins-macOS-universal.pkg"
+          ZIP="dist/Contrapunk-Plugins-macOS-universal-bundles.zip"
+
+          rm -rf dist
+          mkdir -p \
+            "$PKGROOT/Library/Audio/Plug-Ins/VST3" \
+            "$PKGROOT/Library/Audio/Plug-Ins/CLAP" \
+            "$PKGROOT/Library/Audio/Plug-Ins/Components" \
+            "$SCRIPTS"
+
+          ditto target/bundled/Contrapunk.vst3 "$PKGROOT/Library/Audio/Plug-Ins/VST3/Contrapunk.vst3"
+          ditto target/bundled/Contrapunk.clap "$PKGROOT/Library/Audio/Plug-Ins/CLAP/Contrapunk.clap"
+          ditto au-wrapper/build/Contrapunk.component "$PKGROOT/Library/Audio/Plug-Ins/Components/Contrapunk.component"
+          chmod -R a+rX "$PKGROOT"
+
+          cat > "$SCRIPTS/postinstall" <<'SH'
+          #!/bin/sh
+          /usr/bin/killall -9 AudioComponentRegistrar >/dev/null 2>&1 || true
+          exit 0
+          SH
+          chmod +x "$SCRIPTS/postinstall"
+
+          sign_args=()
+          if [[ -n "${APPLE_INSTALLER_SIGNING_IDENTITY:-}" ]]; then
+            sign_args=(--sign "$APPLE_INSTALLER_SIGNING_IDENTITY")
+          fi
+          pkgbuild \
+            --root "$PKGROOT" \
+            --scripts "$SCRIPTS" \
+            --identifier com.contrapunk.plugins \
+            --version "$VERSION" \
+            --install-location / \
+            "${sign_args[@]}" \
+            "$PKG"
+
+          mkdir -p dist/macos-plugin-bundles
+          ditto target/bundled/Contrapunk.vst3 dist/macos-plugin-bundles/Contrapunk.vst3
+          ditto target/bundled/Contrapunk.clap dist/macos-plugin-bundles/Contrapunk.clap
+          ditto au-wrapper/build/Contrapunk.component dist/macos-plugin-bundles/Contrapunk.component
+          (cd dist/macos-plugin-bundles && zip -qry "../$(basename "$ZIP")" .)
+
+      - name: Notarize + staple macOS plugin installer
+        if: env.APPLE_API_KEY_BASE64 != '' && env.APPLE_INSTALLER_SIGNING_IDENTITY != ''
+        run: |
+          PKG="dist/Contrapunk-Plugins-macOS-universal.pkg"
+          xcrun notarytool submit "$PKG" \
+            --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$PKG"
+          xcrun stapler validate "$PKG"
+
+      - name: Verify macOS plugin installer
+        run: |
+          PKG="dist/Contrapunk-Plugins-macOS-universal.pkg"
+          pkgutil --check-signature "$PKG" || {
+            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then exit 1; fi
+            echo "Unsigned pkg allowed for non-tag build"
+          }
+
+      - name: Upload macOS plugin installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: contrapunk-plugins-macos-universal-pkg
+          path: dist/Contrapunk-Plugins-macOS-universal.pkg
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload macOS raw plugin bundles
+        uses: actions/upload-artifact@v7
+        with:
+          name: contrapunk-plugins-macos-universal-bundles
+          path: dist/Contrapunk-Plugins-macOS-universal-bundles.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach macOS plugins to GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Contrapunk-Plugins-macOS-universal.pkg
+            dist/Contrapunk-Plugins-macOS-universal-bundles.zip
+          fail_on_unmatched_files: true
+
+  windows-plugins:
+    name: Build Windows plugin installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust stable + wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-plugin
+          workspaces: |
+            .
+            src-tauri
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build UI for embedded plugin editor
+        working-directory: ui
+        run: npm run build
+
+      - name: Build VST3 + CLAP
+        env:
+          CONTRAPUNK_PLUGIN_UI_DIR: ${{ github.workspace }}\ui\build
+        run: cargo xtask bundle contrapunk_plugin --release --features embed-ui
+
+      - name: Build Windows plugin installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $payload = 'dist\windows-plugin\payload\CommonFiles'
+          New-Item -ItemType Directory -Force "$payload\VST3", "$payload\CLAP" | Out-Null
+          Copy-Item -Recurse -Force 'target\bundled\Contrapunk.vst3' "$payload\VST3\"
+          Copy-Item -Recurse -Force 'target\bundled\Contrapunk.clap' "$payload\CLAP\"
+          Compress-Archive -Force -Path 'dist\windows-plugin\payload\*' -DestinationPath 'dist\Contrapunk-Plugins-Windows-x64-bundles.zip'
+
+          $vst3 = (Resolve-Path "$payload\VST3\*").Path
+          $clap = (Resolve-Path "$payload\CLAP\*").Path
+          $nsi = @"
+          Unicode True
+          Name "Contrapunk Plugins"
+          OutFile "${{ github.workspace }}\dist\Contrapunk-Plugins-Windows-x64.exe"
+          InstallDir "`$PROGRAMFILES64\Contrapunk Plugins"
+          RequestExecutionLevel admin
+          SetCompressor /SOLID lzma
+          ShowInstDetails show
+          ShowUninstDetails show
+
+          Section "VST3" SEC_VST3
+            SetOutPath "`$COMMONFILES64\VST3"
+            File /r "$vst3"
+          SectionEnd
+
+          Section "CLAP" SEC_CLAP
+            SetOutPath "`$COMMONFILES64\CLAP"
+            File /r "$clap"
+          SectionEnd
+
+          Section -Registry
+            SetOutPath "`$INSTDIR"
+            WriteUninstaller "`$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Contrapunk Plugins" "DisplayName" "Contrapunk Plugins"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Contrapunk Plugins" "Publisher" "Contrapunk Audio"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Contrapunk Plugins" "UninstallString" '"`$INSTDIR\Uninstall.exe"'
+          SectionEnd
+
+          Section "Uninstall"
+            RMDir /r "`$COMMONFILES64\VST3\Contrapunk.vst3"
+            Delete "`$COMMONFILES64\CLAP\Contrapunk.clap"
+            RMDir /r "`$COMMONFILES64\CLAP\Contrapunk.clap"
+            Delete "`$INSTDIR\Uninstall.exe"
+            RMDir "`$INSTDIR"
+            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Contrapunk Plugins"
+          SectionEnd
+          "@
+          New-Item -ItemType Directory -Force 'dist\windows-plugin' | Out-Null
+          Set-Content -Path 'dist\windows-plugin\ContrapunkPlugins.nsi' -Value $nsi -Encoding UTF8
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" 'dist\windows-plugin\ContrapunkPlugins.nsi'
+
+      - name: Sign Windows plugin installer
+        if: env.WINDOWS_CERTIFICATE_BASE64 != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [IO.File]::WriteAllBytes('windows-signing.pfx', [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath 'windows-signing.pfx' -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          if ($env:WINDOWS_CERTIFICATE_THUMBPRINT) {
+            $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object Thumbprint -eq $env:WINDOWS_CERTIFICATE_THUMBPRINT | Select-Object -First 1
+          }
+          Set-AuthenticodeSignature -FilePath 'dist\Contrapunk-Plugins-Windows-x64.exe' -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' -HashAlgorithm SHA256
+
+      - name: Upload Windows plugin installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: contrapunk-plugins-windows-x64-installer
+          path: dist/Contrapunk-Plugins-Windows-x64.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows raw plugin bundles
+        uses: actions/upload-artifact@v7
+        with:
+          name: contrapunk-plugins-windows-x64-bundles
+          path: dist/Contrapunk-Plugins-Windows-x64-bundles.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach Windows plugins to GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Contrapunk-Plugins-Windows-x64.exe
+            dist/Contrapunk-Plugins-Windows-x64-bundles.zip
+          fail_on_unmatched_files: true
