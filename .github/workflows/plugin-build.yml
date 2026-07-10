@@ -167,18 +167,24 @@ jobs:
           SH
           chmod +x "$SCRIPTS/postinstall"
 
-          sign_args=()
           if [[ -n "${APPLE_INSTALLER_SIGNING_IDENTITY:-}" ]]; then
-            sign_args=(--sign "$APPLE_INSTALLER_SIGNING_IDENTITY")
+            pkgbuild \
+              --root "$PKGROOT" \
+              --scripts "$SCRIPTS" \
+              --identifier com.contrapunk.plugins \
+              --version "$VERSION" \
+              --install-location / \
+              --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" \
+              "$PKG"
+          else
+            pkgbuild \
+              --root "$PKGROOT" \
+              --scripts "$SCRIPTS" \
+              --identifier com.contrapunk.plugins \
+              --version "$VERSION" \
+              --install-location / \
+              "$PKG"
           fi
-          pkgbuild \
-            --root "$PKGROOT" \
-            --scripts "$SCRIPTS" \
-            --identifier com.contrapunk.plugins \
-            --version "$VERSION" \
-            --install-location / \
-            "${sign_args[@]}" \
-            "$PKG"
 
           mkdir -p dist/macos-plugin-bundles
           ditto target/bundled/Contrapunk.vst3 dist/macos-plugin-bundles/Contrapunk.vst3
