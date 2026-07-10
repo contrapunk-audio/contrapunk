@@ -74,6 +74,7 @@ jobs:
         run: npm run build
 
       - name: Import Developer ID Application certificate
+        id: import-app-cert
         if: env.APPLE_CERTIFICATE_BASE64 != ''
         uses: apple-actions/import-codesign-certs@v3
         with:
@@ -84,6 +85,9 @@ jobs:
         if: env.APPLE_INSTALLER_CERTIFICATE_BASE64 != ''
         uses: apple-actions/import-codesign-certs@v3
         with:
+          keychain: signing_temp
+          create-keychain: false
+          keychain-password: ${{ steps.import-app-cert.outputs.keychain-password }}
           p12-file-base64: ${{ env.APPLE_INSTALLER_CERTIFICATE_BASE64 }}
           p12-password: ${{ env.APPLE_INSTALLER_CERTIFICATE_PASSWORD }}
 
