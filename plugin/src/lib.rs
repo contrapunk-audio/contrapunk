@@ -9,12 +9,14 @@
 
 use nih_plug::prelude::*;
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 
 mod editor;
 
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
+use contrapunk::chain::{AudioBlock, MidiBlockEvent};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode};
+use contrapunk::synth::{Synth, SynthParams};
 use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
 use contrapunk_transport::Transport;
 
@@ -196,6 +198,9 @@ struct ContrapunkParams {
     #[id = "voice_lead"]
     pub voice_leading: BoolParam,
 
+    #[id = "synth"]
+    pub synth_enabled: BoolParam,
+
     #[persist = "webview_state"]
     pub webview_state: Arc<nih_plug_webview::WebViewState>,
 }
@@ -211,6 +216,7 @@ impl Default for ContrapunkParams {
             octave_mode: EnumParam::new("Octave", PluginOctaveMode::None),
             auto_key: BoolParam::new("Auto Key", false),
             voice_leading: BoolParam::new("Voice Leading", false),
+            synth_enabled: BoolParam::new("Built-in Synth", true),
             webview_state: editor::default_webview_state(),
         }
     }
@@ -239,6 +245,9 @@ struct ContrapunkPlugin {
     companion: Arc<Mutex<Companion>>,
     guitar_input: Option<GuitarInput>,
     sample_rate: f32,
+    synth: Synth,
+    synth_params: Arc<SynthParams>,
+    synth_scratch: Vec<f32>,
 
     /// Shared with the editor for noteUpdate emission. Audio thread
     /// writes on every send_harmonized_note_{on,off}; editor frame
@@ -268,6 +277,9 @@ impl Default for ContrapunkPlugin {
         let transport = Transport::new(48_000);
         let world = WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
         let companion = Arc::new(Mutex::new(Companion::new(world)));
+        let synth_params = Arc::new(SynthParams::default());
+        let (_synth_tx, synth_rx) = mpsc::channel();
+        let synth = Synth::new(Arc::clone(&synth_params), synth_rx, 48_000);
         {
             let mut c = companion
                 .lock()
@@ -282,6 +294,9 @@ impl Default for ContrapunkPlugin {
             companion,
             guitar_input: None,
             sample_rate: 48000.0,
+            synth,
+            synth_params,
+            synth_scratch: Vec::new(),
             note_state: Arc::new(Mutex::new(PluginNoteState::default())),
             last_key: PluginKey::C,
             last_mode: PluginMode::DiatonicThirds,
@@ -300,6 +315,9 @@ impl ContrapunkPlugin {
     /// lock for the duration of the param sync — DAW params change
     /// at user-rate (<<1Hz typical), so the brief lock is fine.
     fn sync_params(&mut self) {
+        self.synth_params
+            .set_enabled(self.params.synth_enabled.value());
+
         let key = self.params.key.value();
         let mode = self.params.harmony_mode.value();
         let octave = self.params.octave_mode.value();
@@ -351,6 +369,44 @@ impl ContrapunkPlugin {
         }
     }
 
+    fn synth_note_on(&mut self, note: u8, velocity: f32) {
+        let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
+        self.synth
+            .midi_event(MidiBlockEvent::NoteOn { note, velocity });
+    }
+
+    fn synth_note_off(&mut self, note: u8) {
+        self.synth.midi_event(MidiBlockEvent::NoteOff { note });
+    }
+
+    fn synth_all_notes_off(&mut self) {
+        self.synth.midi_event(MidiBlockEvent::AllNotesOff);
+    }
+
+    fn render_builtin_synth(&mut self, buffer: &mut Buffer) {
+        let channels = buffer.channels();
+        let samples = buffer.samples();
+        if channels == 0 || samples == 0 {
+            return;
+        }
+
+        let len = samples * channels;
+        if len > self.synth_scratch.len() {
+            return;
+        }
+
+        let scratch = &mut self.synth_scratch[..len];
+        self.synth.render(scratch, channels);
+
+        let output = buffer.as_slice();
+        for frame in 0..samples {
+            let base = frame * channels;
+            for ch in 0..channels {
+                output[ch][frame] = (output[ch][frame] + scratch[base + ch]).clamp(-1.0, 1.0);
+            }
+        }
+    }
+
     /// Send a harmonized NoteOn through the plugin's MIDI output.
     /// Channel map is stable and zero-indexed for nih-plug:
     /// ch1 = melody, ch2-ch5 = harmony voices, ch6 = canon,
@@ -383,13 +439,25 @@ impl ContrapunkPlugin {
             }
         }
         for (i, &h_note) in harmonized.iter().enumerate() {
+            let note = u8::from(h_note);
             context.send_event(NoteEvent::NoteOn {
                 timing,
                 voice_id: None,
                 channel: harmony_output_channel(i),
-                note: u8::from(h_note),
+                note,
                 velocity,
             });
+            self.synth_note_on(note, velocity);
+        }
+    }
+
+    fn clear_note_state(&mut self) {
+        self.synth_all_notes_off();
+        if let Ok(mut s) = self.note_state.lock() {
+            s.input_notes.clear();
+            s.harmony_notes.clear();
+            s.canon_notes.clear();
+            s.counterpoint_notes.clear();
         }
     }
 
@@ -399,7 +467,7 @@ impl ContrapunkPlugin {
     /// locate events surface as a `pos_samples` jump bigger than a
     /// few buffers — re-seat sample_pos via `set_sample_pos` so
     /// beat-crossings stay aligned. Lock-free atomic writes only.
-    fn sync_dawtransport(&self, context: &mut impl ProcessContext<Self>) {
+    fn sync_dawtransport(&mut self, context: &mut impl ProcessContext<Self>) {
         let dt = context.transport();
         if let Some(tempo) = dt.tempo {
             self.transport.set_bpm(tempo);
@@ -412,7 +480,10 @@ impl ContrapunkPlugin {
         }
         match (dt.playing, self.transport.is_running()) {
             (true, false) => self.transport.play(),
-            (false, true) => self.transport.stop(),
+            (false, true) => {
+                self.transport.stop();
+                self.clear_note_state();
+            }
             _ => {}
         }
         if let Some(host_pos) = dt.pos_samples() {
@@ -495,6 +566,7 @@ impl ContrapunkPlugin {
                         note: *note,
                         velocity: *velocity as f32 / 127.0,
                     });
+                    self.synth_note_on(*note, *velocity as f32 / 127.0);
                     if let Ok(mut s) = self.note_state.lock() {
                         match *lane {
                             "canon" => {
@@ -516,6 +588,7 @@ impl ContrapunkPlugin {
                         note: *note,
                         velocity: 0.0,
                     });
+                    self.synth_note_off(*note);
                     if let Ok(mut s) = self.note_state.lock() {
                         match *lane {
                             "canon" => {
@@ -540,6 +613,7 @@ impl ContrapunkPlugin {
                             value: 0.0,
                         });
                     }
+                    self.synth_all_notes_off();
                     if let Ok(mut s) = self.note_state.lock() {
                         s.canon_notes.clear();
                         s.counterpoint_notes.clear();
@@ -572,13 +646,15 @@ impl ContrapunkPlugin {
             }
         }
         for (i, &h_note) in released.iter().enumerate() {
+            let note = u8::from(h_note);
             context.send_event(NoteEvent::NoteOff {
                 timing,
                 voice_id: None,
                 channel: harmony_output_channel(i),
-                note: u8::from(h_note),
+                note,
                 velocity,
             });
+            self.synth_note_off(note);
         }
     }
 
@@ -665,7 +741,13 @@ impl Plugin for ContrapunkPlugin {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
-        // Stereo pass-through (most common DAW configuration)
+        // Instrument mode: MIDI in, built-in synth out.
+        AudioIOLayout {
+            main_input_channels: None,
+            main_output_channels: NonZeroU32::new(2),
+            ..AudioIOLayout::const_default()
+        },
+        // Stereo pass-through + built-in synth (for guitar/audio tracks).
         AudioIOLayout {
             main_input_channels: NonZeroU32::new(2),
             main_output_channels: NonZeroU32::new(2),
@@ -709,11 +791,19 @@ impl Plugin for ContrapunkPlugin {
 
     fn initialize(
         &mut self,
-        _audio_io_layout: &AudioIOLayout,
+        audio_io_layout: &AudioIOLayout,
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         self.sample_rate = buffer_config.sample_rate;
+        self.synth.set_sample_rate(buffer_config.sample_rate as u32);
+        let channels = audio_io_layout
+            .main_output_channels
+            .map(|c| c.get() as usize)
+            .unwrap_or(2)
+            .max(1);
+        self.synth_scratch
+            .resize(buffer_config.max_buffer_size as usize * channels, 0.0);
 
         // Initialize guitar pitch detection pipeline
         let config = GuitarInputConfig {
@@ -725,6 +815,10 @@ impl Plugin for ContrapunkPlugin {
         self.guitar_input = Some(GuitarInput::new(config));
 
         true
+    }
+
+    fn reset(&mut self) {
+        self.synth.reset();
     }
 
     fn process(
@@ -801,6 +895,24 @@ impl Plugin for ContrapunkPlugin {
                                 }
                             }
                         }
+                        NoteEvent::Choke { timing, note, .. } => {
+                            let suppress = self.companion_on_input(
+                                contrapunk_companion::InputEvent::NoteOff { note, channel: 0 },
+                                timing,
+                                context,
+                            );
+                            if !suppress {
+                                if let Ok(wmidi_note) = wmidi::Note::try_from(note) {
+                                    self.send_harmonized_note_off(timing, wmidi_note, 0.0, context);
+                                }
+                            }
+                        }
+                        other @ NoteEvent::MidiCC { cc, value, .. }
+                            if cc == 120 || cc == 123 || (cc == 64 && value < 0.5) =>
+                        {
+                            self.clear_note_state();
+                            context.send_event(other);
+                        }
                         // Forward other events unchanged
                         other => context.send_event(other),
                     }
@@ -822,7 +934,10 @@ impl Plugin for ContrapunkPlugin {
             }
         }
 
-        // Audio passes through unchanged in both modes
+        // Keep the old audio pass-through, but mix in Contrapunk's own
+        // synth so the plugin is audible without a downstream instrument.
+        self.render_builtin_synth(buffer);
+
         ProcessStatus::Normal
     }
 }
@@ -833,8 +948,11 @@ impl ClapPlugin for ContrapunkPlugin {
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
+        ClapFeature::Instrument,
+        ClapFeature::Synthesizer,
         ClapFeature::NoteEffect,
         ClapFeature::NoteDetector,
+        ClapFeature::Stereo,
         ClapFeature::Utility,
     ];
 }
@@ -844,6 +962,7 @@ impl Vst3Plugin for ContrapunkPlugin {
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
         Vst3SubCategory::Fx,
         Vst3SubCategory::Instrument,
+        Vst3SubCategory::Synth,
         Vst3SubCategory::Tools,
     ];
 }

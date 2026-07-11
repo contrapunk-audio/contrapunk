@@ -1567,6 +1567,9 @@ class EngineStore {
 		this.voiceCount = state.voiceCount;
 		this.autoKey = state.autoKey;
 		this.isRunning = state.isRunning;
+		if (this.isRunning && adapter.capabilities.noteUpdates) {
+			this.startNoteUpdates();
+		}
 		if (VALID_CP_SPECIES.has(state.counterpointSpecies as CounterpointSpeciesName)) {
 			this.counterpointSpecies = state.counterpointSpecies as CounterpointSpeciesName;
 		}
