@@ -691,12 +691,20 @@ impl Plugin for ContrapunkPlugin {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        Some(Box::new(editor::create_editor(
-            self.params.clone(),
-            Arc::clone(&self.note_state),
-            Arc::clone(&self.companion),
-            &self.params.webview_state,
-        )))
+        #[cfg(feature = "au-generic-ui")]
+        {
+            None
+        }
+
+        #[cfg(not(feature = "au-generic-ui"))]
+        {
+            Some(Box::new(editor::create_editor(
+                self.params.clone(),
+                Arc::clone(&self.note_state),
+                Arc::clone(&self.companion),
+                &self.params.webview_state,
+            )))
+        }
     }
 
     fn initialize(

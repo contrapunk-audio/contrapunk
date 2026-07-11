@@ -8,6 +8,10 @@ authors = ["Contrapunk Team"]
 [features]
 default = []
 embed-ui = []
+# Build variant used only as the embedded CLAP inside the AUv2 wrapper.
+# Logic can still show its generic parameter UI, while VST3/CLAP keep the
+# embedded Svelte editor through the normal embed-ui build.
+au-generic-ui = []
 
 [lib]
 crate-type = ["cdylib"]

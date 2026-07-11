@@ -238,7 +238,10 @@ pub fn create_editor(
         title: "Contrapunk".to_string(),
         source: WebViewSource::CustomProtocol {
             protocol: protocol.clone(),
-            url: "index.html".to_string(),
+            // nih-plug-webview turns this into `contrapunk://localhost/{url}`.
+            // Use the origin root so SvelteKit hydrates the `/` route instead
+            // of treating `/index.html` as an app route and showing a 404.
+            url: String::new(),
         },
         workdir: PathBuf::from("/tmp/contrapunk-webview"),
     };
@@ -253,8 +256,9 @@ pub fn create_editor(
     WebViewEditor::new_with_webview(handler, state, config, move |w| {
         let proto = protocol.clone();
         w.with_custom_protocol(proto, |_id, req| {
+            let uri = req.uri().to_string();
             let path = req.uri().path();
-            let (body, mime) = serve_embedded_asset(path);
+            let (body, mime) = serve_embedded_asset(path, &uri);
             nih_plug_webview::wry::http::Response::builder()
                 .header("Content-Type", mime)
                 .body(body)
@@ -265,23 +269,32 @@ pub fn create_editor(
 
 /// Serve embedded UI assets from the compiled-in Svelte build.
 /// Falls back to a minimal placeholder if the build isn't available.
-fn serve_embedded_asset(path: &str) -> (Cow<'static, [u8]>, &'static str) {
+fn serve_embedded_asset(path: &str, uri: &str) -> (Cow<'static, [u8]>, &'static str) {
     #[cfg(feature = "embed-ui")]
     {
-        let path = if path == "/" { "/index.html" } else { path };
+        let path = match path {
+            "" | "/" | "/index.html" => "/index.html",
+            path => path,
+        };
         return match get_plugin_build_asset(path) {
             Some(body) => (Cow::Borrowed(body), mime_for_path(path)),
-            None => (Cow::Owned(b"Not Found".to_vec()), "text/plain"),
+            None => (
+                Cow::Owned(format!("Not Found: path={path:?} uri={uri:?}").into_bytes()),
+                "text/plain",
+            ),
         };
     }
 
     #[cfg(not(feature = "embed-ui"))]
     {
-        if path == "/" || path == "/index.html" {
+        if path == "" || path == "/" || path == "/index.html" {
             let html = include_str!("editor_fallback.html");
             return (Cow::Owned(html.as_bytes().to_vec()), "text/html");
         }
-        (Cow::Owned(b"Not Found".to_vec()), "text/plain")
+        (
+            Cow::Owned(format!("Not Found: path={path:?} uri={uri:?}").into_bytes()),
+            "text/plain",
+        )
     }
 }
 
