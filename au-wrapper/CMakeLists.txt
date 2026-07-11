@@ -67,6 +67,14 @@ string(REPLACE [[      case kAudioUnitProperty_CocoaUI:
 ]] [[      case kAudioUnitProperty_CocoaUI:
         return kAudioUnitErr_InvalidProperty;
 ]] _wrapasauv2_src "${_wrapasauv2_src}")
+string(REPLACE [[      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
+        outWritable = false;
+        outDataSize = sizeof(free_audio::auv2_wrapper::ui_connection);
+        return noErr;
+        break;
+]] [[      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
+        return kAudioUnitErr_InvalidProperty;
+]] _wrapasauv2_src "${_wrapasauv2_src}")
 string(REPLACE [[      case kAudioUnitProperty_CocoaUI:
         LOGINFO("[clap-wrapper] Property: kAudioUnitProperty_CocoaUI {}",
                 (_plugin) ? "plugin" : "no plugin");
@@ -86,6 +94,35 @@ string(REPLACE [[      case kAudioUnitProperty_CocoaUI:
         return kAudioUnitErr_InvalidProperty;
         break;
 ]] [[      case kAudioUnitProperty_CocoaUI:
+        return kAudioUnitErr_InvalidProperty;
+]] _wrapasauv2_src "${_wrapasauv2_src}")
+string(REPLACE [[      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
+        _uiconn._plugin = _plugin.get();
+        _uiconn._window = nullptr;
+        _uiconn._registerWindow = [this](auto *x, auto *y)
+        {
+          this->_uiconn._window = x;
+          this->_uiconn._canary = y;
+        };
+        _uiconn._createWindow = [this]
+        {
+          this->_uiIsOpened = true;
+          _plugin->_ext._gui->create(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
+        };
+        _uiconn._destroyWindow = [this]
+        {
+          // this must exist
+          _plugin->_ext._gui->destroy(_plugin->_plugin);
+
+          this->_uiIsOpened = false;
+          if (this->_uiconn._canary)
+          {
+            *(this->_uiconn._canary) = 0;
+          }
+        };
+        *static_cast<ui_connection *>(outData) = _uiconn;
+        return noErr;
+]] [[      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
         return kAudioUnitErr_InvalidProperty;
 ]] _wrapasauv2_src "${_wrapasauv2_src}")
 if (_wrapasauv2_src STREQUAL _wrapasauv2_before)
