@@ -48,6 +48,54 @@ set(CLAP_WRAPPER_BUILD_AUV2 ON CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(clap-wrapper)
 
+FetchContent_GetProperties(clap-wrapper SOURCE_DIR CLAP_WRAPPER_SOURCE_DIR)
+
+# Logic 11/macOS 26 crashes AUHostingService when clap-wrapper advertises a
+# CLAP webview through AUv2 CocoaUI. The AU uses Logic's generic parameter UI;
+# VST3/CLAP still keep the embedded Svelte UI.
+set(_wrapasauv2 "${CLAP_WRAPPER_SOURCE_DIR}/src/wrapasauv2.cpp")
+file(READ "${_wrapasauv2}" _wrapasauv2_src)
+set(_wrapasauv2_before "${_wrapasauv2_src}")
+string(REPLACE [[      case kAudioUnitProperty_CocoaUI:
+        if (!_plugin->_ext._gui) return kAudioUnitErr_InvalidProperty;
+        if (!_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false))
+          return kAudioUnitErr_InvalidProperty;
+        outWritable = false;
+        outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
+        return noErr;
+        break;
+]] [[      case kAudioUnitProperty_CocoaUI:
+        return kAudioUnitErr_InvalidProperty;
+]] _wrapasauv2_src "${_wrapasauv2_src}")
+string(REPLACE [[      case kAudioUnitProperty_CocoaUI:
+        LOGINFO("[clap-wrapper] Property: kAudioUnitProperty_CocoaUI {}",
+                (_plugin) ? "plugin" : "no plugin");
+        if (_plugin && _plugin->_ext._gui &&
+            (_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false)))
+        {
+          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo *)outData), _plugin);
+          LOGINFO("[clap-wrapper] kAudioUnitProperty_CocoaUI complete");
+          return noErr;  // sizeof(AudioUnitCocoaViewInfo);
+        }
+        else
+        {
+          LOGINFO("[clap-wrapper] Mysterious: kAudioUnitProperty_CocoaUI although now plugin ext");
+          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo *)outData), _plugin);
+          return noErr;
+        }
+        return kAudioUnitErr_InvalidProperty;
+        break;
+]] [[      case kAudioUnitProperty_CocoaUI:
+        return kAudioUnitErr_InvalidProperty;
+]] _wrapasauv2_src "${_wrapasauv2_src}")
+if (_wrapasauv2_src STREQUAL _wrapasauv2_before)
+    string(FIND "${_wrapasauv2_src}" "case kAudioUnitProperty_CocoaUI:\n        return kAudioUnitErr_InvalidProperty;" _cocoa_ui_already_disabled)
+    if (_cocoa_ui_already_disabled EQUAL -1)
+        message(FATAL_ERROR "Failed to patch clap-wrapper AUv2 Cocoa UI")
+    endif()
+endif()
+file(WRITE "${_wrapasauv2}" "${_wrapasauv2_src}")
+
 # ── Path to pre-built CLAP bundle ────────────────────────────────────
 set(CLAP_BUNDLE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../target/bundled/Contrapunk.clap"
     CACHE PATH "Path to pre-built .clap bundle")
@@ -59,23 +107,29 @@ if (NOT EXISTS "${CLAP_BUNDLE_PATH}")
 endif()
 
 # ── AUv2 wrapper target ──────────────────────────────────────────────
+set(CONTRAPUNK_AUV2_OUTPUT_NAME "Contrapunk" CACHE STRING "AUv2 bundle/display name")
+set(CONTRAPUNK_AUV2_BUNDLE_IDENTIFIER "com.contrapunk.harmony.auv2" CACHE STRING "AUv2 bundle identifier")
+set(CONTRAPUNK_AUV2_SUBTYPE_CODE "CpHm" CACHE STRING "AUv2 subtype code")
+set(CONTRAPUNK_AUV2_MANUFACTURER_CODE "CpAu" CACHE STRING "AUv2 manufacturer code")
+set(CONTRAPUNK_AUV2_MANUFACTURER_NAME "Contrapunk Audio" CACHE STRING "AUv2 manufacturer name")
+
 add_library(contrapunk_auv2 MODULE)
 
 target_add_auv2_wrapper(
     TARGET contrapunk_auv2
-    OUTPUT_NAME "Contrapunk"
+    OUTPUT_NAME "${CONTRAPUNK_AUV2_OUTPUT_NAME}"
 
-    BUNDLE_IDENTIFIER "com.contrapunk.harmony.auv2"
+    BUNDLE_IDENTIFIER "${CONTRAPUNK_AUV2_BUNDLE_IDENTIFIER}"
     BUNDLE_VERSION "${PROJECT_VERSION}"
 
     # AU identification codes (4 chars each)
     # Type: aumi = "audio unit MIDI processor" (note effect)
     INSTRUMENT_TYPE "aumi"
     # Subtype: identifies this specific plugin
-    SUBTYPE_CODE "CpHm"
+    SUBTYPE_CODE "${CONTRAPUNK_AUV2_SUBTYPE_CODE}"
     # Manufacturer: identifies Contrapunk Audio
-    MANUFACTURER_CODE "CpAu"
-    MANUFACTURER_NAME "Contrapunk Audio"
+    MANUFACTURER_CODE "${CONTRAPUNK_AUV2_MANUFACTURER_CODE}"
+    MANUFACTURER_NAME "${CONTRAPUNK_AUV2_MANUFACTURER_NAME}"
 
     # Embed the pre-built CLAP inside the .component bundle
     MACOS_EMBEDDED_CLAP_LOCATION "${CLAP_BUNDLE_PATH}"
