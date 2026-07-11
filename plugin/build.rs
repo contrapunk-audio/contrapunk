@@ -6,9 +6,10 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CONTRAPUNK_PLUGIN_UI_DIR");
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let ui_dir = env::var_os("CONTRAPUNK_PLUGIN_UI_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| manifest_dir.join("../ui/build"));
+    let ui_dir = resolve_ui_dir(
+        &manifest_dir,
+        env::var_os("CONTRAPUNK_PLUGIN_UI_DIR").map(PathBuf::from),
+    );
 
     println!("cargo:rerun-if-changed={}", ui_dir.display());
 
@@ -18,8 +19,19 @@ fn main() {
     let mut entries = Vec::new();
     if ui_dir.exists() {
         collect_files(&ui_dir, &ui_dir, &mut entries);
+    } else if env::var_os("CARGO_FEATURE_EMBED_UI").is_some() {
+        panic!(
+            "plugin embed-ui requested but UI build dir is missing: {}",
+            ui_dir.display()
+        );
     }
     entries.sort_by(|a, b| a.0.cmp(&b.0));
+    if env::var_os("CARGO_FEATURE_EMBED_UI").is_some() && entries.is_empty() {
+        panic!(
+            "plugin embed-ui requested but UI build dir has no files: {}",
+            ui_dir.display()
+        );
+    }
 
     let mut generated =
         String::from("pub(super) fn get_asset(path: &str) -> Option<&'static [u8]> {\n");
@@ -36,6 +48,23 @@ fn main() {
     generated.push_str("    }\n}\n");
 
     fs::write(out_file, generated).unwrap();
+}
+
+fn resolve_ui_dir(manifest_dir: &Path, env_dir: Option<PathBuf>) -> PathBuf {
+    let Some(path) = env_dir else {
+        return manifest_dir.join("../ui/build");
+    };
+    if path.is_absolute() {
+        return path;
+    }
+
+    let workspace_dir = manifest_dir.parent().unwrap_or(manifest_dir);
+    let workspace_path = workspace_dir.join(&path);
+    if workspace_path.exists() {
+        workspace_path
+    } else {
+        manifest_dir.join(path)
+    }
 }
 
 fn collect_files(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
