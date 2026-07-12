@@ -75,6 +75,30 @@ else()
     endif()
 endif()
 
+# Logic accepts the AU's too-small requested editor size, cropping the Svelte UI.
+set(_clamp_editor_size_patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/clamp-auv2-editor-size.patch")
+execute_process(
+    COMMAND git apply --check "${_clamp_editor_size_patch}"
+    WORKING_DIRECTORY "${CLAP_WRAPPER_SOURCE_DIR}"
+    RESULT_VARIABLE _clamp_editor_size_patch_check
+    OUTPUT_QUIET
+    ERROR_QUIET
+)
+if (_clamp_editor_size_patch_check EQUAL 0)
+    execute_process(
+        COMMAND git apply "${_clamp_editor_size_patch}"
+        WORKING_DIRECTORY "${CLAP_WRAPPER_SOURCE_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+else()
+    file(READ "${CLAP_WRAPPER_SOURCE_DIR}/src/detail/auv2/wrappedview.asinclude.mm" _wrappedview_src)
+    file(READ "${CLAP_WRAPPER_SOURCE_DIR}/src/detail/auv2/auv2_shared.mm" _auv2_shared_src)
+    string(FIND "${_wrappedview_src}\n${_auv2_shared_src}" "setContentMinSize" _clamp_editor_size_already_applied)
+    if (_clamp_editor_size_already_applied EQUAL -1)
+        message(FATAL_ERROR "Failed to apply clap-wrapper AUv2 editor size patch")
+    endif()
+endif()
+
 # ── Path to pre-built CLAP bundle ────────────────────────────────────
 set(CLAP_BUNDLE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../target/bundled/Contrapunk.clap"
     CACHE PATH "Path to pre-built .clap bundle")
