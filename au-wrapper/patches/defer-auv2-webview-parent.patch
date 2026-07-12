@@ -1,0 +1,173 @@
+--- a/src/detail/auv2/wrappedview.asinclude.mm
++++ b/src/detail/auv2/wrappedview.asinclude.mm
+@@ -27,10 +27,13 @@
+   float lastScale;
+   NSSize underlyingUISize;
+   bool setSizeByZoom;  // use this flag to see if resize comes from here or from external
++  bool uiCreated;
+ }
+ 
+ - (id)initWithAUv2:(free_audio::auv2_wrapper::ui_connection *)cont preferredSize:(NSSize)size;
+ - (void)doIdle;
++- (void)attachCLAPGui;
++- (void)detachCLAPGui;
+ - (void)dealloc;
+ - (void)setFrame:(NSRect)newSize;
+ 
+@@ -90,48 +93,22 @@
+ 
+   ui = *cont;
+   canary = 0xbeebbeeb;
++  uiCreated = false;
+ 
+   if (ui._registerWindow)
+   {
+     ui._registerWindow((clap_window_t *)self, &canary);
+   }
+-  ui._createWindow();
+-  auto gui = ui._plugin->_ext._gui;
+-
+-  // actually, the host should send an appropriate size,
+-  // yet, they actually just send utter garbage, so: don't care
+-  // if (size.width == 0 || size.height == 0)
+-  {
+-    // gui->get_size(ui._plugin->_plugin,)
+-    uint32_t w, h;
+-    if (gui->get_size(ui._plugin->_plugin, &w, &h))
+-    {
+-      size = {(double)w, (double)h};
+-    }
++
++  // Logic can ask for an AU Cocoa view before the NSView is attached to an
++  // NSWindow. nih-plug-webview/wry expects the parent NSView to already have
++  // a window when set_parent() is called, so create the NSView now and defer
++  // CLAP GUI creation/parenting to viewDidMoveToWindow.
++  if (size.width <= 0 || size.height <= 0)
++  {
++    size = NSMakeSize(900, 700);
+   }
+   self = [super initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
+-
+-  // gui->show(ui._plugin->_plugin);
+-
+-  clap_window_t m;
+-  m.api = CLAP_WINDOW_API_COCOA;
+-  m.ptr = self;
+-
+-  gui->set_parent(ui._plugin->_plugin, &m);
+-  gui->set_scale(ui._plugin->_plugin, 1.0);
+-
+-  if (gui->can_resize(ui._plugin->_plugin))
+-  {
+-    clap_gui_resize_hints_t resize_hints;
+-    gui->get_resize_hints(ui._plugin->_plugin, &resize_hints);
+-    NSAutoresizingMaskOptions mask = 0;
+-
+-    if (resize_hints.can_resize_horizontally) mask |= NSViewWidthSizable;
+-    if (resize_hints.can_resize_vertically) mask |= NSViewHeightSizable;
+-
+-    [self setAutoresizingMask:mask];
+-    gui->set_size(ui._plugin->_plugin, size.width, size.height);
+-  }
+ 
+   idleTimer = nil;
+   CFTimeInterval TIMER_INTERVAL = .05;  // In SurgeGUISynthesizer.h it uses 50 ms
+@@ -148,24 +125,66 @@
+ {
+   // auto gui = ui._plugin->_ext._gui;
+ }
++
++- (void)attachCLAPGui
++{
++  if (uiCreated || [self window] == nil || !canary) return;
++
++  ui._createWindow();
++  auto gui = ui._plugin->_ext._gui;
++
++  clap_window_t m;
++  m.api = CLAP_WINDOW_API_COCOA;
++  m.ptr = self;
++
++  gui->set_parent(ui._plugin->_plugin, &m);
++  gui->set_scale(ui._plugin->_plugin, 1.0);
++
++  if (gui->can_resize(ui._plugin->_plugin))
++  {
++    clap_gui_resize_hints_t resize_hints;
++    gui->get_resize_hints(ui._plugin->_plugin, &resize_hints);
++    NSAutoresizingMaskOptions mask = 0;
++
++    if (resize_hints.can_resize_horizontally) mask |= NSViewWidthSizable;
++    if (resize_hints.can_resize_vertically) mask |= NSViewHeightSizable;
++
++    [self setAutoresizingMask:mask];
++  }
++
++  auto size = [self frame].size;
++  gui->set_size(ui._plugin->_plugin, size.width, size.height);
++  uiCreated = true;
++}
++
++- (void)detachCLAPGui
++{
++  LOGINFO("[clap-wrapper] - view removed from a window");
++  if (idleTimer)
++  {
++    CFRunLoopTimerInvalidate(idleTimer);
++    idleTimer = 0;
++  }
++  if (uiCreated && canary)
++  {
++    ui._destroyWindow();
++    uiCreated = false;
++
++    assert(canary == 0);
++  }
++}
++
+ - (void)viewDidMoveToWindow
+ {
++  [super viewDidMoveToWindow];
+   if ([self window] == nil)
+   {
+-    LOGINFO("[clap-wrapper] - view removed from a window");
+-    if (idleTimer)
+-    {
+-      CFRunLoopTimerInvalidate(idleTimer);
+-      idleTimer = 0;
+-    }
+-    if (canary)
+-    {
+-      ui._destroyWindow();
+-
+-      assert(canary == 0);
+-    }
+-  }
+-  [super viewDidMoveToWindow];
++    [self detachCLAPGui];
++  }
++  else
++  {
++    [self attachCLAPGui];
++  }
+ }
+ 
+ - (void)dealloc
+@@ -175,7 +194,7 @@
+   {
+     CFRunLoopTimerInvalidate(idleTimer);
+   }
+-  if (canary)
++  if (uiCreated && canary)
+   {
+     LOGINFO("[clap-wrapper] the host did not call viewDidMoveWindow with a nil window");
+     ui._destroyWindow();
+@@ -185,7 +204,7 @@
+ - (void)setFrame:(NSRect)newSize
+ {
+   [super setFrame:newSize];
+-  if (canary)
++  if (uiCreated && canary)
+   {
+     auto gui = ui._plugin->_ext._gui;
+     gui->set_scale(ui._plugin->_plugin, 1.0);

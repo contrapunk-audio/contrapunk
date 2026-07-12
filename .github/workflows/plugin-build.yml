@@ -135,21 +135,7 @@ jobs:
       - name: Build AU wrapper
         env:
           CONTRAPUNK_PLUGIN_UI_DIR: ${{ github.workspace }}/ui/build
-        run: |
-          set -euo pipefail
-          mkdir -p target/bundled-full-ui
-          ditto target/bundled/Contrapunk.vst3 target/bundled-full-ui/Contrapunk.vst3
-          ditto target/bundled/Contrapunk.clap target/bundled-full-ui/Contrapunk.clap
-
-          # The AU embeds a CLAP build with no custom editor so Logic uses its
-          # stable generic parameter UI. The shipped VST3/CLAP bundles restored
-          # below still keep the full embedded Svelte editor.
-          cargo xtask bundle-universal contrapunk_plugin --release --features au-generic-ui
-          CODESIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:--}" ./au-wrapper/build.sh
-
-          rm -rf target/bundled/Contrapunk.vst3 target/bundled/Contrapunk.clap
-          ditto target/bundled-full-ui/Contrapunk.vst3 target/bundled/Contrapunk.vst3
-          ditto target/bundled-full-ui/Contrapunk.clap target/bundled/Contrapunk.clap
+        run: CODESIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:--}" ./au-wrapper/build.sh
 
       - name: Build macOS plugin installer pkg
         run: |

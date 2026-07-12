@@ -50,88 +50,30 @@ FetchContent_MakeAvailable(clap-wrapper)
 
 FetchContent_GetProperties(clap-wrapper SOURCE_DIR CLAP_WRAPPER_SOURCE_DIR)
 
-# Logic 11/macOS 26 crashes AUHostingService when clap-wrapper advertises a
-# CLAP webview through AUv2 CocoaUI. The AU uses Logic's generic parameter UI;
-# VST3/CLAP still keep the embedded Svelte UI.
-set(_wrapasauv2 "${CLAP_WRAPPER_SOURCE_DIR}/src/wrapasauv2.cpp")
-file(READ "${_wrapasauv2}" _wrapasauv2_src)
-set(_wrapasauv2_before "${_wrapasauv2_src}")
-string(REPLACE [[      case kAudioUnitProperty_CocoaUI:
-        if (!_plugin->_ext._gui) return kAudioUnitErr_InvalidProperty;
-        if (!_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false))
-          return kAudioUnitErr_InvalidProperty;
-        outWritable = false;
-        outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
-        return noErr;
-        break;
-]] [[      case kAudioUnitProperty_CocoaUI:
-        return kAudioUnitErr_InvalidProperty;
-]] _wrapasauv2_src "${_wrapasauv2_src}")
-string(REPLACE [[      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
-        outWritable = false;
-        outDataSize = sizeof(free_audio::auv2_wrapper::ui_connection);
-        return noErr;
-        break;
-]] [[      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
-        return kAudioUnitErr_InvalidProperty;
-]] _wrapasauv2_src "${_wrapasauv2_src}")
-string(REPLACE [[      case kAudioUnitProperty_CocoaUI:
-        LOGINFO("[clap-wrapper] Property: kAudioUnitProperty_CocoaUI {}",
-                (_plugin) ? "plugin" : "no plugin");
-        if (_plugin && _plugin->_ext._gui &&
-            (_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false)))
-        {
-          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo *)outData), _plugin);
-          LOGINFO("[clap-wrapper] kAudioUnitProperty_CocoaUI complete");
-          return noErr;  // sizeof(AudioUnitCocoaViewInfo);
-        }
-        else
-        {
-          LOGINFO("[clap-wrapper] Mysterious: kAudioUnitProperty_CocoaUI although now plugin ext");
-          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo *)outData), _plugin);
-          return noErr;
-        }
-        return kAudioUnitErr_InvalidProperty;
-        break;
-]] [[      case kAudioUnitProperty_CocoaUI:
-        return kAudioUnitErr_InvalidProperty;
-]] _wrapasauv2_src "${_wrapasauv2_src}")
-string(REPLACE [[      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
-        _uiconn._plugin = _plugin.get();
-        _uiconn._window = nullptr;
-        _uiconn._registerWindow = [this](auto *x, auto *y)
-        {
-          this->_uiconn._window = x;
-          this->_uiconn._canary = y;
-        };
-        _uiconn._createWindow = [this]
-        {
-          this->_uiIsOpened = true;
-          _plugin->_ext._gui->create(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
-        };
-        _uiconn._destroyWindow = [this]
-        {
-          // this must exist
-          _plugin->_ext._gui->destroy(_plugin->_plugin);
-
-          this->_uiIsOpened = false;
-          if (this->_uiconn._canary)
-          {
-            *(this->_uiconn._canary) = 0;
-          }
-        };
-        *static_cast<ui_connection *>(outData) = _uiconn;
-        return noErr;
-]] [[      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
-        return kAudioUnitErr_InvalidProperty;
-]] _wrapasauv2_src "${_wrapasauv2_src}")
-if (_wrapasauv2_src STREQUAL _wrapasauv2_before)
-    string(FIND "${_wrapasauv2_src}" "case kAudioUnitProperty_CocoaUI:\n        return kAudioUnitErr_InvalidProperty;" _cocoa_ui_already_disabled)
-    if (_cocoa_ui_already_disabled EQUAL -1)
-        message(FATAL_ERROR "Failed to patch clap-wrapper AUv2 Cocoa UI")
+# Logic may request the AU Cocoa view before the returned NSView has an
+# NSWindow. nih-plug-webview/wry needs that window during CLAP set_parent(),
+# so defer CLAP GUI creation/parenting until viewDidMoveToWindow.
+set(_defer_webview_parent_patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/defer-auv2-webview-parent.patch")
+execute_process(
+    COMMAND git apply --check "${_defer_webview_parent_patch}"
+    WORKING_DIRECTORY "${CLAP_WRAPPER_SOURCE_DIR}"
+    RESULT_VARIABLE _defer_webview_parent_patch_check
+    OUTPUT_QUIET
+    ERROR_QUIET
+)
+if (_defer_webview_parent_patch_check EQUAL 0)
+    execute_process(
+        COMMAND git apply "${_defer_webview_parent_patch}"
+        WORKING_DIRECTORY "${CLAP_WRAPPER_SOURCE_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+else()
+    file(READ "${CLAP_WRAPPER_SOURCE_DIR}/src/detail/auv2/wrappedview.asinclude.mm" _wrappedview_src)
+    string(FIND "${_wrappedview_src}" "attachCLAPGui" _defer_webview_parent_already_applied)
+    if (_defer_webview_parent_already_applied EQUAL -1)
+        message(FATAL_ERROR "Failed to apply clap-wrapper AUv2 WebView parenting patch")
     endif()
 endif()
-file(WRITE "${_wrapasauv2}" "${_wrapasauv2_src}")
 
 # ── Path to pre-built CLAP bundle ────────────────────────────────────
 set(CLAP_BUNDLE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../target/bundled/Contrapunk.clap"
