@@ -1,44 +1,61 @@
-//! Bridge between cpal audio capture and the MIDI routing thread.
+//! Real-time-safe bridge between cpal capture and guitar-to-MIDI DSP.
 //!
-//! Spawns an audio capture thread that feeds audio blocks through
-//! GuitarInput::process_block(), converts MidiEvent to MIDI bytes,
-//! and sends them via an mpsc::Sender<Vec<u8>>.
-//!
-//! Also sends signal info (RMS, pitch, state) via a separate channel
-//! for UI feedback in the Tauri frontend.
+//! The cpal callback only deinterleaves samples into a bounded SPSC queue.
+//! A named worker owns all allocating detector work, config synchronization,
+//! calibration access, MIDI conversion, and UI signal updates.
 
 use contrapunk::audio::guitar::GuitarCalibrationProfile;
-use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig};
+use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use ringbuf::traits::{Consumer, Producer, Split};
+use ringbuf::HeapRb;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
-/// Signal info emitted every audio block for UI feedback.
+const WORKER_BLOCK_SIZE: usize = 1024;
+const MAX_QUEUED_AUDIO_MS: usize = 100;
+
+fn audio_queue_capacity(sample_rate: usize) -> usize {
+    sample_rate
+        .saturating_mul(MAX_QUEUED_AUDIO_MS)
+        .saturating_div(1_000)
+        .max(128)
+}
+
+/// Signal info emitted by the worker for UI feedback.
 #[derive(Clone, Debug)]
 pub struct GuitarSignalInfo {
     pub rms: f32,
     pub frequency: Option<f32>,
     pub clarity: f32,
-    pub note_state: u8, // 0=Idle, 1=Attack, 2=Sustain, 3=Decay
+    pub note_state: u8,
 }
 
 pub struct GuitarBridge {
     stream: Option<cpal::Stream>,
+    stop: Arc<AtomicBool>,
+    worker: Option<JoinHandle<()>>,
+}
+
+fn send_events(tx: &mpsc::Sender<Vec<u8>>, events: Vec<MidiEvent>, pitch_bend_range: u8) {
+    for event in events {
+        let bytes = event.to_midi_bytes(pitch_bend_range);
+        if !bytes.is_empty() {
+            let _ = tx.send(bytes);
+        }
+    }
+}
+
+fn send_all_notes_off(tx: &mpsc::Sender<Vec<u8>>) {
+    for channel in 0..16 {
+        let _ = tx.send(vec![0xB0 | channel, 123, 0]);
+    }
 }
 
 impl GuitarBridge {
-    /// Create a new guitar bridge.
-    ///
-    /// `device_name`: audio device name (e.g., "Audient iD14"), or empty for default
-    /// `channel`: audio channel index (0-based)
-    /// `config`: GuitarInput configuration
-    /// `tx`: mpsc sender for MIDI bytes (same channel type as physical MIDI input)
-    /// `live_pipeline_handle`: optional outbound slot. If provided, the
-    /// constructed `Arc<Mutex<GuitarInput>>` is cloned into it so the
-    /// Tauri command layer can hot-reload the calibration profile into
-    /// the running pipeline without restarting routing. The bridge
-    /// retains the primary handle via the cpal closure; AppState keeps
-    /// a clone for hot-swap. Cleared by stop_routing flow if it
-    /// participates.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         device_name: &str,
         channel: usize,
@@ -54,168 +71,192 @@ impl GuitarBridge {
             device_name, channel
         );
         let host = cpal::default_host();
-
-        // Find device by name, or fall back to default
         let device = if device_name.is_empty() {
             host.default_input_device()
                 .ok_or("No default audio input device")?
         } else {
-            let found = host
-                .input_devices()
-                .map_err(|e| format!("Failed to enumerate audio devices: {}", e))?
-                .find(|d| d.name().unwrap_or_default().contains(device_name));
-            match found {
-                Some(d) => d,
-                None => {
-                    eprintln!(
-                        "[guitar_bridge] Device '{}' not found, using default",
-                        device_name
-                    );
-                    host.default_input_device()
-                        .ok_or("No default audio input device")?
-                }
-            }
+            host.input_devices()
+                .map_err(|e| format!("Failed to enumerate audio devices: {e}"))?
+                .find(|device| device.name().unwrap_or_default().contains(device_name))
+                .or_else(|| host.default_input_device())
+                .ok_or("No default audio input device")?
         };
-
-        eprintln!(
-            "[guitar_bridge] Found device: {}",
-            device.name().unwrap_or_default()
-        );
         let supported_config = device
             .default_input_config()
-            .map_err(|e| format!("No input config: {}", e))?;
-        eprintln!(
-            "[guitar_bridge] Config: {}ch {}Hz",
-            supported_config.channels(),
-            supported_config.sample_rate()
-        );
-
+            .map_err(|e| format!("No input config: {e}"))?;
         let sample_rate = supported_config.sample_rate() as usize;
         let channels = supported_config.channels() as usize;
+        if channel >= channels {
+            return Err(format!(
+                "Input channel {} is unavailable on a {}-channel device",
+                channel + 1,
+                channels
+            ));
+        }
+
+        eprintln!(
+            "[guitar_bridge] Found device: {} ({}ch {}Hz)",
+            device.name().unwrap_or_default(),
+            channels,
+            sample_rate
+        );
 
         let mut actual_config = config;
         actual_config.sample_rate = sample_rate;
-
-        // DSP state lives inside the cpal stream closure — no outer binding
-        // needed, the closure owns the only Arc reference.
-        let mut pipeline_inner = GuitarInput::new(actual_config);
+        let mut pipeline_inner = GuitarInput::new(actual_config.clone());
         if let Some(profile) = calibration_profile {
-            let samples: usize = profile
-                .strings
-                .iter()
-                .map(|s| s.soft_samples.len() + s.strong_samples.len())
-                .sum();
-            eprintln!(
-                "[calibration] guitar_bridge applying profile v{}: {} samples",
-                profile.version, samples
-            );
-            // Builds an AudioNormalizer from the profile and stores both
-            // (close the wiring gap flagged in v1.3 handoff caveat #5).
             pipeline_inner.set_calibration_profile(profile);
-        } else {
-            eprintln!("[calibration] guitar_bridge: no profile (using defaults)");
         }
         let pipeline = Arc::new(Mutex::new(pipeline_inner));
+        let pipeline_for_worker = Arc::clone(&pipeline);
 
-        // Clone the Arc up front so the cpal closure can `move` one
-        // copy and we still hold a clone for hot-swap publishing
-        // after the stream succeeds. Round-3 critic CRITICAL #3:
-        // publishing must happen AFTER stream construction so a
-        // failed build doesn't leave a never-started zombie in the
-        // AppState slot.
-        let pipeline_for_publish = Arc::clone(&pipeline);
+        // Cap queued audio at 100 ms. Overflow drops the backlog and forces
+        // All Notes Off rather than replaying stale detector output.
+        let audio_rb = HeapRb::<f32>::new(audio_queue_capacity(sample_rate));
+        let (mut audio_tx, mut audio_rx) = audio_rb.split();
+        let overflow = Arc::new(AtomicBool::new(false));
+        let overflow_for_callback = Arc::clone(&overflow);
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_for_worker = Arc::clone(&stop);
 
-        // Request small buffer (128 samples = ~2.7ms at 48kHz) for lower latency.
-        // Falls back to driver default if the device doesn't support it.
+        let worker = thread::Builder::new()
+            .name("contrapunk-guitar".into())
+            .spawn(move || {
+                let mut block = vec![0.0; WORKER_BLOCK_SIZE];
+                let mut applied_config = actual_config;
+
+                while !stop_for_worker.load(Ordering::Acquire) {
+                    if overflow.swap(false, Ordering::AcqRel) {
+                        while audio_rx.try_pop().is_some() {}
+                        let cleanup = {
+                            let mut pipe = pipeline_for_worker
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            pipe.replace_config(applied_config.clone())
+                        };
+                        send_events(&tx, cleanup, applied_config.pitch_bend_range);
+                        send_all_notes_off(&tx);
+                    }
+
+                    if let Some(mut next_config) =
+                        shared_config.lock().ok().and_then(|guard| guard.clone())
+                    {
+                        next_config.sample_rate = sample_rate;
+                        if next_config != applied_config {
+                            let cleanup = {
+                                let mut pipe = pipeline_for_worker
+                                    .lock()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                                pipe.replace_config(next_config.clone())
+                            };
+                            send_events(&tx, cleanup, applied_config.pitch_bend_range);
+                            applied_config = next_config;
+                        }
+                    }
+
+                    let count = audio_rx.pop_slice(&mut block);
+                    if count == 0 {
+                        thread::sleep(Duration::from_millis(1));
+                        continue;
+                    }
+
+                    let (events, info) = {
+                        let mut pipe = pipeline_for_worker
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        let events = pipe.process_block(&block[..count]);
+                        let info = GuitarSignalInfo {
+                            rms: pipe.prev_rms(),
+                            frequency: pipe.last_debug_pitch.map(|(frequency, _)| frequency),
+                            clarity: pipe
+                                .last_debug_pitch
+                                .map(|(_, clarity)| clarity)
+                                .unwrap_or(0.0),
+                            note_state: pipe.note_state_name(),
+                        };
+                        (events, info)
+                    };
+                    send_events(&tx, events, applied_config.pitch_bend_range);
+                    if let Some(signal_tx) = signal_tx.as_ref() {
+                        let _ = signal_tx.send(info);
+                    }
+                }
+
+                let cleanup = pipeline_for_worker
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .replace_config(applied_config.clone());
+                send_events(&tx, cleanup, applied_config.pitch_bend_range);
+            })
+            .map_err(|e| format!("Failed to start guitar worker: {e}"))?;
+
         let stream_config = cpal::StreamConfig {
             channels: supported_config.channels(),
             sample_rate: supported_config.sample_rate(),
             buffer_size: cpal::BufferSize::Fixed(128),
         };
-
-        let stream = device
-            .build_input_stream(
-                &stream_config,
-                move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    // Extract target channel
-                    let mono: Vec<f32> = data
-                        .chunks(channels)
-                        .map(|frame| frame.get(channel).copied().unwrap_or(0.0))
-                        .collect();
-
-                    // Process through DSP pipeline
-                    let (events, pb_range) = {
-                        let mut pipe = pipeline.lock().unwrap();
-
-                        // Sync config from shared state every block so the
-                        // debug window's edits take effect live (without a
-                        // routing restart). Preserve `sample_rate` because
-                        // it's tied to the cpal stream config and can't
-                        // change without rebuilding the stream.
-                        if let Ok(guard) = shared_config.lock() {
-                            if let Some(ref new_config) = *guard {
-                                let cfg = pipe.config_mut();
-                                let preserved_sr = cfg.sample_rate;
-                                *cfg = new_config.clone();
-                                cfg.sample_rate = preserved_sr;
-                            }
-                        }
-
-                        let pb_range = pipe.config_mut().pitch_bend_range;
-                        let evts = pipe.process_block(&mono);
-
-                        // Send signal info for UI feedback
-                        if let Some(ref sig_tx) = signal_tx {
-                            let info = GuitarSignalInfo {
-                                rms: pipe.prev_rms(),
-                                frequency: pipe.last_debug_pitch.map(|(f, _)| f),
-                                clarity: pipe.last_debug_pitch.map(|(_, c)| c).unwrap_or(0.0),
-                                note_state: pipe.note_state_name(),
-                            };
-                            let _ = sig_tx.send(info);
-                        }
-
-                        (evts, pb_range)
-                    };
-
-                    // Convert events to MIDI bytes and send
-                    for event in events {
-                        let bytes = event.to_midi_bytes(pb_range);
-                        if !bytes.is_empty() {
-                            let _ = tx.send(bytes);
-                        }
+        let stream = match device.build_input_stream(
+            &stream_config,
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                for frame in data.chunks_exact(channels) {
+                    if audio_tx.try_push(frame[channel]).is_err() {
+                        overflow_for_callback.store(true, Ordering::Release);
+                        break;
                     }
-                },
-                |err| eprintln!("Guitar audio error: {}", err),
-                None,
-            )
-            .map_err(|e| format!("Failed to build audio stream: {}", e))?;
+                }
+            },
+            |err| eprintln!("Guitar audio error: {err}"),
+            None,
+        ) {
+            Ok(stream) => stream,
+            Err(error) => {
+                stop.store(true, Ordering::Release);
+                let _ = worker.join();
+                return Err(format!("Failed to build audio stream: {error}"));
+            }
+        };
 
-        // Publish the pipeline handle for live hot-swap, AFTER the
-        // stream construction succeeded. If we'd published before
-        // and stream-build failed (device disappeared, sample rate
-        // unsupported), the slot would retain an Arc to a never-
-        // started pipeline — subsequent calibration commands would
-        // mutate a zombie. Brutal-critic round 3 CRITICAL.
         if let Some(handle) = live_pipeline_handle.as_ref() {
             if let Ok(mut slot) = handle.lock() {
-                *slot = Some(pipeline_for_publish);
+                *slot = Some(pipeline);
             }
         }
 
         Ok(Self {
             stream: Some(stream),
+            stop,
+            worker: Some(worker),
         })
     }
 
-    /// Start audio capture.
     pub fn start(&self) -> Result<(), String> {
-        if let Some(ref stream) = self.stream {
-            stream
-                .play()
-                .map_err(|e| format!("Failed to start audio: {}", e))
-        } else {
-            Err("No audio stream".into())
+        self.stream
+            .as_ref()
+            .ok_or_else(|| "No audio stream".to_string())?
+            .play()
+            .map_err(|e| format!("Failed to start audio: {e}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn callback_queue_is_bounded_to_one_tenth_second() {
+        assert_eq!(audio_queue_capacity(48_000), 4_800);
+        assert_eq!(audio_queue_capacity(44_100), 4_410);
+    }
+}
+
+impl Drop for GuitarBridge {
+    fn drop(&mut self) {
+        // Stop the callback before the worker so no producer can enqueue after
+        // shutdown begins. Join gives routing teardown observable completion.
+        self.stream.take();
+        self.stop.store(true, Ordering::Release);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
         }
     }
 }

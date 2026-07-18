@@ -53,16 +53,9 @@ pub fn get_full_guitar_config(state: State<AppState>) -> Result<GuitarInputConfi
 
 /// Replace the entire guitar DSP pipeline configuration.
 ///
-/// Unlike `set_guitar_config` (which is destructive in a different way
-/// — it rebuilds from a fixed subset of fields and resets everything
-/// else), this command takes the full struct and stores it as-is. Used
-/// by the debug window to write back partial edits without losing
-/// fields the legacy command doesn't expose.
-///
-/// **Note:** the routing thread reads `state.guitar_config` once at
-/// routing start. Changes made via this command do *not* take effect
-/// mid-session — the user must stop and restart routing for the new
-/// config to be picked up.
+/// Unlike `set_guitar_config`, this command takes the full struct and stores
+/// it as-is. The guitar worker observes it between blocks and uses
+/// `GuitarInput::replace_config`, including safe structural-buffer rebuilds.
 #[tauri::command]
 pub fn set_full_guitar_config(
     config: GuitarInputConfig,
@@ -92,8 +85,8 @@ pub fn set_guitar_device(
 ///
 /// Configures latency, gain, string detection confidence, and
 /// expressive technique toggles (bends, legato, slides, vibrato).
-/// The config is stored in AppState and read when the guitar bridge
-/// is created at routing start.
+/// The config is stored in AppState and observed by the guitar worker both at
+/// routing start and between processing blocks.
 #[tauri::command]
 pub fn set_guitar_config(
     latency_ms: f32,
@@ -188,14 +181,10 @@ pub fn apply_calibration_profile_from_disk(
     Ok(profile)
 }
 
-/// Push a calibration profile into the running pipeline, with bounded
-/// retry. The audio thread holds the inner mutex for ~2-2.5ms out of
-/// every 2.7ms cpal callback cycle, so a single try_lock has only a
-/// 10-20% chance of catching the gap. Five attempts with a 1ms sleep
-/// reliably land within ~5-15ms total (well below human-perceptible
-/// latency for a "click apply" interaction). If all attempts fail, the
-/// AppState slot is still up to date and the next status-poll-driven
-/// load will retry. Brutal-critic round 3.
+/// Push a calibration profile into the running worker-owned pipeline, with
+/// bounded retry. The cpal callback never takes this mutex. If the worker is
+/// between detector blocks, a later attempt applies the profile; otherwise the
+/// AppState slot remains authoritative for the next routing start.
 fn push_calibration_to_live_pipeline(state: &AppState, profile: &GuitarCalibrationProfile) {
     let slot_lock = match state.live_guitar_pipeline.lock() {
         Ok(g) => g,
@@ -268,6 +257,7 @@ pub fn delete_calibration_profile(
         .calibration_profile
         .lock()
         .map_err(|e| e.to_string())? = default_profile.clone();
+    push_calibration_to_live_pipeline(&state, &default_profile);
     eprintln!("[calibration] profile deleted, AppState reset to defaults");
     Ok(CalibrationStatus {
         exists_on_disk: false,

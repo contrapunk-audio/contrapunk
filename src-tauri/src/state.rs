@@ -52,8 +52,8 @@ pub struct AppState {
 
     /// Guitar input DSP configuration (None = use defaults).
     ///
-    /// Wrapped in `Arc<Mutex<...>>` so the `GuitarBridge` audio thread
-    /// can hold a clone and re-read the config every block — without
+    /// Wrapped in `Arc<Mutex<...>>` so the `GuitarBridge` worker
+    /// can hold a clone and re-read the config between DSP blocks — without
     /// this, edits made via the debug window would only take effect on
     /// the next routing restart. Same pattern as `engine` (#80).
     pub guitar_config: Arc<Mutex<Option<GuitarInputConfig>>>,
@@ -75,13 +75,14 @@ pub struct AppState {
     /// `Arc<Mutex<Option<Arc<Mutex<GuitarInput>>>>>` because:
     ///   - the outer Arc<Mutex<Option<...>>> is the AppState slot the
     ///     bridge writes to and the calibration commands read from
-    ///   - the inner Arc<Mutex<GuitarInput>> is the cpal-callback-
-    ///     owned pipeline; cloning it lets command handlers lock and
+    ///   - the inner Arc<Mutex<GuitarInput>> is worker-owned; the cpal data
+    ///     callback never touches it. Cloning it lets command handlers lock and
     ///     hot-swap the calibration profile mid-session.
     /// Brutal-critic round 2 CRITICAL: previously, hot-reload via
     /// `load_calibration_profile` only updated AppState — the live
     /// audio pipeline kept its old normalizer until routing restart.
     /// The status badge claimed "calibrated" while the engine was not.
+    /// The callback itself only writes to the bounded sample ring buffer.
     pub live_guitar_pipeline: Arc<Mutex<Option<Arc<Mutex<GuitarInput>>>>>,
 
     /// MIDI routing mode (channel-based MPE or port-based)
