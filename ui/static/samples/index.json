@@ -4,1327 +4,1659 @@
     "string_idx": 0,
     "fret": 0,
     "midi_note": 40,
-    "rms": 0.688058,
-    "duration": 0.5
+    "rms": 0.617466,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_1.wav",
     "string_idx": 0,
     "fret": 1,
     "midi_note": 41,
-    "rms": 0.707726,
-    "duration": 0.5
+    "rms": 0.699077,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_2.wav",
     "string_idx": 0,
     "fret": 2,
     "midi_note": 42,
-    "rms": 0.726969,
-    "duration": 0.5
+    "rms": 0.580374,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_3.wav",
     "string_idx": 0,
     "fret": 3,
     "midi_note": 43,
-    "rms": 0.675307,
-    "duration": 0.5
+    "rms": 0.58342,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_4.wav",
     "string_idx": 0,
     "fret": 4,
     "midi_note": 44,
-    "rms": 0.696115,
-    "duration": 0.5
+    "rms": 0.628133,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_5.wav",
     "string_idx": 0,
     "fret": 5,
     "midi_note": 45,
-    "rms": 0.721388,
-    "duration": 0.5
+    "rms": 0.600772,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_6.wav",
     "string_idx": 0,
     "fret": 6,
     "midi_note": 46,
-    "rms": 0.748943,
-    "duration": 0.5
+    "rms": 0.636367,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_7.wav",
     "string_idx": 0,
     "fret": 7,
     "midi_note": 47,
-    "rms": 0.726567,
-    "duration": 0.5
+    "rms": 0.51518,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_8.wav",
     "string_idx": 0,
     "fret": 8,
     "midi_note": 48,
-    "rms": 0.752513,
-    "duration": 0.5
+    "rms": 0.633968,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_9.wav",
     "string_idx": 0,
     "fret": 9,
     "midi_note": 49,
-    "rms": 0.812999,
-    "duration": 0.5
+    "rms": 0.642705,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_10.wav",
     "string_idx": 0,
     "fret": 10,
     "midi_note": 50,
-    "rms": 0.784838,
-    "duration": 0.5
+    "rms": 0.663216,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_11.wav",
     "string_idx": 0,
     "fret": 11,
     "midi_note": 51,
-    "rms": 0.829782,
-    "duration": 0.5
+    "rms": 0.673234,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_12.wav",
     "string_idx": 0,
     "fret": 12,
     "midi_note": 52,
-    "rms": 0.699688,
-    "duration": 0.5
+    "rms": 0.744356,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_13.wav",
     "string_idx": 0,
     "fret": 13,
     "midi_note": 53,
-    "rms": 0.821293,
-    "duration": 0.5
+    "rms": 0.777055,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_14.wav",
     "string_idx": 0,
     "fret": 14,
     "midi_note": 54,
-    "rms": 0.843305,
-    "duration": 0.5
+    "rms": 0.723366,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_15.wav",
     "string_idx": 0,
     "fret": 15,
     "midi_note": 55,
-    "rms": 0.814602,
-    "duration": 0.5
+    "rms": 0.633717,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_16.wav",
     "string_idx": 0,
     "fret": 16,
     "midi_note": 56,
-    "rms": 0.8548,
-    "duration": 0.5
+    "rms": 0.672299,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_17.wav",
     "string_idx": 0,
     "fret": 17,
     "midi_note": 57,
-    "rms": 0.814506,
-    "duration": 0.5
+    "rms": 0.720805,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_18.wav",
     "string_idx": 0,
     "fret": 18,
     "midi_note": 58,
-    "rms": 0.859474,
-    "duration": 0.5
+    "rms": 0.737734,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_19.wav",
     "string_idx": 0,
     "fret": 19,
     "midi_note": 59,
-    "rms": 0.852986,
-    "duration": 0.5
+    "rms": 0.35674,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_20.wav",
     "string_idx": 0,
     "fret": 20,
     "midi_note": 60,
-    "rms": 0.332468,
-    "duration": 0.5
+    "rms": 0.697685,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_21.wav",
     "string_idx": 0,
     "fret": 21,
     "midi_note": 61,
-    "rms": 0.861108,
-    "duration": 0.5
+    "rms": 0.569036,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_0_fret_22.wav",
     "string_idx": 0,
     "fret": 22,
     "midi_note": 62,
-    "rms": 0.827293,
-    "duration": 0.5
+    "rms": 0.394382,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_0.wav",
     "string_idx": 1,
     "fret": 0,
     "midi_note": 45,
-    "rms": 0.716497,
-    "duration": 0.5
+    "rms": 0.672571,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_1.wav",
     "string_idx": 1,
     "fret": 1,
     "midi_note": 46,
-    "rms": 0.580757,
-    "duration": 0.5
+    "rms": 0.532786,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_2.wav",
     "string_idx": 1,
     "fret": 2,
     "midi_note": 47,
-    "rms": 0.604426,
-    "duration": 0.5
+    "rms": 0.56613,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_3.wav",
     "string_idx": 1,
     "fret": 3,
     "midi_note": 48,
-    "rms": 0.635519,
-    "duration": 0.5
+    "rms": 0.619863,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_4.wav",
     "string_idx": 1,
     "fret": 4,
     "midi_note": 49,
-    "rms": 0.693408,
-    "duration": 0.5
+    "rms": 0.669958,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_5.wav",
     "string_idx": 1,
     "fret": 5,
     "midi_note": 50,
-    "rms": 0.755599,
-    "duration": 0.5
+    "rms": 0.601591,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_6.wav",
     "string_idx": 1,
     "fret": 6,
     "midi_note": 51,
-    "rms": 0.694215,
-    "duration": 0.5
+    "rms": 0.650287,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_7.wav",
     "string_idx": 1,
     "fret": 7,
     "midi_note": 52,
-    "rms": 0.708192,
-    "duration": 0.5
+    "rms": 0.689282,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_8.wav",
     "string_idx": 1,
     "fret": 8,
     "midi_note": 53,
-    "rms": 0.728842,
-    "duration": 0.5
+    "rms": 0.612142,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_9.wav",
     "string_idx": 1,
     "fret": 9,
     "midi_note": 54,
-    "rms": 0.506757,
-    "duration": 0.5
+    "rms": 0.612194,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_10.wav",
     "string_idx": 1,
     "fret": 10,
     "midi_note": 55,
-    "rms": 0.611258,
-    "duration": 0.5
+    "rms": 0.597647,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_11.wav",
     "string_idx": 1,
     "fret": 11,
     "midi_note": 56,
-    "rms": 0.803865,
-    "duration": 0.5
+    "rms": 0.715599,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_12.wav",
     "string_idx": 1,
     "fret": 12,
     "midi_note": 57,
-    "rms": 0.683598,
-    "duration": 0.5
+    "rms": 0.677995,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_13.wav",
     "string_idx": 1,
     "fret": 13,
     "midi_note": 58,
-    "rms": 0.574558,
-    "duration": 0.5
+    "rms": 0.689982,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_14.wav",
     "string_idx": 1,
     "fret": 14,
     "midi_note": 59,
-    "rms": 0.818555,
-    "duration": 0.5
+    "rms": 0.730391,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "by_class/string_1_fret_15.wav",
     "string_idx": 1,
     "fret": 15,
     "midi_note": 60,
-    "rms": 0.870297,
-    "duration": 0.5
+    "rms": 0.38591,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_1_fret_16.wav",
     "string_idx": 1,
     "fret": 16,
     "midi_note": 61,
-    "rms": 0.725709,
-    "duration": 0.5
+    "rms": 0.733198,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_1_fret_17.wav",
     "string_idx": 1,
     "fret": 17,
     "midi_note": 62,
-    "rms": 0.853667,
-    "duration": 0.5
+    "rms": 0.514639,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_1_fret_18.wav",
     "string_idx": 1,
     "fret": 18,
     "midi_note": 63,
-    "rms": 0.874838,
-    "duration": 0.5
+    "rms": 0.423758,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_1_fret_19.wav",
     "string_idx": 1,
     "fret": 19,
     "midi_note": 64,
-    "rms": 0.785258,
-    "duration": 0.5
+    "rms": 0.77751,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_1_fret_20.wav",
     "string_idx": 1,
     "fret": 20,
     "midi_note": 65,
-    "rms": 0.675569,
-    "duration": 0.5
+    "rms": 0.725539,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_1_fret_21.wav",
     "string_idx": 1,
     "fret": 21,
     "midi_note": 66,
-    "rms": 0.387788,
-    "duration": 0.5
+    "rms": 0.674444,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_1_fret_22.wav",
     "string_idx": 1,
     "fret": 22,
     "midi_note": 67,
-    "rms": 0.790289,
-    "duration": 0.5
+    "rms": 0.739568,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_0.wav",
     "string_idx": 2,
     "fret": 0,
     "midi_note": 50,
-    "rms": 0.445211,
-    "duration": 0.5
+    "rms": 0.439552,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_1.wav",
     "string_idx": 2,
     "fret": 1,
     "midi_note": 51,
-    "rms": 0.5395,
-    "duration": 0.5
+    "rms": 0.503878,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_2.wav",
     "string_idx": 2,
     "fret": 2,
     "midi_note": 52,
-    "rms": 0.58521,
-    "duration": 0.5
+    "rms": 0.502856,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_3.wav",
     "string_idx": 2,
     "fret": 3,
     "midi_note": 53,
-    "rms": 0.566357,
-    "duration": 0.5
+    "rms": 0.234158,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_4.wav",
     "string_idx": 2,
     "fret": 4,
     "midi_note": 54,
-    "rms": 0.483028,
-    "duration": 0.5
+    "rms": 0.506515,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_5.wav",
     "string_idx": 2,
     "fret": 5,
     "midi_note": 55,
-    "rms": 0.570231,
-    "duration": 0.5
+    "rms": 0.506992,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_6.wav",
     "string_idx": 2,
     "fret": 6,
     "midi_note": 56,
-    "rms": 0.581028,
-    "duration": 0.5
+    "rms": 0.529553,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_7.wav",
     "string_idx": 2,
     "fret": 7,
     "midi_note": 57,
-    "rms": 0.620835,
-    "duration": 0.5
+    "rms": 0.628962,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_8.wav",
     "string_idx": 2,
     "fret": 8,
     "midi_note": 58,
-    "rms": 0.618567,
-    "duration": 0.5
+    "rms": 0.563523,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_9.wav",
     "string_idx": 2,
     "fret": 9,
     "midi_note": 59,
-    "rms": 0.614673,
-    "duration": 0.5
+    "rms": 0.633683,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_10.wav",
     "string_idx": 2,
     "fret": 10,
     "midi_note": 60,
-    "rms": 0.611602,
-    "duration": 0.5
+    "rms": 0.598813,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_11.wav",
     "string_idx": 2,
     "fret": 11,
     "midi_note": 61,
-    "rms": 0.536103,
-    "duration": 0.5
+    "rms": 0.619272,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_12.wav",
     "string_idx": 2,
     "fret": 12,
     "midi_note": 62,
-    "rms": 0.59306,
-    "duration": 0.5
+    "rms": 0.620573,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_13.wav",
     "string_idx": 2,
     "fret": 13,
     "midi_note": 63,
-    "rms": 0.713498,
-    "duration": 0.5
+    "rms": 0.328193,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_14.wav",
     "string_idx": 2,
     "fret": 14,
     "midi_note": 64,
-    "rms": 0.449355,
-    "duration": 0.5
+    "rms": 0.627685,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_15.wav",
     "string_idx": 2,
     "fret": 15,
     "midi_note": 65,
-    "rms": 0.623479,
-    "duration": 0.5
+    "rms": 0.697449,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_16.wav",
     "string_idx": 2,
     "fret": 16,
     "midi_note": 66,
-    "rms": 0.595851,
-    "duration": 0.5
+    "rms": 0.651164,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_17.wav",
     "string_idx": 2,
     "fret": 17,
     "midi_note": 67,
-    "rms": 0.785657,
-    "duration": 0.5
+    "rms": 0.730583,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_18.wav",
     "string_idx": 2,
     "fret": 18,
     "midi_note": 68,
-    "rms": 0.651978,
-    "duration": 0.5
+    "rms": 0.788194,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_19.wav",
     "string_idx": 2,
     "fret": 19,
     "midi_note": 69,
-    "rms": 0.596295,
-    "duration": 0.5
+    "rms": 0.771527,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_20.wav",
     "string_idx": 2,
     "fret": 20,
     "midi_note": 70,
-    "rms": 0.783625,
-    "duration": 0.5
+    "rms": 0.783929,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_21.wav",
     "string_idx": 2,
     "fret": 21,
     "midi_note": 71,
-    "rms": 0.695804,
-    "duration": 0.5
+    "rms": 0.754716,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_2_fret_22.wav",
     "string_idx": 2,
     "fret": 22,
     "midi_note": 72,
-    "rms": 0.409787,
-    "duration": 0.5
+    "rms": 0.700829,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_0.wav",
     "string_idx": 3,
     "fret": 0,
     "midi_note": 55,
-    "rms": 0.661845,
-    "duration": 0.5
+    "rms": 0.599297,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_1.wav",
     "string_idx": 3,
     "fret": 1,
     "midi_note": 56,
-    "rms": 0.532391,
-    "duration": 0.5
+    "rms": 0.589521,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_2.wav",
     "string_idx": 3,
     "fret": 2,
     "midi_note": 57,
-    "rms": 0.158552,
-    "duration": 0.5
+    "rms": 0.553167,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_3.wav",
     "string_idx": 3,
     "fret": 3,
     "midi_note": 58,
-    "rms": 0.664709,
-    "duration": 0.5
+    "rms": 0.611251,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_4.wav",
     "string_idx": 3,
     "fret": 4,
     "midi_note": 59,
-    "rms": 0.587111,
-    "duration": 0.5
+    "rms": 0.607325,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_5.wav",
     "string_idx": 3,
     "fret": 5,
     "midi_note": 60,
-    "rms": 0.443423,
-    "duration": 0.5
+    "rms": 0.612036,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_6.wav",
     "string_idx": 3,
     "fret": 6,
     "midi_note": 61,
-    "rms": 0.451671,
-    "duration": 0.5
+    "rms": 0.635875,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_7.wav",
     "string_idx": 3,
     "fret": 7,
     "midi_note": 62,
-    "rms": 0.587516,
-    "duration": 0.5
+    "rms": 0.60491,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_8.wav",
     "string_idx": 3,
     "fret": 8,
     "midi_note": 63,
-    "rms": 0.620044,
-    "duration": 0.5
+    "rms": 0.617755,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_9.wav",
     "string_idx": 3,
     "fret": 9,
     "midi_note": 64,
-    "rms": 0.296458,
-    "duration": 0.5
+    "rms": 0.620949,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_10.wav",
     "string_idx": 3,
     "fret": 10,
     "midi_note": 65,
-    "rms": 0.527069,
-    "duration": 0.5
+    "rms": 0.665478,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_11.wav",
     "string_idx": 3,
     "fret": 11,
     "midi_note": 66,
-    "rms": 0.647916,
-    "duration": 0.5
+    "rms": 0.477253,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_12.wav",
     "string_idx": 3,
     "fret": 12,
     "midi_note": 67,
-    "rms": 0.268741,
-    "duration": 0.5
+    "rms": 0.68185,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_13.wav",
     "string_idx": 3,
     "fret": 13,
     "midi_note": 68,
-    "rms": 0.475846,
-    "duration": 0.5
+    "rms": 0.670392,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_14.wav",
     "string_idx": 3,
     "fret": 14,
     "midi_note": 69,
-    "rms": 0.61385,
-    "duration": 0.5
+    "rms": 0.686301,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_15.wav",
     "string_idx": 3,
     "fret": 15,
     "midi_note": 70,
-    "rms": 0.525421,
-    "duration": 0.5
+    "rms": 0.732987,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_16.wav",
     "string_idx": 3,
     "fret": 16,
     "midi_note": 71,
-    "rms": 0.769291,
-    "duration": 0.5
+    "rms": 0.581834,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_17.wav",
     "string_idx": 3,
     "fret": 17,
     "midi_note": 72,
-    "rms": 0.040617,
-    "duration": 0.5
+    "rms": 0.685604,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_18.wav",
     "string_idx": 3,
     "fret": 18,
     "midi_note": 73,
-    "rms": 0.668756,
-    "duration": 0.5
+    "rms": 0.75073,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_19.wav",
     "string_idx": 3,
     "fret": 19,
     "midi_note": 74,
-    "rms": 0.276193,
-    "duration": 0.5
+    "rms": 0.707634,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_20.wav",
     "string_idx": 3,
     "fret": 20,
     "midi_note": 75,
-    "rms": 0.020931,
-    "duration": 0.5
+    "rms": 0.566417,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_21.wav",
     "string_idx": 3,
     "fret": 21,
     "midi_note": 76,
-    "rms": 0.204672,
-    "duration": 0.5
+    "rms": 0.697924,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_3_fret_22.wav",
     "string_idx": 3,
     "fret": 22,
     "midi_note": 77,
-    "rms": 0.151009,
-    "duration": 0.5
+    "rms": 0.711535,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_0.wav",
     "string_idx": 4,
     "fret": 0,
     "midi_note": 59,
-    "rms": 0.641739,
-    "duration": 0.5
+    "rms": 0.540717,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_1.wav",
     "string_idx": 4,
     "fret": 1,
     "midi_note": 60,
-    "rms": 0.631951,
-    "duration": 0.5
+    "rms": 0.587037,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_2.wav",
     "string_idx": 4,
     "fret": 2,
     "midi_note": 61,
-    "rms": 0.641438,
-    "duration": 0.5
+    "rms": 0.322198,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_3.wav",
     "string_idx": 4,
     "fret": 3,
     "midi_note": 62,
-    "rms": 0.554703,
-    "duration": 0.5
+    "rms": 0.240912,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_4.wav",
     "string_idx": 4,
     "fret": 4,
     "midi_note": 63,
-    "rms": 0.051202,
-    "duration": 0.5
+    "rms": 0.515681,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_5.wav",
     "string_idx": 4,
     "fret": 5,
     "midi_note": 64,
-    "rms": 0.385373,
-    "duration": 0.5
+    "rms": 0.525336,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_6.wav",
     "string_idx": 4,
     "fret": 6,
     "midi_note": 65,
-    "rms": 0.057551,
-    "duration": 0.5
+    "rms": 0.546853,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_7.wav",
     "string_idx": 4,
     "fret": 7,
     "midi_note": 66,
-    "rms": 0.679036,
-    "duration": 0.5
+    "rms": 0.494639,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_8.wav",
     "string_idx": 4,
     "fret": 8,
     "midi_note": 67,
-    "rms": 0.079737,
-    "duration": 0.5
+    "rms": 0.563865,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_9.wav",
     "string_idx": 4,
     "fret": 9,
     "midi_note": 68,
-    "rms": 0.11385,
-    "duration": 0.5
+    "rms": 0.541256,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_10.wav",
     "string_idx": 4,
     "fret": 10,
     "midi_note": 69,
-    "rms": 0.145789,
-    "duration": 0.5
+    "rms": 0.591381,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_11.wav",
     "string_idx": 4,
     "fret": 11,
     "midi_note": 70,
-    "rms": 0.049528,
-    "duration": 0.5
+    "rms": 0.601331,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_12.wav",
     "string_idx": 4,
     "fret": 12,
     "midi_note": 71,
-    "rms": 0.160722,
-    "duration": 0.5
+    "rms": 0.63891,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_13.wav",
     "string_idx": 4,
     "fret": 13,
     "midi_note": 72,
-    "rms": 0.048097,
-    "duration": 0.5
+    "rms": 0.637164,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_14.wav",
     "string_idx": 4,
     "fret": 14,
     "midi_note": 73,
-    "rms": 0.073322,
-    "duration": 0.5
+    "rms": 0.620298,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_15.wav",
     "string_idx": 4,
     "fret": 15,
     "midi_note": 74,
-    "rms": 0.773109,
-    "duration": 0.5
+    "rms": 0.276803,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_16.wav",
     "string_idx": 4,
     "fret": 16,
     "midi_note": 75,
-    "rms": 0.031327,
-    "duration": 0.5
+    "rms": 0.621835,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_17.wav",
     "string_idx": 4,
     "fret": 17,
     "midi_note": 76,
-    "rms": 0.65689,
-    "duration": 0.5
+    "rms": 0.154617,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_18.wav",
     "string_idx": 4,
     "fret": 18,
     "midi_note": 77,
-    "rms": 0.025211,
-    "duration": 0.5
+    "rms": 0.660902,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_19.wav",
     "string_idx": 4,
     "fret": 19,
     "midi_note": 78,
-    "rms": 0.129982,
-    "duration": 0.5
+    "rms": 0.632356,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_20.wav",
     "string_idx": 4,
     "fret": 20,
     "midi_note": 79,
-    "rms": 0.045658,
-    "duration": 0.5
+    "rms": 0.674809,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_21.wav",
     "string_idx": 4,
     "fret": 21,
     "midi_note": 80,
-    "rms": 0.02922,
-    "duration": 0.5
+    "rms": 0.589615,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_4_fret_22.wav",
     "string_idx": 4,
     "fret": 22,
     "midi_note": 81,
-    "rms": 0.053635,
-    "duration": 0.5
+    "rms": 0.583628,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_0.wav",
     "string_idx": 5,
     "fret": 0,
     "midi_note": 64,
-    "rms": 0.471735,
-    "duration": 0.5
+    "rms": 0.232031,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_1.wav",
     "string_idx": 5,
     "fret": 1,
     "midi_note": 65,
-    "rms": 0.245536,
-    "duration": 0.5
+    "rms": 0.315289,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_2.wav",
     "string_idx": 5,
     "fret": 2,
     "midi_note": 66,
-    "rms": 0.196462,
-    "duration": 0.5
+    "rms": 0.280988,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_3.wav",
     "string_idx": 5,
     "fret": 3,
     "midi_note": 67,
-    "rms": 0.216695,
-    "duration": 0.5
+    "rms": 0.336183,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_4.wav",
     "string_idx": 5,
     "fret": 4,
     "midi_note": 68,
-    "rms": 0.259653,
-    "duration": 0.5
+    "rms": 0.282027,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_5.wav",
     "string_idx": 5,
     "fret": 5,
     "midi_note": 69,
-    "rms": 0.296375,
-    "duration": 0.5
+    "rms": 0.458135,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_6.wav",
     "string_idx": 5,
     "fret": 6,
     "midi_note": 70,
-    "rms": 0.032728,
-    "duration": 0.5
+    "rms": 0.313279,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_7.wav",
     "string_idx": 5,
     "fret": 7,
     "midi_note": 71,
-    "rms": 0.239781,
-    "duration": 0.5
+    "rms": 0.257749,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_8.wav",
     "string_idx": 5,
     "fret": 8,
     "midi_note": 72,
-    "rms": 0.228919,
-    "duration": 0.5
+    "rms": 0.267567,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_9.wav",
     "string_idx": 5,
     "fret": 9,
     "midi_note": 73,
-    "rms": 0.022631,
-    "duration": 0.5
+    "rms": 0.424759,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_10.wav",
     "string_idx": 5,
     "fret": 10,
     "midi_note": 74,
-    "rms": 0.254801,
-    "duration": 0.5
+    "rms": 0.393942,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_11.wav",
     "string_idx": 5,
     "fret": 11,
     "midi_note": 75,
-    "rms": 0.390274,
-    "duration": 0.5
+    "rms": 0.47122,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_12.wav",
     "string_idx": 5,
     "fret": 12,
     "midi_note": 76,
-    "rms": 0.213852,
-    "duration": 0.5
+    "rms": 0.272318,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_13.wav",
     "string_idx": 5,
     "fret": 13,
     "midi_note": 77,
-    "rms": 0.320535,
-    "duration": 0.5
+    "rms": 0.351629,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_14.wav",
     "string_idx": 5,
     "fret": 14,
     "midi_note": 78,
-    "rms": 0.076997,
-    "duration": 0.5
+    "rms": 0.518815,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_15.wav",
     "string_idx": 5,
     "fret": 15,
     "midi_note": 79,
-    "rms": 0.287216,
-    "duration": 0.5
+    "rms": 0.612381,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_16.wav",
     "string_idx": 5,
     "fret": 16,
     "midi_note": 80,
-    "rms": 0.099058,
-    "duration": 0.5
+    "rms": 0.56781,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_17.wav",
     "string_idx": 5,
     "fret": 17,
     "midi_note": 81,
-    "rms": 0.145729,
-    "duration": 0.5
+    "rms": 0.55085,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_18.wav",
     "string_idx": 5,
     "fret": 18,
     "midi_note": 82,
-    "rms": 0.019641,
-    "duration": 0.5
+    "rms": 0.507966,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_19.wav",
     "string_idx": 5,
     "fret": 19,
     "midi_note": 83,
-    "rms": 0.241268,
-    "duration": 0.5
+    "rms": 0.586501,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_20.wav",
     "string_idx": 5,
     "fret": 20,
     "midi_note": 84,
-    "rms": 0.037556,
-    "duration": 0.5
+    "rms": 0.631827,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_21.wav",
     "string_idx": 5,
     "fret": 21,
     "midi_note": 85,
-    "rms": 0.026996,
-    "duration": 0.5
+    "rms": 0.632043,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "by_class/string_5_fret_22.wav",
     "string_idx": 5,
     "fret": 22,
     "midi_note": 86,
-    "rms": 0.097332,
-    "duration": 0.5
+    "rms": 0.614204,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/E2_open.wav",
     "string_idx": 0,
     "fret": 0,
     "midi_note": 40,
-    "rms": 0.688058,
-    "duration": 0.5
+    "rms": 0.617466,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "showcase/E2_fret5.wav",
     "string_idx": 0,
     "fret": 5,
     "midi_note": 45,
-    "rms": 0.721388,
-    "duration": 0.5
+    "rms": 0.600772,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "showcase/E2_fret12.wav",
     "string_idx": 0,
     "fret": 12,
     "midi_note": 52,
-    "rms": 0.699688,
-    "duration": 0.5
+    "rms": 0.744356,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "showcase/A2_open.wav",
     "string_idx": 1,
     "fret": 0,
     "midi_note": 45,
-    "rms": 0.716497,
-    "duration": 0.5
+    "rms": 0.672571,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "showcase/A2_fret5.wav",
     "string_idx": 1,
     "fret": 5,
     "midi_note": 50,
-    "rms": 0.755599,
-    "duration": 0.5
+    "rms": 0.601591,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "showcase/A2_fret12.wav",
     "string_idx": 1,
     "fret": 12,
     "midi_note": 57,
-    "rms": 0.683598,
-    "duration": 0.5
+    "rms": 0.677995,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "showcase/D3_open.wav",
     "string_idx": 2,
     "fret": 0,
     "midi_note": 50,
-    "rms": 0.445211,
-    "duration": 0.5
+    "rms": 0.439552,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/D3_fret5.wav",
     "string_idx": 2,
     "fret": 5,
     "midi_note": 55,
-    "rms": 0.570231,
-    "duration": 0.5
+    "rms": 0.506992,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/D3_fret12.wav",
     "string_idx": 2,
     "fret": 12,
     "midi_note": 62,
-    "rms": 0.59306,
-    "duration": 0.5
+    "rms": 0.620573,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/G3_open.wav",
     "string_idx": 3,
     "fret": 0,
     "midi_note": 55,
-    "rms": 0.661845,
-    "duration": 0.5
+    "rms": 0.599297,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/G3_fret5.wav",
     "string_idx": 3,
     "fret": 5,
     "midi_note": 60,
-    "rms": 0.443423,
-    "duration": 0.5
+    "rms": 0.612036,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/G3_fret12.wav",
     "string_idx": 3,
     "fret": 12,
     "midi_note": 67,
-    "rms": 0.268741,
-    "duration": 0.5
+    "rms": 0.68185,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/B3_open.wav",
     "string_idx": 4,
     "fret": 0,
     "midi_note": 59,
-    "rms": 0.641739,
-    "duration": 0.5
+    "rms": 0.540717,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/B3_fret5.wav",
     "string_idx": 4,
     "fret": 5,
     "midi_note": 64,
-    "rms": 0.385373,
-    "duration": 0.5
+    "rms": 0.525336,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/B3_fret12.wav",
     "string_idx": 4,
     "fret": 12,
     "midi_note": 71,
-    "rms": 0.160722,
-    "duration": 0.5
+    "rms": 0.63891,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/E4_open.wav",
     "string_idx": 5,
     "fret": 0,
     "midi_note": 64,
-    "rms": 0.471735,
-    "duration": 0.5
+    "rms": 0.232031,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/E4_fret5.wav",
     "string_idx": 5,
     "fret": 5,
     "midi_note": 69,
-    "rms": 0.296375,
-    "duration": 0.5
+    "rms": 0.458135,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "showcase/E4_fret12.wav",
     "string_idx": 5,
     "fret": 12,
     "midi_note": 76,
-    "rms": 0.213852,
-    "duration": 0.5
+    "rms": 0.272318,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "confused_pairs/A2_on_E_string_fret5.wav",
     "string_idx": 0,
     "fret": 5,
     "midi_note": 45,
-    "rms": 0.721388,
-    "duration": 0.5
+    "rms": 0.600772,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "confused_pairs/A2_on_A_string_open.wav",
     "string_idx": 1,
     "fret": 0,
     "midi_note": 45,
-    "rms": 0.716497,
-    "duration": 0.5
+    "rms": 0.672571,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "confused_pairs/D3_on_A_string_fret5.wav",
     "string_idx": 1,
     "fret": 5,
     "midi_note": 50,
-    "rms": 0.755599,
-    "duration": 0.5
+    "rms": 0.601591,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 48000
   },
   {
     "filename": "confused_pairs/D3_on_D_string_open.wav",
     "string_idx": 2,
     "fret": 0,
     "midi_note": 50,
-    "rms": 0.445211,
-    "duration": 0.5
+    "rms": 0.439552,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "confused_pairs/G3_on_D_string_fret5.wav",
     "string_idx": 2,
     "fret": 5,
     "midi_note": 55,
-    "rms": 0.570231,
-    "duration": 0.5
+    "rms": 0.506992,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "confused_pairs/G3_on_G_string_open.wav",
     "string_idx": 3,
     "fret": 0,
     "midi_note": 55,
-    "rms": 0.661845,
-    "duration": 0.5
+    "rms": 0.599297,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "confused_pairs/B3_on_G_string_fret4.wav",
     "string_idx": 3,
     "fret": 4,
     "midi_note": 59,
-    "rms": 0.587111,
-    "duration": 0.5
+    "rms": 0.607325,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "confused_pairs/B3_on_B_string_open.wav",
     "string_idx": 4,
     "fret": 0,
     "midi_note": 59,
-    "rms": 0.641739,
-    "duration": 0.5
+    "rms": 0.540717,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "confused_pairs/E4_on_B_string_fret5.wav",
     "string_idx": 4,
     "fret": 5,
     "midi_note": 64,
-    "rms": 0.385373,
-    "duration": 0.5
+    "rms": 0.525336,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   },
   {
     "filename": "confused_pairs/E4_on_E_string_open.wav",
     "string_idx": 5,
     "fret": 0,
     "midi_note": 64,
-    "rms": 0.471735,
-    "duration": 0.5
+    "rms": 0.232031,
+    "duration": 0.5,
+    "sample_rate": 48000,
+    "source_sample_rate": 44100
   }
 ]

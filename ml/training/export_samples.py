@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from scipy.signal import resample_poly
 
 # ── Project paths ────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -59,6 +60,13 @@ def trim_or_pad(audio, target_len):
     return np.pad(audio, (0, target_len - len(audio)), mode="constant")
 
 
+def resample_audio(audio, source_rate, target_rate):
+    """Resample without changing pitch before writing a new sample-rate header."""
+    if source_rate == target_rate:
+        return audio
+    return resample_poly(audio, target_rate, source_rate).astype(np.float32)
+
+
 def write_wav(path, audio_f32, sr):
     """Write a float32 array as 16-bit PCM WAV using soundfile."""
     import soundfile as sf
@@ -82,7 +90,9 @@ def string_label_for_confused(string_idx):
 
 def export_sample(sample, filepath, index_entries):
     """Export a single sample to WAV and record metadata."""
-    audio = trim_or_pad(sample.audio_np, DURATION_SAMPLES)
+    source_rate = int(sample.sample_rate)
+    audio = resample_audio(sample.audio_np, source_rate, SAMPLE_RATE)
+    audio = trim_or_pad(audio, DURATION_SAMPLES)
     write_wav(filepath, audio, SAMPLE_RATE)
 
     entry = {
@@ -90,8 +100,10 @@ def export_sample(sample, filepath, index_entries):
         "string_idx": sample.string_idx,
         "fret": sample.fret,
         "midi_note": sample.expected_midi,
-        "rms": round(float(sample.rms), 6),
+        "rms": round(float(np.sqrt(np.mean(audio * audio))), 6),
         "duration": DURATION_SECS,
+        "sample_rate": SAMPLE_RATE,
+        "source_sample_rate": source_rate,
     }
     index_entries.append(entry)
     return entry
