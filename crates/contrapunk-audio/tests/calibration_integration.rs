@@ -171,8 +171,8 @@ fn empty_json_object_is_rejected_until_strings_field_becomes_default() {
 // stimulus, so `process_block(&silence)` after a real-note stimulus
 // can still emit a NoteOff from the buffered tail — the detector is
 // doing the right thing; the test was asserting the wrong invariant.
-// The state-drain contract is locked at the unit-test layer in
-// `guitar_input.rs::set_calibration_profile_drains_stale_state`,
+// The active-note preservation contract is locked at the unit-test layer in
+// `guitar_input.rs::set_calibration_profile_preserves_active_note_for_noteoff`,
 // which reaches into private fields directly. Don't reintroduce a
 // duplicative integration version without first solving the ring-
 // buffer-tail problem (e.g. by exposing a `flush_ring_buffer()` API

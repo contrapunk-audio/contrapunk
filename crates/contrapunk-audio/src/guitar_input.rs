@@ -23,7 +23,7 @@ use super::pitch::freq_to_midi;
 // ── Configuration ──────────────────────────────────────────────────
 
 /// User-adjustable parameters for the guitar input pipeline.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuitarInputConfig {
     /// Analysis window in samples (256-2048).
     pub buffer_size: usize,
@@ -319,6 +319,9 @@ pub struct GuitarInput {
     // Multi-frame pitch voting (#7) — 2-frame for lower latency
     pitch_history: [Option<u8>; 2],
     pitch_history_idx: usize,
+    /// Attack was entered from one anomalous sustain pitch frame rather than
+    /// a measured onset. If consensus returns to the active note, suppress it.
+    attack_from_pitch_jump: bool,
 
     // Spectral flux onset (#5)
     prev_spectrum: Option<Vec<f32>>,
@@ -385,6 +388,9 @@ impl GuitarInput {
     pub fn new(config: GuitarInputConfig) -> Self {
         let buf_size = config.buffer_size;
         let sr = config.sample_rate;
+        let vibrato_capacity = ((sr as f32 / config.hop_size.max(1) as f32) * 0.5)
+            .ceil()
+            .clamp(24.0, 256.0) as usize;
         Self {
             config,
             calibration: None,
@@ -402,14 +408,14 @@ impl GuitarInput {
             suppress_until: 0,
             pitch_history: [None; 2],
             pitch_history_idx: 0,
+            attack_from_pitch_jump: false,
             prev_spectrum: None,
             // Slide state: keep last 8 frames of cents values
             slide_history: vec![0i16; 8],
             slide_history_idx: 0,
             slide_velocity_decay: 0.9,
-            // Vibrato state: buffer ~500ms of cents values
-            // At 48kHz/1024 = ~47 frames/sec, 24 frames ~ 500ms
-            vibrato_buffer: Vec::with_capacity(24),
+            // Vibrato state: buffer ~500ms of hop-spaced cents values.
+            vibrato_buffer: Vec::with_capacity(vibrato_capacity),
             vibrato_buffer_idx: 0,
             vibrato_detected: false,
             vibrato_rate_hz: 0.0,
@@ -441,9 +447,52 @@ impl GuitarInput {
         Self::new(GuitarInputConfig::default())
     }
 
-    /// Mutable access to the configuration (for runtime adjustments).
+    /// Mutable access to non-structural runtime settings.
+    ///
+    /// Do not change `buffer_size`, `hop_size`, or `sample_rate` through this
+    /// reference. Use [`replace_config`](Self::replace_config) so fixed DSP
+    /// buffers and the single-cycle detector are rebuilt together.
     pub fn config_mut(&mut self) -> &mut GuitarInputConfig {
         &mut self.config
+    }
+
+    /// Replace the complete configuration and reset structural DSP state.
+    ///
+    /// Returns the cleanup events that must be sent before processing with the
+    /// new configuration. This prevents live reconfiguration from stranding a
+    /// note or retaining buffers sized for the previous analysis window.
+    pub fn replace_config(&mut self, mut config: GuitarInputConfig) -> Vec<MidiEvent> {
+        config.buffer_size = config.buffer_size.clamp(256, 4096);
+        config.hop_size = config.hop_size.clamp(1, config.buffer_size);
+        config.sample_rate = config.sample_rate.max(8_000);
+
+        let mut cleanup = Vec::new();
+        if let Some(note) = self.current_note.as_ref() {
+            let channel = if self.config.per_string_channels {
+                note.string_idx.map(|s| s as u8 + 1).unwrap_or(0)
+            } else {
+                0
+            };
+            if note.bend_cents != 0 {
+                cleanup.push(MidiEvent::PitchBend { channel, cents: 0 });
+            }
+            cleanup.push(MidiEvent::NoteOff {
+                channel,
+                note: note.midi_note,
+                velocity: self.last_sent_pressure,
+            });
+        }
+
+        let calibration = self.calibration.clone();
+        let profile = self.calibration_profile.clone();
+        *self = Self::new(config);
+        if let Some(calibration) = calibration {
+            self.set_calibration(calibration);
+        }
+        if let Some(profile) = profile {
+            self.set_calibration_profile(profile);
+        }
+        cleanup
     }
 
     /// Set the calibration data (measured from `calibrate_string`).
@@ -467,10 +516,9 @@ impl GuitarInput {
     /// the calibrated value instead of waiting for the EMA to
     /// converge to room-noise from the per-frame defaults.
     ///
-    /// Also resets the note state machine so a mid-session reload
-    /// can't strand a ghost note against stale thresholds. Cooldown
-    /// + suppression are cleared; the next valid onset starts a
-    /// fresh tracking window.
+    /// Active-note state is deliberately preserved. Dropping it here would
+    /// discard the only information needed to emit the matching NoteOff when
+    /// a profile is reloaded during sustain.
     pub fn set_calibration_profile(&mut self, profile: super::guitar::GuitarCalibrationProfile) {
         let normalizer = super::guitar::AudioNormalizer::from_profile(&profile);
         // Read the calibrated noise floor BEFORE storing the normalizer
@@ -479,15 +527,6 @@ impl GuitarInput {
         if nf > 0.0 {
             self.noise_floor_ema = nf;
         }
-        // Mid-session reload safety: drain stale per-note state so a
-        // currently-sustained note doesn't keep firing against the
-        // newly-applied thresholds.
-        self.note_state = NoteState::Idle;
-        self.state_samples = 0;
-        self.cooldown_remaining = 0;
-        self.current_note = None;
-        self.suppress_frequency = None;
-        self.suppress_until = 0;
         self.normalizer = Some(normalizer);
         self.calibration_profile = Some(profile);
     }
@@ -757,30 +796,12 @@ impl GuitarInput {
                 match self.note_state {
                     NoteState::Idle => {
                         if onset {
-                            // Onset-ahead-of-pitch: if single-cycle already has
-                            // a confident pitch, skip Attack and fire NoteOn now
-                            if let Some((sc_freq, sc_conf)) = self.early_pitch {
-                                if sc_conf > 0.6 {
-                                    let sc_corrected = self.correct_octave(sc_freq);
-                                    let (sc_midi, _) = freq_to_midi(sc_corrected);
-                                    // Use single-cycle pitch for immediate NoteOn
-                                    // McLeod will refine via pitch bend in Sustain
-                                    self.push_pitch(sc_midi);
-                                    self.note_state = NoteState::Attack;
-                                    self.state_samples = 0;
-                                    // Fall through to Attack handler which will
-                                    // fire immediately since we have a confident pitch
-                                }
-                            }
-                            if !matches!(self.note_state, NoteState::Attack) {
-                                // Normal path: onset detected, move to Attack
-                                self.note_state = NoteState::Attack;
-                                self.state_samples = 0;
-                                self.single_cycle.reset();
-                                self.early_pitch = None;
-                            }
-                            // Record pitch in voting history (#7)
-                            self.push_pitch(midi_note);
+                            self.note_state = NoteState::Attack;
+                            self.state_samples = 0;
+                            self.clear_pitch_history();
+                            self.attack_from_pitch_jump = false;
+                            self.single_cycle.reset();
+                            self.early_pitch = None;
                         }
                     }
                     _ => {}
@@ -792,20 +813,33 @@ impl GuitarInput {
                         // Record pitch in voting history
                         self.push_pitch(midi_note);
 
-                        // Attack timeout: reduced to 25ms with faster hop rate
+                        // Attack transients are rich in non-fundamental energy. Wait
+                        // for two consecutive analysis frames to agree instead of
+                        // allowing the single-cycle detector to bypass consensus.
+                        let attack_min_samples = (self.config.sample_rate as f32 * 0.075) as usize;
                         let attack_timeout_samples =
-                            (self.config.sample_rate as f32 * 0.025) as usize;
+                            (self.config.sample_rate as f32 * 0.2) as usize;
 
-                        // Fire on FIRST confident detection from either source
-                        let has_confident_pitch = self
-                            .early_pitch
-                            .map(|(_, conf)| conf > 0.6)
-                            .unwrap_or(false)
-                            || self.is_pitch_stable();
-
-                        if has_confident_pitch {
+                        if self.state_samples >= attack_min_samples && self.is_pitch_stable() {
                             // Attack -> Sustain: pitch confirmed
                             let stable_midi = self.pitch_history[0].unwrap_or(midi_note);
+
+                            // A single anomalous sustain frame can look like a
+                            // missed onset. If consensus settles back on the
+                            // already-active pitch, it was not a new note.
+                            if self.attack_from_pitch_jump
+                                && self
+                                    .current_note
+                                    .as_ref()
+                                    .is_some_and(|note| note.midi_note == stable_midi)
+                            {
+                                self.attack_from_pitch_jump = false;
+                                self.note_state = NoteState::Sustain;
+                                self.state_samples = 0;
+                                self.clear_pitch_history();
+                                self.prev_rms = rms;
+                                return events;
+                            }
 
                             // End previous note first
                             if let Some(prev) = &self.current_note {
@@ -820,7 +854,14 @@ impl GuitarInput {
                                 } else {
                                     0
                                 };
-                                // Fix 5: NoteOff velocity = last sent pressure value (MG3 convention)
+                                // Center expression before release so the next note on
+                                // this channel cannot inherit a stale bend.
+                                if prev.bend_cents != 0 {
+                                    events.push(MidiEvent::PitchBend {
+                                        channel: prev_channel,
+                                        cents: 0,
+                                    });
+                                }
                                 events.push(MidiEvent::NoteOff {
                                     channel: prev_channel,
                                     note: prev.midi_note,
@@ -885,13 +926,6 @@ impl GuitarInput {
                                     channel,
                                     cents: initial_bend,
                                 });
-                                events.push(MidiEvent::MidiPitchBend {
-                                    channel,
-                                    value: cents_to_midi_pitch_bend(
-                                        initial_bend,
-                                        self.config.pitch_bend_range,
-                                    ),
-                                });
                             }
 
                             // Fix 3: Send CC74 brightness BEFORE NoteOn
@@ -937,6 +971,7 @@ impl GuitarInput {
                             });
 
                             self.current_note = Some(detected);
+                            self.attack_from_pitch_jump = false;
                             self.cooldown_remaining = self.config.cooldown_samples;
                             self.note_state = NoteState::Sustain;
                             self.state_samples = 0;
@@ -949,11 +984,18 @@ impl GuitarInput {
                             self.clear_slide_history();
                             self.clear_vibrato_state();
                         } else if self.state_samples > attack_timeout_samples {
-                            // Attack -> Idle: false trigger
-                            self.note_state = NoteState::Idle;
+                            // An unconfirmed initial attack is false. During an
+                            // existing note, return through Decay so cleanup cannot
+                            // strand the active NoteOn.
+                            self.note_state = if self.current_note.is_some() {
+                                NoteState::Decay
+                            } else {
+                                NoteState::Idle
+                            };
                             self.state_samples = 0;
                             self.early_pitch = None;
                             self.clear_pitch_history();
+                            self.attack_from_pitch_jump = false;
                             self.clear_slide_history();
                             self.clear_vibrato_state();
                         }
@@ -976,13 +1018,6 @@ impl GuitarInput {
                                                 channel: corr_channel,
                                                 cents: correction_cents,
                                             });
-                                            events.push(MidiEvent::MidiPitchBend {
-                                                channel: corr_channel,
-                                                value: cents_to_midi_pitch_bend(
-                                                    correction_cents,
-                                                    self.config.pitch_bend_range,
-                                                ),
-                                            });
                                         }
                                     }
                                 }
@@ -1004,11 +1039,14 @@ impl GuitarInput {
                         // a new pluck from sustained ringing. A re-pluck always
                         // has a sharp RMS jump; sustained signal doesn't.
 
-                        if slope_onset {
-                            // 1. Sustain -> Attack: genuine re-pluck (RMS jumped)
+                        if slope_onset && flux_onset {
+                            // 1. Sustain -> Attack: genuine re-pluck. A level jump
+                            // alone can be beating in a sustained guitar tone; fresh
+                            // high-frequency energy confirms a new articulation.
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
+                            self.attack_from_pitch_jump = false;
                             self.push_pitch(midi_note);
                             self.clear_slide_history();
                             self.clear_vibrato_state();
@@ -1053,15 +1091,14 @@ impl GuitarInput {
                                 }
                             };
 
-                            // Feed slide and vibrato buffers
-                            self.push_slide_cents(cents_from_base);
-                            self.push_vibrato_cents(cents_from_base as f32);
+                            // Read the previous frame before storing the current one.
+                            // The old order always compared the sample with itself,
+                            // making the legato rapid-jump branch unreachable.
+                            let cents_per_frame = self.record_pitch_movement(cents_from_base);
 
                             // Detect rapid pitch change (legato vs bend):
                             // Legato = fast jump (> 50 cents in one frame)
                             // Bend = slow movement (< 30 cents per frame)
-                            let prev_cents = self.slide_history_prev_cents();
-                            let cents_per_frame = (cents_from_base - prev_cents).abs();
                             let is_rapid_jump = cents_per_frame > 50;
 
                             if semitone_diff >= 1 && is_rapid_jump && self.config.legato_enabled {
@@ -1070,7 +1107,9 @@ impl GuitarInput {
                                 self.suppress_until = self.total_samples
                                     + (self.config.sample_rate as f32 * 0.1) as usize;
 
-                                // Fix 5: NoteOff velocity = last sent pressure value
+                                if note_bend != 0 {
+                                    events.push(MidiEvent::PitchBend { channel, cents: 0 });
+                                }
                                 events.push(MidiEvent::NoteOff {
                                     channel,
                                     note: note_midi,
@@ -1105,13 +1144,6 @@ impl GuitarInput {
                                     events.push(MidiEvent::PitchBend {
                                         channel: new_channel,
                                         cents: legato_cents,
-                                    });
-                                    events.push(MidiEvent::MidiPitchBend {
-                                        channel: new_channel,
-                                        value: cents_to_midi_pitch_bend(
-                                            legato_cents,
-                                            self.config.pitch_bend_range,
-                                        ),
                                     });
                                 }
 
@@ -1168,6 +1200,7 @@ impl GuitarInput {
                                 self.note_state = NoteState::Attack;
                                 self.state_samples = 0;
                                 self.clear_pitch_history();
+                                self.attack_from_pitch_jump = true;
                                 self.push_pitch(midi_note);
                                 self.clear_slide_history();
                                 self.clear_vibrato_state();
@@ -1178,7 +1211,9 @@ impl GuitarInput {
                                 // 4. SLIDE: pitch crossed a semitone boundary gradually
                                 let (new_midi, new_cents_val) = freq_to_midi(freq);
                                 if new_midi != note_midi {
-                                    // Fix 5: NoteOff velocity = last sent pressure value
+                                    if note_bend != 0 {
+                                        events.push(MidiEvent::PitchBend { channel, cents: 0 });
+                                    }
                                     events.push(MidiEvent::NoteOff {
                                         channel,
                                         note: note_midi,
@@ -1217,13 +1252,6 @@ impl GuitarInput {
                                         events.push(MidiEvent::PitchBend {
                                             channel: new_channel,
                                             cents: slide_bend,
-                                        });
-                                        events.push(MidiEvent::MidiPitchBend {
-                                            channel: new_channel,
-                                            value: cents_to_midi_pitch_bend(
-                                                slide_bend,
-                                                self.config.pitch_bend_range,
-                                            ),
                                         });
                                     }
 
@@ -1273,181 +1301,63 @@ impl GuitarInput {
                                     self.clear_slide_history();
                                 }
                             } else {
-                                // 5. VIBRATO detection (informational)
-                                let vibrato_result = if self.config.vibrato_detection {
-                                    self.detect_vibrato()
-                                } else {
-                                    None
-                                };
+                                // 5. VIBRATO status and 6. canonical pitch bend.
+                                let vibrato_result = self
+                                    .config
+                                    .vibrato_detection
+                                    .then(|| self.detect_vibrato())
+                                    .flatten();
+                                match vibrato_result {
+                                    Some((rate_hz, amplitude))
+                                        if !self.vibrato_detected
+                                            || (rate_hz - self.vibrato_rate_hz).abs() > 0.5
+                                            || (amplitude - self.vibrato_depth_cents).abs()
+                                                > 5.0 =>
+                                    {
+                                        self.vibrato_detected = true;
+                                        self.vibrato_rate_hz = rate_hz;
+                                        self.vibrato_depth_cents = amplitude;
+                                        events.push(MidiEvent::VibratoStatus {
+                                            active: true,
+                                            rate_hz,
+                                            depth_cents: amplitude,
+                                        });
+                                    }
+                                    None if self.vibrato_detected => {
+                                        events.push(MidiEvent::VibratoStatus {
+                                            active: false,
+                                            rate_hz: 0.0,
+                                            depth_cents: 0.0,
+                                        });
+                                        self.vibrato_detected = false;
+                                        self.vibrato_rate_hz = 0.0;
+                                        self.vibrato_depth_cents = 0.0;
+                                    }
+                                    _ => {}
+                                }
 
-                                if self.config.vibrato_detection {
-                                    if let Some((rate_hz, amplitude)) = vibrato_result {
-                                        if !self.vibrato_detected {
-                                            self.vibrato_detected = true;
-                                            self.vibrato_rate_hz = rate_hz;
-                                            self.vibrato_depth_cents = amplitude;
-                                            events.push(MidiEvent::VibratoStatus {
-                                                active: true,
-                                                rate_hz,
-                                                depth_cents: amplitude,
-                                            });
-                                        } else if (rate_hz - self.vibrato_rate_hz).abs() > 0.5
-                                            || (amplitude - self.vibrato_depth_cents).abs() > 5.0
-                                        {
-                                            self.vibrato_rate_hz = rate_hz;
-                                            self.vibrato_depth_cents = amplitude;
-                                            events.push(MidiEvent::VibratoStatus {
-                                                active: true,
-                                                rate_hz,
-                                                depth_cents: amplitude,
-                                            });
-                                        }
-
-                                        // If vibrato passthrough is disabled,
-                                        // suppress pitch bend events (smooth out)
-                                        if !self.config.vibrato_passthrough {
-                                            if note_bend != 0 {
-                                                events.push(MidiEvent::PitchBend {
-                                                    channel,
-                                                    cents: 0,
-                                                });
-                                                events.push(MidiEvent::MidiPitchBend {
-                                                    channel,
-                                                    value: cents_to_midi_pitch_bend(
-                                                        0,
-                                                        self.config.pitch_bend_range,
-                                                    ),
-                                                });
-                                                if let Some(ref mut note) = self.current_note {
-                                                    note.bend_cents = 0;
-                                                }
-                                            }
-                                        } else if self.config.bends_enabled {
-                                            // Vibrato passthrough: let bend events flow
-                                            if cents_from_base.abs() > 5
-                                                && cents_from_base.abs() < 200
-                                            {
-                                                if (cents_from_base - note_bend).abs() > 3 {
-                                                    events.push(MidiEvent::PitchBend {
-                                                        channel,
-                                                        cents: cents_from_base,
-                                                    });
-                                                    events.push(MidiEvent::MidiPitchBend {
-                                                        channel,
-                                                        value: cents_to_midi_pitch_bend(
-                                                            cents_from_base,
-                                                            self.config.pitch_bend_range,
-                                                        ),
-                                                    });
-                                                    if let Some(ref mut note) = self.current_note {
-                                                        note.bend_cents = cents_from_base;
-                                                        note.frequency = freq;
-                                                    }
-                                                }
-                                            } else if cents_from_base.abs() <= 5 && note_bend != 0 {
-                                                events.push(MidiEvent::PitchBend {
-                                                    channel,
-                                                    cents: 0,
-                                                });
-                                                events.push(MidiEvent::MidiPitchBend {
-                                                    channel,
-                                                    value: cents_to_midi_pitch_bend(
-                                                        0,
-                                                        self.config.pitch_bend_range,
-                                                    ),
-                                                });
-                                                if let Some(ref mut note) = self.current_note {
-                                                    note.bend_cents = 0;
-                                                }
-                                            }
-                                        }
+                                let smooth_vibrato =
+                                    vibrato_result.is_some() && !self.config.vibrato_passthrough;
+                                let target_bend = if self.config.bends_enabled && !smooth_vibrato {
+                                    if cents_from_base.abs() > 5 && cents_from_base.abs() < 200 {
+                                        cents_from_base
                                     } else {
-                                        // No vibrato detected
-                                        if self.vibrato_detected {
-                                            events.push(MidiEvent::VibratoStatus {
-                                                active: false,
-                                                rate_hz: 0.0,
-                                                depth_cents: 0.0,
-                                            });
-                                            self.vibrato_detected = false;
-                                            self.vibrato_rate_hz = 0.0;
-                                            self.vibrato_depth_cents = 0.0;
-                                        }
-
-                                        // 6. BEND: pitch within +/-2 semitones
-                                        if self.config.bends_enabled {
-                                            if cents_from_base.abs() > 5
-                                                && cents_from_base.abs() < 200
-                                            {
-                                                if (cents_from_base - note_bend).abs() > 3 {
-                                                    events.push(MidiEvent::PitchBend {
-                                                        channel,
-                                                        cents: cents_from_base,
-                                                    });
-                                                    events.push(MidiEvent::MidiPitchBend {
-                                                        channel,
-                                                        value: cents_to_midi_pitch_bend(
-                                                            cents_from_base,
-                                                            self.config.pitch_bend_range,
-                                                        ),
-                                                    });
-                                                    if let Some(ref mut note) = self.current_note {
-                                                        note.bend_cents = cents_from_base;
-                                                        note.frequency = freq;
-                                                    }
-                                                }
-                                            } else if cents_from_base.abs() <= 5 && note_bend != 0 {
-                                                events.push(MidiEvent::PitchBend {
-                                                    channel,
-                                                    cents: 0,
-                                                });
-                                                events.push(MidiEvent::MidiPitchBend {
-                                                    channel,
-                                                    value: cents_to_midi_pitch_bend(
-                                                        0,
-                                                        self.config.pitch_bend_range,
-                                                    ),
-                                                });
-                                                if let Some(ref mut note) = self.current_note {
-                                                    note.bend_cents = 0;
-                                                }
-                                            }
-                                        }
+                                        0
                                     }
                                 } else {
-                                    // Vibrato detection disabled; just do bends
-                                    if self.config.bends_enabled {
-                                        if cents_from_base.abs() > 5 && cents_from_base.abs() < 200
-                                        {
-                                            if (cents_from_base - note_bend).abs() > 3 {
-                                                events.push(MidiEvent::PitchBend {
-                                                    channel,
-                                                    cents: cents_from_base,
-                                                });
-                                                events.push(MidiEvent::MidiPitchBend {
-                                                    channel,
-                                                    value: cents_to_midi_pitch_bend(
-                                                        cents_from_base,
-                                                        self.config.pitch_bend_range,
-                                                    ),
-                                                });
-                                                if let Some(ref mut note) = self.current_note {
-                                                    note.bend_cents = cents_from_base;
-                                                    note.frequency = freq;
-                                                }
-                                            }
-                                        } else if cents_from_base.abs() <= 5 && note_bend != 0 {
-                                            events.push(MidiEvent::PitchBend { channel, cents: 0 });
-                                            events.push(MidiEvent::MidiPitchBend {
-                                                channel,
-                                                value: cents_to_midi_pitch_bend(
-                                                    0,
-                                                    self.config.pitch_bend_range,
-                                                ),
-                                            });
-                                            if let Some(ref mut note) = self.current_note {
-                                                note.bend_cents = 0;
-                                            }
+                                    0
+                                };
+                                if target_bend != note_bend
+                                    && (target_bend == 0 || (target_bend - note_bend).abs() > 3)
+                                {
+                                    events.push(MidiEvent::PitchBend {
+                                        channel,
+                                        cents: target_bend,
+                                    });
+                                    if let Some(ref mut note) = self.current_note {
+                                        note.bend_cents = target_bend;
+                                        if target_bend != 0 {
+                                            note.frequency = freq;
                                         }
                                     }
                                 }
@@ -1501,6 +1411,7 @@ impl GuitarInput {
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
+                            self.attack_from_pitch_jump = false;
                             self.push_pitch(midi_note);
                         } else if rms < noise_floor * 2.0
                             || self.state_samples > decay_timeout_samples
@@ -1513,7 +1424,12 @@ impl GuitarInput {
                                 } else {
                                     0
                                 };
-                                // Fix 5: NoteOff velocity = last sent pressure value
+                                if prev.bend_cents != 0 {
+                                    events.push(MidiEvent::PitchBend {
+                                        channel: decay_channel,
+                                        cents: 0,
+                                    });
+                                }
                                 events.push(MidiEvent::NoteOff {
                                     channel: decay_channel,
                                     note: prev.midi_note,
@@ -1532,10 +1448,36 @@ impl GuitarInput {
                 // No pitch detected
                 match self.note_state {
                     NoteState::Attack => {
-                        // Lost pitch during attack -> Idle (false trigger)
-                        self.note_state = NoteState::Idle;
                         self.state_samples = 0;
                         self.clear_pitch_history();
+                        self.attack_from_pitch_jump = false;
+                        if self.current_note.is_some() {
+                            // A sustain re-pluck can lose pitch on the next frame.
+                            // Keep the existing note in Decay so silence releases it;
+                            // going straight to Idle strands current_note forever.
+                            self.note_state = NoteState::Decay;
+                            if rms < noise_floor * 2.0 {
+                                if let Some(prev) = self.current_note.take() {
+                                    let channel = if self.config.per_string_channels {
+                                        prev.string_idx.map(|s| s as u8 + 1).unwrap_or(0)
+                                    } else {
+                                        0
+                                    };
+                                    if prev.bend_cents != 0 {
+                                        events.push(MidiEvent::PitchBend { channel, cents: 0 });
+                                    }
+                                    events.push(MidiEvent::NoteOff {
+                                        channel,
+                                        note: prev.midi_note,
+                                        velocity: self.last_sent_pressure,
+                                    });
+                                }
+                                self.note_state = NoteState::Idle;
+                            }
+                        } else {
+                            // Initial attack with no confirmed note was a false trigger.
+                            self.note_state = NoteState::Idle;
+                        }
                     }
                     NoteState::Sustain | NoteState::Decay => {
                         if rms < noise_floor * 2.0 {
@@ -1546,7 +1488,12 @@ impl GuitarInput {
                                 } else {
                                     0
                                 };
-                                // Fix 5: NoteOff velocity = last sent pressure value
+                                if prev.bend_cents != 0 {
+                                    events.push(MidiEvent::PitchBend {
+                                        channel: nopitch_channel,
+                                        cents: 0,
+                                    });
+                                }
                                 events.push(MidiEvent::NoteOff {
                                     channel: nopitch_channel,
                                     note: prev.midi_note,
@@ -1741,6 +1688,16 @@ impl GuitarInput {
         self.slide_history[prev_idx]
     }
 
+    /// Store one pitch movement frame and return its distance from the
+    /// previously stored frame. Reading before writing is essential for
+    /// legato detection.
+    fn record_pitch_movement(&mut self, cents: i16) -> i16 {
+        let previous = self.slide_history_prev_cents();
+        self.push_slide_cents(cents);
+        self.push_vibrato_cents(cents as f32);
+        (cents - previous).abs()
+    }
+
     /// Check if recent pitch movement is a gradual slide (monotonic trend)
     /// rather than a sudden jump.
     ///
@@ -1800,7 +1757,7 @@ impl GuitarInput {
 
     /// Push a cents deviation into the vibrato analysis buffer.
     fn push_vibrato_cents(&mut self, cents: f32) {
-        let cap = 24; // ~500ms at typical frame rates
+        let cap = self.vibrato_capacity();
         if self.vibrato_buffer.len() < cap {
             self.vibrato_buffer.push(cents);
         } else {
@@ -1814,17 +1771,24 @@ impl GuitarInput {
     ///
     /// Returns `Some((rate_hz, amplitude_cents))` if periodic oscillation
     /// in the 3-8 Hz range with 10-60 cents amplitude is detected.
+    fn vibrato_capacity(&self) -> usize {
+        ((self.config.sample_rate as f32 / self.config.hop_size.max(1) as f32) * 0.5)
+            .ceil()
+            .clamp(24.0, 256.0) as usize
+    }
+
     fn detect_vibrato(&self) -> Option<(f32, f32)> {
         let buf = &self.vibrato_buffer;
-        // Need at least ~300ms of data (~14 frames at 47 fps)
-        if buf.len() < 10 {
+        let frame_duration = self.config.hop_size as f32 / self.config.sample_rate as f32;
+        let minimum_frames = (0.3 / frame_duration).ceil() as usize;
+        if buf.len() < minimum_frames {
             return None;
         }
 
         // Reconstruct ordered buffer
         let len = buf.len();
-        let cap = 24.min(len);
-        let ordered: Vec<f32> = if len < 24 {
+        let cap = self.vibrato_capacity().min(len);
+        let ordered: Vec<f32> = if len < cap {
             buf.clone()
         } else {
             let start = self.vibrato_buffer_idx % cap;
@@ -1844,9 +1808,8 @@ impl GuitarInput {
             .filter(|w| (w[0] - mean).signum() != (w[1] - mean).signum())
             .count();
 
-        // 3. Estimate frequency from zero-crossing rate
-        //    Each analysis frame is buffer_size / sample_rate seconds
-        let frame_duration = self.config.buffer_size as f32 / self.config.sample_rate as f32;
+        // 3. Estimate frequency from zero-crossing rate. Analysis advances by
+        //    hop_size, not by the overlapping window's full buffer_size.
         let duration_secs = ordered.len() as f32 * frame_duration;
         if duration_secs < 0.05 {
             return None;
@@ -3068,6 +3031,80 @@ mod tests {
         assert_eq!(size, 4096);
     }
 
+    #[test]
+    fn replace_config_rebuilds_structural_buffers_and_releases_note() {
+        let mut pipeline = GuitarInput::with_defaults();
+        pipeline.current_note = Some(DetectedNote {
+            midi_note: 69,
+            frequency: 445.0,
+            string_idx: Some(5),
+            fret: Some(5),
+            string_confidence: 0.8,
+            velocity: 90,
+            bend_cents: 20,
+        });
+        let mut next = pipeline.config.clone();
+        next.buffer_size = 2048;
+        next.hop_size = 512;
+        next.sample_rate = 44_100;
+
+        let cleanup = pipeline.replace_config(next);
+
+        assert_eq!(pipeline.ring_buffer.len(), 2048);
+        assert_eq!(pipeline.linearized_buf.len(), 2048);
+        assert_eq!(pipeline.config.sample_rate, 44_100);
+        assert_eq!(
+            cleanup,
+            vec![
+                MidiEvent::PitchBend {
+                    channel: 6,
+                    cents: 0,
+                },
+                MidiEvent::NoteOff {
+                    channel: 6,
+                    note: 69,
+                    velocity: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn pitch_movement_compares_with_previous_frame() {
+        let mut pipeline = GuitarInput::with_defaults();
+        assert_eq!(pipeline.record_pitch_movement(20), 20);
+        assert_eq!(pipeline.record_pitch_movement(85), 65);
+    }
+
+    #[test]
+    fn lost_retrigger_attack_releases_existing_note_on_silence() {
+        let mut pipeline = GuitarInput::with_defaults();
+        pipeline.config.per_string_channels = false;
+        pipeline.note_state = NoteState::Attack;
+        pipeline.current_note = Some(DetectedNote {
+            midi_note: 69,
+            frequency: 440.0,
+            string_idx: Some(4),
+            fret: Some(10),
+            string_confidence: 0.8,
+            velocity: 90,
+            bend_cents: 0,
+        });
+
+        let events = pipeline.analyze_window();
+
+        assert_eq!(
+            events,
+            vec![MidiEvent::NoteOff {
+                channel: 0,
+                note: 69,
+                velocity: 0,
+            }]
+        );
+        assert!(pipeline.current_note.is_none());
+        assert_eq!(pipeline.note_state, NoteState::Idle);
+    }
+
     // -- interpolate_b tests (#4) ───────────────────────────────────
 
     #[test]
@@ -3477,19 +3514,18 @@ mod tests {
 
     // -- Vibrato detection tests ────────────────────────────────────
 
+    fn fill_vibrato(pipeline: &mut GuitarInput, rate_hz: f32, depth_cents: f32) {
+        let frame_duration = pipeline.config.hop_size as f32 / pipeline.config.sample_rate as f32;
+        for i in 0..pipeline.vibrato_capacity() {
+            let t = i as f32 * frame_duration;
+            pipeline.push_vibrato_cents(depth_cents * (2.0 * PI * rate_hz * t).sin());
+        }
+    }
+
     #[test]
     fn detect_vibrato_periodic_oscillation() {
         let mut pipeline = GuitarInput::with_defaults();
-        // Simulate a 5 Hz vibrato at ~30 cents amplitude
-        // At 1024/48000 = ~21.3ms per frame = ~47 frames/sec
-        // 5 Hz = one cycle every ~9.4 frames
-        // Fill 24 frames (~500ms) with sinusoidal oscillation
-        let frame_duration = 1024.0 / 48000.0;
-        for i in 0..24 {
-            let t = i as f32 * frame_duration;
-            let cents = 30.0 * (2.0 * PI * 5.0 * t).sin();
-            pipeline.push_vibrato_cents(cents);
-        }
+        fill_vibrato(&mut pipeline, 5.0, 30.0);
         let result = pipeline.detect_vibrato();
         assert!(
             result.is_some(),
@@ -3530,12 +3566,7 @@ mod tests {
     fn detect_vibrato_rejects_too_slow() {
         let mut pipeline = GuitarInput::with_defaults();
         // Simulate very slow oscillation (~1 Hz) -- below vibrato range
-        let frame_duration = 1024.0 / 48000.0;
-        for i in 0..24 {
-            let t = i as f32 * frame_duration;
-            let cents = 30.0 * (2.0 * PI * 1.0 * t).sin();
-            pipeline.push_vibrato_cents(cents);
-        }
+        fill_vibrato(&mut pipeline, 1.0, 30.0);
         let result = pipeline.detect_vibrato();
         assert!(
             result.is_none(),
@@ -3547,12 +3578,7 @@ mod tests {
     fn detect_vibrato_rejects_too_fast() {
         let mut pipeline = GuitarInput::with_defaults();
         // Simulate very fast oscillation (~15 Hz) -- above vibrato range
-        let frame_duration = 1024.0 / 48000.0;
-        for i in 0..24 {
-            let t = i as f32 * frame_duration;
-            let cents = 30.0 * (2.0 * PI * 15.0 * t).sin();
-            pipeline.push_vibrato_cents(cents);
-        }
+        fill_vibrato(&mut pipeline, 15.0, 30.0);
         let result = pipeline.detect_vibrato();
         assert!(
             result.is_none(),
@@ -3564,12 +3590,7 @@ mod tests {
     fn detect_vibrato_rejects_too_small_amplitude() {
         let mut pipeline = GuitarInput::with_defaults();
         // Simulate 5 Hz oscillation but only 5 cents amplitude (below 10 threshold)
-        let frame_duration = 1024.0 / 48000.0;
-        for i in 0..24 {
-            let t = i as f32 * frame_duration;
-            let cents = 5.0 * (2.0 * PI * 5.0 * t).sin();
-            pipeline.push_vibrato_cents(cents);
-        }
+        fill_vibrato(&mut pipeline, 5.0, 5.0);
         let result = pipeline.detect_vibrato();
         assert!(
             result.is_none(),
@@ -3580,12 +3601,7 @@ mod tests {
     #[test]
     fn vibrato_state_clears() {
         let mut pipeline = GuitarInput::with_defaults();
-        let frame_duration = 1024.0 / 48000.0;
-        for i in 0..24 {
-            let t = i as f32 * frame_duration;
-            let cents = 30.0 * (2.0 * PI * 5.0 * t).sin();
-            pipeline.push_vibrato_cents(cents);
-        }
+        fill_vibrato(&mut pipeline, 5.0, 30.0);
         assert!(pipeline.detect_vibrato().is_some());
         pipeline.clear_vibrato_state();
         assert!(
@@ -3666,14 +3682,8 @@ mod tests {
         });
         pipeline.note_state = NoteState::Sustain;
 
-        // Feed vibrato-like cents into the vibrato buffer
-        // 5 Hz vibrato at 25 cents amplitude (well within a single note)
-        let frame_duration = 1024.0 / 48000.0;
-        for i in 0..24 {
-            let t = i as f32 * frame_duration;
-            let cents = 25.0 * (2.0 * PI * 5.0 * t).sin();
-            pipeline.push_vibrato_cents(cents);
-        }
+        // Feed 5 Hz vibrato at 25 cents amplitude (within one note).
+        fill_vibrato(&mut pipeline, 5.0, 25.0);
 
         // Vibrato should be detected
         let vib = pipeline.detect_vibrato();
@@ -4339,11 +4349,10 @@ mod tests {
     }
 
     #[test]
-    fn set_calibration_profile_drains_stale_state() {
+    fn set_calibration_profile_preserves_active_note_for_noteoff() {
         let mut pipe = GuitarInput::with_defaults();
-        // Force the pipeline into a non-Idle state with a cooldown and
-        // a tracked current_note, simulating a sustaining note when the
-        // user reloads a profile.
+        // Reloading a profile during sustain must not discard the active note:
+        // it remains the source of truth for the eventual matching NoteOff.
         pipe.note_state = NoteState::Sustain;
         pipe.cooldown_remaining = 1000;
         pipe.current_note = Some(DetectedNote {
@@ -4360,11 +4369,14 @@ mod tests {
 
         pipe.set_calibration_profile(standard_profile());
 
-        assert!(matches!(pipe.note_state, NoteState::Idle));
-        assert_eq!(pipe.cooldown_remaining, 0);
-        assert!(pipe.current_note.is_none());
-        assert!(pipe.suppress_frequency.is_none());
-        assert_eq!(pipe.suppress_until, 0);
+        assert!(matches!(pipe.note_state, NoteState::Sustain));
+        assert_eq!(pipe.cooldown_remaining, 1000);
+        assert_eq!(
+            pipe.current_note.as_ref().map(|note| note.midi_note),
+            Some(60)
+        );
+        assert_eq!(pipe.suppress_frequency, Some(82.0));
+        assert_eq!(pipe.suppress_until, 9999);
     }
 
     #[test]
