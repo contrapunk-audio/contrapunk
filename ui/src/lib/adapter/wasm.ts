@@ -132,6 +132,32 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private _guitarDeviceId = '';
 	/** Currently selected guitar channel (0-based). */
 	private _guitarChannel = 0;
+	private _guitarOutputIndices: number[] = [];
+	private _guitarConfig: GuitarConfig = {
+		latencyMs: 21,
+		gain: 1,
+		stringConfidence: 0.4,
+		bends: true,
+		legato: true,
+		slides: true,
+		vibrato: false
+	};
+
+	private guitarBufferSize(): number {
+		const samples = Math.max(1, this._guitarConfig.latencyMs) * 48;
+		return Math.min(4096, Math.max(256, 2 ** Math.ceil(Math.log2(samples))));
+	}
+
+	private applyGuitarConfig(capture: GuitarAudioCapture): void {
+		capture.setConfig({
+			bends: this._guitarConfig.bends,
+			legato: this._guitarConfig.legato,
+			slides: this._guitarConfig.slides,
+			vibrato: this._guitarConfig.vibrato,
+			gain: this._guitarConfig.gain,
+			stringConfidence: this._guitarConfig.stringConfidence
+		});
+	}
 
 	async init(): Promise<void> {
 		if (this.initialized) return;
@@ -755,6 +781,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	 * Routes detected notes through the harmony engine via injectNoteOn/Off.
 	 */
 	private async startGuitarCapture(outputIndices: number[]): Promise<void> {
+		this._guitarOutputIndices = outputIndices.slice();
 		// Resolve MIDI outputs for sending harmony notes
 		const access = this.ensureMidiAccess();
 		if (access) {
@@ -765,6 +792,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 
 		this.guitarCapture = new GuitarAudioCapture();
+		this.applyGuitarConfig(this.guitarCapture);
 		const self = this;
 
 		guitar.detecting = true;
@@ -810,7 +838,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 						guitar.confidence = 0;
 					}
 				}
-			}
+			},
+			this.guitarBufferSize()
 		);
 
 		// Update UI with the actual channel being used (may differ if device has fewer channels)
@@ -1090,9 +1119,18 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this._guitarChannel = Math.max(0, channel);
 	}
 
-	async setGuitarConfig(_config: GuitarConfig): Promise<void> {
-		// Browser-side pitch detection doesn't use these DSP params,
-		// but accept silently so shared UI code doesn't error.
+	async setGuitarConfig(config: GuitarConfig): Promise<void> {
+		const latencyChanged = config.latencyMs !== this._guitarConfig.latencyMs;
+		this._guitarConfig = { ...config };
+		if (!this.guitarCapture) return;
+
+		if (latencyChanged) {
+			const outputIndices = this._guitarOutputIndices.slice();
+			await this.stopRouting();
+			await this.startGuitarCapture(outputIndices);
+		} else {
+			this.applyGuitarConfig(this.guitarCapture);
+		}
 	}
 
 	async getCalibrationStatus() {

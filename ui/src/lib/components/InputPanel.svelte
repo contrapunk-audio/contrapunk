@@ -321,7 +321,7 @@
 
 		{#if adapter.capabilities.calibrationFlow}
 			<div class="midi-section pixel-card calibration-section">
-				<div class="section-header font-ui">CALIBRATION</div>
+				<div class="section-header font-ui">DETECTOR PROFILE</div>
 				{#if calibrationStatus}
 					<div class="calibration-row">
 						<span
@@ -364,9 +364,10 @@
 					</button>
 				</div>
 				<p class="cal-note font-ui">
-					Use TUNE + CALIBRATE above for in-app tuning. Drop a
-					CLI-generated <code>guitar_calibration_profile.json</code> into
-					the path above and RELOAD to apply on next routing start.
+					Use TUNE GUITAR above to tune the strings. Detector calibration is
+					separate: drop a CLI-generated
+					<code>guitar_calibration_profile.json</code> into the path above,
+					then RELOAD to apply it.
 				</p>
 			</div>
 		{/if}

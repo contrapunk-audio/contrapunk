@@ -120,7 +120,7 @@ class GuitarInputStore {
 		}
 	}
 
-	// -- Calibration state --
+	// -- Tuning workflow state --
 	calibrated = $state(false);
 	calibrating = $state(false);
 
@@ -155,9 +155,9 @@ class GuitarInputStore {
 		this.persist();
 	}
 
-	/** Noise floor RMS measured during calibration. */
+	/** Noise floor RMS measured before tuning. */
 	noiseFloorRms = $state(0);
-	/** Status message shown after calibration. */
+	/** Status message shown during and after tuning. */
 	calibrationStatus = $state('');
 
 	/** Open strings for standard tuning. */
@@ -180,14 +180,14 @@ class GuitarInputStore {
 	private static readonly IN_TUNE_HOLD_MS = 1500;
 
 	/**
-	 * Start the full tuner calibration flow.
+	 * Start the guitar tuning flow.
 	 * Phase 1: Noise floor measurement (3s).
 	 * Phase 2: Per-string tuning with live pitch detection.
 	 */
 	async startCalibration() {
 		if (this.calibrating) return;
 
-		// Calibration uses getUserMedia + JS pitch detection in both
+		// Tuning uses getUserMedia + JS pitch detection in both
 		// browser and Tauri webview — the webview supports Web Audio APIs.
 		this.calibrating = true;
 		this.calibrated = false;
@@ -197,7 +197,7 @@ class GuitarInputStore {
 		this.tunerNoiseProgress = 0;
 		this.tunerStatus = 'waiting';
 		this.tunerHoldProgress = 0;
-		this.calibrationStatus = 'Measuring noise floor...';
+		this.calibrationStatus = 'Checking input level...';
 
 		try {
 			// Phase 1: Noise floor
@@ -223,7 +223,7 @@ class GuitarInputStore {
 			await this.startTunerCapture();
 		} catch (err) {
 			this.calibrationStatus =
-				err instanceof Error ? `Calibration failed: ${err.message}` : 'Calibration failed';
+				err instanceof Error ? `Tuning failed: ${err.message}` : 'Tuning failed';
 			this.calibrated = false;
 			this.tunerActive = false;
 			this.calibrating = false;
@@ -387,7 +387,7 @@ class GuitarInputStore {
 			this.tunerPhase = 'complete';
 			this.calibrated = true;
 			this.calibrating = false;
-			this.calibrationStatus = 'Tuning complete! Ready to play.';
+			this.calibrationStatus = 'Guitar tuned. Ready to play.';
 			this.stopTunerCapture();
 
 			// Auto-close tuner UI after 2 seconds so main routing can take over
@@ -421,7 +421,7 @@ class GuitarInputStore {
 		this.tunerActive = false;
 		this.tunerPhase = 'noise-floor';
 		this.calibrating = false;
-		this.calibrationStatus = this.calibrated ? 'Calibration preserved' : '';
+		this.calibrationStatus = this.calibrated ? 'Tuning preserved' : '';
 	}
 
 	/** Stop the tuner audio capture. */

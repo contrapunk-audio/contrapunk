@@ -90,6 +90,7 @@
 	onMount(() => {
 		guitar.enumerateAudioDevices();
 		guitar.loadAudioDevices();
+		void guitar.syncConfig();
 	});
 </script>
 
@@ -100,7 +101,7 @@
 
 		{#if guitar.tunerPhase === 'noise-floor'}
 			<div class="tuner-section">
-				<div class="tuner-title font-ui">CALIBRATING</div>
+				<div class="tuner-title font-ui">TUNE GUITAR</div>
 				<div class="tuner-separator"></div>
 				<div class="tuner-instruction font-ui">Measuring noise floor...</div>
 				<div class="tuner-instruction font-ui">Keep quiet for 3 seconds</div>
@@ -260,14 +261,14 @@
 			{/each}
 		</div>
 
-		<!-- Tune + Calibrate button -->
+		<!-- Truthful tuner workflow: this tunes strings; detector profiles are separate. -->
 		<button
 			class="calibrate-btn pixel-btn"
 			class:calibrating={guitar.calibrating}
 			disabled={guitar.calibrating}
 			onclick={() => guitar.startCalibration()}
 		>
-			{guitar.calibrating ? 'CALIBRATING...' : guitar.calibrated ? 'CALIBRATED' : 'TUNE + CALIBRATE'}
+			{guitar.calibrating ? 'TUNING...' : 'TUNE GUITAR'}
 		</button>
 
 		<!-- Open the guitar pipeline debug window (Tauri only — no-op in browser) -->

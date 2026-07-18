@@ -128,6 +128,16 @@ function processAudioSamples(
 	}
 }
 
+type GuitarDspConfig = {
+	bends?: boolean;
+	legato?: boolean;
+	slides?: boolean;
+	vibrato?: boolean;
+	gain?: number;
+	onsetThreshold?: number;
+	stringConfidence?: number;
+};
+
 export class GuitarAudioCapture {
 	private audioContext: AudioContext | null = null;
 	private mediaStream: MediaStream | null = null;
@@ -151,6 +161,7 @@ export class GuitarAudioCapture {
 	// Accumulation buffer for AudioWorklet (128-sample blocks → bufferSize blocks)
 	private accumBuffer: Float32Array | null = null;
 	private accumWritePos = 0;
+	private config: GuitarDspConfig = {};
 
 	get isRunning(): boolean { return this._isRunning; }
 	get actualChannel(): number { return this._actualChannel; }
@@ -204,6 +215,7 @@ export class GuitarAudioCapture {
 		this.dsp = new WasmGuitarInput(sampleRate, bufferSize);
 		this.dsp.set_onset_threshold(0.015);
 		this.dsp.set_string_confidence(0.4);
+		this.setConfig(this.config);
 		console.log(`[guitar] Overlap: window=${this.windowSize} hop=${this.hopSize} (75% overlap)`);
 
 		const inputChannels = Math.max(channelIndex + 1, actualChannels);
@@ -363,15 +375,8 @@ export class GuitarAudioCapture {
 		this.accumWritePos = 0;
 	}
 
-	setConfig(opts: {
-		bends?: boolean;
-		legato?: boolean;
-		slides?: boolean;
-		vibrato?: boolean;
-		gain?: number;
-		onsetThreshold?: number;
-		stringConfidence?: number;
-	}) {
+	setConfig(opts: GuitarDspConfig) {
+		this.config = { ...this.config, ...opts };
 		if (!this.dsp) return;
 		if (opts.bends !== undefined) this.dsp.set_bends_enabled(opts.bends);
 		if (opts.legato !== undefined) this.dsp.set_legato_enabled(opts.legato);
