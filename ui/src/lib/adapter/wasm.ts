@@ -18,7 +18,10 @@ import type {
 	VoiceOutputTarget
 } from './types';
 import { MAX_VOICES } from './types';
-import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
+import {
+	GuitarAudioCapture,
+	serializeGuitarCaptureOperation
+} from '$lib/audio/guitarCapture';
 import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
 import * as embedAudio from '$lib/embed/audio';
@@ -128,6 +131,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private pitchBendRangeSemitones = 2;
 	/** Guitar audio capture instance for browser-based pitch detection. */
 	private guitarCapture: GuitarAudioCapture | null = null;
+	private guitarCaptureOperation: Promise<void> = Promise.resolve();
 	/** Currently selected guitar device ID (for audio capture). */
 	private _guitarDeviceId = '';
 	/** Currently selected guitar channel (0-based). */
@@ -143,11 +147,6 @@ export class WasmAdapter implements ContrapunkAdapter {
 		vibrato: false
 	};
 
-	private guitarBufferSize(): number {
-		const samples = Math.max(1, this._guitarConfig.latencyMs) * 48;
-		return Math.min(4096, Math.max(256, 2 ** Math.ceil(Math.log2(samples))));
-	}
-
 	private applyGuitarConfig(capture: GuitarAudioCapture): void {
 		capture.setConfig({
 			bends: this._guitarConfig.bends,
@@ -157,6 +156,25 @@ export class WasmAdapter implements ContrapunkAdapter {
 			gain: this._guitarConfig.gain,
 			stringConfidence: this._guitarConfig.stringConfidence
 		});
+	}
+
+	private sendGuitarMidi(message: number[]): void {
+		for (const output of this.activeOutputs) {
+			try {
+				output.send(message);
+			} catch {
+				/* disconnected output */
+			}
+		}
+	}
+
+	private enqueueGuitarCaptureOperation(operation: () => Promise<void>): Promise<void> {
+		const { result, tail } = serializeGuitarCaptureOperation(
+			this.guitarCaptureOperation,
+			operation
+		);
+		this.guitarCaptureOperation = tail;
+		return result;
 	}
 
 	async init(): Promise<void> {
@@ -265,14 +283,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	 * leak lingering guitar captures.
 	 */
 	destroy(): void {
-		if (this.guitarCapture) {
-			try {
-				this.guitarCapture.stop();
-			} catch {
-				// best-effort
-			}
-			this.guitarCapture = null;
-		}
+		void this.enqueueGuitarCaptureOperation(() => this.stopRoutingNow());
 		// Tick / polling / clock all start RAF or setInterval loops
 		// that close over the *current* `engine` / `companion`. On
 		// HMR (and now plugin/test teardown) these must be cancelled
@@ -665,7 +676,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 		// --- Guitar audio input mode ---
 		if (inputIdx === GUITAR_AUDIO_SENTINEL) {
-			await this.startGuitarCapture(outputIndices);
+			await this.enqueueGuitarCaptureOperation(() =>
+				this.startGuitarCapture(outputIndices)
+			);
 			return;
 		}
 
@@ -781,6 +794,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	 * Routes detected notes through the harmony engine via injectNoteOn/Off.
 	 */
 	private async startGuitarCapture(outputIndices: number[]): Promise<void> {
+		if (this.guitarCapture) await this.stopRoutingNow();
 		this._guitarOutputIndices = outputIndices.slice();
 		// Resolve MIDI outputs for sending harmony notes
 		const access = this.ensureMidiAccess();
@@ -791,16 +805,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 				.map((i) => outputs[i]);
 		}
 
-		this.guitarCapture = new GuitarAudioCapture();
-		this.applyGuitarConfig(this.guitarCapture);
+		const capture = new GuitarAudioCapture();
+		this.applyGuitarConfig(capture);
 		const self = this;
 
-		guitar.detecting = true;
-
 		// Set initial gate values from store (noise gate only)
-		this.guitarCapture.noiseGateThreshold = guitar.noiseGateThreshold;
-		this.guitarCapture.noiseGateEnabled = guitar.noiseGateEnabled;
-		this.guitarCapture.clarityGateEnabled = false;
+		capture.noiseGateThreshold = guitar.noiseGateThreshold;
+		capture.noiseGateEnabled = guitar.noiseGateEnabled;
+		capture.clarityGateEnabled = false;
 
 		// Read device/channel directly from guitar store (not stale adapter properties)
 		// because the user may have changed settings after the last syncDevice() call
@@ -808,7 +820,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		const channelIndex = Math.max(0, guitar.selectedChannel - 1); // 1-indexed → 0-indexed
 		console.log(`[wasm] startGuitarCapture: device='${deviceId}' channel=${channelIndex} (store.selectedChannel=${guitar.selectedChannel})`);
 
-		await this.guitarCapture.start(
+		try {
+			await capture.start(
 			deviceId,
 			channelIndex,
 			{
@@ -818,13 +831,26 @@ export class WasmAdapter implements ContrapunkAdapter {
 				onNoteOff(note: number) {
 					self.injectNoteOff(note).catch(() => {});
 				},
+				// Harmony injection emits browser MIDI on channel 0, so expression
+				// follows that shipping channel rather than the detector's MPE channel.
+				onPitchBend(_channel, cents) {
+					const value = self.centsToPitchBend(cents);
+					self.sendGuitarMidi([0xe0, value & 0x7f, (value >> 7) & 0x7f]);
+				},
+				onMidiPitchBend(_channel, value) {
+					self.sendGuitarMidi([0xe0, value & 0x7f, (value >> 7) & 0x7f]);
+				},
+				onCC(_channel, controller, value) {
+					self.sendGuitarMidi([0xb0, controller & 0x7f, value & 0x7f]);
+				},
+				onChannelPressure(_channel, pressure) {
+					self.sendGuitarMidi([0xd0, pressure & 0x7f]);
+				},
 				onDetection(info) {
-					// Sync noise gate + actual channel from capture every frame
-					if (self.guitarCapture) {
-						self.guitarCapture.noiseGateThreshold = guitar.noiseGateThreshold;
-						self.guitarCapture.noiseGateEnabled = guitar.noiseGateEnabled;
-						guitar.activeChannel = self.guitarCapture.actualChannel + 1;
-					}
+					// Sync noise gate + actual channel from capture every frame.
+					capture.noiseGateThreshold = guitar.noiseGateThreshold;
+					capture.noiseGateEnabled = guitar.noiseGateEnabled;
+					guitar.activeChannel = capture.actualChannel + 1;
 
 					// Push signal data for graphs
 					guitar.pushSignalFrame(info.rms, info.clarity);
@@ -839,15 +865,22 @@ export class WasmAdapter implements ContrapunkAdapter {
 					}
 				}
 			},
-			this.guitarBufferSize()
-		);
+			this._guitarConfig.latencyMs
+			);
+		} catch (error) {
+			await capture.stop();
+			throw error;
+		}
 
-		// Update UI with the actual channel being used (may differ if device has fewer channels)
-		guitar.activeChannel = this.guitarCapture.actualChannel + 1; // 1-indexed for display
+		// Publish only a capture whose AudioContext and stream started successfully.
+		this.guitarCapture = capture;
+		guitar.detecting = true;
+		guitar.activeChannel = capture.actualChannel + 1; // 1-indexed for display
 		this._isRunning = true;
+		this.startNotePolling();
 	}
 
-	async stopRouting(): Promise<void> {
+	private async stopRoutingNow(): Promise<void> {
 		// Stop guitar audio capture if active
 		if (this.guitarCapture) {
 			await this.guitarCapture.stop();
@@ -884,6 +917,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.activeOutputs = [];
 		this._isRunning = false;
 		this.stopNotePolling();
+	}
+
+	async stopRouting(): Promise<void> {
+		await this.enqueueGuitarCaptureOperation(() => this.stopRoutingNow());
 	}
 
 	// Per-voice output routing is native-only for now. The browser path
@@ -1124,13 +1161,17 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this._guitarConfig = { ...config };
 		if (!this.guitarCapture) return;
 
-		if (latencyChanged) {
-			const outputIndices = this._guitarOutputIndices.slice();
-			await this.stopRouting();
-			await this.startGuitarCapture(outputIndices);
-		} else {
+		if (!latencyChanged) {
 			this.applyGuitarConfig(this.guitarCapture);
+			return;
 		}
+
+		await this.enqueueGuitarCaptureOperation(async () => {
+			if (!this.guitarCapture) return;
+			const outputIndices = this._guitarOutputIndices.slice();
+			await this.stopRoutingNow();
+			await this.startGuitarCapture(outputIndices);
+		});
 	}
 
 	async getCalibrationStatus() {

@@ -46,6 +46,19 @@ export interface GuitarCaptureCallbacks {
 
 const DEFAULT_BUFFER_SIZE = 1024; // Match demo's default
 
+function bufferSizeForLatency(latencyMs: number, sampleRate: number): number {
+	const samples = Math.max(1, latencyMs) * sampleRate / 1000;
+	return Math.min(4096, Math.max(256, 2 ** Math.ceil(Math.log2(samples))));
+}
+
+export function serializeGuitarCaptureOperation(
+	after: Promise<void>,
+	operation: () => Promise<void>
+): { result: Promise<void>; tail: Promise<void> } {
+	const result = after.then(operation);
+	return { result, tail: result.catch(() => {}) };
+}
+
 /**
  * Process a buffer of samples through the WASM DSP and fire callbacks.
  * Shared by both AudioWorklet and ScriptProcessor paths.
@@ -177,7 +190,7 @@ export class GuitarAudioCapture {
 		deviceId: string,
 		channelIndex: number,
 		callbacks: GuitarCaptureCallbacks,
-		bufferSize: number = DEFAULT_BUFFER_SIZE
+		latencyMs = 21
 	): Promise<void> {
 		if (this._isRunning) await this.stop();
 
@@ -203,10 +216,11 @@ export class GuitarAudioCapture {
 
 		const actualChannels = this.sourceNode.channelCount;
 		const sampleRate = this.audioContext.sampleRate;
+		const bufferSize = bufferSizeForLatency(latencyMs, sampleRate);
 		console.log(`[guitar] Device: ${actualChannels}ch @ ${sampleRate}Hz, want ch${channelIndex}, buffer=${bufferSize}`);
 
-		// Create WASM DSP with actual sample rate
-		// Use the bufferSize as the analysis window; hop = window/4 for 75% overlap
+		// Size the analysis window only after the browser's real sample rate
+		// is known; 44.1 kHz devices must not inherit a 48 kHz conversion.
 		this.windowSize = bufferSize;
 		this.hopSize = Math.floor(bufferSize / 4);
 		this.overlapBuffer = new Float32Array(bufferSize);
