@@ -154,6 +154,7 @@ fn main() {
         filter_enabled: false,
         min_clarity: 0.40,
         cooldown_samples: sample_rate / 10, // 100ms
+        attack_min_ms: 40,
         n_harmonics: 6,
         input_gain: 1.0, // will be set by calibration
         flux_threshold: 0.5,

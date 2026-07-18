@@ -51,6 +51,9 @@ pub struct GuitarInputConfig {
     pub min_clarity: f64,
     /// Cooldown in samples after an onset before another can fire.
     pub cooldown_samples: usize,
+    /// Minimum time to gather two agreeing attack pitches before NoteOn.
+    #[serde(default = "default_attack_min_ms")]
+    pub attack_min_ms: u16,
     /// Number of harmonics to measure for inharmonicity.
     pub n_harmonics: usize,
     /// Input gain normalization factor (0.0-2.0, default 1.0).
@@ -73,6 +76,10 @@ pub struct GuitarInputConfig {
     pub brightness_enabled: bool,
 }
 
+const fn default_attack_min_ms() -> u16 {
+    40
+}
+
 impl Default for GuitarInputConfig {
     fn default() -> Self {
         Self {
@@ -89,6 +96,7 @@ impl Default for GuitarInputConfig {
             filter_enabled: false,
             min_clarity: 0.40,
             cooldown_samples: 960, // 20ms @ 48kHz — allows ~50 notes/sec
+            attack_min_ms: default_attack_min_ms(),
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
@@ -307,6 +315,10 @@ pub struct GuitarInput {
     note_state: NoteState,
     /// Sample counter for state timeouts.
     state_samples: usize,
+    /// Valid Attack evidence accumulated toward the minimum confirmation time.
+    attack_valid_samples: usize,
+    /// Consecutive Attack frames without valid pitch.
+    attack_missing_frames: u8,
     /// Total samples processed (monotonic counter).
     total_samples: usize,
 
@@ -322,6 +334,9 @@ pub struct GuitarInput {
     /// Attack was entered from one anomalous sustain pitch frame rather than
     /// a measured onset. If consensus returns to the active note, suppress it.
     attack_from_pitch_jump: bool,
+    /// Rapid pitch-jump candidate awaiting three agreeing legato frames.
+    legato_candidate: Option<u8>,
+    legato_candidate_frames: u8,
 
     // Spectral flux onset (#5)
     prev_spectrum: Option<Vec<f32>>,
@@ -403,12 +418,16 @@ impl GuitarInput {
             ring_pos: 0,
             note_state: NoteState::Idle,
             state_samples: 0,
+            attack_valid_samples: 0,
+            attack_missing_frames: 0,
             total_samples: 0,
             suppress_frequency: None,
             suppress_until: 0,
             pitch_history: [None; 2],
             pitch_history_idx: 0,
             attack_from_pitch_jump: false,
+            legato_candidate: None,
+            legato_candidate_frames: 0,
             prev_spectrum: None,
             // Slide state: keep last 8 frames of cents values
             slide_history: vec![0i16; 8],
@@ -473,14 +492,12 @@ impl GuitarInput {
             } else {
                 0
             };
-            if note.bend_cents != 0 {
-                cleanup.push(MidiEvent::PitchBend { channel, cents: 0 });
-            }
             cleanup.push(MidiEvent::NoteOff {
                 channel,
                 note: note.midi_note,
                 velocity: self.last_sent_pressure,
             });
+            cleanup.push(MidiEvent::PitchBend { channel, cents: 0 });
         }
 
         let calibration = self.calibration.clone();
@@ -627,6 +644,46 @@ impl GuitarInput {
         self.note_state
     }
 
+    fn note_channel(&self, note: &DetectedNote) -> u8 {
+        if self.config.per_string_channels {
+            note.string_idx.map(|string| string as u8 + 1).unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    /// End the active MIDI lifecycle, then center its channel for reuse.
+    fn release_current_note(&mut self, events: &mut Vec<MidiEvent>) {
+        if let Some(note) = self.current_note.take() {
+            let channel = self.note_channel(&note);
+            events.push(MidiEvent::NoteOff {
+                channel,
+                note: note.midi_note,
+                velocity: self.last_sent_pressure,
+            });
+            events.push(MidiEvent::PitchBend { channel, cents: 0 });
+        }
+    }
+
+    fn clear_legato_candidate(&mut self) {
+        self.legato_candidate = None;
+        self.legato_candidate_frames = 0;
+    }
+
+    fn update_legato_candidate(&mut self, midi_note: u8, is_rapid_jump: bool) -> bool {
+        if self.legato_candidate == Some(midi_note) {
+            self.legato_candidate_frames = self.legato_candidate_frames.saturating_add(1);
+            return self.legato_candidate_frames >= 3;
+        }
+
+        self.clear_legato_candidate();
+        if is_rapid_jump {
+            self.legato_candidate = Some(midi_note);
+            self.legato_candidate_frames = 1;
+        }
+        false
+    }
+
     // ── MPE pressure envelope ─────────────────────────────────────
 
     /// Compute shaped pressure from current RMS relative to onset RMS.
@@ -727,6 +784,22 @@ impl GuitarInput {
         } else {
             detect_pitch_mcleod(buf, self.config.sample_rate, self.adaptive_clarity())
         };
+        // pMPM confidence is the fraction of clarity thresholds agreeing on
+        // its candidate. Low-consensus transient guesses are not valid Attack
+        // history, but the independently latched onset remains alive.
+        let pitch_result = pitch_result.filter(|(frequency, clarity)| {
+            if !matches!(self.note_state, NoteState::Idle | NoteState::Attack) {
+                return true;
+            }
+            // A 1024-sample window contains fewer than two E2 cycles, so use
+            // the detector's lowest predeclared consensus threshold there.
+            let required = if *frequency < 120.0 {
+                (self.config.min_clarity * 0.75).max(0.3)
+            } else {
+                self.config.min_clarity
+            };
+            *clarity as f64 >= required
+        });
 
         // 3b. Calibration-driven brush/scrape rejection.
         //
@@ -741,7 +814,11 @@ impl GuitarInput {
         // reject them. The gate only makes sense when we're trying
         // to identify a FRESH attack from Idle (Idle→Attack onset).
         let is_fresh_attack_window = matches!(self.note_state, NoteState::Idle | NoteState::Attack);
-        if is_fresh_attack_window && (onset || slope_onset) && self.normalizer.is_some() {
+        if is_fresh_attack_window
+            && (onset || slope_onset)
+            && self.normalizer.is_some()
+            && pitch_result.is_some()
+        {
             let bright_rms = Self::compute_bright_rms(buf);
             let confidence = pitch_result.map(|(_, c)| c).unwrap_or(0.0);
             // Hand the per-string index through so the normalizer
@@ -778,11 +855,47 @@ impl GuitarInput {
             .as_ref()
             .map(|c| c.noise_floor)
             .unwrap_or(0.001);
+        let attack_timeout_samples = (self.config.sample_rate as f32 * 0.2) as usize;
+        let decay_timeout_samples = (self.config.sample_rate as f32 * 0.5) as usize;
+
+        // Articulation and pitch mature on different frames. Latch a fresh
+        // onset immediately, then let Attack collect valid pitch candidates.
+        if matches!(self.note_state, NoteState::Idle) && onset {
+            self.note_state = NoteState::Attack;
+            self.state_samples = 0;
+            self.clear_pitch_history();
+            self.attack_valid_samples = 0;
+            self.attack_missing_frames = 0;
+            self.attack_from_pitch_jump = false;
+            self.legato_candidate = None;
+            self.single_cycle.reset();
+            self.early_pitch = None;
+        }
+
+        // Decay has an absolute backstop even when periodic pitch disappears.
+        if matches!(self.note_state, NoteState::Decay)
+            && (rms < noise_floor * 2.0 || self.state_samples > decay_timeout_samples)
+        {
+            self.release_current_note(&mut events);
+            self.note_state = NoteState::Idle;
+            self.state_samples = 0;
+            self.clear_pitch_history();
+            self.prev_rms = rms;
+            return events;
+        }
 
         match pitch_result {
             Some((raw_freq, _clarity)) => {
-                // Apply octave error correction (#6) BEFORE freq_to_midi
-                let freq = self.correct_octave(raw_freq);
+                // Apply octave error correction (#6) BEFORE freq_to_midi.
+                // Initial attacks have no current note, so compare f with f/2
+                // conservatively; the two-frame vote below supplies consensus.
+                let freq = if matches!(self.note_state, NoteState::Attack)
+                    && self.current_note.is_none()
+                {
+                    self.correct_initial_attack_octave(raw_freq)
+                } else {
+                    self.correct_octave(raw_freq)
+                };
                 let (midi_note, cents) = freq_to_midi(freq);
 
                 // Check note-off gating (#1): suppress previous note's frequency
@@ -792,35 +905,27 @@ impl GuitarInput {
                     return events;
                 }
 
-                // Note state machine (#2) transitions
-                match self.note_state {
-                    NoteState::Idle => {
-                        if onset {
-                            self.note_state = NoteState::Attack;
-                            self.state_samples = 0;
-                            self.clear_pitch_history();
-                            self.attack_from_pitch_jump = false;
-                            self.single_cycle.reset();
-                            self.early_pitch = None;
-                        }
-                    }
-                    _ => {}
-                }
-
                 // Attack handler (separate match to allow fall-through from Idle)
                 match self.note_state {
                     NoteState::Attack => {
-                        // Record pitch in voting history
+                        // Isolated missing frames do not erase valid consensus.
+                        self.attack_missing_frames = 0;
+                        self.attack_valid_samples = self
+                            .attack_valid_samples
+                            .saturating_add(self.config.hop_size);
                         self.push_pitch(midi_note);
 
                         // Attack transients are rich in non-fundamental energy. Wait
                         // for two consecutive analysis frames to agree instead of
                         // allowing the single-cycle detector to bypass consensus.
-                        let attack_min_samples = (self.config.sample_rate as f32 * 0.075) as usize;
-                        let attack_timeout_samples =
-                            (self.config.sample_rate as f32 * 0.2) as usize;
+                        let attack_min_samples = self
+                            .config
+                            .sample_rate
+                            .saturating_mul(self.config.attack_min_ms as usize)
+                            / 1_000;
 
-                        if self.state_samples >= attack_min_samples && self.is_pitch_stable() {
+                        if self.attack_valid_samples >= attack_min_samples && self.is_pitch_stable()
+                        {
                             // Attack -> Sustain: pitch confirmed
                             let stable_midi = self.pitch_history[0].unwrap_or(midi_note);
 
@@ -834,6 +939,7 @@ impl GuitarInput {
                                     .is_some_and(|note| note.midi_note == stable_midi)
                             {
                                 self.attack_from_pitch_jump = false;
+                                self.legato_candidate = None;
                                 self.note_state = NoteState::Sustain;
                                 self.state_samples = 0;
                                 self.clear_pitch_history();
@@ -841,33 +947,13 @@ impl GuitarInput {
                                 return events;
                             }
 
-                            // End previous note first
+                            // End previous note first.
                             if let Some(prev) = &self.current_note {
-                                // Set up note-off gating (#1): suppress old frequency
                                 self.suppress_frequency = Some(prev.frequency);
                                 self.suppress_until = self.total_samples
                                     + (self.config.sample_rate as f32 * 0.1) as usize;
-
-                                let prev_channel = if self.config.per_string_channels {
-                                    // MPE: ch 1 = master (global), ch 2-7 = strings 1-6
-                                    prev.string_idx.map(|s| s as u8 + 1).unwrap_or(0)
-                                } else {
-                                    0
-                                };
-                                // Center expression before release so the next note on
-                                // this channel cannot inherit a stale bend.
-                                if prev.bend_cents != 0 {
-                                    events.push(MidiEvent::PitchBend {
-                                        channel: prev_channel,
-                                        cents: 0,
-                                    });
-                                }
-                                events.push(MidiEvent::NoteOff {
-                                    channel: prev_channel,
-                                    note: prev.midi_note,
-                                    velocity: self.last_sent_pressure,
-                                });
                             }
+                            self.release_current_note(&mut events);
 
                             // Velocity from attack peak (first ~5ms) instead of full-buffer RMS
                             let attack_samples = (self.config.sample_rate as f32 * 0.005) as usize;
@@ -895,6 +981,16 @@ impl GuitarInput {
                                 0
                             };
 
+                            // Always establish channel bend before NoteOn. Tiny attack
+                            // deviations are centered rather than forwarded as wobble.
+                            const INITIAL_BEND_THRESHOLD_CENTS: i16 = 10;
+                            let measured_bend = cents as i16;
+                            let initial_bend =
+                                if measured_bend.abs() >= INITIAL_BEND_THRESHOLD_CENTS {
+                                    measured_bend
+                                } else {
+                                    0
+                                };
                             let detected = DetectedNote {
                                 midi_note: stable_midi,
                                 frequency: freq,
@@ -902,31 +998,12 @@ impl GuitarInput {
                                 fret,
                                 string_confidence: string_conf,
                                 velocity,
-                                bend_cents: cents as i16,
+                                bend_cents: initial_bend,
                             };
-
-                            // Fix 1: Send PitchBend BEFORE NoteOn.
-                            //
-                            // Issue #79 stop-gap: gate the initial-bend emit
-                            // on a 10-cent threshold so transient attack
-                            // deviations don't produce the audible wobble
-                            // some users have reported. A perfectly-tuned
-                            // guitar attacks within ±5-10 cents of nominal
-                            // pitch during the first ~50ms; intentional
-                            // bends and out-of-tune playing exceed 10 cents
-                            // easily. The previous `> 0` gate fired on every
-                            // single-cycle measurement, which propagated
-                            // McLeod's onset-window noise into MPE pitch
-                            // bends downstream. Owned by #82's full guitar-
-                            // pipeline rewrite once it lands.
-                            const INITIAL_BEND_THRESHOLD_CENTS: i16 = 10;
-                            let initial_bend = cents as i16;
-                            if initial_bend.abs() >= INITIAL_BEND_THRESHOLD_CENTS {
-                                events.push(MidiEvent::PitchBend {
-                                    channel,
-                                    cents: initial_bend,
-                                });
-                            }
+                            events.push(MidiEvent::PitchBend {
+                                channel,
+                                cents: initial_bend,
+                            });
 
                             // Fix 3: Send CC74 brightness BEFORE NoteOn
                             if self.config.brightness_enabled {
@@ -972,6 +1049,7 @@ impl GuitarInput {
 
                             self.current_note = Some(detected);
                             self.attack_from_pitch_jump = false;
+                            self.legato_candidate = None;
                             self.cooldown_remaining = self.config.cooldown_samples;
                             self.note_state = NoteState::Sustain;
                             self.state_samples = 0;
@@ -996,6 +1074,7 @@ impl GuitarInput {
                             self.early_pitch = None;
                             self.clear_pitch_history();
                             self.attack_from_pitch_jump = false;
+                            self.legato_candidate = None;
                             self.clear_slide_history();
                             self.clear_vibrato_state();
                         }
@@ -1018,6 +1097,9 @@ impl GuitarInput {
                                                 channel: corr_channel,
                                                 cents: correction_cents,
                                             });
+                                            if let Some(note) = self.current_note.as_mut() {
+                                                note.bend_cents = correction_cents;
+                                            }
                                         }
                                     }
                                 }
@@ -1046,7 +1128,10 @@ impl GuitarInput {
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
+                            self.attack_valid_samples = self.config.hop_size;
+                            self.attack_missing_frames = 0;
                             self.attack_from_pitch_jump = false;
+                            self.legato_candidate = None;
                             self.push_pitch(midi_note);
                             self.clear_slide_history();
                             self.clear_vibrato_state();
@@ -1096,25 +1181,23 @@ impl GuitarInput {
                             // making the legato rapid-jump branch unreachable.
                             let cents_per_frame = self.record_pitch_movement(cents_from_base);
 
-                            // Detect rapid pitch change (legato vs bend):
-                            // Legato = fast jump (> 50 cents in one frame)
-                            // Bend = slow movement (< 30 cents per frame)
+                            // Legato needs three agreeing valid frames. One or two
+                            // anomalous pitch frames must not immediately retrigger.
                             let is_rapid_jump = cents_per_frame > 50;
+                            let legato_confirmed =
+                                if self.config.legato_enabled && semitone_diff >= 1 {
+                                    self.update_legato_candidate(midi_note, is_rapid_jump)
+                                } else {
+                                    self.clear_legato_candidate();
+                                    false
+                                };
 
-                            if semitone_diff >= 1 && is_rapid_jump && self.config.legato_enabled {
-                                // 3. LEGATO: rapid pitch jump without onset (hammer-on/pull-off)
+                            if legato_confirmed {
+                                // 3. LEGATO: confirmed rapid pitch jump without onset.
                                 self.suppress_frequency = Some(note_freq);
                                 self.suppress_until = self.total_samples
                                     + (self.config.sample_rate as f32 * 0.1) as usize;
-
-                                if note_bend != 0 {
-                                    events.push(MidiEvent::PitchBend { channel, cents: 0 });
-                                }
-                                events.push(MidiEvent::NoteOff {
-                                    channel,
-                                    note: note_midi,
-                                    velocity: self.last_sent_pressure,
-                                });
+                                self.release_current_note(&mut events);
 
                                 let legato_vel = (note_vel as f32 * 0.8).min(127.0) as u8;
 
@@ -1128,6 +1211,7 @@ impl GuitarInput {
                                     0
                                 };
 
+                                let legato_cents = cents as i16;
                                 let new_note = DetectedNote {
                                     midi_note,
                                     frequency: freq,
@@ -1135,17 +1219,13 @@ impl GuitarInput {
                                     fret,
                                     string_confidence: string_conf,
                                     velocity: legato_vel,
-                                    bend_cents: 0,
+                                    bend_cents: legato_cents,
                                 };
 
-                                // Fix 1: Send PitchBend BEFORE NoteOn (legato)
-                                let legato_cents = cents as i16;
-                                if legato_cents.abs() > 0 {
-                                    events.push(MidiEvent::PitchBend {
-                                        channel: new_channel,
-                                        cents: legato_cents,
-                                    });
-                                }
+                                events.push(MidiEvent::PitchBend {
+                                    channel: new_channel,
+                                    cents: legato_cents,
+                                });
 
                                 // Fix 3: Send CC74 brightness BEFORE NoteOn (legato)
                                 if self.config.brightness_enabled {
@@ -1189,6 +1269,7 @@ impl GuitarInput {
                                 });
 
                                 self.current_note = Some(new_note);
+                                self.legato_candidate = None;
                                 self.clear_pitch_history();
                                 self.clear_slide_history();
                                 self.clear_vibrato_state();
@@ -1200,7 +1281,10 @@ impl GuitarInput {
                                 self.note_state = NoteState::Attack;
                                 self.state_samples = 0;
                                 self.clear_pitch_history();
+                                self.attack_valid_samples = self.config.hop_size;
+                                self.attack_missing_frames = 0;
                                 self.attack_from_pitch_jump = true;
+                                self.legato_candidate = None;
                                 self.push_pitch(midi_note);
                                 self.clear_slide_history();
                                 self.clear_vibrato_state();
@@ -1211,14 +1295,7 @@ impl GuitarInput {
                                 // 4. SLIDE: pitch crossed a semitone boundary gradually
                                 let (new_midi, new_cents_val) = freq_to_midi(freq);
                                 if new_midi != note_midi {
-                                    if note_bend != 0 {
-                                        events.push(MidiEvent::PitchBend { channel, cents: 0 });
-                                    }
-                                    events.push(MidiEvent::NoteOff {
-                                        channel,
-                                        note: note_midi,
-                                        velocity: self.last_sent_pressure,
-                                    });
+                                    self.release_current_note(&mut events);
 
                                     // Slide velocity decays gradually
                                     let slide_vel = ((note_vel as f32 * self.slide_velocity_decay)
@@ -1236,6 +1313,7 @@ impl GuitarInput {
                                         0
                                     };
 
+                                    let slide_bend = new_cents_val as i16;
                                     let new_note = DetectedNote {
                                         midi_note: new_midi,
                                         frequency: freq,
@@ -1243,17 +1321,13 @@ impl GuitarInput {
                                         fret,
                                         string_confidence: string_conf,
                                         velocity: slide_vel,
-                                        bend_cents: 0,
+                                        bend_cents: slide_bend,
                                     };
 
-                                    // Fix 1: Send PitchBend BEFORE NoteOn (slide)
-                                    let slide_bend = new_cents_val as i16;
-                                    if slide_bend.abs() > 0 {
-                                        events.push(MidiEvent::PitchBend {
-                                            channel: new_channel,
-                                            cents: slide_bend,
-                                        });
-                                    }
+                                    events.push(MidiEvent::PitchBend {
+                                        channel: new_channel,
+                                        cents: slide_bend,
+                                    });
 
                                     // Fix 3: Send CC74 brightness BEFORE NoteOn (slide)
                                     if self.config.brightness_enabled {
@@ -1404,102 +1478,53 @@ impl GuitarInput {
                         }
                     }
                     NoteState::Decay => {
-                        let decay_timeout_samples = (self.config.sample_rate as f32 * 0.5) as usize;
-
                         if onset {
                             // New onset during decay -> Attack
                             self.note_state = NoteState::Attack;
                             self.state_samples = 0;
                             self.clear_pitch_history();
+                            self.attack_valid_samples = self.config.hop_size;
+                            self.attack_missing_frames = 0;
                             self.attack_from_pitch_jump = false;
+                            self.legato_candidate = None;
                             self.push_pitch(midi_note);
-                        } else if rms < noise_floor * 2.0
-                            || self.state_samples > decay_timeout_samples
-                        {
-                            // Decay -> Idle: silence or timeout
-                            if let Some(prev) = self.current_note.take() {
-                                // Fix 2: MPE channel offset
-                                let decay_channel = if self.config.per_string_channels {
-                                    prev.string_idx.map(|s| s as u8 + 1).unwrap_or(0)
-                                } else {
-                                    0
-                                };
-                                if prev.bend_cents != 0 {
-                                    events.push(MidiEvent::PitchBend {
-                                        channel: decay_channel,
-                                        cents: 0,
-                                    });
-                                }
-                                events.push(MidiEvent::NoteOff {
-                                    channel: decay_channel,
-                                    note: prev.midi_note,
-                                    velocity: self.last_sent_pressure,
-                                });
-                            }
-                            self.note_state = NoteState::Idle;
-                            self.state_samples = 0;
-                            self.clear_pitch_history();
                         }
                     }
                     NoteState::Idle => {} // Handled by first match above
                 }
             }
             None => {
+                // Legato votes require consecutive valid frames.
+                self.clear_legato_candidate();
                 // No pitch detected
                 match self.note_state {
                     NoteState::Attack => {
-                        self.state_samples = 0;
-                        self.clear_pitch_history();
-                        self.attack_from_pitch_jump = false;
-                        if self.current_note.is_some() {
-                            // A sustain re-pluck can lose pitch on the next frame.
-                            // Keep the existing note in Decay so silence releases it;
-                            // going straight to Idle strands current_note forever.
-                            self.note_state = NoteState::Decay;
-                            if rms < noise_floor * 2.0 {
-                                if let Some(prev) = self.current_note.take() {
-                                    let channel = if self.config.per_string_channels {
-                                        prev.string_idx.map(|s| s as u8 + 1).unwrap_or(0)
-                                    } else {
-                                        0
-                                    };
-                                    if prev.bend_cents != 0 {
-                                        events.push(MidiEvent::PitchBend { channel, cents: 0 });
-                                    }
-                                    events.push(MidiEvent::NoteOff {
-                                        channel,
-                                        note: prev.midi_note,
-                                        velocity: self.last_sent_pressure,
-                                    });
-                                }
-                                self.note_state = NoteState::Idle;
-                            }
-                        } else {
-                            // Initial attack with no confirmed note was a false trigger.
-                            self.note_state = NoteState::Idle;
+                        // Missing periodicity is expected in a transient. Preserve
+                        // history across one isolated gap; a longer gap restarts
+                        // confirmation without discarding the accepted onset.
+                        self.attack_missing_frames = self.attack_missing_frames.saturating_add(1);
+                        if self.attack_missing_frames > 1 {
+                            self.attack_valid_samples = 0;
+                            self.clear_pitch_history();
+                        }
+                        if self.state_samples > attack_timeout_samples {
+                            self.note_state = if self.current_note.is_some() {
+                                NoteState::Decay
+                            } else {
+                                NoteState::Idle
+                            };
+                            self.state_samples = 0;
+                            self.early_pitch = None;
+                            self.clear_pitch_history();
+                            self.attack_from_pitch_jump = false;
+                            self.legato_candidate = None;
+                            self.clear_slide_history();
+                            self.clear_vibrato_state();
                         }
                     }
                     NoteState::Sustain | NoteState::Decay => {
                         if rms < noise_floor * 2.0 {
-                            if let Some(prev) = self.current_note.take() {
-                                // Fix 2: MPE channel offset
-                                let nopitch_channel = if self.config.per_string_channels {
-                                    prev.string_idx.map(|s| s as u8 + 1).unwrap_or(0)
-                                } else {
-                                    0
-                                };
-                                if prev.bend_cents != 0 {
-                                    events.push(MidiEvent::PitchBend {
-                                        channel: nopitch_channel,
-                                        cents: 0,
-                                    });
-                                }
-                                events.push(MidiEvent::NoteOff {
-                                    channel: nopitch_channel,
-                                    note: prev.midi_note,
-                                    velocity: self.last_sent_pressure,
-                                });
-                            }
+                            self.release_current_note(&mut events);
                             self.note_state = NoteState::Idle;
                             self.state_samples = 0;
                             self.clear_pitch_history();
@@ -1580,6 +1605,27 @@ impl GuitarInput {
     }
 
     // ── Octave error correction (#6) ──────────────────────────────
+
+    /// Correct an initial harmonic lock only when f/2 is a valid guitar note
+    /// and its harmonic evidence wins by a clear margin. The Attack vote then
+    /// requires the corrected MIDI candidate on two valid frames.
+    fn correct_initial_attack_octave(&self, detected_freq: f32) -> f32 {
+        let octave_down = detected_freq / 2.0;
+        let (down_midi, _) = freq_to_midi(octave_down);
+        if !(40..=86).contains(&down_midi) {
+            return detected_freq;
+        }
+
+        let score_as_is =
+            harmonic_template_score(&self.linearized_buf, detected_freq, self.config.sample_rate);
+        let score_down =
+            harmonic_template_score(&self.linearized_buf, octave_down, self.config.sample_rate);
+        if score_down > score_as_is * 4.0 {
+            octave_down
+        } else {
+            detected_freq
+        }
+    }
 
     /// Correct octave jumps using harmonic template matching.
     ///
@@ -2874,6 +2920,7 @@ mod tests {
             filter_enabled: false,
             min_clarity: 0.3,
             cooldown_samples: 1024,
+            attack_min_ms: 75,
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
@@ -2904,6 +2951,72 @@ mod tests {
             "should be Attack or Sustain after loud signal, got {:?}",
             pipeline.note_state()
         );
+    }
+
+    #[test]
+    fn onset_latches_attack_without_same_frame_pitch() {
+        let mut pipeline = GuitarInput::new(GuitarInputConfig {
+            buffer_size: 256,
+            hop_size: 256,
+            ..GuitarInputConfig::default()
+        });
+        let mut impulse = vec![0.0; 256];
+        impulse[0] = 1.0;
+
+        let events = pipeline.process_block(&impulse);
+
+        assert!(events.is_empty());
+        assert!(pipeline.last_debug_pitch.is_none());
+        assert_eq!(pipeline.note_state(), NoteState::Attack);
+    }
+
+    #[test]
+    fn attack_survives_missing_pitch_and_keeps_consensus_history() {
+        let mut pipeline = GuitarInput::with_defaults();
+        pipeline.note_state = NoteState::Attack;
+        pipeline.pitch_history = [Some(60), None];
+        pipeline.pitch_history_idx = 1;
+
+        let events = pipeline.process_block(&vec![0.0; pipeline.config.hop_size]);
+
+        assert!(events.is_empty());
+        assert_eq!(pipeline.note_state(), NoteState::Attack);
+        assert_eq!(pipeline.pitch_history, [Some(60), None]);
+    }
+
+    #[test]
+    fn decay_timeout_without_pitch_centers_and_releases() {
+        let mut pipeline = GuitarInput::with_defaults();
+        pipeline.note_state = NoteState::Decay;
+        pipeline.state_samples = pipeline.config.sample_rate / 2 + 1;
+        pipeline.current_note = Some(DetectedNote {
+            midi_note: 60,
+            frequency: midi_to_freq(60),
+            string_idx: None,
+            fret: None,
+            string_confidence: 0.0,
+            velocity: 100,
+            bend_cents: 0,
+        });
+
+        let events = pipeline.process_block(&vec![0.01; pipeline.config.hop_size]);
+
+        assert_eq!(
+            events,
+            vec![
+                MidiEvent::NoteOff {
+                    channel: 0,
+                    note: 60,
+                    velocity: 0,
+                },
+                MidiEvent::PitchBend {
+                    channel: 0,
+                    cents: 0,
+                },
+            ]
+        );
+        assert!(pipeline.current_note().is_none());
+        assert_eq!(pipeline.note_state(), NoteState::Idle);
     }
 
     // -- Multi-frame voting tests (#7) ──────────────────────────────
@@ -3032,7 +3145,7 @@ mod tests {
     }
 
     #[test]
-    fn replace_config_rebuilds_structural_buffers_and_releases_note() {
+    fn replace_config_rebuilds_buffers_and_releases_before_bend_center() {
         let mut pipeline = GuitarInput::with_defaults();
         pipeline.current_note = Some(DetectedNote {
             midi_note: 69,
@@ -3056,14 +3169,14 @@ mod tests {
         assert_eq!(
             cleanup,
             vec![
-                MidiEvent::PitchBend {
-                    channel: 6,
-                    cents: 0,
-                },
                 MidiEvent::NoteOff {
                     channel: 6,
                     note: 69,
                     velocity: 0,
+                },
+                MidiEvent::PitchBend {
+                    channel: 6,
+                    cents: 0,
                 },
             ]
         );
@@ -3077,10 +3190,36 @@ mod tests {
     }
 
     #[test]
-    fn lost_retrigger_attack_releases_existing_note_on_silence() {
+    fn legato_vote_clears_on_mismatch_and_missing_pitch() {
+        let mut pipeline = GuitarInput::with_defaults();
+        assert!(!pipeline.update_legato_candidate(60, true));
+        assert!(!pipeline.update_legato_candidate(60, false));
+        assert_eq!(pipeline.legato_candidate_frames, 2);
+
+        assert!(!pipeline.update_legato_candidate(61, false));
+        assert_eq!(pipeline.legato_candidate, None);
+        assert_eq!(pipeline.legato_candidate_frames, 0);
+
+        pipeline.legato_candidate = Some(60);
+        pipeline.legato_candidate_frames = 2;
+        assert!(!pipeline.update_legato_candidate(61, true));
+        assert_eq!(pipeline.legato_candidate, Some(61));
+        assert_eq!(pipeline.legato_candidate_frames, 1);
+
+        pipeline.legato_candidate = Some(60);
+        pipeline.legato_candidate_frames = 2;
+        pipeline.note_state = NoteState::Sustain;
+        pipeline.process_block(&vec![0.0; pipeline.config.hop_size]);
+        assert_eq!(pipeline.legato_candidate, None);
+        assert_eq!(pipeline.legato_candidate_frames, 0);
+    }
+
+    #[test]
+    fn lost_retrigger_attack_releases_existing_note_on_after_timeout() {
         let mut pipeline = GuitarInput::with_defaults();
         pipeline.config.per_string_channels = false;
         pipeline.note_state = NoteState::Attack;
+        pipeline.state_samples = pipeline.config.sample_rate / 5 + 1;
         pipeline.current_note = Some(DetectedNote {
             midi_note: 69,
             frequency: 440.0,
@@ -3091,15 +3230,22 @@ mod tests {
             bend_cents: 0,
         });
 
+        assert!(pipeline.analyze_window().is_empty());
         let events = pipeline.analyze_window();
 
         assert_eq!(
             events,
-            vec![MidiEvent::NoteOff {
-                channel: 0,
-                note: 69,
-                velocity: 0,
-            }]
+            vec![
+                MidiEvent::NoteOff {
+                    channel: 0,
+                    note: 69,
+                    velocity: 0,
+                },
+                MidiEvent::PitchBend {
+                    channel: 0,
+                    cents: 0,
+                },
+            ]
         );
         assert!(pipeline.current_note.is_none());
         assert_eq!(pipeline.note_state, NoteState::Idle);
@@ -3349,6 +3495,7 @@ mod tests {
             filter_enabled: false,
             min_clarity: 0.3,
             cooldown_samples: 1024,
+            attack_min_ms: 75,
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
@@ -4039,6 +4186,7 @@ mod tests {
             filter_enabled: false,
             min_clarity: 0.3,
             cooldown_samples: 1024,
+            attack_min_ms: 75,
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
@@ -4060,36 +4208,15 @@ mod tests {
             .collect();
         let events = pipeline.process_block(&a4);
 
-        // Find the first NoteOn
-        if let Some(note_on_idx) = events
+        let note_on_idx = events
             .iter()
-            .position(|e| matches!(e, MidiEvent::NoteOn { .. }))
-        {
-            // Check that any PitchBend events before NoteOn come before it
-            for (i, event) in events.iter().enumerate() {
-                if i >= note_on_idx {
-                    break;
-                }
-                // Events before NoteOn should be PitchBend, CC74, or ChannelPressure -- not NoteOff for another note
-                match event {
-                    MidiEvent::PitchBend { .. }
-                    | MidiEvent::MidiPitchBend { .. }
-                    | MidiEvent::CC { .. }
-                    | MidiEvent::ChannelPressure { .. }
-                    | MidiEvent::NoteOff { .. } => {
-                        // These are fine before NoteOn
-                    }
-                    MidiEvent::NoteOn { .. } => {
-                        panic!(
-                            "found an earlier NoteOn at index {} before expected NoteOn at {}",
-                            i, note_on_idx
-                        );
-                    }
-                    _ => {}
-                }
-            }
-        }
-        // If no NoteOn was found, the test still passes (just didn't trigger)
+            .position(|event| matches!(event, MidiEvent::NoteOn { .. }))
+            .expect("stable A4 should emit NoteOn");
+        let bend_idx = events
+            .iter()
+            .position(|event| matches!(event, MidiEvent::PitchBend { .. }))
+            .expect("channel bend must be established before NoteOn");
+        assert!(bend_idx < note_on_idx, "intended bend must precede NoteOn");
     }
 
     // -- MPE channel offset tests ────────────────────────────────────
@@ -4111,6 +4238,7 @@ mod tests {
             filter_enabled: false,
             min_clarity: 0.3,
             cooldown_samples: 1024,
+            attack_min_ms: 75,
             n_harmonics: 6,
             input_gain: 1.0,
             flux_threshold: 0.5,
