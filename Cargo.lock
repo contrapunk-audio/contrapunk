@@ -1007,7 +1007,6 @@ dependencies = [
  "contrapunk-transport",
  "nih_plug",
  "nih_plug_webview",
- "ringbuf",
  "serde_json",
  "wmidi",
 ]
