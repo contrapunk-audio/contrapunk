@@ -37,6 +37,8 @@ pub struct GuitarBridge {
     stream: Option<cpal::Stream>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
+    pipeline: Arc<Mutex<GuitarInput>>,
+    live_pipeline_handle: Option<Arc<Mutex<Option<Arc<Mutex<GuitarInput>>>>>>,
 }
 
 fn send_events(tx: &mpsc::Sender<Vec<u8>>, events: Vec<MidiEvent>, pitch_bend_range: u8) {
@@ -52,6 +54,17 @@ fn send_all_notes_off(tx: &mpsc::Sender<Vec<u8>>) {
     for channel in 0..16 {
         let _ = tx.send(vec![0xB0 | channel, 123, 0]);
     }
+}
+
+fn discard_if_overflow<C>(overflow: &AtomicBool, audio_rx: &mut C) -> bool
+where
+    C: Consumer<Item = f32>,
+{
+    if !overflow.swap(false, Ordering::AcqRel) {
+        return false;
+    }
+    while audio_rx.try_pop().is_some() {}
+    true
 }
 
 impl GuitarBridge {
@@ -126,8 +139,7 @@ impl GuitarBridge {
                 let mut applied_config = actual_config;
 
                 while !stop_for_worker.load(Ordering::Acquire) {
-                    if overflow.swap(false, Ordering::AcqRel) {
-                        while audio_rx.try_pop().is_some() {}
+                    if discard_if_overflow(&overflow, &mut audio_rx) {
                         let cleanup = {
                             let mut pipe = pipeline_for_worker
                                 .lock()
@@ -136,6 +148,7 @@ impl GuitarBridge {
                         };
                         send_events(&tx, cleanup, applied_config.pitch_bend_range);
                         send_all_notes_off(&tx);
+                        continue;
                     }
 
                     if let Some(mut next_config) =
@@ -159,6 +172,17 @@ impl GuitarBridge {
                         thread::sleep(Duration::from_millis(1));
                         continue;
                     }
+                    // Overflow may race the pop. Never process a block that was
+                    // already declared stale by the callback.
+                    if discard_if_overflow(&overflow, &mut audio_rx) {
+                        let cleanup = pipeline_for_worker
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .replace_config(applied_config.clone());
+                        send_events(&tx, cleanup, applied_config.pitch_bend_range);
+                        send_all_notes_off(&tx);
+                        continue;
+                    }
 
                     let (events, info) = {
                         let mut pipe = pipeline_for_worker
@@ -176,6 +200,17 @@ impl GuitarBridge {
                         };
                         (events, info)
                     };
+                    // A full callback queue can be reported while DSP runs.
+                    // Discard its events and reset rather than sending stale MIDI.
+                    if discard_if_overflow(&overflow, &mut audio_rx) {
+                        let cleanup = pipeline_for_worker
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .replace_config(applied_config.clone());
+                        send_events(&tx, cleanup, applied_config.pitch_bend_range);
+                        send_all_notes_off(&tx);
+                        continue;
+                    }
                     send_events(&tx, events, applied_config.pitch_bend_range);
                     if let Some(signal_tx) = signal_tx.as_ref() {
                         let _ = signal_tx.send(info);
@@ -216,9 +251,17 @@ impl GuitarBridge {
             }
         };
 
+        if let Err(error) = stream.play() {
+            stop.store(true, Ordering::Release);
+            let _ = worker.join();
+            return Err(format!("Failed to start audio: {error}"));
+        }
+
+        // Publish only a stream that is already playing. Failed startup can
+        // never leave calibration commands pointing at a zombie pipeline.
         if let Some(handle) = live_pipeline_handle.as_ref() {
             if let Ok(mut slot) = handle.lock() {
-                *slot = Some(pipeline);
+                *slot = Some(Arc::clone(&pipeline));
             }
         }
 
@@ -226,15 +269,9 @@ impl GuitarBridge {
             stream: Some(stream),
             stop,
             worker: Some(worker),
+            pipeline,
+            live_pipeline_handle,
         })
-    }
-
-    pub fn start(&self) -> Result<(), String> {
-        self.stream
-            .as_ref()
-            .ok_or_else(|| "No audio stream".to_string())?
-            .play()
-            .map_err(|e| format!("Failed to start audio: {e}"))
     }
 }
 
@@ -247,6 +284,18 @@ mod tests {
         assert_eq!(audio_queue_capacity(48_000), 4_800);
         assert_eq!(audio_queue_capacity(44_100), 4_410);
     }
+
+    #[test]
+    fn overflow_discards_every_queued_sample() {
+        let rb = HeapRb::<f32>::new(4);
+        let (mut tx, mut rx) = rb.split();
+        tx.push_slice(&[1.0, 2.0, 3.0, 4.0]);
+        let overflow = AtomicBool::new(true);
+
+        assert!(discard_if_overflow(&overflow, &mut rx));
+        assert!(rx.try_pop().is_none());
+        assert!(!discard_if_overflow(&overflow, &mut rx));
+    }
 }
 
 impl Drop for GuitarBridge {
@@ -257,6 +306,16 @@ impl Drop for GuitarBridge {
         self.stop.store(true, Ordering::Release);
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
+        }
+        if let Some(handle) = self.live_pipeline_handle.as_ref() {
+            if let Ok(mut slot) = handle.lock() {
+                if slot
+                    .as_ref()
+                    .is_some_and(|published| Arc::ptr_eq(published, &self.pipeline))
+                {
+                    *slot = None;
+                }
+            }
         }
     }
 }

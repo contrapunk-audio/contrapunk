@@ -393,9 +393,6 @@ fn run_tauri_router(
             Some(signal_tx),
         )
         .map_err(|e| anyhow::anyhow!("Guitar bridge error: {}", e))?;
-        bridge
-            .start()
-            .map_err(|e| anyhow::anyhow!("Guitar bridge start error: {}", e))?;
         _guitar_bridge = Some(bridge);
         _midi_conn = None;
     } else if is_keyboard {

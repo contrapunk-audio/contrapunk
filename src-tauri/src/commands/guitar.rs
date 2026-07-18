@@ -113,6 +113,7 @@ pub fn set_guitar_config(
         filter_enabled: false,
         min_clarity: 0.40,
         cooldown_samples: sample_rate / 10,
+        attack_min_ms: 40,
         n_harmonics: 6,
         input_gain: gain,
         flux_threshold: 0.5,
@@ -177,38 +178,34 @@ pub fn apply_calibration_profile_from_disk(
         .calibration_profile
         .lock()
         .map_err(|e| e.to_string())? = profile.clone();
-    push_calibration_to_live_pipeline(state, &profile);
+    push_calibration_to_live_pipeline(state, &profile)?;
+    mark_applied_mtime(app)?;
     Ok(profile)
 }
 
-/// Push a calibration profile into the running worker-owned pipeline, with
-/// bounded retry. The cpal callback never takes this mutex. If the worker is
-/// between detector blocks, a later attempt applies the profile; otherwise the
-/// AppState slot remains authoritative for the next routing start.
-fn push_calibration_to_live_pipeline(state: &AppState, profile: &GuitarCalibrationProfile) {
-    let slot_lock = match state.live_guitar_pipeline.lock() {
-        Ok(g) => g,
-        Err(_) => return,
-    };
+/// Push a calibration profile into the worker-owned pipeline. The cpal
+/// callback never takes this mutex, so waiting for the current DSP block is
+/// safe and guarantees the status cannot get ahead of the live detector.
+fn push_calibration_to_live_pipeline(
+    state: &AppState,
+    profile: &GuitarCalibrationProfile,
+) -> Result<(), String> {
+    let slot_lock = state
+        .live_guitar_pipeline
+        .lock()
+        .map_err(|e| e.to_string())?;
     let Some(pipe_arc) = slot_lock.as_ref() else {
-        return;
+        return Ok(());
     };
-    for attempt in 0..5 {
-        if let Ok(mut pipe) = pipe_arc.try_lock() {
-            pipe.set_calibration_profile(profile.clone());
-            eprintln!(
-                "[calibration] live pipeline hot-swapped to v{} (attempt {})",
-                profile.version,
-                attempt + 1
-            );
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
+    pipe_arc
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .set_calibration_profile(profile.clone());
     eprintln!(
-        "[calibration] live pipeline busy after 5 attempts; profile in AppState only \
-         (next status refresh will retry)"
+        "[calibration] live pipeline hot-swapped to v{}",
+        profile.version
     );
+    Ok(())
 }
 
 /// Load the per-string calibration profile from `app_data_dir()` into
@@ -257,7 +254,8 @@ pub fn delete_calibration_profile(
         .calibration_profile
         .lock()
         .map_err(|e| e.to_string())? = default_profile.clone();
-    push_calibration_to_live_pipeline(&state, &default_profile);
+    push_calibration_to_live_pipeline(&state, &default_profile)?;
+    mark_applied_mtime(&app)?;
     eprintln!("[calibration] profile deleted, AppState reset to defaults");
     Ok(CalibrationStatus {
         exists_on_disk: false,
@@ -340,7 +338,8 @@ pub fn save_calibration_profile(
     // we were only swapping on `load_calibration_profile`. After a
     // calibration sweep the user expects the new profile to apply
     // immediately, not after they manually click Reload.
-    push_calibration_to_live_pipeline(&state, &profile);
+    push_calibration_to_live_pipeline(&state, &profile)?;
+    mark_applied_mtime(&app)?;
     let summary: Vec<usize> = profile
         .strings
         .iter()
@@ -414,25 +413,46 @@ static LAST_APPLIED_MTIME: std::sync::Mutex<Option<std::time::SystemTime>> =
 
 fn should_reapply_from_disk(app: &tauri::AppHandle, _state: &AppState) -> Result<bool, String> {
     let path = calibration_profile_path(app)?;
-    if !path.exists() {
-        // No file on disk: only reapply on the very first call (when
-        // cached mtime is None). Subsequent calls with no file are
-        // no-ops.
-        let mut last = LAST_APPLIED_MTIME.lock().map_err(|e| e.to_string())?;
-        if last.is_none() {
-            *last = Some(std::time::SystemTime::UNIX_EPOCH);
-            return Ok(true);
-        }
-        return Ok(false);
-    }
-    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-    let mtime = meta.modified().map_err(|e| e.to_string())?;
-    let mut last = LAST_APPLIED_MTIME.lock().map_err(|e| e.to_string())?;
-    match *last {
-        Some(prev) if prev >= mtime => Ok(false),
-        _ => {
-            *last = Some(mtime);
-            Ok(true)
-        }
+    let disk_mtime = if path.exists() {
+        std::fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .map_err(|e| e.to_string())?
+    } else {
+        std::time::SystemTime::UNIX_EPOCH
+    };
+    let last = LAST_APPLIED_MTIME.lock().map_err(|e| e.to_string())?;
+    Ok(last.is_none_or(|applied| applied < disk_mtime))
+}
+
+/// Advance the status cache only after disk, AppState, and the live pipeline
+/// were all updated successfully. Failed application therefore retries.
+fn mark_applied_mtime(app: &tauri::AppHandle) -> Result<(), String> {
+    let path = calibration_profile_path(app)?;
+    let applied = if path.exists() {
+        std::fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .map_err(|e| e.to_string())?
+    } else {
+        std::time::SystemTime::UNIX_EPOCH
+    };
+    *LAST_APPLIED_MTIME.lock().map_err(|e| e.to_string())? = Some(applied);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use contrapunk::audio::guitar_input::GuitarInput;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn live_calibration_update_reaches_published_pipeline() {
+        let state = AppState::default();
+        let pipeline = Arc::new(Mutex::new(GuitarInput::with_defaults()));
+        *state.live_guitar_pipeline.lock().unwrap() = Some(Arc::clone(&pipeline));
+
+        push_calibration_to_live_pipeline(&state, &GuitarCalibrationProfile::default()).unwrap();
+
+        assert!(pipeline.lock().unwrap().has_calibration_profile());
     }
 }
