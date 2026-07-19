@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-19T08:06:59.197Z",
+  "timestamp": "2026-07-19T10:24:50.836Z",
   "context": "phase",
   "phase": "post-10.1",
-  "phase_name": "Release validation and next-generation native UI prototype",
+  "phase_name": "Native performance prototype and release validation",
   "phase_dir": ".planning/phases/10.1-guitar-reliability",
   "plan": 1,
-  "task": 3,
+  "task": 4,
   "total_tasks": 4,
   "status": "paused",
   "completed_tasks": [
@@ -15,199 +15,182 @@
       "name": "Freeze Phase 10.1 guitar corpus acceptance",
       "status": "done",
       "commit": "e7f51264",
-      "progress": "Development 107/108 and sealed holdout 30/30 under the frozen 40 ms profile; deterministic cleanup, blind QA, and corpus provenance complete."
+      "progress": "Development 107/108 and sealed holdout 30/30 under the frozen 40 ms profile; deterministic cleanup, blind QA, and provenance complete."
     },
     {
       "id": 2,
-      "name": "Validate faster development-only attack candidate",
+      "name": "Validate the 10 ms attack candidate",
       "status": "done",
-      "progress": "The uncommitted 10 ms attack candidate passed the full 108-file development gate: 108/108 exact, zero retriggers, clean deterministic releases, p50 16.0 ms and p95 26.7 ms. The sealed holdout was not rerun."
+      "commit": "1d5c0432",
+      "progress": "Development-only candidate passed 108/108 exact, zero retriggers, deterministic releases, p50 16.0 ms, p95 26.7 ms. Hardware latency was accepted; sealed holdout was not rerun for this candidate."
     },
     {
       "id": 3,
-      "name": "Make guitar routing and UI truthful, then verify real hardware",
+      "name": "Unify live Ensemble behavior across surfaces",
+      "status": "done",
+      "commit": "2394ef47",
+      "progress": "Shared Ensemble workspace, Companion lanes, routing, presets, source ownership, note lifecycle, and current production adapters were unified."
+    },
+    {
+      "id": 4,
+      "name": "Build and refine the separate native full-app prototype",
       "status": "in_progress",
-      "progress": "Implemented start-boundary device/config sync, 1-based channel display, restart on live device/channel changes, stale-state reset, schema-v3 DSP defaults, fixed 21 ms analysis presentation, separate PITCH and MIDI OUT status, legible platform typography, simplified guitar controls, and debug NoteOn/NoteOff logs. Optimized Tauri started on Audient iD14 channel 2 and reported no build failure, but no played-note log sequence was captured before pause, so sustain/latency hardware acceptance remains open."
+      "commit": "2179294b",
+      "progress": "Built a functional native-only /prototype surface using real adapters and backend. It now has a fixed 1280x800 16:10 window, no page scrolling, live expression roll, color only for musical activity, instrument view above a compact branching mixer, real per-role built-in-synth levels/mute/solo, and one large Setup dialog. Follow-up commit 1d4fa8f9 exposes Canon group Hold in Strict Canon and explains locked per-voice controls via hover text."
     }
   ],
   "remaining_tasks": [
     {
-      "id": 3,
-      "name": "Finish optimized real-guitar and focused-diff validation",
+      "id": "4a",
+      "name": "Resolve reported Free Imitation release behavior",
       "status": "in_progress",
-      "details": "Test short notes, 3-5 second sustains, repeated plucks, bends and slides in optimized Tauri; inspect [guitar-midi], [guitar_bridge], and CC123 logs; then independently review and commit only the focused guitar/UI slice."
+      "details": "The user still perceives missing NoteOff in Free Imitation. Existing CanonLane Cancel-mode and per-voice duration tests pass. Reproduce with the effective global > lane > voice Hold stack and transport state visible. Near/Future, Phrase, and Forever intentionally schedule completion after source release; Cancel should release emitted notes at the current beat. Check for a persisted per-voice override winning over group/global Hold and for a stopped transport preventing future-beat cleanup. Do not call it fixed until an observed Free Imitation NoteOn/NoteOff sequence is captured."
     },
     {
-      "id": 4,
-      "name": "Build a separate functional native prototype covering the entire app",
+      "id": "4b",
+      "name": "Define global arrangement presets",
       "status": "not_started",
-      "details": "Do not replace or restyle the current production UI. Build a separate native, functioning prototype for all Contrapunk features. Preserve the approved density and monochrome direction; use color only when it represents live or generated sound. Retain the piano roll and add a continuous guitar expression dot/trail that can be compared with emitted MIDI."
+      "details": "Design user-facing full-arrangement presets inspired by old/new classical, jazz, and video-game composers. First define exactly which existing backend fields an arrangement preset owns: harmony/key/scale defaults, Your register, voice count/spread, Canon form/voices/delays/ratios/holds, Species Counterpoint, per-role synth levels/mute/solo, and routing policy. Built-ins remain immutable; customization is Save As. Avoid exposing controls or extra groups that backend support does not exist for."
     },
     {
       "id": "release",
-      "name": "Complete release-surface acceptance and v1.3.0 packaging",
+      "name": "Complete v1.3.0 release-surface acceptance",
       "status": "not_started",
-      "details": "Standalone/browser/Logic/REAPER, sample-rate, block-size, device-loss, routing documentation, installers, signing, notarization and release validation remain."
+      "details": "Standalone/browser/Logic/REAPER, real external MIDI output, sample-rate/block-size/device-loss, installer, signing, notarization, Gatekeeper, tag, and GitHub Release validation remain."
     }
   ],
   "blockers": [
     {
-      "description": "The working tree mixes focused guitar/UI work with extensive older Ensemble, plugin, AU, Elixir, Golem, generated WASM, and documentation changes.",
+      "description": "Free Imitation can sound as though NoteOff is missing depending on effective HoldMode and transport state; exact user configuration has not yet been captured.",
       "type": "technical",
-      "workaround": "Never stage broadly. Inspect git diff --cached and stage only explicit files or hunks. Do not stage .pi-subagents/. Prefer a separate isolated prototype surface rather than editing the production UI."
+      "workaround": "Set Canon group Hold to Cancel, clear per-voice overrides in Free Imitation, keep transport state visible, and capture dispatch evidence before changing scheduling logic."
     },
     {
-      "description": "Real-hardware sustain and latency acceptance was not completed in the optimized build.",
+      "description": "The occasional real-guitar false harmonic/random-note selection still lacks a captured failing pluck and regression fixture.",
       "type": "human_action",
-      "workaround": "Resume cargo tauri dev --release, select Audient iD14/Input 2, and capture the exact debug event sequence while the user plays."
+      "workaround": "Capture expected note, detected note, pitch curve, and lifecycle from one real failure before any continuity/octave correction."
     },
     {
-      "description": "External MIDI output most recently reported Output router ready with 0 connection(s).",
+      "description": "External MIDI acceptance still lacks a native session with at least one real output connection.",
       "type": "human_action",
-      "workaround": "Run a session with an actual output connection before claiming external MIDI routing acceptance."
+      "workaround": "Connect a real MIDI destination; prior sessions reported Output router ready with 0 connection(s)."
     },
     {
-      "description": "The 10 ms attack candidate has development evidence only.",
+      "description": "The working tree still contains unrelated Golem, Elixir, AU, recon, docs, and .pi-subagents work.",
       "type": "technical",
-      "workaround": "Do not run the sealed holdout until all candidate code and hardware behavior are frozen and the user explicitly authorizes the one final run."
-    },
-    {
-      "description": "Long sustain, broad hardware generalization, and polyphonic guitar are not covered by the current isolated 250 ms corpus.",
-      "type": "external",
-      "workaround": "Record longer leakage-safe raw-DI sessions with expressive techniques; use hexaphonic/per-string capture where possible for polyphonic ground truth."
+      "workaround": "Never stage broadly. Stage explicit paths only, inspect git diff --cached, and never stage .pi-subagents/."
     }
   ],
   "human_actions_pending": [
     {
-      "action": "Play real guitar through Audient iD14 Input 2 in an optimized Tauri build",
-      "context": "Verify true latency, long sustain, repeated plucks, bends/slides, PITCH versus MIDI OUT, and absence of queue-overflow CC123 cleanup.",
+      "action": "Reproduce Free Imitation release behavior in the optimized native prototype",
+      "context": "Record Form, global Hold, Canon group Hold, selected voice Hold, transport running/stopped, source NoteOff, and emitted Canon NoteOff.",
       "blocking": true
     },
     {
-      "action": "Review the complete native prototype information architecture after resume",
-      "context": "The monochrome density is approved, but the next prototype must cover every app feature rather than only Guitar Input and must remain separate from the production UI.",
+      "action": "Choose the initial arrangement-preset roster and naming policy",
+      "context": "Decide whether built-ins use composer names, era/style names, or 'inspired by' labels across classical, jazz, and video-game traditions.",
       "blocking": false
     },
     {
-      "action": "Authorize the final sealed-holdout run only after candidate freeze",
-      "context": "The 10 ms candidate must not consume more holdout feedback during tuning.",
+      "action": "Capture one false-harmonic guitar pluck",
+      "context": "Detector tuning remains blocked until the real failure is preserved as evidence.",
       "blocking": true
     },
     {
-      "action": "Perform standalone, browser, Logic, REAPER, installer and Gatekeeper checks",
+      "action": "Perform final standalone, browser, Logic, REAPER, external MIDI, installer, signing, and notarization checks",
       "context": "Final release acceptance remains user-operated.",
       "blocking": true
     }
   ],
   "decisions": [
     {
-      "decision": "Build the new UI as a separate functional native prototype, not as changes to the current product UI.",
-      "rationale": "The user wants freedom to redesign every app feature without destabilizing the current release candidate.",
+      "decision": "The native prototype is one fixed-ratio performance page with one centered Setup dialog.",
+      "rationale": "The user rejected tabs and scrolling. Live expression, notes, arrangement, routing state, and critical controls must stay visible together.",
       "phase": "post-10.1"
     },
     {
-      "decision": "The prototype uses monochrome structure and typography; color appears only when it encodes live or generated sound.",
-      "rationale": "The user approved the density and monochrome direction and rejected unnecessary decorative color or information.",
+      "decision": "Window size is fixed at 1280x800 (16:10).",
+      "rationale": "This locks the requested ratio and lets the main page fit without scrolling.",
       "phase": "post-10.1"
     },
     {
-      "decision": "The full-app prototype retains the piano roll and adds a continuous Guitar expression trace alongside discrete emitted MIDI.",
-      "rationale": "Pitch position can show bends/slides/vibrato, amplitude can affect point size/brightness, and detector clarity can affect opacity while MIDI remains auditable.",
+      "decision": "Chrome remains black and white; color is reserved for guitar pitch, emitted MIDI, harmony, Canon, Counterpoint, active piano keys, and meters.",
+      "rationale": "Color should communicate sound and role rather than decorate controls.",
       "phase": "post-10.1"
     },
     {
-      "decision": "Use optimized Rust for guitar performance testing.",
-      "rationale": "Debug DSP overflowed the bounded worker queue and produced misleading forced cleanup and CC123 behavior.",
+      "decision": "Mixer levels are real built-in-synth role gains, not mocked controls.",
+      "rationale": "Per-role atomics and mix-group-aware Synth events provide immediate native audio behavior without adding fake external-MIDI gain semantics.",
       "phase": "post-10.1"
     },
     {
-      "decision": "Keep the analysis window fixed at 1,024 samples (about 21 ms at 48 kHz) and treat 10 ms as the current attack-confirmation candidate.",
-      "rationale": "A 5 ms window lacks enough waveform periods for reliable low-guitar fundamentals; the 10 ms confirmation candidate passed development at p95 26.7 ms.",
+      "decision": "Your register replaces You play.",
+      "rationale": "Soprano/Alto/Tenor/Bass place the performed line in the arrangement without transposing the physical input note.",
       "phase": "post-10.1"
     },
     {
-      "decision": "Keep the sealed holdout untouched until final freeze.",
-      "rationale": "Development and hardware evidence must drive tuning without leaking holdout feedback.",
+      "decision": "Strict Canon locks per-voice Mode but permits Canon group Hold.",
+      "rationale": "Per-voice harmony modes break strict imitation, while group release policy does not. Free Imitation unlocks per-voice Mode, Relative, Speed, Preset, and Hold.",
+      "phase": "post-10.1"
+    },
+    {
+      "decision": "Hidden Setup controls must not consume Guitar CC74 as MIDI-learn input.",
+      "rationale": "The hidden PerformanceView treated guitar brightness CC74 as a mapped hardware knob, causing native-only reharmonization on every pluck. Gating and unmounting the listener restored exact 4:1 synth dispatch per four-voice guitar event.",
+      "phase": "post-10.1"
+    },
+    {
+      "decision": "Built-in global arrangement presets remain immutable and user changes use Save As.",
+      "rationale": "This preserves reproducible named arrangements while allowing customization.",
       "phase": "post-10.1"
     }
   ],
   "background_processes": [
     {
-      "name": "contrapunk-tauri-release-test",
-      "status": "stopped_on_pause",
-      "details": "cargo tauri dev --release was terminated after 14m41s. It built successfully, opened the Audient iD14 on backend channel=1 (UI Input 2), and had not captured played [guitar-midi] events before pause."
+      "name": "contrapunk-native-prototype-fixed",
+      "status": "stopped",
+      "details": "Managed process proc_14 was stopped for pause."
+    },
+    {
+      "name": "prototype-vite-preview",
+      "status": "stopped",
+      "details": "Managed process proc_9 was stopped for pause."
     }
   ],
   "validation": [
     {
-      "command": "cargo test -p contrapunk-audio --test guitar_corpus_acceptance development_corpus_gate -- --nocapture",
+      "command": "cargo test -p contrapunk-audio --release --lib",
       "status": "passed",
-      "details": "108/108 exact and eventual, zero misses/retriggers/octave errors, 108/108 clean deterministic releases, p50 16.0 ms, p95 26.7 ms, 0.034x realtime."
+      "details": "226 tests passed."
     },
     {
-      "command": "cargo test -p contrapunk-audio --lib",
+      "command": "cargo test --lib synth::voice::tests",
       "status": "passed",
-      "details": "226 tests passed, including sustained_beating_note_does_not_retrigger."
+      "details": "7 tests passed, including mix-group-specific NoteOff."
     },
     {
       "command": "npm --prefix ui run check",
       "status": "passed_with_warnings",
-      "details": "0 errors and 29 pre-existing warnings. The removed GuitarInputPanel selectors no longer appear in the current check."
+      "details": "0 errors; pre-existing warnings only."
     },
     {
-      "command": "git diff --check -- <focused guitar/UI files>",
-      "status": "passed"
+      "command": "optimized native live dispatch audit",
+      "status": "passed",
+      "details": "Before the CC74 listener fix: 29 guitar NoteOns caused 374 synth NoteOns. After: 32 guitar NoteOns caused exactly 128 synth NoteOns and 31 guitar NoteOffs caused exactly 124 synth NoteOffs; the final four-event difference was one currently held note. Zero CC123 overflows."
+    },
+    {
+      "command": "pre-commit repository checks",
+      "status": "passed_with_warnings",
+      "details": "Commit 1d4fa8f9 ran checks successfully; warnings were pre-existing."
     }
   ],
   "uncommitted_files": [
-    "[artifact-do-not-stage] ?? .pi-subagents/",
-    "[focused-guitar] M crates/contrapunk-audio/src/guitar_input.rs",
-    "[focused-guitar] M src-tauri/src/commands/guitar.rs",
-    "[focused-guitar] M src-tauri/src/guitar_bridge.rs",
-    "[focused-ui] M ui/src/app.css",
-    "[focused-ui/mixed] M ui/src/lib/adapter/tauri.ts",
-    "[focused-ui] M ui/src/lib/components/GuitarInputPanel.svelte",
-    "[focused-ui/mixed] M ui/src/lib/components/InputPanel.svelte",
-    "[focused-ui] M ui/src/lib/components/OutputPanel.svelte",
-    "[focused-ui] M ui/src/lib/components/SignalGraphs.svelte",
-    "[focused-ui/mixed] M ui/src/lib/components/ChainPanel.svelte",
-    "[focused-ui] M ui/src/lib/stores/guitar.svelte.ts",
-    "[focused-ui] M ui/src/lib/theme/tokens.css",
-    "[ensemble/plugin] M crates/contrapunk-companion/src/canon_lane.rs",
-    "[ensemble/plugin] M crates/contrapunk-companion/src/counterpoint_lane.rs",
-    "[ensemble/plugin] M crates/contrapunk-companion/src/lane.rs",
-    "[ensemble/plugin] M crates/contrapunk-companion/src/orchestrator.rs",
-    "[ensemble/plugin] M crates/contrapunk-harmony/src/engine.rs",
-    "[ensemble/plugin] M plugin/Cargo.toml",
-    "[ensemble/plugin] M plugin/src/editor.rs",
-    "[ensemble/plugin] M plugin/src/lib.rs",
-    "[ensemble/plugin] M src-tauri/src/commands/engine.rs",
-    "[ensemble/plugin] M src-tauri/src/main.rs",
-    "[ensemble/plugin] M ui/src/lib/adapter/plugin.ts",
-    "[ensemble/plugin] M ui/src/lib/adapter/types.ts",
-    "[ensemble/plugin] M ui/src/lib/adapter/wasm.ts",
-    "[ensemble/plugin] M ui/src/lib/components/ActiveNotes.svelte",
-    "[ensemble/plugin] M ui/src/lib/components/CompanionPanel.svelte",
-    "[ensemble/plugin] M ui/src/lib/components/Fretboard.svelte",
-    "[ensemble/plugin] M ui/src/lib/components/HistoryStrip.svelte",
-    "[ensemble/plugin] M ui/src/lib/components/Knob.svelte",
-    "[ensemble/plugin] M ui/src/lib/components/PixelSelect.svelte",
-    "[ensemble/plugin] M ui/src/lib/components/VoiceGenerationChain.svelte",
-    "[ensemble/plugin] M ui/src/lib/embed/Fretboard.svelte",
-    "[ensemble/plugin] M ui/src/lib/stores/engine.svelte.ts",
-    "[ensemble/plugin] M ui/src/lib/stores/ui.svelte.ts",
-    "[ensemble/plugin] M ui/src/routes/+page.svelte",
-    "[ensemble/plugin] M wasm/src/companion.rs",
-    "[ensemble/plugin] ?? ui/src/lib/components/EnsemblePresetBar.svelte",
-    "[ensemble/plugin] ?? ui/src/lib/components/LiveLines.svelte",
-    "[ensemble/plugin] ?? ui/src/lib/components/PluginWorkspace.svelte",
-    "[AU/release] M au-wrapper/CMakeLists.txt",
-    "[AU/release] ?? au-wrapper/patches/disable-auv2-input-midi-echo.patch",
-    "[generated-do-not-stage-broadly] M ui/src/lib/wasm-pkg/contrapunk_wasm.d.ts",
-    "[generated-do-not-stage-broadly] M ui/src/lib/wasm-pkg/contrapunk_wasm.js",
-    "[generated-do-not-stage-broadly] M ui/src/lib/wasm-pkg/contrapunk_wasm_bg.wasm",
-    "[generated-do-not-stage-broadly] M ui/src/lib/wasm-pkg/contrapunk_wasm_bg.wasm.d.ts",
-    "[unrelated-elixir] M Cargo.lock",
+    "[unrelated-golem] M apps/golem/src-tauri/src/main.rs",
+    "[unrelated-golem] M apps/golem/src-tauri/tauri.conf.json",
+    "[unrelated-golem] M apps/golem/src/App.svelte",
+    "[unrelated-golem] M apps/golem/src/Knob.svelte",
+    "[unrelated-golem] M apps/golem/vite.config.ts",
+    "[unrelated-au] M au-wrapper/CMakeLists.txt",
     "[unrelated-elixir] M crates/elixir-core/src/fx/delay.rs",
     "[unrelated-elixir] M crates/elixir-core/src/fx/mod.rs",
     "[unrelated-elixir] M crates/elixir-core/src/fx/reverb.rs",
@@ -215,35 +198,21 @@
     "[unrelated-elixir] M crates/elixir-core/src/osc.rs",
     "[unrelated-elixir] M crates/elixir-preset/src/lib.rs",
     "[unrelated-elixir] M crates/elixir-standalone/src/ui.rs",
-    "[unrelated-elixir] M src/chain/elixir_block.rs",
-    "[unrelated-golem] M apps/golem/src-tauri/src/main.rs",
-    "[unrelated-golem] M apps/golem/src-tauri/tauri.conf.json",
-    "[unrelated-golem] M apps/golem/src/App.svelte",
-    "[unrelated-golem] M apps/golem/src/Knob.svelte",
-    "[unrelated-golem] M apps/golem/vite.config.ts",
     "[unrelated-golem] M crates/golem-core/src/engine.rs",
     "[unrelated-golem] M crates/golem-core/src/follow.rs",
     "[unrelated-golem] M crates/golem-core/src/lib.rs",
+    "[artifact-do-not-stage] ?? .pi-subagents/",
     "[unrelated-golem] ?? apps/golem/src-tauri/Info.plist",
     "[unrelated-golem] ?? apps/golem/src-tauri/entitlements.plist",
+    "[unrelated-au] ?? au-wrapper/patches/disable-auv2-input-midi-echo.patch",
     "[unrelated-golem] ?? crates/golem-core/src/dynamics.rs",
     "[unrelated-docs] ?? docs/CONTRAPUNK_STATE_ROADMAP.md",
     "[unrelated-docs] ?? progress.md",
-    "[unrelated-docs] ?? recon/architecture.md",
-    "[unrelated-docs] ?? recon/diagram-snippets.md",
-    "[unrelated-docs] ?? recon/engineering-roadmap-synthesis.md",
-    "[unrelated-docs] ?? recon/github-issues.md",
-    "[unrelated-docs] ?? recon/marketing-content-pillars.md",
-    "[unrelated-docs] ?? recon/planning-roadmap.md"
+    "[unrelated-docs] ?? recon/"
   ],
   "placeholder_summary_findings": [
-    "Historical placeholder/TBD hits exist in older phase documents, but no placeholder was found in the current Phase 10.1 plan, summary, context, or research files."
+    "Historical placeholder/TBD matches remain in older phase documents listed by the pause audit. No current Phase 10.1 handoff or summary is a placeholder."
   ],
-  "prototype_artifact": {
-    "path": "/tmp/contrapunk-clean-guitar-design.html",
-    "status": "approved_direction_only",
-    "details": "Opened in Arc as a separate static concept. The user approved its density and monochrome direction, then clarified that the functioning native prototype must cover every app feature, not only guitar. No continuous-trail production wiring was retained."
-  },
-  "next_action": "Resume by treating the new UI as a separate full-app native prototype. First inventory every production feature/capability and agree on the prototype's top-level navigation and isolation boundary; do not edit or replace the current production UI. Then implement the smallest native shell that reuses existing backend/adapter behavior. Preserve monochrome idle structure, show color only for sound, retain the piano roll, and include the continuous guitar-expression-versus-MIDI visualization. Keep the 10 ms guitar candidate and focused UI/runtime diff uncommitted until optimized hardware verification and focused review are complete.",
-  "context_notes": "The user likes the clean native-system typography, information density, and monochrome direction of the HTML concept. They explicitly want a real functioning native prototype for all Contrapunk features, developed separately from the current UI. The temporary concept is useful as a visual seed but is guitar-only and not implementation architecture. The optimized Tauri test process was stopped for pause. Elixir/Golem remain excluded from the v1.3.0 release and from this prototype unless explicitly re-scoped. User performs GUI/manual testing; launch apps only on explicit request."
+  "next_action": "First reproduce the Free Imitation release complaint with effective global/lane/voice Hold modes and transport state recorded. If Cancel produces immediate emitted NoteOff, document the behavior and make effective Hold visible in the mixer; if it does not, add a CanonLane regression before fixing scheduling. Then define the global arrangement-preset ownership schema and propose a small composer/era roster across classical, jazz, and video-game music.",
+  "context_notes": "The native prototype is functional and visually approved enough to iterate directly. Main-page density is now compact, music colors are restored, note-key geometry stays fixed, and Setup has more breathing room. The next design task is not just naming presets: first lock what a global arrangement preset owns and ensure every field is backed by existing engine behavior. The Free Imitation complaint may be HoldMode semantics rather than a missing source NoteOff, but it remains unproven and must be reproduced rather than dismissed. Focused prototype work is committed in 2179294b and 1d4fa8f9."
 }
