@@ -82,6 +82,8 @@ export class PluginAdapter implements ContrapunkAdapter {
 		perVoicePortRouting: false,
 		// Plugin-only host MIDI mode selector.
 		pluginMidiOutputMode: true,
+		// Plugin emits MIDI only; there are no internal role gain buses.
+		roleMix: false,
 		// Plugin guitar path runs through the DAW; calibration profile
 		// persistence isn't wired (would need host file access).
 		calibrationFlow: false
@@ -497,6 +499,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async setSynthCutoffHz(_hz: number): Promise<void> {}
 	async setSynthResonance(_value: number): Promise<void> {}
 	async setSynthMasterGain(_value: number): Promise<void> {}
+	async setSynthMixGain(_group: number, _value: number): Promise<void> {}
 
 	// -- FX (DAW hosts FX in plugin mode) --
 

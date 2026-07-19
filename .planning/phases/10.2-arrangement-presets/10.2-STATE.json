@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing",
   "current_wave": 1,
-  "current_slice": "centralized-arrangement-snapshot",
+  "current_slice": "preset-v2-persistence-migration",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -33,6 +33,16 @@
         "The config intentionally cannot contain tonic, tempo, devices, routing, sound, master level, mute/solo, plugins, or transport state.",
         "npm --prefix ui run check passes with zero errors."
       ]
+    },
+    {
+      "id": "centralized-arrangement-snapshot",
+      "status": "verified",
+      "evidence": [
+        "Dedicated Counterpoint lane state and role mix levels moved from component-local state into ArrangementStore.",
+        "ArrangementStore snapshots the typed arrangement-only contract and exposes surface-honest baseline capabilities.",
+        "Apply validates, panics, applies, and rolls back the previous snapshot on failure.",
+        "Tauri exposes real role mix through the adapter; WASM/plugin declare roleMix false and no-op honestly."
+      ]
     }
   ],
   "commands": [
@@ -41,7 +51,8 @@
     {"command": "cargo test -p contrapunk-companion --lib", "result": "60 passed"},
     {"command": "cargo test -p contrapunk-tauri", "result": "36 passed"},
     {"command": "npm --prefix ui run check", "result": "0 errors; 29 pre-existing warnings"},
-    {"command": "npm --prefix ui run check (ArrangementPresetV2)", "result": "0 errors; 29 pre-existing warnings"}
+    {"command": "npm --prefix ui run check (ArrangementPresetV2)", "result": "0 errors; 29 pre-existing warnings"},
+    {"command": "npm --prefix ui run check (ArrangementStore)", "result": "0 errors; 29 pre-existing warnings"}
   ],
   "blockers": [
     "Research subagent providers must be executable; if fewer than three independent perspectives can run, preset activation pauses.",
@@ -55,6 +66,6 @@
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state."
   ],
-  "last_commit": "161368c",
-  "next_action": "Commit the V2 contract, then centralize snapshot/apply state currently split across EngineStore, CompanionPanel, and ArrangementMixer."
+  "last_commit": "f290e80",
+  "next_action": "Commit centralized snapshot/apply state, then add versioned V2 user-preset persistence with migration from contrapunk-ensemble-presets-v1."
 }

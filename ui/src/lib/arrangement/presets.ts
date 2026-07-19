@@ -150,3 +150,25 @@ export function missingArrangementCapabilities(
 ): ArrangementCapability[] {
 	return preset.requirements.filter((capability) => !available.has(capability));
 }
+
+export function validateArrangementConfig(config: ArrangementConfig): string[] {
+	const errors: string[] = [];
+	if (config.harmony.voiceCount < 1 || config.harmony.voiceCount > 8) {
+		errors.push('voiceCount must be between 1 and 8');
+	}
+	if (
+		config.harmony.voicePosition < 0 ||
+		config.harmony.voicePosition >= config.harmony.voiceCount
+	) {
+		errors.push('voicePosition must address an active voice');
+	}
+	if (config.companion.canon.voices.length > 8) {
+		errors.push('Canon supports at most 8 voices');
+	}
+	for (const [role, value] of Object.entries(config.mix)) {
+		if (!Number.isFinite(value) || value < 0 || value > 1) {
+			errors.push(`${role} mix must be between 0 and 1`);
+		}
+	}
+	return errors;
+}

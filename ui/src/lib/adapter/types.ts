@@ -129,6 +129,8 @@ export interface SynthState {
 	cutoffHz: number;
 	resonance: number;
 	masterGain: number;
+	/** Native performance-mixer base gains: input, harmony, canon, counterpoint. */
+	mixGains?: number[];
 }
 
 /** Snapshot of built-in reverb parameters. */
@@ -243,6 +245,8 @@ export interface AdapterCapabilities {
 	/** Whether plugin mode exposes a host-side MIDI output mode selector
 	 *  (Full Contrapunk vs pass-through-only). False outside plugin mode. */
 	pluginMidiOutputMode: boolean;
+	/** Whether per-role Input/Harmony/Canon/Counterpoint synth gains are real. */
+	roleMix: boolean;
 	/** Whether the surface supports loading + saving the per-string
 	 *  calibration profile to disk and applying it to the live guitar
 	 *  pipeline. Tauri only for v1 — uses `app_data_dir()`. WASM /
@@ -596,6 +600,7 @@ export interface ContrapunkAdapter {
 	setSynthCutoffHz(hz: number): Promise<void>;
 	setSynthResonance(value: number): Promise<void>;
 	setSynthMasterGain(value: number): Promise<void>;
+	setSynthMixGain(group: number, value: number): Promise<void>;
 
 	// -- Built-in FX (reverb) --
 

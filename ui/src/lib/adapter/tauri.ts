@@ -117,6 +117,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		perVoicePortRouting: true,
 		// Plugin-only host MIDI mode selector.
 		pluginMidiOutputMode: false,
+		roleMix: true,
 		// Calibration profile persists to app_data_dir() and applies on
 		// next routing start via GuitarBridge -> GuitarInput.
 		calibrationFlow: true
@@ -825,7 +826,8 @@ export class TauriAdapter implements ContrapunkAdapter {
 			releaseMs: raw.release_ms as number,
 			cutoffHz: raw.cutoff_hz as number,
 			resonance: raw.resonance as number,
-			masterGain: raw.master_gain as number
+			masterGain: raw.master_gain as number,
+			mixGains: Array.isArray(raw.mix_gains) ? (raw.mix_gains as number[]) : undefined
 		};
 	}
 
@@ -855,6 +857,9 @@ export class TauriAdapter implements ContrapunkAdapter {
 	}
 	async setSynthMasterGain(value: number): Promise<void> {
 		await invoke('set_synth_master_gain', { value });
+	}
+	async setSynthMixGain(group: number, value: number): Promise<void> {
+		await invoke('set_synth_mix_gain', { group, value });
 	}
 
 	// -- Built-in FX (reverb) --

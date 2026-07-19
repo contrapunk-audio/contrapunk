@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { engine } from '$lib/stores/engine.svelte';
+	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
 	import { adapter } from '$lib/adapter';
 	import PixelSelect from './PixelSelect.svelte';
@@ -646,29 +647,10 @@
 		drag = null;
 	}
 
-	// --- CounterpointLane local state. Synced from the backend on
-	// mount; mutations are pushed via adapter.counterpointSetConfig.
-	let cp = $state({
-		enabled: false,
-		species: 'Species1',
-		transpose_degrees: 2,
-		prefer_above: true
-	});
-
+	// CounterpointLane state is shared with arrangement snapshots and
+	// preset application instead of living only inside this component.
 	$effect(() => {
-		(async () => {
-			try {
-				const s = await adapter.counterpointState();
-				if (s) {
-					cp.enabled = s.enabled;
-					cp.species = s.species;
-					cp.transpose_degrees = s.transpose_degrees;
-					cp.prefer_above = s.prefer_above;
-				}
-			} catch {
-				/* adapter not implemented (browser without backend) */
-			}
-		})();
+		void arrangement.syncFromBackend();
 	});
 
 	// --- Live-binding: when a Voice Library preset is edited in the
@@ -1236,7 +1218,7 @@
 		<!-- Species Counterpoint uses the same focused group editor. -->
 		<div
 			class="lane-card counterpoint-lane-card"
-			class:lane-active={cp.enabled}
+			class:lane-active={arrangement.counterpoint.enabled}
 			title="Counterpoint Lane — a dedicated species-counterpoint voice running alongside the canon. Subdivides time per Fux species: Species 2 = 2 notes per cantus, Species 3 = 4 notes, Species 4 = syncopated entry. Picks pitches via the same CounterpointState rules (no parallel 5ths/8ves, stepwise preferred)."
 		>
 			<div class="lane-header">
@@ -1269,17 +1251,17 @@
 					</label>
 					<button
 						class="pixel-btn"
-						class:toggle-on={cp.enabled}
+						class:toggle-on={arrangement.counterpoint.enabled}
 						onclick={async () => {
-							cp.enabled = !cp.enabled;
-							if (cp.enabled && !engine.companionEnabled) await engine.setCompanionEnabled(true);
-							await adapter.counterpointSetConfig({ enabled: cp.enabled });
+							const enabled = !arrangement.counterpoint.enabled;
+							if (enabled && !engine.companionEnabled) await engine.setCompanionEnabled(true);
+							await arrangement.setCounterpoint({ enabled });
 						}}
-						title={cp.enabled
+						title={arrangement.counterpoint.enabled
 							? 'Counterpoint Lane is ON — emits a subdivided counterpoint line.'
 							: 'Counterpoint Lane is OFF. Click to enable.'}
 					>
-						{cp.enabled ? 'ON' : 'OFF'}
+						{arrangement.counterpoint.enabled ? 'ON' : 'OFF'}
 					</button>
 				</span>
 			</div>
@@ -1293,8 +1275,8 @@
 					<div class="species-connector font-ui" aria-hidden="true">AGAINST ›</div>
 					<div class="species-node">
 						<div class="map-node-head font-ui"><strong>SPECIES LINE</strong><span>LIME · CH 7</span></div>
-						<div class="map-node-main font-code">{cp.species} · {cp.prefer_above ? 'above' : 'below'}</div>
-						<div class="map-node-meta font-code">{cp.transpose_degrees > 0 ? '+' : ''}{cp.transpose_degrees}° · independent movement</div>
+						<div class="map-node-main font-code">{arrangement.counterpoint.species} · {arrangement.counterpoint.preferAbove ? 'above' : 'below'}</div>
+						<div class="map-node-meta font-code">{arrangement.counterpoint.transposeDegrees > 0 ? '+' : ''}{arrangement.counterpoint.transposeDegrees}° · independent movement</div>
 					</div>
 				</div>
 				<div class="cp-control-grid">
@@ -1307,12 +1289,9 @@
 							{ value: 'Species3', label: 'Species 3 (4:1 four notes per cantus)' },
 							{ value: 'Species4', label: 'Species 4 (syncopated, suspensions)' }
 						]}
-						value={cp.species}
+						value={arrangement.counterpoint.species}
 						small={true}
-						onchange={(v) => {
-							cp.species = v;
-							adapter.counterpointSetConfig({ species: v });
-						}}
+						onchange={(species) => arrangement.setCounterpoint({ species: species as typeof arrangement.counterpoint.species })}
 					/>
 				</label>
 
@@ -1323,19 +1302,16 @@
 							{ value: 'above', label: 'Above the player' },
 							{ value: 'below', label: 'Below the player' }
 						]}
-						value={cp.prefer_above ? 'above' : 'below'}
+						value={arrangement.counterpoint.preferAbove ? 'above' : 'below'}
 						small={true}
-						onchange={(v) => {
-							cp.prefer_above = v === 'above';
-							adapter.counterpointSetConfig({ prefer_above: cp.prefer_above });
-						}}
+						onchange={(value) => arrangement.setCounterpoint({ preferAbove: value === 'above' })}
 					/>
 				</label>
 
 				<div class="cp-row cp-knob-row">
 					<span class="param-label font-ui">Interval</span>
 					<Knob
-						value={cp.transpose_degrees}
+						value={arrangement.counterpoint.transposeDegrees}
 						min={-7}
 						max={7}
 						step={1}
@@ -1345,10 +1321,7 @@
 						accent="var(--color-accent-magenta, #ff33aa)"
 						size={48}
 						format={(v) => (v === 0 ? 'unison' : `${v > 0 ? '+' : ''}${v}°`)}
-						onchange={(v) => {
-							cp.transpose_degrees = Math.round(v);
-							adapter.counterpointSetConfig({ transpose_degrees: cp.transpose_degrees });
-						}}
+						onchange={(value) => arrangement.setCounterpoint({ transposeDegrees: Math.round(value) })}
 					/>
 				</div>
 				</div>

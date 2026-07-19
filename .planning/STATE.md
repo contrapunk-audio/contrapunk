@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: planning
-stopped_at: Phase 10.2 Wave 1 lifecycle and ArrangementPresetV2 contract verified; centralized snapshot is next.
-last_updated: "2026-07-19T11:55:00Z"
-last_activity: 2026-07-19 — Added the typed arrangement-only V2 contract and capability vocabulary after lifecycle checks passed.
+stopped_at: Phase 10.2 Wave 1 centralized snapshot/apply verified; V2 persistence migration is next.
+last_updated: "2026-07-19T12:05:00Z"
+last_activity: 2026-07-19 — Centralized dedicated Counterpoint and role mix state; arrangement snapshots now validate, Panic, apply, and roll back.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 1 — safety and ArrangementPresetV2 foundation
-Status: Executing; lifecycle and V2 contract slices verified, centralized snapshot next
-Last activity: 2026-07-19 — ArrangementPresetV2 now types musical metadata, performance guidance, research status, requirements, harmony, Companion, and base role mix while excluding the preserved performance environment.
+Status: Executing; lifecycle, V2 contract, and centralized snapshot/apply verified
+Last activity: 2026-07-19 — ArrangementStore now owns snapshot/apply, dedicated Counterpoint state, role mix, and surface-honest baseline capabilities.
 
 ### Phase 10.2 Start — 2026-07-19
 

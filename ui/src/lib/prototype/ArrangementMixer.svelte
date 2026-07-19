@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { platformName } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
+	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import type { VoiceOutputTarget } from '$lib/adapter';
@@ -18,10 +18,8 @@
 		color: string;
 	};
 
-	let levels = $state([1, 1, 1, 1]);
 	let muted = $state([false, false, false, false]);
 	let solo = $state<number | null>(null);
-	let loaded = $state(false);
 
 	function routeName(target: VoiceOutputTarget | undefined): string {
 		if (!target || target.kind === 'synth') return 'Synth';
@@ -87,13 +85,11 @@
 	function appliedLevel(group: number): number {
 		if (muted[group]) return 0;
 		if (solo !== null && solo !== group) return 0;
-		return levels[group];
+		return arrangement.mixLevels[group] ?? 1;
 	}
 
 	async function pushLevel(group: number) {
-		if (platformName !== 'tauri') return;
-		const { invoke } = await import('@tauri-apps/api/core');
-		await invoke('set_synth_mix_gain', { group, value: appliedLevel(group) });
+		await arrangement.pushMixLevel(group, appliedLevel(group));
 	}
 
 	async function pushAll() {
@@ -101,8 +97,7 @@
 	}
 
 	async function setLevel(group: number, value: number) {
-		levels[group] = value;
-		levels = [...levels];
+		arrangement.setMixLevel(group, value);
 		await pushLevel(group);
 	}
 
@@ -118,20 +113,7 @@
 	}
 
 	onMount(() => {
-		void (async () => {
-			if (platformName === 'tauri') {
-				try {
-					const { invoke } = await import('@tauri-apps/api/core');
-					const state = (await invoke('get_synth_state')) as { mix_gains?: number[] };
-					if (Array.isArray(state.mix_gains) && state.mix_gains.length === 4) {
-						levels = state.mix_gains.map((value) => Math.max(0, Math.min(1, value)));
-					}
-				} catch {
-					// The static browser preview keeps local fader state only.
-				}
-			}
-			loaded = true;
-		})();
+		void arrangement.syncFromBackend();
 	});
 </script>
 
@@ -202,11 +184,11 @@
 				min="0"
 				max="1"
 				step="0.01"
-				value={levels[role.group]}
-				disabled={!loaded}
+				value={arrangement.mixLevels[role.group]}
+				disabled={!arrangement.mixLoaded}
 				oninput={(event) => setLevel(role.group, Number(event.currentTarget.value))}
 			/>
-			<output>{Math.round(levels[role.group] * 100)}</output>
+			<output>{Math.round((arrangement.mixLevels[role.group] ?? 1) * 100)}</output>
 		</label>
 	</div>
 	<div class="mix-buttons">

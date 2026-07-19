@@ -141,6 +141,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		perVoicePortRouting: false,
 		// Plugin-only host MIDI mode selector.
 		pluginMidiOutputMode: false,
+		// Browser synth does not yet expose per-role gain buses.
+		roleMix: false,
 		// No persistence layer for the calibration profile on web yet
 		// — hide the Calibrate button + status badge.
 		calibrationFlow: false
@@ -1558,6 +1560,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 			/* embedAudio may not be ready before init */
 		}
 	}
+	async setSynthMixGain(_group: number, _value: number): Promise<void> {}
 
 	// -- FX (browser uses WebAudio chain in embedAudio) --
 
