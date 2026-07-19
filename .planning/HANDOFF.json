@@ -1,228 +1,249 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-18T17:49:50.850Z",
+  "timestamp": "2026-07-19T08:06:59.197Z",
   "context": "phase",
-  "phase": "21",
-  "phase_name": "Elixir Milestone (v1.5 / elixir-v0.1.0)",
-  "phase_dir": ".planning/phases/21-elixir-milestone",
-  "plan": "21.B5",
-  "task": "manual-qa-standalone-and-integrated-synth",
-  "total_tasks": 24,
+  "phase": "post-10.1",
+  "phase_name": "Release validation and next-generation native UI prototype",
+  "phase_dir": ".planning/phases/10.1-guitar-reliability",
+  "plan": 1,
+  "task": 3,
+  "total_tasks": 4,
   "status": "paused",
   "completed_tasks": [
     {
-      "id": "A6",
-      "name": "Spectral oscillator + FX completion",
+      "id": 1,
+      "name": "Freeze Phase 10.1 guitar corpus acceptance",
       "status": "done",
-      "commit": "d030825e",
-      "progress": "A6.1-A6.8 complete: spectral morphs, phase distortion, unison, A6 FX family, filter models, hot-path coeff prep, UI exposure, approximation docs."
+      "commit": "e7f51264",
+      "progress": "Development 107/108 and sealed holdout 30/30 under the frozen 40 ms profile; deterministic cleanup, blind QA, and corpus provenance complete."
     },
     {
-      "id": "A-Cut.1",
-      "name": "Feature-gated Tauri Elixir synth cutover",
+      "id": 2,
+      "name": "Validate faster development-only attack candidate",
       "status": "done",
-      "commit": "eaffc09e",
-      "progress": "Tauri audio chain selects ElixirSynthBlock behind src-tauri elixir-synth feature."
+      "progress": "The uncommitted 10 ms attack candidate passed the full 108-file development gate: 108/108 exact, zero retriggers, clean deterministic releases, p50 16.0 ms and p95 26.7 ms. The sealed holdout was not rerun."
     },
     {
-      "id": "A-Cut.2",
-      "name": "Existing SynthEvent and SynthParams bridge",
-      "status": "done",
-      "commit": "f8375b35",
-      "progress": "ElixirSynthBlock drains router SynthEvent receiver and maps existing built-in synth params to Elixir."
-    },
-    {
-      "id": "B3",
-      "name": "elixir-plugin nih-plug skeleton",
-      "status": "done",
-      "commit": "193040f2",
-      "progress": "CLAP/VST3 instrument crate added with MIDI input, mono/stereo audio output, Elixir Engine rendering, and Gain param."
-    },
-    {
-      "id": "B4.1",
-      "name": "Core DAW automation params",
-      "status": "done",
-      "commit": "8c9b2bb6",
-      "progress": "Plugin exposes gain, amp ADSR, oscillator morph/phase/unison, and filter params."
-    },
-    {
-      "id": "B4.2",
-      "name": "FX DAW automation params",
-      "status": "done",
-      "commit": "0679c36a",
-      "progress": "Plugin exposes Drive/Delay/Reverb/FDN/Chorus/Flanger/Phaser/Compressor automation; FX allocated once, bypass via mix=0."
-    },
-    {
-      "id": "B5.1",
-      "name": "Preset schema and Vital importer",
-      "status": "done",
-      "commit": "8f4bf7a1",
-      "progress": "elixir-preset crate parses .vital JSON and .vitalbank ZIPs, preserves raw settings, tracks .vitaltable paths."
-    },
-    {
-      "id": "B5.2",
-      "name": "Standalone Vital import UI",
-      "status": "done",
-      "commit": "6aa08cab",
-      "progress": "Standalone PRESETS / VITAL IMPORT card scans ~/Downloads, imports loose .vital + .vitalbank, lists presets, applies mapped subset."
-    },
-    {
-      "id": "SKILLS",
-      "name": "Reusable patterns codified",
-      "status": "done",
-      "commit": "f5c9cd3d,193040f2,8f4bf7a1",
-      "progress": "Added skills for audio-chain cutover, nih-plug skeleton, and Vital preset import."
+      "id": 3,
+      "name": "Make guitar routing and UI truthful, then verify real hardware",
+      "status": "in_progress",
+      "progress": "Implemented start-boundary device/config sync, 1-based channel display, restart on live device/channel changes, stale-state reset, schema-v3 DSP defaults, fixed 21 ms analysis presentation, separate PITCH and MIDI OUT status, legible platform typography, simplified guitar controls, and debug NoteOn/NoteOff logs. Optimized Tauri started on Audient iD14 channel 2 and reported no build failure, but no played-note log sequence was captured before pause, so sustain/latency hardware acceptance remains open."
     }
   ],
   "remaining_tasks": [
     {
-      "id": "QA-standalone",
-      "name": "Manual standalone test",
+      "id": 3,
+      "name": "Finish optimized real-guitar and focused-diff validation",
+      "status": "in_progress",
+      "details": "Test short notes, 3-5 second sustains, repeated plucks, bends and slides in optimized Tauri; inspect [guitar-midi], [guitar_bridge], and CC123 logs; then independently review and commit only the focused guitar/UI slice."
+    },
+    {
+      "id": 4,
+      "name": "Build a separate functional native prototype covering the entire app",
       "status": "not_started",
-      "details": "Run elixir-standalone, test MIDI/audio, A6 controls, FX controls, Vital scan/apply from ~/Downloads."
+      "details": "Do not replace or restyle the current production UI. Build a separate native, functioning prototype for all Contrapunk features. Preserve the approved density and monochrome direction; use color only when it represents live or generated sound. Retain the piano roll and add a continuous guitar expression dot/trail that can be compared with emitted MIDI."
     },
     {
-      "id": "QA-integrated-synth",
-      "name": "Manual integrated Tauri synth test",
+      "id": "release",
+      "name": "Complete release-surface acceptance and v1.3.0 packaging",
       "status": "not_started",
-      "details": "Run Tauri with --features elixir-synth, confirm built-in synth path uses Elixir and existing UI controls still affect sound."
-    },
-    {
-      "id": "B5.3",
-      "name": "Plugin preset state serialization/loading",
-      "status": "not_started"
-    },
-    {
-      "id": "B7",
-      "name": "Wavetable editor and full Vital wavetable/spectral parity",
-      "status": "not_started"
-    },
-    {
-      "id": "B8",
-      "name": "Headless renderer",
-      "status": "not_started"
-    },
-    {
-      "id": "B9",
-      "name": "Public elixir-v0.1.0 release/signing",
-      "status": "not_started"
-    },
-    {
-      "id": "C0-C4",
-      "name": "Multi-plugin hosting tracks",
-      "status": "not_started"
+      "details": "Standalone/browser/Logic/REAPER, sample-rate, block-size, device-loss, routing documentation, installers, signing, notarization and release validation remain."
     }
   ],
   "blockers": [
     {
-      "description": "Standalone and integrated Tauri Elixir synth have not been manually audio-tested after recent implementation commits.",
+      "description": "The working tree mixes focused guitar/UI work with extensive older Ensemble, plugin, AU, Elixir, Golem, generated WASM, and documentation changes.",
+      "type": "technical",
+      "workaround": "Never stage broadly. Inspect git diff --cached and stage only explicit files or hunks. Do not stage .pi-subagents/. Prefer a separate isolated prototype surface rather than editing the production UI."
+    },
+    {
+      "description": "Real-hardware sustain and latency acceptance was not completed in the optimized build.",
       "type": "human_action",
-      "workaround": "Resume by doing manual QA before adding more feature surface."
+      "workaround": "Resume cargo tauri dev --release, select Audient iD14/Input 2, and capture the exact debug event sequence while the user plays."
     },
     {
-      "description": "Vital import is intentionally subset-only; full .vitaltable wavetable and FFT/IFFT spectral parity is not implemented.",
-      "type": "technical",
-      "workaround": "Raw Vital settings and wavetable paths are preserved for B7."
+      "description": "External MIDI output most recently reported Output router ready with 0 connection(s).",
+      "type": "human_action",
+      "workaround": "Run a session with an actual output connection before claiming external MIDI routing acceptance."
     },
     {
-      "description": "Plugin preset save/load/state serialization is not yet wired to elixir-preset.",
+      "description": "The 10 ms attack candidate has development evidence only.",
       "type": "technical",
-      "workaround": "B5.3 should map ElixirParams <-> ElixirPreset and persist through nih-plug state."
+      "workaround": "Do not run the sealed holdout until all candidate code and hardware behavior are frozen and the user explicitly authorizes the one final run."
+    },
+    {
+      "description": "Long sustain, broad hardware generalization, and polyphonic guitar are not covered by the current isolated 250 ms corpus.",
+      "type": "external",
+      "workaround": "Record longer leakage-safe raw-DI sessions with expressive techniques; use hexaphonic/per-string capture where possible for polyphonic ground truth."
     }
   ],
   "human_actions_pending": [
     {
-      "action": "Manually test elixir-standalone",
-      "context": "Need to verify sound, A6 controls, FX, and Vital import/apply from ~/Downloads work in a real UI/audio session.",
+      "action": "Play real guitar through Audient iD14 Input 2 in an optimized Tauri build",
+      "context": "Verify true latency, long sustain, repeated plucks, bends/slides, PITCH versus MIDI OUT, and absence of queue-overflow CC123 cleanup.",
       "blocking": true
     },
     {
-      "action": "Manually test Tauri integrated Elixir synth",
-      "context": "Need to verify `cd src-tauri && cargo tauri dev --features elixir-synth` or equivalent produces audio through the built-in synth path and UI params still work.",
-      "blocking": true
-    },
-    {
-      "action": "Reserve bundle IDs com.contrapunk.elixir.standalone and com.contrapunk.elixir.plugin",
-      "context": "Required before B9 signing/notarization.",
+      "action": "Review the complete native prototype information architecture after resume",
+      "context": "The monochrome density is approved, but the next prototype must cover every app feature rather than only Guitar Input and must remain separate from the production UI.",
       "blocking": false
+    },
+    {
+      "action": "Authorize the final sealed-holdout run only after candidate freeze",
+      "context": "The 10 ms candidate must not consume more holdout feedback during tuning.",
+      "blocking": true
+    },
+    {
+      "action": "Perform standalone, browser, Logic, REAPER, installer and Gatekeeper checks",
+      "context": "Final release acceptance remains user-operated.",
+      "blocking": true
     }
   ],
   "decisions": [
     {
-      "decision": "Defer contrapunk-fx extraction",
-      "rationale": "Elixir FX stay self-contained through A-Cut/B4; shared low-level primitives live in contrapunk-dsp.",
-      "phase": "21"
+      "decision": "Build the new UI as a separate functional native prototype, not as changes to the current product UI.",
+      "rationale": "The user wants freedom to redesign every app feature without destabilizing the current release candidate.",
+      "phase": "post-10.1"
     },
     {
-      "decision": "A6 spectral morphs are scalar approximations until B7",
-      "rationale": "Full FFT/IFFT wavetable infrastructure belongs with the B7 wavetable editor; A6 remains allocation-free and honest in docs.",
-      "phase": "21"
+      "decision": "The prototype uses monochrome structure and typography; color appears only when it encodes live or generated sound.",
+      "rationale": "The user approved the density and monochrome direction and rejected unnecessary decorative color or information.",
+      "phase": "post-10.1"
     },
     {
-      "decision": "Vital import preserves raw settings and maps only a conservative subset now",
-      "rationale": "Lets users pull in real Downloads assets immediately while keeping full sonic parity queued for B7.",
-      "phase": "21"
+      "decision": "The full-app prototype retains the piano roll and adds a continuous Guitar expression trace alongside discrete emitted MIDI.",
+      "rationale": "Pitch position can show bends/slides/vibrato, amplitude can affect point size/brightness, and detector clarity can affect opacity while MIDI remains auditable.",
+      "phase": "post-10.1"
     },
     {
-      "decision": "Plugin FX bypass uses mix=0 instead of replacing FxSlot",
-      "rationale": "Preserves delay/reverb/modulation state and avoids process-time allocation.",
-      "phase": "21"
+      "decision": "Use optimized Rust for guitar performance testing.",
+      "rationale": "Debug DSP overflowed the bounded worker queue and produced misleading forced cleanup and CC123 behavior.",
+      "phase": "post-10.1"
     },
     {
-      "decision": "Create skills for reusable patterns",
-      "rationale": "User explicitly wants skills whenever patterns emerge; added audio-chain cutover, nih-plug skeleton, and Vital import skills.",
-      "phase": "21"
+      "decision": "Keep the analysis window fixed at 1,024 samples (about 21 ms at 48 kHz) and treat 10 ms as the current attack-confirmation candidate.",
+      "rationale": "A 5 ms window lacks enough waveform periods for reliable low-guitar fundamentals; the 10 ms confirmation candidate passed development at p95 26.7 ms.",
+      "phase": "post-10.1"
+    },
+    {
+      "decision": "Keep the sealed holdout untouched until final freeze.",
+      "rationale": "Development and hardware evidence must drive tuning without leaking holdout feedback.",
+      "phase": "post-10.1"
     }
   ],
-  "background_processes": [],
+  "background_processes": [
+    {
+      "name": "contrapunk-tauri-release-test",
+      "status": "stopped_on_pause",
+      "details": "cargo tauri dev --release was terminated after 14m41s. It built successfully, opened the Audient iD14 on backend channel=1 (UI Input 2), and had not captured played [guitar-midi] events before pause."
+    }
+  ],
   "validation": [
     {
-      "command": "cargo test -p elixir-core --lib",
+      "command": "cargo test -p contrapunk-audio --test guitar_corpus_acceptance development_corpus_gate -- --nocapture",
       "status": "passed",
-      "details": "85 passed after A6."
+      "details": "108/108 exact and eventual, zero misses/retriggers/octave errors, 108/108 clean deterministic releases, p50 16.0 ms, p95 26.7 ms, 0.034x realtime."
     },
     {
-      "command": "cargo check -p contrapunk --features elixir-synth",
+      "command": "cargo test -p contrapunk-audio --lib",
       "status": "passed",
-      "details": "A-Cut feature-on root build clean (pre-existing warnings only)."
+      "details": "226 tests passed, including sustained_beating_note_does_not_retrigger."
     },
     {
-      "command": "cargo check -p contrapunk-tauri --features elixir-synth",
-      "status": "passed",
-      "details": "Tauri feature-on build clean (pre-existing warnings only)."
+      "command": "npm --prefix ui run check",
+      "status": "passed_with_warnings",
+      "details": "0 errors and 29 pre-existing warnings. The removed GuitarInputPanel selectors no longer appear in the current check."
     },
     {
-      "command": "cargo test -p contrapunk --features elixir-synth chain::elixir_block --lib",
-      "status": "passed",
-      "details": "7 passed."
-    },
-    {
-      "command": "cargo check -p elixir-plugin",
-      "status": "passed",
-      "details": "B4 plugin params/FX automation compile."
-    },
-    {
-      "command": "cargo test -p elixir-preset",
-      "status": "passed",
-      "details": "3 passed; Downloads test ignored by default."
-    },
-    {
-      "command": "cargo test -p elixir-preset --test downloads_vital -- --ignored",
-      "status": "passed",
-      "details": "Validated current ~/Downloads Vital assets: 6 loose .vital files + Vital Account.vitalbank (75 presets, 21 vitaltables)."
-    },
-    {
-      "command": "cargo check -p elixir-standalone",
-      "status": "passed",
-      "details": "Standalone Vital import UI compiles."
+      "command": "git diff --check -- <focused guitar/UI files>",
+      "status": "passed"
     }
   ],
   "uncommitted_files": [
-    "M .planning/STATE.md (timestamp-only auto-update; not part of work)"
+    "[artifact-do-not-stage] ?? .pi-subagents/",
+    "[focused-guitar] M crates/contrapunk-audio/src/guitar_input.rs",
+    "[focused-guitar] M src-tauri/src/commands/guitar.rs",
+    "[focused-guitar] M src-tauri/src/guitar_bridge.rs",
+    "[focused-ui] M ui/src/app.css",
+    "[focused-ui/mixed] M ui/src/lib/adapter/tauri.ts",
+    "[focused-ui] M ui/src/lib/components/GuitarInputPanel.svelte",
+    "[focused-ui/mixed] M ui/src/lib/components/InputPanel.svelte",
+    "[focused-ui] M ui/src/lib/components/OutputPanel.svelte",
+    "[focused-ui] M ui/src/lib/components/SignalGraphs.svelte",
+    "[focused-ui/mixed] M ui/src/lib/components/ChainPanel.svelte",
+    "[focused-ui] M ui/src/lib/stores/guitar.svelte.ts",
+    "[focused-ui] M ui/src/lib/theme/tokens.css",
+    "[ensemble/plugin] M crates/contrapunk-companion/src/canon_lane.rs",
+    "[ensemble/plugin] M crates/contrapunk-companion/src/counterpoint_lane.rs",
+    "[ensemble/plugin] M crates/contrapunk-companion/src/lane.rs",
+    "[ensemble/plugin] M crates/contrapunk-companion/src/orchestrator.rs",
+    "[ensemble/plugin] M crates/contrapunk-harmony/src/engine.rs",
+    "[ensemble/plugin] M plugin/Cargo.toml",
+    "[ensemble/plugin] M plugin/src/editor.rs",
+    "[ensemble/plugin] M plugin/src/lib.rs",
+    "[ensemble/plugin] M src-tauri/src/commands/engine.rs",
+    "[ensemble/plugin] M src-tauri/src/main.rs",
+    "[ensemble/plugin] M ui/src/lib/adapter/plugin.ts",
+    "[ensemble/plugin] M ui/src/lib/adapter/types.ts",
+    "[ensemble/plugin] M ui/src/lib/adapter/wasm.ts",
+    "[ensemble/plugin] M ui/src/lib/components/ActiveNotes.svelte",
+    "[ensemble/plugin] M ui/src/lib/components/CompanionPanel.svelte",
+    "[ensemble/plugin] M ui/src/lib/components/Fretboard.svelte",
+    "[ensemble/plugin] M ui/src/lib/components/HistoryStrip.svelte",
+    "[ensemble/plugin] M ui/src/lib/components/Knob.svelte",
+    "[ensemble/plugin] M ui/src/lib/components/PixelSelect.svelte",
+    "[ensemble/plugin] M ui/src/lib/components/VoiceGenerationChain.svelte",
+    "[ensemble/plugin] M ui/src/lib/embed/Fretboard.svelte",
+    "[ensemble/plugin] M ui/src/lib/stores/engine.svelte.ts",
+    "[ensemble/plugin] M ui/src/lib/stores/ui.svelte.ts",
+    "[ensemble/plugin] M ui/src/routes/+page.svelte",
+    "[ensemble/plugin] M wasm/src/companion.rs",
+    "[ensemble/plugin] ?? ui/src/lib/components/EnsemblePresetBar.svelte",
+    "[ensemble/plugin] ?? ui/src/lib/components/LiveLines.svelte",
+    "[ensemble/plugin] ?? ui/src/lib/components/PluginWorkspace.svelte",
+    "[AU/release] M au-wrapper/CMakeLists.txt",
+    "[AU/release] ?? au-wrapper/patches/disable-auv2-input-midi-echo.patch",
+    "[generated-do-not-stage-broadly] M ui/src/lib/wasm-pkg/contrapunk_wasm.d.ts",
+    "[generated-do-not-stage-broadly] M ui/src/lib/wasm-pkg/contrapunk_wasm.js",
+    "[generated-do-not-stage-broadly] M ui/src/lib/wasm-pkg/contrapunk_wasm_bg.wasm",
+    "[generated-do-not-stage-broadly] M ui/src/lib/wasm-pkg/contrapunk_wasm_bg.wasm.d.ts",
+    "[unrelated-elixir] M Cargo.lock",
+    "[unrelated-elixir] M crates/elixir-core/src/fx/delay.rs",
+    "[unrelated-elixir] M crates/elixir-core/src/fx/mod.rs",
+    "[unrelated-elixir] M crates/elixir-core/src/fx/reverb.rs",
+    "[unrelated-elixir] M crates/elixir-core/src/lib.rs",
+    "[unrelated-elixir] M crates/elixir-core/src/osc.rs",
+    "[unrelated-elixir] M crates/elixir-preset/src/lib.rs",
+    "[unrelated-elixir] M crates/elixir-standalone/src/ui.rs",
+    "[unrelated-elixir] M src/chain/elixir_block.rs",
+    "[unrelated-golem] M apps/golem/src-tauri/src/main.rs",
+    "[unrelated-golem] M apps/golem/src-tauri/tauri.conf.json",
+    "[unrelated-golem] M apps/golem/src/App.svelte",
+    "[unrelated-golem] M apps/golem/src/Knob.svelte",
+    "[unrelated-golem] M apps/golem/vite.config.ts",
+    "[unrelated-golem] M crates/golem-core/src/engine.rs",
+    "[unrelated-golem] M crates/golem-core/src/follow.rs",
+    "[unrelated-golem] M crates/golem-core/src/lib.rs",
+    "[unrelated-golem] ?? apps/golem/src-tauri/Info.plist",
+    "[unrelated-golem] ?? apps/golem/src-tauri/entitlements.plist",
+    "[unrelated-golem] ?? crates/golem-core/src/dynamics.rs",
+    "[unrelated-docs] ?? docs/CONTRAPUNK_STATE_ROADMAP.md",
+    "[unrelated-docs] ?? progress.md",
+    "[unrelated-docs] ?? recon/architecture.md",
+    "[unrelated-docs] ?? recon/diagram-snippets.md",
+    "[unrelated-docs] ?? recon/engineering-roadmap-synthesis.md",
+    "[unrelated-docs] ?? recon/github-issues.md",
+    "[unrelated-docs] ?? recon/marketing-content-pillars.md",
+    "[unrelated-docs] ?? recon/planning-roadmap.md"
   ],
   "placeholder_summary_findings": [
-    "Historical placeholder/TBD hits exist in older phase docs; no current Phase 21 placeholder summary blocker found."
+    "Historical placeholder/TBD hits exist in older phase documents, but no placeholder was found in the current Phase 10.1 plan, summary, context, or research files."
   ],
-  "next_action": "Start with manual QA: (1) run `cargo run -p elixir-standalone`, test audio/MIDI, A6 controls, FX, and Scan ~/Downloads for Vital + Apply selected; (2) run the Tauri app with `cd src-tauri && cargo tauri dev --features elixir-synth` (or cargo check/build if GUI launch is unavailable), verify built-in synth audio is Elixir and existing synth controls still affect sound.",
-  "context_notes": "Implementation has moved quickly and is committed through B5.2. Before adding B5.3/B7 work, user specifically wants to come back and test standalone plus integrated synth. Treat manual QA as the first resume task. Vital import is available but subset-only; do not claim full Vital parity until B7 wavetable infrastructure lands. Working tree should be clean except possible .planning/STATE.md timestamp churn."
+  "prototype_artifact": {
+    "path": "/tmp/contrapunk-clean-guitar-design.html",
+    "status": "approved_direction_only",
+    "details": "Opened in Arc as a separate static concept. The user approved its density and monochrome direction, then clarified that the functioning native prototype must cover every app feature, not only guitar. No continuous-trail production wiring was retained."
+  },
+  "next_action": "Resume by treating the new UI as a separate full-app native prototype. First inventory every production feature/capability and agree on the prototype's top-level navigation and isolation boundary; do not edit or replace the current production UI. Then implement the smallest native shell that reuses existing backend/adapter behavior. Preserve monochrome idle structure, show color only for sound, retain the piano roll, and include the continuous guitar-expression-versus-MIDI visualization. Keep the 10 ms guitar candidate and focused UI/runtime diff uncommitted until optimized hardware verification and focused review are complete.",
+  "context_notes": "The user likes the clean native-system typography, information density, and monochrome direction of the HTML concept. They explicitly want a real functioning native prototype for all Contrapunk features, developed separately from the current UI. The temporary concept is useful as a visual seed but is guitar-only and not implementation architecture. The optimized Tauri test process was stopped for pause. Elixir/Golem remain excluded from the v1.3.0 release and from this prototype unless explicitly re-scoped. User performs GUI/manual testing; launch apps only on explicit request."
 }
