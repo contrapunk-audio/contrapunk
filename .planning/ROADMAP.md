@@ -34,7 +34,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 7: Performance Mode** - Auto-detect chords/key/BPM from backing track + beat-aware accompaniment generation from accumulated playing
 - [ ] **Phase 8: Mic Input** - Audio capture with pitch detection for audio-to-MIDI conversion and raw audio passthrough
 - [ ] **Phase 9: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
-- [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection (95% complete on guitar-input-clean branch)
+- [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection (runtime exists; broad original claims remain unverified)
+- [x] **Phase 10.1: Guitar Reliability** - Automated corpus, lifecycle, realtime-safety, and truthful-calibration gates complete; manual release-surface smoke remains (INSERTED)
 - [ ] **Phase 6.12: DMG Distribution** - Ship Contrapunk as a signed macOS DMG with app icon, codesigning, and notarization (INSERTED)
 - ~~**Phase 11: Trackpad Beat Input**~~ - DROPPED
 - [ ] **Phase 16: VST3/CLAP/AU Plugin** - nih-plug plugin with webview GUI, AU wrapper via clap-wrapper (GitHub #15)
@@ -495,6 +496,23 @@ Plans:
 
 Plans:
 - [ ] TBD (run /gsd:plan-phase 10 to break down)
+
+### Phase 10.1: Guitar Reliability (INSERTED)
+**Goal**: Make clean, monophonic, standard-tuned six-string guitar input measurable, reliable, deterministic, and real-time safe without claiming unsupported polyphony or instrument coverage.
+**Depends on**: Phase 10 (Guitar Input), Phase 16 (plugin worker architecture provides the real-time pattern)
+**Requirements**: GTR-REL-01 through GTR-REL-06
+**Success Criteria** (what must be TRUE):
+  1. A permanent evaluator runs the shipping `GuitarInput` against all 138 checked-in labeled WAV files with a fixed development/holdout split and reports accuracy, octave errors, retriggers, NoteOff cleanup, latency, determinism, and processing speed.
+  2. The automated corpus gate requires >=95% exact first-note accuracy, <5% files with false retriggers, 100% matching NoteOff cleanup, deterministic repeated output, no crashes/stuck notes, faster-than-real-time processing, and first-correct onset-relative p95 <=120 ms. These claims apply only to this corpus.
+  3. First-note pitch selection, legato history ordering, vibrato hop timing, duplicate/stale bends, and structural live reconfiguration are correct and regression-tested.
+  4. Attack consensus, harmonic rejection, octave correction, sustained-note retrigger suppression, and low-string handling meet the gate on both development and untouched holdout partitions.
+  5. Tauri's cpal callback only deinterleaves into a bounded lock-free queue; a worker owns and runs `GuitarInput`, sends MIDI/signal updates, handles overflow safely, and shuts down cleanly.
+  6. Calibration has one truthful persisted model and the UI says **Tune Guitar** unless/until it measures and applies a real DSP calibration.
+**Product boundary**: Clean monophonic single notes, standard tuning, six-string guitar. Chords, double-stops, alternate tunings, bass, extended range, and broad microphone support are deferred.
+**Plans**: 1 plan
+
+Plans:
+- [x] 10.1-01-PLAN.md — Evaluator, locked gates, corrected corpus, lifecycle fixes, Tauri worker, and truthful Tune Guitar terminology complete; manual release smoke remains
 
 ### Phase 14: openDAW Device Integration
 

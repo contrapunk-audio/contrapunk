@@ -55,13 +55,22 @@
 - [x] **HUM-05**: Internal beat clock with adjustable BPM and time signature, tracking beat position
 - [x] **HUM-06**: Optional audible metronome click on dedicated MIDI channel (GM percussion)
 
+## v1.3 Guitar Reliability Requirements
+
+- [x] **GTR-REL-01**: Shipping guitar DSP has a deterministic evaluator over all 138 labeled corpus recordings with a fixed holdout subset and per-string/fret reports.
+- [x] **GTR-REL-02**: Corpus gate enforces >=95% exact first-note accuracy, <5% false retriggers, 100% matching NoteOff cleanup, deterministic output, no crashes/stuck notes, and faster-than-real-time processing.
+- [x] **GTR-REL-03**: First-note octave selection, legato history, vibrato timing, pitch-bend output, and structural config replacement are correct and regression-tested.
+- [x] **GTR-REL-04**: Detector and frozen corpus meet every locked gate on development and the single explicitly run sealed holdout, including first-correct p95 58.7 ms.
+- [x] **GTR-REL-05**: Tauri guitar capture uses a bounded lock-free sample queue and worker-owned `GuitarInput`; the cpal callback does not allocate, block, or run DSP.
+- [x] **GTR-REL-06**: Calibration is unified and described truthfully as **Tune Guitar** until a persisted profile changes the DSP measurements it claims to calibrate.
+
 ## v2 Requirements
 
 ### Extended Features
 
 - **EXT-01**: MIDI file input for offline processing
 - **EXT-02**: Preset save/load for configurations
-- **EXT-03**: Audio-to-MIDI conversion (pitch detection)
+- **EXT-03**: Broad/polyphonic audio-to-MIDI beyond the v1.3 clean-monophonic guitar boundary
 - **EXT-04**: Algorithmic melody generation
 
 ## Elixir Milestone (v1.5 + elixir-v0.1.0)
@@ -116,7 +125,7 @@
 
 | Feature | Reason |
 |---------|--------|
-| Audio-to-MIDI conversion | Reduces complexity, removes heavy dependencies |
+| Polyphonic/broad audio-to-MIDI | Requires a different detector and representative multi-instrument corpus |
 | Algorithmic melody generation | Scope reduction for v1, focus on live performance |
 | TUI/curses interface | Replaced by native GUI |
 | Tkinter GUI | Legacy Python UI not being ported |
@@ -155,6 +164,12 @@
 | HUM-04 | Phase 6 | Complete |
 | HUM-05 | Phase 6 | Complete |
 | HUM-06 | Phase 6 | Complete |
+| GTR-REL-01 | Phase 10.1 | Complete |
+| GTR-REL-02 | Phase 10.1 | Complete |
+| GTR-REL-03 | Phase 10.1 | Complete |
+| GTR-REL-04 | Phase 10.1 | Complete |
+| GTR-REL-05 | Phase 10.1 | Complete |
+| GTR-REL-06 | Phase 10.1 | Complete |
 | REQ-elixir-a0-workspace-bootstrap | Phase 21.A0 | Not started |
 | REQ-elixir-a1-bare-oscillator | Phase 21.A1 | Not started |
 | REQ-elixir-a2-polyphony-voice-management | Phase 21.A2 | Not started |
@@ -186,12 +201,12 @@
 | REQ-elixir-bundle-ids-reserved | Phase 21.A0 | Not started |
 
 **Coverage:**
-- v1 requirements: 28 total
-- Mapped to phases: 28
+- v1 requirements: 34 total
+- Mapped to phases: 34
 - Elixir milestone requirements: 24 total
 - Elixir mapped to phases: 24
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-28*
-*Last updated: 2026-05-18 — Ingested 24 Elixir milestone requirements (Tracks A/B/C + cross-cutting) via `/gsd-ingest-docs`. Queued behind v1.3.0 tag.*
+*Last updated: 2026-07-19 — Phase 10.1 automated acceptance completed; development and the single frozen holdout run pass every locked gate.*

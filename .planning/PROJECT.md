@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A native Rust application for real-time MIDI harmony generation. Takes live MIDI input, applies one of 7 harmony algorithms, and outputs harmonized notes to multiple MIDI ports simultaneously. Built with egui/eframe for a responsive native GUI. Replaces the Python implementation for better performance and single-binary distribution.
+A Rust application for real-time MIDI harmony generation across native CLI, Tauri desktop, browser/WASM, and DAW plugin surfaces. It accepts live MIDI or clean monophonic guitar audio, generates harmonies and counterpoint, and routes MIDI and optional built-in synthesis.
 
 ## Core Value
 
@@ -32,10 +32,12 @@ Real-time harmony generation with minimal latency — when you play a note, the 
 - [ ] User can change key and mode during playback without stopping
 - [ ] GUI displays active notes and current configuration
 - [ ] Application compiles to single binary with no runtime dependencies
+- [ ] Clean, monophonic, standard-tuned guitar input produces reliable MIDI notes
+- [ ] Guitar processing is deterministic, benchmarked against the checked-in corpus, and real-time safe
 
 ### Out of Scope
 
-- Audio-to-MIDI conversion — removed to reduce complexity and dependencies
+- Polyphonic guitar, chords, double-stops, alternate tunings, bass, extended-range instruments, and broad microphone support
 - Algorithmic melody generation — focus is live performance, not composition
 - TUI/curses interface — replaced by native GUI
 - Tkinter GUI — legacy Python UI not being ported
@@ -58,7 +60,8 @@ Real-time harmony generation with minimal latency — when you play a note, the 
 - **Language**: Rust — performance and single binary distribution
 - **GUI**: egui/eframe — immediate mode, good for real-time apps, cross-platform
 - **MIDI**: midir crate — cross-platform MIDI I/O, well-maintained
-- **No audio dependencies**: Removing librosa/sounddevice/numpy eliminates heavy dependencies
+- **Guitar claim boundary**: Clean monophonic single-note input on standard-tuned six-string guitar only until broader evidence exists
+- **Real-time safety**: Audio callbacks must not allocate, block, or run the heap-oriented guitar detector
 - **Single binary**: Must compile to standalone executable with no runtime requirements
 
 ## Key Decisions
@@ -67,7 +70,7 @@ Real-time harmony generation with minimal latency — when you play a note, the 
 |----------|-----------|---------|
 | Port to Rust instead of optimizing Python | Performance + distribution (no Python runtime needed) | — Pending |
 | Use egui/eframe for GUI | Immediate mode suits real-time display, simple API, cross-platform | — Pending |
-| Drop audio-to-MIDI feature | Reduces complexity, removes heavy dependencies, focus on core value | — Pending |
+| Restore limited guitar-to-MIDI | Existing product surfaces and the repaired 138-file corpus justify a measurable clean-monophonic target | Phase 10.1 automated gates complete; manual release smoke pending |
 | Drop algorithmic generation | Scope reduction for v1, can add later if needed | — Pending |
 
 ### Elixir Milestone Decisions

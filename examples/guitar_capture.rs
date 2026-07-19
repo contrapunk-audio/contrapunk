@@ -1186,6 +1186,22 @@ fn review_dataset(dataset: &TrainingDataset, sample_rate: usize) {
 
 // ── Audio Processing (FIX #1: VecDeque + FIX #3: onset-forward) ─────
 
+fn append_capture_frame(
+    capture_buffer: &mut Vec<f32>,
+    frame: &[f32],
+    capture_target: usize,
+    started_capture: bool,
+) -> Option<Vec<f32>> {
+    if started_capture {
+        capture_buffer.clear();
+        capture_buffer.extend_from_slice(frame);
+    } else if capture_buffer.len() < capture_target {
+        capture_buffer.extend_from_slice(frame);
+    }
+
+    (capture_buffer.len() >= capture_target).then(|| capture_buffer[..capture_target].to_vec())
+}
+
 fn audio_process(
     data: &[f32],
     channels: usize,
@@ -1220,28 +1236,27 @@ fn audio_process(
         let mut s = state.lock().unwrap();
 
         // FIX #3: Onset-forward capture
-        // If onset is armed and we detect an RMS spike, start recording
-        if s.onset_armed && !s.capturing && rms > s.prev_rms * 3.0 && rms > 0.015 {
+        // If onset is armed and we detect an RMS spike, start recording.
+        // Track this callback explicitly so the triggering frame is appended once,
+        // not duplicated at the head of every captured training sample.
+        let started_capture =
+            s.onset_armed && !s.capturing && rms > s.prev_rms * 3.0 && rms > 0.015;
+        if started_capture {
             s.onset_armed = false;
             s.capturing = true;
-            s.capture_buffer.clear();
-            // Include this frame as the start of the capture
-            s.capture_buffer.extend_from_slice(&frame);
         }
 
-        // If actively capturing, append audio
+        // If actively capturing, append this block exactly once.
         if s.capturing {
-            if s.capture_buffer.len() < s.capture_target {
-                // Only extend if we didn't already add this frame as onset
-                if s.capture_buffer.len() >= BUFFER_SIZE || s.capture_buffer.is_empty() {
-                    s.capture_buffer.extend_from_slice(&frame);
-                }
-            }
-
-            // Check if capture is complete
-            if s.capture_buffer.len() >= s.capture_target {
+            let capture_target = s.capture_target;
+            if let Some(completed) = append_capture_frame(
+                &mut s.capture_buffer,
+                &frame,
+                capture_target,
+                started_capture,
+            ) {
                 s.capturing = false;
-                s.completed_capture = Some(s.capture_buffer[..s.capture_target].to_vec());
+                s.completed_capture = Some(completed);
                 s.capture_buffer.clear();
             }
         }
@@ -1323,4 +1338,24 @@ fn chrono_now() -> String {
             .unwrap_or_default()
             .as_secs()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capture_triggering_frame_is_appended_once() {
+        let first = vec![1.0; BUFFER_SIZE];
+        let second = vec![2.0; BUFFER_SIZE];
+        let mut buffer = Vec::new();
+        let target = BUFFER_SIZE * 2;
+
+        assert!(append_capture_frame(&mut buffer, &first, target, true).is_none());
+        assert_eq!(buffer.len(), BUFFER_SIZE);
+
+        let completed = append_capture_frame(&mut buffer, &second, target, false).unwrap();
+        assert_eq!(&completed[..BUFFER_SIZE], first.as_slice());
+        assert_eq!(&completed[BUFFER_SIZE..], second.as_slice());
+    }
 }

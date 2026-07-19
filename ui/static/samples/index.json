@@ -4,7 +4,7 @@
     "string_idx": 0,
     "fret": 0,
     "midi_note": 40,
-    "rms": 0.617466,
+    "rms": 0.344157,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -14,7 +14,7 @@
     "string_idx": 0,
     "fret": 1,
     "midi_note": 41,
-    "rms": 0.699077,
+    "rms": 0.408867,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -24,7 +24,7 @@
     "string_idx": 0,
     "fret": 2,
     "midi_note": 42,
-    "rms": 0.580374,
+    "rms": 0.379525,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -34,7 +34,7 @@
     "string_idx": 0,
     "fret": 3,
     "midi_note": 43,
-    "rms": 0.58342,
+    "rms": 0.380295,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -44,7 +44,7 @@
     "string_idx": 0,
     "fret": 4,
     "midi_note": 44,
-    "rms": 0.628133,
+    "rms": 0.398673,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -54,7 +54,7 @@
     "string_idx": 0,
     "fret": 5,
     "midi_note": 45,
-    "rms": 0.600772,
+    "rms": 0.385384,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -64,7 +64,7 @@
     "string_idx": 0,
     "fret": 6,
     "midi_note": 46,
-    "rms": 0.636367,
+    "rms": 0.394998,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -74,7 +74,7 @@
     "string_idx": 0,
     "fret": 7,
     "midi_note": 47,
-    "rms": 0.51518,
+    "rms": 0.408252,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -84,7 +84,7 @@
     "string_idx": 0,
     "fret": 8,
     "midi_note": 48,
-    "rms": 0.633968,
+    "rms": 0.421078,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -94,7 +94,7 @@
     "string_idx": 0,
     "fret": 9,
     "midi_note": 49,
-    "rms": 0.642705,
+    "rms": 0.404576,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -104,7 +104,7 @@
     "string_idx": 0,
     "fret": 10,
     "midi_note": 50,
-    "rms": 0.663216,
+    "rms": 0.434327,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -114,7 +114,7 @@
     "string_idx": 0,
     "fret": 11,
     "midi_note": 51,
-    "rms": 0.673234,
+    "rms": 0.328009,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -124,7 +124,7 @@
     "string_idx": 0,
     "fret": 12,
     "midi_note": 52,
-    "rms": 0.744356,
+    "rms": 0.442791,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -134,7 +134,7 @@
     "string_idx": 0,
     "fret": 13,
     "midi_note": 53,
-    "rms": 0.777055,
+    "rms": 0.457632,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -144,7 +144,7 @@
     "string_idx": 0,
     "fret": 14,
     "midi_note": 54,
-    "rms": 0.723366,
+    "rms": 0.472849,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -154,7 +154,7 @@
     "string_idx": 0,
     "fret": 15,
     "midi_note": 55,
-    "rms": 0.633717,
+    "rms": 0.46557,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -164,7 +164,7 @@
     "string_idx": 0,
     "fret": 16,
     "midi_note": 56,
-    "rms": 0.672299,
+    "rms": 0.473394,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -174,7 +174,7 @@
     "string_idx": 0,
     "fret": 17,
     "midi_note": 57,
-    "rms": 0.720805,
+    "rms": 0.484377,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -184,7 +184,7 @@
     "string_idx": 0,
     "fret": 18,
     "midi_note": 58,
-    "rms": 0.737734,
+    "rms": 0.446538,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -194,7 +194,7 @@
     "string_idx": 0,
     "fret": 19,
     "midi_note": 59,
-    "rms": 0.35674,
+    "rms": 0.472169,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -204,7 +204,7 @@
     "string_idx": 0,
     "fret": 20,
     "midi_note": 60,
-    "rms": 0.697685,
+    "rms": 0.458356,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -214,7 +214,7 @@
     "string_idx": 0,
     "fret": 21,
     "midi_note": 61,
-    "rms": 0.569036,
+    "rms": 0.470935,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -224,7 +224,7 @@
     "string_idx": 0,
     "fret": 22,
     "midi_note": 62,
-    "rms": 0.394382,
+    "rms": 0.482096,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -234,7 +234,7 @@
     "string_idx": 1,
     "fret": 0,
     "midi_note": 45,
-    "rms": 0.672571,
+    "rms": 0.376101,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -244,7 +244,7 @@
     "string_idx": 1,
     "fret": 1,
     "midi_note": 46,
-    "rms": 0.532786,
+    "rms": 0.32825,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -254,7 +254,7 @@
     "string_idx": 1,
     "fret": 2,
     "midi_note": 47,
-    "rms": 0.56613,
+    "rms": 0.355315,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -264,7 +264,7 @@
     "string_idx": 1,
     "fret": 3,
     "midi_note": 48,
-    "rms": 0.619863,
+    "rms": 0.355332,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -274,7 +274,7 @@
     "string_idx": 1,
     "fret": 4,
     "midi_note": 49,
-    "rms": 0.669958,
+    "rms": 0.380464,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -284,7 +284,7 @@
     "string_idx": 1,
     "fret": 5,
     "midi_note": 50,
-    "rms": 0.601591,
+    "rms": 0.373867,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -294,7 +294,7 @@
     "string_idx": 1,
     "fret": 6,
     "midi_note": 51,
-    "rms": 0.650287,
+    "rms": 0.396918,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -304,7 +304,7 @@
     "string_idx": 1,
     "fret": 7,
     "midi_note": 52,
-    "rms": 0.689282,
+    "rms": 0.413574,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -314,7 +314,7 @@
     "string_idx": 1,
     "fret": 8,
     "midi_note": 53,
-    "rms": 0.612142,
+    "rms": 0.41107,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -324,7 +324,7 @@
     "string_idx": 1,
     "fret": 9,
     "midi_note": 54,
-    "rms": 0.612194,
+    "rms": 0.429142,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -334,7 +334,7 @@
     "string_idx": 1,
     "fret": 10,
     "midi_note": 55,
-    "rms": 0.597647,
+    "rms": 0.384313,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -344,7 +344,7 @@
     "string_idx": 1,
     "fret": 11,
     "midi_note": 56,
-    "rms": 0.715599,
+    "rms": 0.418853,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -354,7 +354,7 @@
     "string_idx": 1,
     "fret": 12,
     "midi_note": 57,
-    "rms": 0.677995,
+    "rms": 0.422596,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -364,7 +364,7 @@
     "string_idx": 1,
     "fret": 13,
     "midi_note": 58,
-    "rms": 0.689982,
+    "rms": 0.425379,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -374,7 +374,7 @@
     "string_idx": 1,
     "fret": 14,
     "midi_note": 59,
-    "rms": 0.730391,
+    "rms": 0.427306,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -384,7 +384,7 @@
     "string_idx": 1,
     "fret": 15,
     "midi_note": 60,
-    "rms": 0.38591,
+    "rms": 0.470707,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -394,7 +394,7 @@
     "string_idx": 1,
     "fret": 16,
     "midi_note": 61,
-    "rms": 0.733198,
+    "rms": 0.473386,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -404,7 +404,7 @@
     "string_idx": 1,
     "fret": 17,
     "midi_note": 62,
-    "rms": 0.514639,
+    "rms": 0.469961,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -414,7 +414,7 @@
     "string_idx": 1,
     "fret": 18,
     "midi_note": 63,
-    "rms": 0.423758,
+    "rms": 0.465572,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -424,7 +424,7 @@
     "string_idx": 1,
     "fret": 19,
     "midi_note": 64,
-    "rms": 0.77751,
+    "rms": 0.46413,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -434,7 +434,7 @@
     "string_idx": 1,
     "fret": 20,
     "midi_note": 65,
-    "rms": 0.725539,
+    "rms": 0.468627,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -444,7 +444,7 @@
     "string_idx": 1,
     "fret": 21,
     "midi_note": 66,
-    "rms": 0.674444,
+    "rms": 0.458303,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -454,7 +454,7 @@
     "string_idx": 1,
     "fret": 22,
     "midi_note": 67,
-    "rms": 0.739568,
+    "rms": 0.476004,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -464,7 +464,7 @@
     "string_idx": 2,
     "fret": 0,
     "midi_note": 50,
-    "rms": 0.439552,
+    "rms": 0.27503,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -474,7 +474,7 @@
     "string_idx": 2,
     "fret": 1,
     "midi_note": 51,
-    "rms": 0.503878,
+    "rms": 0.277188,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -484,7 +484,7 @@
     "string_idx": 2,
     "fret": 2,
     "midi_note": 52,
-    "rms": 0.502856,
+    "rms": 0.313961,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -494,7 +494,7 @@
     "string_idx": 2,
     "fret": 3,
     "midi_note": 53,
-    "rms": 0.234158,
+    "rms": 0.300483,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -504,7 +504,7 @@
     "string_idx": 2,
     "fret": 4,
     "midi_note": 54,
-    "rms": 0.506515,
+    "rms": 0.314187,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -514,7 +514,7 @@
     "string_idx": 2,
     "fret": 5,
     "midi_note": 55,
-    "rms": 0.506992,
+    "rms": 0.328736,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -524,7 +524,7 @@
     "string_idx": 2,
     "fret": 6,
     "midi_note": 56,
-    "rms": 0.529553,
+    "rms": 0.350686,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -534,7 +534,7 @@
     "string_idx": 2,
     "fret": 7,
     "midi_note": 57,
-    "rms": 0.628962,
+    "rms": 0.352619,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -544,7 +544,7 @@
     "string_idx": 2,
     "fret": 8,
     "midi_note": 58,
-    "rms": 0.563523,
+    "rms": 0.324362,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -554,7 +554,7 @@
     "string_idx": 2,
     "fret": 9,
     "midi_note": 59,
-    "rms": 0.633683,
+    "rms": 0.358513,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -564,7 +564,7 @@
     "string_idx": 2,
     "fret": 10,
     "midi_note": 60,
-    "rms": 0.598813,
+    "rms": 0.374344,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -574,7 +574,7 @@
     "string_idx": 2,
     "fret": 11,
     "midi_note": 61,
-    "rms": 0.619272,
+    "rms": 0.372125,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -584,7 +584,7 @@
     "string_idx": 2,
     "fret": 12,
     "midi_note": 62,
-    "rms": 0.620573,
+    "rms": 0.387456,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -594,7 +594,7 @@
     "string_idx": 2,
     "fret": 13,
     "midi_note": 63,
-    "rms": 0.328193,
+    "rms": 0.413323,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -604,7 +604,7 @@
     "string_idx": 2,
     "fret": 14,
     "midi_note": 64,
-    "rms": 0.627685,
+    "rms": 0.379498,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -614,7 +614,7 @@
     "string_idx": 2,
     "fret": 15,
     "midi_note": 65,
-    "rms": 0.697449,
+    "rms": 0.442627,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -624,7 +624,7 @@
     "string_idx": 2,
     "fret": 16,
     "midi_note": 66,
-    "rms": 0.651164,
+    "rms": 0.414575,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -634,7 +634,7 @@
     "string_idx": 2,
     "fret": 17,
     "midi_note": 67,
-    "rms": 0.730583,
+    "rms": 0.467237,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -644,7 +644,7 @@
     "string_idx": 2,
     "fret": 18,
     "midi_note": 68,
-    "rms": 0.788194,
+    "rms": 0.483414,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -654,7 +654,7 @@
     "string_idx": 2,
     "fret": 19,
     "midi_note": 69,
-    "rms": 0.771527,
+    "rms": 0.470068,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -664,7 +664,7 @@
     "string_idx": 2,
     "fret": 20,
     "midi_note": 70,
-    "rms": 0.783929,
+    "rms": 0.476911,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -674,7 +674,7 @@
     "string_idx": 2,
     "fret": 21,
     "midi_note": 71,
-    "rms": 0.754716,
+    "rms": 0.448184,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -684,7 +684,7 @@
     "string_idx": 2,
     "fret": 22,
     "midi_note": 72,
-    "rms": 0.700829,
+    "rms": 0.466769,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -694,7 +694,7 @@
     "string_idx": 3,
     "fret": 0,
     "midi_note": 55,
-    "rms": 0.599297,
+    "rms": 0.324278,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -704,7 +704,7 @@
     "string_idx": 3,
     "fret": 1,
     "midi_note": 56,
-    "rms": 0.589521,
+    "rms": 0.350692,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -714,7 +714,7 @@
     "string_idx": 3,
     "fret": 2,
     "midi_note": 57,
-    "rms": 0.553167,
+    "rms": 0.343546,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -724,7 +724,7 @@
     "string_idx": 3,
     "fret": 3,
     "midi_note": 58,
-    "rms": 0.611251,
+    "rms": 0.349717,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -734,7 +734,7 @@
     "string_idx": 3,
     "fret": 4,
     "midi_note": 59,
-    "rms": 0.607325,
+    "rms": 0.362425,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -744,7 +744,7 @@
     "string_idx": 3,
     "fret": 5,
     "midi_note": 60,
-    "rms": 0.612036,
+    "rms": 0.373872,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -754,7 +754,7 @@
     "string_idx": 3,
     "fret": 6,
     "midi_note": 61,
-    "rms": 0.635875,
+    "rms": 0.381983,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -764,7 +764,7 @@
     "string_idx": 3,
     "fret": 7,
     "midi_note": 62,
-    "rms": 0.60491,
+    "rms": 0.370624,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -774,7 +774,7 @@
     "string_idx": 3,
     "fret": 8,
     "midi_note": 63,
-    "rms": 0.617755,
+    "rms": 0.382891,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -784,7 +784,7 @@
     "string_idx": 3,
     "fret": 9,
     "midi_note": 64,
-    "rms": 0.620949,
+    "rms": 0.38872,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -794,7 +794,7 @@
     "string_idx": 3,
     "fret": 10,
     "midi_note": 65,
-    "rms": 0.665478,
+    "rms": 0.410639,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -804,7 +804,7 @@
     "string_idx": 3,
     "fret": 11,
     "midi_note": 66,
-    "rms": 0.477253,
+    "rms": 0.397583,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -814,7 +814,7 @@
     "string_idx": 3,
     "fret": 12,
     "midi_note": 67,
-    "rms": 0.68185,
+    "rms": 0.400177,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -824,7 +824,7 @@
     "string_idx": 3,
     "fret": 13,
     "midi_note": 68,
-    "rms": 0.670392,
+    "rms": 0.433845,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -834,7 +834,7 @@
     "string_idx": 3,
     "fret": 14,
     "midi_note": 69,
-    "rms": 0.686301,
+    "rms": 0.44079,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -844,7 +844,7 @@
     "string_idx": 3,
     "fret": 15,
     "midi_note": 70,
-    "rms": 0.732987,
+    "rms": 0.454024,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -854,7 +854,7 @@
     "string_idx": 3,
     "fret": 16,
     "midi_note": 71,
-    "rms": 0.581834,
+    "rms": 0.453393,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -864,7 +864,7 @@
     "string_idx": 3,
     "fret": 17,
     "midi_note": 72,
-    "rms": 0.685604,
+    "rms": 0.431424,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -874,7 +874,7 @@
     "string_idx": 3,
     "fret": 18,
     "midi_note": 73,
-    "rms": 0.75073,
+    "rms": 0.461235,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -884,7 +884,7 @@
     "string_idx": 3,
     "fret": 19,
     "midi_note": 74,
-    "rms": 0.707634,
+    "rms": 0.458016,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -894,7 +894,7 @@
     "string_idx": 3,
     "fret": 20,
     "midi_note": 75,
-    "rms": 0.566417,
+    "rms": 0.387651,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -904,7 +904,7 @@
     "string_idx": 3,
     "fret": 21,
     "midi_note": 76,
-    "rms": 0.697924,
+    "rms": 0.433176,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -914,7 +914,7 @@
     "string_idx": 3,
     "fret": 22,
     "midi_note": 77,
-    "rms": 0.711535,
+    "rms": 0.427307,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -924,7 +924,7 @@
     "string_idx": 4,
     "fret": 0,
     "midi_note": 59,
-    "rms": 0.540717,
+    "rms": 0.315725,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -934,7 +934,7 @@
     "string_idx": 4,
     "fret": 1,
     "midi_note": 60,
-    "rms": 0.587037,
+    "rms": 0.298961,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -944,7 +944,7 @@
     "string_idx": 4,
     "fret": 2,
     "midi_note": 61,
-    "rms": 0.322198,
+    "rms": 0.317002,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -954,7 +954,7 @@
     "string_idx": 4,
     "fret": 3,
     "midi_note": 62,
-    "rms": 0.240912,
+    "rms": 0.183364,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -964,7 +964,7 @@
     "string_idx": 4,
     "fret": 4,
     "midi_note": 63,
-    "rms": 0.515681,
+    "rms": 0.352095,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -974,7 +974,7 @@
     "string_idx": 4,
     "fret": 5,
     "midi_note": 64,
-    "rms": 0.525336,
+    "rms": 0.339854,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -984,7 +984,7 @@
     "string_idx": 4,
     "fret": 6,
     "midi_note": 65,
-    "rms": 0.546853,
+    "rms": 0.348304,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -994,7 +994,7 @@
     "string_idx": 4,
     "fret": 7,
     "midi_note": 66,
-    "rms": 0.494639,
+    "rms": 0.28424,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1004,7 +1004,7 @@
     "string_idx": 4,
     "fret": 8,
     "midi_note": 67,
-    "rms": 0.563865,
+    "rms": 0.364179,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1014,7 +1014,7 @@
     "string_idx": 4,
     "fret": 9,
     "midi_note": 68,
-    "rms": 0.541256,
+    "rms": 0.371197,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1024,7 +1024,7 @@
     "string_idx": 4,
     "fret": 10,
     "midi_note": 69,
-    "rms": 0.591381,
+    "rms": 0.39279,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1034,7 +1034,7 @@
     "string_idx": 4,
     "fret": 11,
     "midi_note": 70,
-    "rms": 0.601331,
+    "rms": 0.419463,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1044,7 +1044,7 @@
     "string_idx": 4,
     "fret": 12,
     "midi_note": 71,
-    "rms": 0.63891,
+    "rms": 0.425473,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1054,7 +1054,7 @@
     "string_idx": 4,
     "fret": 13,
     "midi_note": 72,
-    "rms": 0.637164,
+    "rms": 0.404209,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1064,7 +1064,7 @@
     "string_idx": 4,
     "fret": 14,
     "midi_note": 73,
-    "rms": 0.620298,
+    "rms": 0.42455,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1074,7 +1074,7 @@
     "string_idx": 4,
     "fret": 15,
     "midi_note": 74,
-    "rms": 0.276803,
+    "rms": 0.38149,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1084,7 +1084,7 @@
     "string_idx": 4,
     "fret": 16,
     "midi_note": 75,
-    "rms": 0.621835,
+    "rms": 0.413132,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1094,7 +1094,7 @@
     "string_idx": 4,
     "fret": 17,
     "midi_note": 76,
-    "rms": 0.154617,
+    "rms": 0.465261,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1104,7 +1104,7 @@
     "string_idx": 4,
     "fret": 18,
     "midi_note": 77,
-    "rms": 0.660902,
+    "rms": 0.463823,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1114,7 +1114,7 @@
     "string_idx": 4,
     "fret": 19,
     "midi_note": 78,
-    "rms": 0.632356,
+    "rms": 0.467421,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1124,7 +1124,7 @@
     "string_idx": 4,
     "fret": 20,
     "midi_note": 79,
-    "rms": 0.674809,
+    "rms": 0.44341,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1134,7 +1134,7 @@
     "string_idx": 4,
     "fret": 21,
     "midi_note": 80,
-    "rms": 0.589615,
+    "rms": 0.442493,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1144,7 +1144,7 @@
     "string_idx": 4,
     "fret": 22,
     "midi_note": 81,
-    "rms": 0.583628,
+    "rms": 0.397752,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1154,7 +1154,7 @@
     "string_idx": 5,
     "fret": 0,
     "midi_note": 64,
-    "rms": 0.232031,
+    "rms": 0.212511,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1164,7 +1164,7 @@
     "string_idx": 5,
     "fret": 1,
     "midi_note": 65,
-    "rms": 0.315289,
+    "rms": 0.220315,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1174,7 +1174,7 @@
     "string_idx": 5,
     "fret": 2,
     "midi_note": 66,
-    "rms": 0.280988,
+    "rms": 0.212721,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1184,7 +1184,7 @@
     "string_idx": 5,
     "fret": 3,
     "midi_note": 67,
-    "rms": 0.336183,
+    "rms": 0.25394,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1194,7 +1194,7 @@
     "string_idx": 5,
     "fret": 4,
     "midi_note": 68,
-    "rms": 0.282027,
+    "rms": 0.216375,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1204,7 +1204,7 @@
     "string_idx": 5,
     "fret": 5,
     "midi_note": 69,
-    "rms": 0.458135,
+    "rms": 0.230745,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1214,7 +1214,7 @@
     "string_idx": 5,
     "fret": 6,
     "midi_note": 70,
-    "rms": 0.313279,
+    "rms": 0.229431,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1224,7 +1224,7 @@
     "string_idx": 5,
     "fret": 7,
     "midi_note": 71,
-    "rms": 0.257749,
+    "rms": 0.22801,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1234,7 +1234,7 @@
     "string_idx": 5,
     "fret": 8,
     "midi_note": 72,
-    "rms": 0.267567,
+    "rms": 0.233444,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1244,7 +1244,7 @@
     "string_idx": 5,
     "fret": 9,
     "midi_note": 73,
-    "rms": 0.424759,
+    "rms": 0.221595,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1254,7 +1254,7 @@
     "string_idx": 5,
     "fret": 10,
     "midi_note": 74,
-    "rms": 0.393942,
+    "rms": 0.281491,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1264,7 +1264,7 @@
     "string_idx": 5,
     "fret": 11,
     "midi_note": 75,
-    "rms": 0.47122,
+    "rms": 0.302955,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1274,7 +1274,7 @@
     "string_idx": 5,
     "fret": 12,
     "midi_note": 76,
-    "rms": 0.272318,
+    "rms": 0.342102,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1284,7 +1284,7 @@
     "string_idx": 5,
     "fret": 13,
     "midi_note": 77,
-    "rms": 0.351629,
+    "rms": 0.331777,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1294,7 +1294,7 @@
     "string_idx": 5,
     "fret": 14,
     "midi_note": 78,
-    "rms": 0.518815,
+    "rms": 0.37142,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1304,7 +1304,7 @@
     "string_idx": 5,
     "fret": 15,
     "midi_note": 79,
-    "rms": 0.612381,
+    "rms": 0.377743,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1314,7 +1314,7 @@
     "string_idx": 5,
     "fret": 16,
     "midi_note": 80,
-    "rms": 0.56781,
+    "rms": 0.386207,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1324,7 +1324,7 @@
     "string_idx": 5,
     "fret": 17,
     "midi_note": 81,
-    "rms": 0.55085,
+    "rms": 0.391947,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1334,7 +1334,7 @@
     "string_idx": 5,
     "fret": 18,
     "midi_note": 82,
-    "rms": 0.507966,
+    "rms": 0.349087,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1344,7 +1344,7 @@
     "string_idx": 5,
     "fret": 19,
     "midi_note": 83,
-    "rms": 0.586501,
+    "rms": 0.367368,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1354,7 +1354,7 @@
     "string_idx": 5,
     "fret": 20,
     "midi_note": 84,
-    "rms": 0.631827,
+    "rms": 0.444585,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1364,7 +1364,7 @@
     "string_idx": 5,
     "fret": 21,
     "midi_note": 85,
-    "rms": 0.632043,
+    "rms": 0.392965,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1374,7 +1374,7 @@
     "string_idx": 5,
     "fret": 22,
     "midi_note": 86,
-    "rms": 0.614204,
+    "rms": 0.407579,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1384,7 +1384,7 @@
     "string_idx": 0,
     "fret": 0,
     "midi_note": 40,
-    "rms": 0.617466,
+    "rms": 0.344157,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1394,7 +1394,7 @@
     "string_idx": 0,
     "fret": 5,
     "midi_note": 45,
-    "rms": 0.600772,
+    "rms": 0.385384,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1404,7 +1404,7 @@
     "string_idx": 0,
     "fret": 12,
     "midi_note": 52,
-    "rms": 0.744356,
+    "rms": 0.442791,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1414,7 +1414,7 @@
     "string_idx": 1,
     "fret": 0,
     "midi_note": 45,
-    "rms": 0.672571,
+    "rms": 0.376101,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1424,7 +1424,7 @@
     "string_idx": 1,
     "fret": 5,
     "midi_note": 50,
-    "rms": 0.601591,
+    "rms": 0.373867,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1434,7 +1434,7 @@
     "string_idx": 1,
     "fret": 12,
     "midi_note": 57,
-    "rms": 0.677995,
+    "rms": 0.422596,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1444,7 +1444,7 @@
     "string_idx": 2,
     "fret": 0,
     "midi_note": 50,
-    "rms": 0.439552,
+    "rms": 0.27503,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1454,7 +1454,7 @@
     "string_idx": 2,
     "fret": 5,
     "midi_note": 55,
-    "rms": 0.506992,
+    "rms": 0.328736,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1464,7 +1464,7 @@
     "string_idx": 2,
     "fret": 12,
     "midi_note": 62,
-    "rms": 0.620573,
+    "rms": 0.387456,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1474,7 +1474,7 @@
     "string_idx": 3,
     "fret": 0,
     "midi_note": 55,
-    "rms": 0.599297,
+    "rms": 0.324278,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1484,7 +1484,7 @@
     "string_idx": 3,
     "fret": 5,
     "midi_note": 60,
-    "rms": 0.612036,
+    "rms": 0.373872,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1494,7 +1494,7 @@
     "string_idx": 3,
     "fret": 12,
     "midi_note": 67,
-    "rms": 0.68185,
+    "rms": 0.400177,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1504,7 +1504,7 @@
     "string_idx": 4,
     "fret": 0,
     "midi_note": 59,
-    "rms": 0.540717,
+    "rms": 0.315725,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1514,7 +1514,7 @@
     "string_idx": 4,
     "fret": 5,
     "midi_note": 64,
-    "rms": 0.525336,
+    "rms": 0.339854,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1524,7 +1524,7 @@
     "string_idx": 4,
     "fret": 12,
     "midi_note": 71,
-    "rms": 0.63891,
+    "rms": 0.425473,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1534,7 +1534,7 @@
     "string_idx": 5,
     "fret": 0,
     "midi_note": 64,
-    "rms": 0.232031,
+    "rms": 0.212511,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1544,7 +1544,7 @@
     "string_idx": 5,
     "fret": 5,
     "midi_note": 69,
-    "rms": 0.458135,
+    "rms": 0.230745,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1554,7 +1554,7 @@
     "string_idx": 5,
     "fret": 12,
     "midi_note": 76,
-    "rms": 0.272318,
+    "rms": 0.342102,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1564,7 +1564,7 @@
     "string_idx": 0,
     "fret": 5,
     "midi_note": 45,
-    "rms": 0.600772,
+    "rms": 0.385384,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1574,7 +1574,7 @@
     "string_idx": 1,
     "fret": 0,
     "midi_note": 45,
-    "rms": 0.672571,
+    "rms": 0.376101,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1584,7 +1584,7 @@
     "string_idx": 1,
     "fret": 5,
     "midi_note": 50,
-    "rms": 0.601591,
+    "rms": 0.373867,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 48000
@@ -1594,7 +1594,7 @@
     "string_idx": 2,
     "fret": 0,
     "midi_note": 50,
-    "rms": 0.439552,
+    "rms": 0.27503,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1604,7 +1604,7 @@
     "string_idx": 2,
     "fret": 5,
     "midi_note": 55,
-    "rms": 0.506992,
+    "rms": 0.328736,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1614,7 +1614,7 @@
     "string_idx": 3,
     "fret": 0,
     "midi_note": 55,
-    "rms": 0.599297,
+    "rms": 0.324278,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1624,7 +1624,7 @@
     "string_idx": 3,
     "fret": 4,
     "midi_note": 59,
-    "rms": 0.607325,
+    "rms": 0.362425,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1634,7 +1634,7 @@
     "string_idx": 4,
     "fret": 0,
     "midi_note": 59,
-    "rms": 0.540717,
+    "rms": 0.315725,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1644,7 +1644,7 @@
     "string_idx": 4,
     "fret": 5,
     "midi_note": 64,
-    "rms": 0.525336,
+    "rms": 0.339854,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100
@@ -1654,7 +1654,7 @@
     "string_idx": 5,
     "fret": 0,
     "midi_note": 64,
-    "rms": 0.232031,
+    "rms": 0.212511,
     "duration": 0.5,
     "sample_rate": 48000,
     "source_sample_rate": 44100

@@ -7,6 +7,7 @@ const STRING_BASE_MIDI: [u8; 6] = [40, 45, 50, 55, 59, 64];
 const CHUNK_SIZE: usize = 128;
 const RELEASE_TAIL_SECONDS: usize = 1;
 const HOLDOUT: &str = include_str!("guitar_corpus_holdout.txt");
+const ONSET_ANNOTATIONS: &str = include_str!("guitar_corpus_onsets.tsv");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Partition {
@@ -63,10 +64,13 @@ struct RecordingResult {
 }
 
 impl RecordingResult {
-    fn first_note_latency_ms(&self) -> Option<f64> {
-        self.note_ons.first().map(|(sample, _, _)| {
-            sample.saturating_sub(self.onset_sample) as f64 * 1_000.0 / self.sample_rate as f64
-        })
+    fn first_correct_note_latency_ms(&self) -> Option<f64> {
+        self.note_ons
+            .iter()
+            .find(|(_, _, note)| *note == self.expected)
+            .map(|(sample, _, _)| {
+                sample.saturating_sub(self.onset_sample) as f64 * 1_000.0 / self.sample_rate as f64
+            })
     }
 }
 
@@ -116,6 +120,21 @@ fn holdout_names() -> HashSet<&'static str> {
         .collect()
 }
 
+fn onset_annotations() -> HashMap<&'static str, usize> {
+    let annotations: HashMap<_, _> = ONSET_ANNOTATIONS
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            let (name, sample) = line
+                .split_once('\t')
+                .unwrap_or_else(|| panic!("invalid onset annotation: {line}"));
+            (name, sample.parse().unwrap())
+        })
+        .collect();
+    assert_eq!(annotations.len(), 138, "every corpus file needs one onset");
+    annotations
+}
+
 fn corpus_paths(partition: Partition) -> Vec<PathBuf> {
     let holdout = holdout_names();
     assert_eq!(
@@ -139,6 +158,12 @@ fn corpus_paths(partition: Partition) -> Vec<PathBuf> {
     assert!(
         holdout.iter().all(|name| corpus_names.contains(name)),
         "fixed holdout contains a file absent from the corpus"
+    );
+    let annotations = onset_annotations();
+    assert_eq!(
+        annotations.keys().copied().collect::<HashSet<_>>(),
+        corpus_names,
+        "onset annotations must match the frozen corpus exactly"
     );
 
     all.into_iter()
@@ -180,41 +205,15 @@ fn read_wav(path: &Path) -> (usize, Vec<f32>) {
     (spec.sample_rate as usize, samples)
 }
 
-/// Locate the recorded attack independently of the detector under test.
-///
-/// The corpus exporter may preserve a short pre-roll. We call the first
-/// 128-sample frame reaching 10% of the recording's peak frame RMS the audio
-/// onset, then report NoteOn time relative to that point rather than the WAV's
-/// first sample. The relative threshold is intentionally corpus-agnostic.
-fn audio_onset_sample(samples: &[f32]) -> usize {
-    let frame_rms: Vec<f32> = samples
-        .chunks(CHUNK_SIZE)
-        .map(|frame| {
-            (frame.iter().map(|sample| sample * sample).sum::<f32>() / frame.len() as f32).sqrt()
-        })
-        .collect();
-    let peak = frame_rms.iter().copied().fold(0.0_f32, f32::max);
-    let threshold = peak * 0.1;
-    frame_rms
-        .iter()
-        .position(|rms| *rms >= threshold)
-        .map(|frame| frame * CHUNK_SIZE)
-        .unwrap_or(0)
-}
-
 fn run_pipeline(sample_rate: usize, samples: &[f32]) -> PipelineRun {
+    // Canonical shipping behavior: expression, legato, slides, pressure,
+    // brightness, per-string channels, and the frozen attack minimum stay at
+    // their public defaults.
     let config = GuitarInputConfig {
         sample_rate,
         buffer_size: 1024,
         hop_size: 256,
         cooldown_samples: sample_rate / 10,
-        bends_enabled: false,
-        legato_enabled: false,
-        slides_enabled: false,
-        vibrato_detection: false,
-        pressure_enabled: false,
-        brightness_enabled: false,
-        per_string_channels: false,
         ..GuitarInputConfig::default()
     };
     let mut pipeline = GuitarInput::new(config);
@@ -296,6 +295,7 @@ fn clean_release(events: &[TimedEvent]) -> bool {
 }
 
 fn evaluate(partition: Partition) -> Vec<RecordingResult> {
+    let annotations = onset_annotations();
     corpus_paths(partition)
         .into_iter()
         .map(|path| {
@@ -303,7 +303,9 @@ fn evaluate(partition: Partition) -> Vec<RecordingResult> {
             let (string, fret) = parse_label(&path);
             let expected = STRING_BASE_MIDI[string] + fret as u8;
             let (sample_rate, samples) = read_wav(&path);
-            let onset_sample = audio_onset_sample(&samples);
+            let onset_sample = *annotations
+                .get(name.as_str())
+                .unwrap_or_else(|| panic!("missing onset annotation for {name}"));
             let run = run_pipeline(sample_rate, &samples);
             let repeat = run_pipeline(sample_rate, &samples);
             let note_ons: Vec<_> = run
@@ -355,8 +357,9 @@ fn print_summary(label: &str, rows: &[&RecordingResult]) {
     let ratio = summary.processing_time().as_secs_f64() / summary.audio_duration().as_secs_f64();
     let mut latencies: Vec<_> = rows
         .iter()
-        .filter_map(|recording| recording.first_note_latency_ms())
+        .filter_map(|recording| recording.first_correct_note_latency_ms())
         .collect();
+    let latency_misses = n - latencies.len();
     latencies.sort_by(f64::total_cmp);
     let percentile = |p: f64| -> f64 {
         if latencies.is_empty() {
@@ -366,12 +369,12 @@ fn print_summary(label: &str, rows: &[&RecordingResult]) {
     };
 
     println!(
-        "{label}: exact first {}/{} ({:.1}%), eventual {}/{} ({:.1}%), retrigger files {} ({:.1}%), octave errors {}, clean releases {}/{}, deterministic {}/{}, speed {:.3}x realtime, onset-relative NoteOn p50 {:.1}ms p95 {:.1}ms",
+        "{label}: exact first {}/{} ({:.1}%), eventual {}/{} ({:.1}%), retrigger files {} ({:.1}%), octave errors {}, clean releases {}/{}, deterministic {}/{}, speed {:.3}x realtime, first-correct onset latency p50 {:.1}ms p95 {:.1}ms, misses {}",
         summary.exact(), n, summary.exact() as f64 * 100.0 / n as f64,
         eventual, n, eventual as f64 * 100.0 / n as f64,
         summary.retriggers(), summary.retriggers() as f64 * 100.0 / n as f64,
         octave, summary.clean_releases(), n, summary.deterministic(), n, ratio,
-        percentile(0.50), percentile(0.95),
+        percentile(0.50), percentile(0.95), latency_misses,
     );
 }
 
@@ -441,6 +444,20 @@ fn print_report(partition: Partition, results: &[RecordingResult]) {
         );
     }
 
+    println!("\nLatency misses / over 120 ms:");
+    for result in results.iter().filter(|recording| {
+        recording
+            .first_correct_note_latency_ms()
+            .is_none_or(|latency| latency > 120.0)
+    }) {
+        println!(
+            "  {} expected {} latency {:?}",
+            result.name,
+            result.expected,
+            result.first_correct_note_latency_ms()
+        );
+    }
+
     println!("\nFirst-note failures:");
     for result in results.iter().filter(|r| !r.exact_first) {
         let detected = result.note_ons.first().map(|(_, _, note)| *note);
@@ -464,6 +481,17 @@ fn assert_partition(partition: Partition, results: &[RecordingResult]) {
     let n = results.len();
     let exact_rate = summary.exact() as f64 / n as f64;
     let retrigger_rate = summary.retriggers() as f64 / n as f64;
+    let mut latencies: Vec<_> = results
+        .iter()
+        .filter_map(RecordingResult::first_correct_note_latency_ms)
+        .collect();
+    latencies.sort_by(f64::total_cmp);
+    assert!(
+        !latencies.is_empty(),
+        "{} has no correct NoteOn",
+        partition.label()
+    );
+    let latency_p95 = latencies[((latencies.len() - 1) as f64 * 0.95).round() as usize];
     assert!(
         exact_rate >= 0.95,
         "{} exact first-note accuracy {:.1}% is below 95%",
@@ -493,6 +521,12 @@ fn assert_partition(partition: Partition, results: &[RecordingResult]) {
         "{} corpus processing is not faster than real time",
         partition.label()
     );
+    assert!(
+        latency_p95 <= 120.0,
+        "{} first-correct NoteOn p95 {:.1}ms exceeds 120ms",
+        partition.label(),
+        latency_p95
+    );
 }
 
 fn run_gate(partition: Partition) {
@@ -507,12 +541,13 @@ fn development_corpus_gate() {
 }
 
 #[test]
+#[ignore = "sealed holdout; run explicitly only after freezing a complete candidate"]
 fn sealed_holdout_corpus_gate() {
     run_gate(Partition::Holdout);
 }
 
 #[test]
-#[ignore = "report-only evaluator; the two partition gates run in normal CI"]
+#[ignore = "report-only evaluator; development runs in normal CI and holdout stays sealed"]
 fn full_corpus_report() {
     for partition in [Partition::Development, Partition::Holdout] {
         print_report(partition, &evaluate(partition));

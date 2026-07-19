@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.5
-milestone_name: / elixir-v0.1.0)
-status: executing
-stopped_at: Proceeding to complete Elixir implementation; first code target is Phase 21.A6 spectral/FX completion.
-last_updated: "2026-05-18T17:39:29.796Z"
-last_activity: 2026-05-18 — pi-gsd installed and project state reconciled. HANDOFF.json is treated as consumed after this update.
+milestone: v1.3.0
+milestone_name: Contrapunk release reliability
+status: phase_complete
+stopped_at: Phase 10.1 automated acceptance complete; manual guitar hardware and release-surface smoke testing remains.
+last_updated: "2026-07-19T07:00:00Z"
+last_activity: 2026-07-19 — Repaired and blind-audited the corpus; development and sealed holdout passed every locked gate with p95 58.7 ms.
 progress:
   total_phases: 54
-  completed_phases: 17
+  completed_phases: 18
   total_plans: 82
-  completed_plans: 65
+  completed_plans: 66
 ---
 
 # Project State
@@ -20,14 +20,46 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisions subsection)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Complete Elixir v1.5 / elixir-v0.1.0 — synth engine replacement + standalone product + plugin path.
-**Previous Contrapunk release state:** v1.3.0 work is effectively wrapped; user has chosen to continue Elixir implementation now.
+**Current focus:** User-operated hardware, DAW, installer, signing, and notarization validation for the v1.3.0 Contrapunk release.
+**Queued work:** Elixir remains preserved in the working tree and roadmap, but is not the active release milestone.
 
 ## Current Position
 
-Phase: 06.4 of 23 (modal harmony chord detection)
-Status: Executing Phase 06.4
-Last activity: 2026-05-18 — pi-gsd installed and project state reconciled. HANDOFF.json is treated as consumed after this update.
+Phase: Post-10.1 release validation
+Plan: Manual hardware/DAW/release acceptance
+Status: Phase 10.1 complete; release validation active
+Last activity: 2026-07-19 — Development and the single frozen holdout run passed all locked Phase 10.1 gates.
+
+### Phase 10.1 Start — 2026-07-11
+
+**Scope:** Clean, monophonic, standard-tuned six-string guitar only.
+
+**Execution order:**
+
+1. Permanent 138-file corpus evaluator with fixed holdout.
+2. Automated acceptance gates.
+3. Confirmed DSP correctness fixes.
+4. Isolated-note detector tuning against development, then holdout verification.
+5. Tauri callback → bounded queue → worker architecture.
+6. Truthful, unified calibration / Tune Guitar terminology.
+
+**Locked gates:** >=95% exact first-note accuracy, <5% false retriggers, 100% matching NoteOff cleanup, deterministic repeated output, no crashes/stuck notes, faster-than-real-time corpus processing, and first-correct onset-relative p95 <=120 ms.
+
+**Baseline from the pre-phase audit:** 16/138 exact first notes (11.6%), 32/138 eventual correct notes (23.2%), and 85.5% files with multiple NoteOns. The temporary evaluator was not retained, so plan 01 reconstructs it as repository code.
+
+### Phase 10.1 Plan 01 Completion — 2026-07-19
+
+**Frozen acceptance evidence:**
+
+- Development: 107/108 exact first (99.1%), 0/108 retrigger files, 108/108 clean releases and deterministic, 0.034x realtime, first-correct p50/p95 48.0/58.7 ms, 1 miss.
+- Sealed holdout, single frozen run: 30/30 exact first, 0/30 retrigger files, 30/30 clean releases and deterministic, 0.034x realtime, first-correct p50/p95 48.0/58.7 ms, 0 misses.
+- Repaired the source capture's universal duplicated 2,048-sample onset block under an exact-equality guard and fixed the capture callback with a regression.
+- Frozen one uniform independent corpus policy: offline annotated-pitch YIN evidence, periodicity/flatness source ranking, 10 ms pre-roll, one faded 250 ms note, silence padding, and headroom-safe normalization. Curation uses no Contrapunk detector output, capture detector metadata, filename exception, or holdout membership.
+- Fresh anonymous signal QA classified 24/24 sampled fixtures as valid clean isolated notes; two isolated regenerations were byte-identical.
+- Independent pre-holdout reviews returned GO, and the fixed 30-file holdout membership remained byte-identical.
+- The earlier detector lifecycle, bend cleanup, structural config, Tauri realtime-worker, browser lifecycle, and Tune Guitar fixes remain validated.
+
+**Remaining release acceptance:** user-operated guitar hardware smoke across sample rates/block sizes, device loss/restart, standalone/Tauri, browser, and DAW surfaces. See `10.1-01-SUMMARY.md` for complete evidence and the narrow claim boundary.
 
 ### Phase 21 Resume — 2026-05-18
 
@@ -534,10 +566,10 @@ Verified: 13/13 must-haves passed.
 
 ## Session Continuity
 
-Last session: 2026-05-18 — Resumed Phase 21 Elixir in pi after installing pi-gsd and reconciling stale state.
-Stopped at: Proceeding to complete Elixir implementation; first code target is Phase 21.A6 spectral/FX completion.
-Resume file: HANDOFF.json consumed by this state update.
-Next: Implement A6 incrementally with tests, then A-Cut/B-track plugin and release work.
+Last session: 2026-07-19 — Repaired and froze the independently curated guitar corpus after blind QA and policy review.
+Stopped at: Plan 10.1-01 and GTR-REL-01 through GTR-REL-06 pass automated acceptance; the single frozen holdout run passed 30/30 with p95 58.7 ms.
+Resume file: `.planning/phases/10.1-guitar-reliability/10.1-01-SUMMARY.md`.
+Next: Perform user-operated guitar hardware and release-surface smoke testing; keep the narrow clean-monophonic claim and Elixir queued behind v1.3.0.
 
 ## A6 Closure — 2026-05-18 (this session)
 
