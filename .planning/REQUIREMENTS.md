@@ -64,6 +64,21 @@
 - [x] **GTR-REL-05**: Tauri guitar capture uses a bounded lock-free sample queue and worker-owned `GuitarInput`; the cpal callback does not allocate, block, or run DSP.
 - [x] **GTR-REL-06**: Calibration is unified and described truthfully as **Tune Guitar** until a persisted profile changes the DSP measurements it claims to calibrate.
 
+## Phase 10.2 Arrangement Preset Requirements
+
+- [ ] **ARRP-01**: A shared versioned `ArrangementPresetV2` model stores identity, family/tags, Result, structured Play guidance, composer references/context, capability requirements, availability, arrangement config, and optional suggested sound.
+- [ ] **ARRP-02**: Selecting a preset preserves tonic, BPM, time signature, input/guitar/device state, external routing, current sound, master level, mute/solo, hosted plugins, and transport running state.
+- [ ] **ARRP-03**: Preset application issues one Panic/runtime reset, validates the full config, applies atomically, and cannot leave partial state, delayed reappearance, or orphan notes on failure.
+- [ ] **ARRP-04**: Built-ins are immutable; Duplicate/Save As captures both arrangement state and user-authored Result/Play/reference metadata with versioned migration.
+- [ ] **ARRP-05**: Exactly 50 stable unique built-in draft records exist with honest capability/surface gating; unsupported records cannot Apply and explain what is missing.
+- [ ] **ARRP-06**: Before a preset becomes operational, three independent cited reports cover artist/style history and primary sources, music theory and temporal behavior, and performer/interaction guidance. They scope specific works/periods, trace career evolution, separate persistent from period-specific traits, distinguish shared vocabulary from characteristic choices, and model within-phrase/across-section movement. A parent synthesis defines invariants, evolution states/transitions, caricatures to avoid, approximations, configuration, and acceptance examples.
+- [ ] **ARRP-07**: The first 12 catalog IDs (2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48) are operational, audibly differentiated, and pass fixed NoteOn/NoteOff lifecycle simulation with zero active/pending notes.
+- [ ] **ARRP-08**: Execution hard-stops after the first 12 with a test report and performance checklist; later capability waves require explicit user approval.
+- [ ] **ARRP-09**: Reusable harmony strategies support explicit intervals, axis inversion, tintinnabuli, jazz extensions/root omission/drop voicings, bounded clusters, and gated spectral/microtonal voicing without preset-specific branches.
+- [ ] **ARRP-10**: Reusable bounded phrase/motif and pattern/timing Lanes support capture/loop/reverse/transforms, motifs, ostinato/comping/clave/additive patterns, odd meter/polymeter/phasing, Hold modes, and stopped-transport cleanup.
+- [ ] **ARRP-11**: Stable lane instance IDs enable multiple groups, mix/register/output attribution, serialization, harmonic timelines, and Sparse/Building/Full adaptive scenes.
+- [ ] **ARRP-12**: All operational presets have catalog validation, cited research artifacts, surface-honest capability checks, automated lifecycle evidence, and focused manual performance acceptance.
+
 ## v2 Requirements
 
 ### Extended Features
@@ -170,6 +185,18 @@
 | GTR-REL-04 | Phase 10.1 | Complete |
 | GTR-REL-05 | Phase 10.1 | Complete |
 | GTR-REL-06 | Phase 10.1 | Complete |
+| ARRP-01 | Phase 10.2 / Wave 1 | Not started |
+| ARRP-02 | Phase 10.2 / Wave 1 | Not started |
+| ARRP-03 | Phase 10.2 / Wave 1 | Not started |
+| ARRP-04 | Phase 10.2 / Wave 2 | Not started |
+| ARRP-05 | Phase 10.2 / Wave 2 | Not started |
+| ARRP-06 | Phase 10.2 / All preset waves | Not started |
+| ARRP-07 | Phase 10.2 / Wave 2 | Not started |
+| ARRP-08 | Phase 10.2 / Wave 2 checkpoint | Not started |
+| ARRP-09 | Phase 10.2 / Waves 3 and 7 | Not started |
+| ARRP-10 | Phase 10.2 / Waves 4 and 5 | Not started |
+| ARRP-11 | Phase 10.2 / Wave 6 | Not started |
+| ARRP-12 | Phase 10.2 / All waves | Not started |
 | REQ-elixir-a0-workspace-bootstrap | Phase 21.A0 | Not started |
 | REQ-elixir-a1-bare-oscillator | Phase 21.A1 | Not started |
 | REQ-elixir-a2-polyphony-voice-management | Phase 21.A2 | Not started |
@@ -203,10 +230,12 @@
 **Coverage:**
 - v1 requirements: 34 total
 - Mapped to phases: 34
+- Arrangement preset requirements: 12 total
+- Arrangement preset requirements mapped to Phase 10.2: 12
 - Elixir milestone requirements: 24 total
 - Elixir mapped to phases: 24
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-28*
-*Last updated: 2026-07-19 — Phase 10.1 automated acceptance completed; development and the single frozen holdout run pass every locked gate.*
+*Last updated: 2026-07-19 — Added Phase 10.2 composer-informed arrangement preset requirements, mandatory three-researcher gate, and first-12 human checkpoint.*

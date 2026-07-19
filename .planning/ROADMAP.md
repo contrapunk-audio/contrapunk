@@ -36,6 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 9: Vocoder** - Classic vocoder (carrier modulated by voice) and harmony vocoder (real-time vocal harmonization)
 - [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection (runtime exists; broad original claims remain unverified)
 - [x] **Phase 10.1: Guitar Reliability** - Automated corpus, lifecycle, realtime-safety, and truthful-calibration gates complete; manual release-surface smoke remains (INSERTED)
+- [ ] **Phase 10.2: Composer-Informed Arrangement Presets** - Research, author, and implement 50 technique-named global arrangements; hard-stop for user testing after the first 12 operational presets (INSERTED)
 - [ ] **Phase 6.12: DMG Distribution** - Ship Contrapunk as a signed macOS DMG with app icon, codesigning, and notarization (INSERTED)
 - ~~**Phase 11: Trackpad Beat Input**~~ - DROPPED
 - [ ] **Phase 16: VST3/CLAP/AU Plugin** - nih-plug plugin with webview GUI, AU wrapper via clap-wrapper (GitHub #15)
@@ -513,6 +514,41 @@ Plans:
 
 Plans:
 - [x] 10.1-01-PLAN.md — Evaluator, locked gates, corrected corpus, lifecycle fixes, Tauri worker, and truthful Tune Guitar terminology complete; manual release smoke remains
+
+### Phase 10.2: Composer-Informed Arrangement Presets (INSERTED)
+
+**Goal:** Ship 50 research-backed global arrangement presets with Result/Play guidance, composer references, editable Save As metadata, honest capability gating, reusable musical engines, and deterministic note cleanup.
+**Depends on:** Phase 10.1 lifecycle discipline, Phase 6.2 voice leading, Phase 6.7 extended scales, current Companion Lane architecture
+**Requirements:** ARRP-01 through ARRP-12
+**Context:** [10.2-CONTEXT.md](./phases/10.2-arrangement-presets/10.2-CONTEXT.md)
+**Catalog:** [10.2-PRESET-CATALOG.md](./phases/10.2-arrangement-presets/10.2-PRESET-CATALOG.md)
+**Loop:** [10.2-LOOP.md](./phases/10.2-arrangement-presets/10.2-LOOP.md)
+**Research template:** [10.2-RESEARCH-TEMPLATE.md](./phases/10.2-arrangement-presets/10.2-RESEARCH-TEMPLATE.md)
+
+**Research gate:** Before any preset becomes operational, three independent fresh-context researchers cover artist/style history and primary sources, music theory and temporal behavior, and performer/interaction guidance. Research scopes specific works and periods, traces career evolution, separates persistent from period-specific traits, distinguishes shared vocabulary from characteristic choices, and models how material moves within phrases and sections. A parent synthesis records stylistic invariants, evolution states/transitions, caricatures to avoid, acceptable approximations, configuration, and acceptance examples.
+
+**Human checkpoint:** Execution must stop after the first 12 operational presets (catalog IDs 2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48). Wave 3 cannot begin until the user performs them and explicitly approves continuation.
+
+**Success Criteria:**
+1. Exactly 50 stable, unique built-in records include Result, Play guidance, references, requirements, availability, and immutable built-in status.
+2. User Save As captures arrangement configuration plus musical guidance and references; built-ins can only be duplicated.
+3. Presets preserve tonic, tempo, devices, routing, current sound, master level, mute/solo, and transport state.
+4. Preset application validates and applies atomically after one Panic/runtime reset; failure cannot leave partial state or orphan notes.
+5. Every operational preset has three cited research reports and a parent synthesis.
+6. Every operational preset passes a fixed NoteOn/NoteOff lifecycle simulation and ends with zero active/pending notes.
+7. Unsupported presets remain visible but cannot Apply and identify the missing capability/surface.
+8. Temporal features reuse Companion Lane phases; stateless note mapping uses shared harmony strategies, not preset-specific branches.
+9. The first 12 are audibly differentiated, automatically validated, and delivered to the user for a mandatory performance checkpoint.
+10. After user approval, reusable voicing, motif, pattern/timing, stable-group, harmonic-timeline, adaptive, and experimental capabilities unlock the remaining catalog.
+
+**Plans / waves:**
+- [ ] 10.2-01 — Safety and V2 foundation: Free Imitation lifecycle, typed schema, centralized state, transactional apply, capability gating
+- [ ] 10.2-02 — Three-researcher packs, catalog/authoring UX, first 12 operational presets, automated report, then mandatory user stop
+- [ ] 10.2-03 — Reusable interval/voicing strategies (only after user approval)
+- [ ] 10.2-04 — Bounded phrase and motif Lane
+- [ ] 10.2-05 — Data-driven Pattern Lane and advanced timing
+- [ ] 10.2-06 — Stable lane instances/groups, harmonic timeline, and three-state adaptive scenes
+- [ ] 10.2-07 — Experimental capabilities, all-50 tuning, and final cross-surface acceptance
 
 ### Phase 14: openDAW Device Integration
 

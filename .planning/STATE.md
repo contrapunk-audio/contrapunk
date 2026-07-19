@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
-status: phase_complete
-stopped_at: Phase 10.1 automated acceptance complete; manual guitar hardware and release-surface smoke testing remains.
-last_updated: "2026-07-19T07:00:00Z"
-last_activity: 2026-07-19 — Repaired and blind-audited the corpus; development and sealed holdout passed every locked gate with p95 58.7 ms.
+status: planning
+stopped_at: Phase 10.2 waves, 50-preset catalog, research gate, and execution loop documented; implementation has not started.
+last_updated: "2026-07-19T10:24:50Z"
+last_activity: 2026-07-19 — Added Phase 10.2 with a mandatory three-researcher style/evolution pack per operational preset and a hard user checkpoint after the first 12.
 progress:
-  total_phases: 54
+  total_phases: 55
   completed_phases: 18
-  total_plans: 82
+  total_plans: 89
   completed_plans: 66
 ---
 
@@ -20,15 +20,32 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisions subsection)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** User-operated hardware, DAW, installer, signing, and notarization validation for the v1.3.0 Contrapunk release.
-**Queued work:** Elixir remains preserved in the working tree and roadmap, but is not the active release milestone.
+**Current focus:** Phase 10.2 composer-informed arrangement preset foundation and the first 12 research-backed presets.
+**Mandatory checkpoint:** Stop after the first 12 operational presets for user performance testing before Wave 3.
+**Parked validation:** User-operated hardware, DAW, installer, signing, and notarization validation for v1.3.0 remains unfinished.
+**Queued work:** Elixir remains preserved in the working tree and roadmap, but is not active.
 
 ## Current Position
 
-Phase: Post-10.1 release validation
-Plan: Manual hardware/DAW/release acceptance
-Status: Phase 10.1 complete; release validation active
-Last activity: 2026-07-19 — Development and the single frozen holdout run passed all locked Phase 10.1 gates.
+Phase: 10.2 Composer-Informed Arrangement Presets
+Plan: Wave 1 — safety and ArrangementPresetV2 foundation
+Status: Planned; loop saved next, implementation not started
+Last activity: 2026-07-19 — Accepted 50 technique-named concepts, documented per-preset performance guidance, and required artist/style evolution research before implementation.
+
+### Phase 10.2 Start — 2026-07-19
+
+**Scope:** 50 immutable built-in arrangement drafts, user-authored Save As metadata/config, honest capability gating, reusable Harmony/Companion capabilities, and zero-orphan lifecycle acceptance.
+
+**Execution order:**
+
+1. Wave 1: Free Imitation lifecycle evidence, V2 schema, centralized state, atomic apply, capability gating.
+2. Wave 2: For each baseline preset, three fresh research reports plus parent synthesis; catalog/detail/Save As UX; operational IDs 2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48.
+3. **Hard stop:** automated report and user performance test. No Wave 3 without explicit approval.
+4. Waves 3-7 after approval: voicing, phrase/motif, pattern/timing, stable groups/harmonic timeline/adaptive scenes, experimental completion.
+
+**Research contract:** Scope specific works and periods; explain career evolution, persistent versus period traits, distinguishing vocabulary, within-phrase and across-section movement, performer input, caricatures to avoid, and honest engine approximations. Follow `10.2-RESEARCH-TEMPLATE.md`.
+
+**Loop:** `10.2-LOOP.md`. **Catalog:** `10.2-PRESET-CATALOG.md`.
 
 ### Phase 10.1 Start — 2026-07-11
 

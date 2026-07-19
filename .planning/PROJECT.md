@@ -34,15 +34,15 @@ Real-time harmony generation with minimal latency — when you play a note, the 
 - [ ] Application compiles to single binary with no runtime dependencies
 - [ ] Clean, monophonic, standard-tuned guitar input produces reliable MIDI notes
 - [ ] Guitar processing is deterministic, benchmarked against the checked-in corpus, and real-time safe
+- [ ] User can browse, understand, apply, duplicate, and author research-backed global arrangement presets with explicit performance guidance
 
 ### Out of Scope
 
 - Polyphonic guitar, chords, double-stops, alternate tunings, bass, extended-range instruments, and broad microphone support
-- Algorithmic melody generation — focus is live performance, not composition
+- Autonomous melody generation without performer input — Phase 10.2 may transform captured live motifs and run performer-seeded patterns, but does not compose unrelated melodies
 - TUI/curses interface — replaced by native GUI
 - Tkinter GUI — legacy Python UI not being ported
 - MIDI file input/output — real-time only for v1
-- Preset save/load — configure at runtime for now
 
 ## Context
 
@@ -71,7 +71,10 @@ Real-time harmony generation with minimal latency — when you play a note, the 
 | Port to Rust instead of optimizing Python | Performance + distribution (no Python runtime needed) | — Pending |
 | Use egui/eframe for GUI | Immediate mode suits real-time display, simple API, cross-platform | — Pending |
 | Restore limited guitar-to-MIDI | Existing product surfaces and the repaired 138-file corpus justify a measurable clean-monophonic target | Phase 10.1 automated gates complete; manual release smoke pending |
-| Drop algorithmic generation | Scope reduction for v1, can add later if needed | — Pending |
+| Drop autonomous algorithmic generation | Phase 10.2 patterns and motif transforms remain performer-seeded; unrelated melody composition stays out of scope | Phase 10.2 boundary |
+| Arrangement presets preserve performance environment | Applying a musical arrangement must not silently change tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, or transport state | LOCKED for Phase 10.2 |
+| Research before stylistic implementation | Every operational built-in receives three cited research perspectives plus a parent synthesis; labels alone are not evidence of stylistic fidelity | LOCKED for Phase 10.2 |
+| First-12 performance checkpoint | Stop after the first 12 research-backed presets for user testing before building later capability waves | LOCKED for Phase 10.2 |
 
 ### Elixir Milestone Decisions
 
@@ -87,4 +90,4 @@ Locked decisions from `ELIXIR-PLAN.md` §10 — ingested 2026-05-18 via `/gsd-in
 | **ELIX-DEC-06** — GSD milestone integration: ingest as real milestone | ELIXIR-PLAN.md and ELIXIR-DESIGN.md are ingested into `.planning/` via `/gsd-ingest-docs`, becoming a real GSD milestone with discuss/plan/execute phases. | LOCKED (ELIXIR-PLAN.md §10 #6) — Completed 2026-05-18 |
 
 ---
-*Last updated: 2026-05-18 — Added Elixir Milestone Decisions subsection (six ELIX-DEC-0{1..6} locked entries) via `/gsd-ingest-docs` ingest.*
+*Last updated: 2026-07-19 — Added Phase 10.2 arrangement-preset scope, research gate, environment-preservation rule, and first-12 checkpoint.*
