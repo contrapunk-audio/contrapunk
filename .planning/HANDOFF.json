@@ -6,9 +6,9 @@
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "fix-species4-suspension-lifecycle",
+  "task": "research-preset-12-planed-cathedral",
   "total_plans": 7,
-  "status": "blocked",
+  "status": "active",
   "loop": {
     "id": 2,
     "title": "Contrapunk research-backed 50 arrangement presets",
@@ -82,8 +82,10 @@
       ]
     },
     {
-      "name": "Preset 08 Suspension Garland research pack and parent synthesis",
-      "status": "done_blocked_correctness_fix",
+      "name": "Preset 08 Suspension Garland research, Species IV lifecycle, and operational preset",
+      "status": "done_operational",
+      "commits": ["ef5fd3a", "135042c"],
+      "evidence": "Companion 68 passed; catalog/persistence 7 passed; UI check zero errors. Normal trace proves weak preparation, retained strong suspension, downward-step resolution, and balanced cleanup.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/history.md",
         ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/theory.md",
@@ -92,9 +94,9 @@
       ]
     },
     {
-      "name": "Fix Species4 lifecycle, then implement remaining first-12 baselines",
-      "status": "blocked",
-      "details": "Current: complete a real clock-scheduled Species4 CounterpointLane. Then preset order: 08, 12, 14, 23, 25, 27, 36, 43, 48."
+      "name": "Research and implement remaining first-12 baselines",
+      "status": "in_progress",
+      "details": "Current: research preset 12 Planed Cathedral. Then order: 14, 23, 25, 27, 36, 43, 48."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -108,12 +110,6 @@
     }
   ],
   "blockers": [
-    {
-      "description": "Preset 08 cannot activate because current Species4 does not implement a preparation–held-suspension–resolution lifecycle.",
-      "type": "correctness",
-      "evidence": "CounterpointLane Species4 only delays an attack; CounterpointState is NoteOn-driven, phase-inaccurate, 4/4-hardcoded, and has no true held-note ownership.",
-      "workaround": "Finish the existing CounterpointLane with clock-scheduled atomic P–S–R and cancellation tests; keep the draft locked until verified."
-    },
     {
       "description": "Dirty tree contains unrelated Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents work.",
       "type": "technical",
@@ -137,15 +133,11 @@
   ],
   "background_processes": [],
   "uncommitted_files": [
-    "[focused-planning] .planning/HANDOFF.json",
-    "[focused-planning] .planning/STATE.md",
-    "[focused-planning] .planning/phases/10.2-arrangement-presets/10.2-STATE.json",
-    "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
-    "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/history.md",
-    "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/performance.md",
-    "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md",
+    "[focused-ui] ui/src/lib/arrangement/catalog.ts",
+    "[focused-test] ui/src/lib/arrangement/catalog.test.mjs",
+    "[focused-planning] Phase 10.2 state and Suspension Garland synthesis",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Design and implement the smallest clock-scheduled, lifecycle-owned Species4 correction in CounterpointLane, with normal and cancellation tests at every phase; do not unlock preset 08 yet.",
-  "context_notes": "Three baselines are operational. Preset 08 research decision is needs_correctness_fix. The research pack explicitly separates Fux pedagogy, Palestrina corpus practice, and current unsupported Species4 behavior."
+  "next_action": "Launch the three independent research perspectives for preset 12 Planed Cathedral, then parent-synthesize before changing its draft.",
+  "context_notes": "Four baselines are operational. Suspension Garland is a bounded live approximation: the Lane validates future strong-beat motion when it arrives and never claims arbitrary input as a suspension."
 }

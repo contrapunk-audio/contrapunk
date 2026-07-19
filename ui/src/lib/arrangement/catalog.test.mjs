@@ -4,7 +4,8 @@ import {
 	BUILT_IN_ARRANGEMENT_PRESETS,
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
-	STRETTO_ENGINE_PRESET
+	STRETTO_ENGINE_PRESET,
+	SUSPENSION_GARLAND_PRESET
 } from './catalog.ts';
 import {
 	arrangementConfigCapabilities,
@@ -29,7 +30,7 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 		BUILT_IN_ARRANGEMENT_PRESETS.filter((preset) => preset.researchStatus === 'approved').map(
 			(preset) => preset.id
 		),
-		['02-modal-linework', '04-mensuration-web', '07-stretto-engine']
+		['02-modal-linework', '04-mensuration-web', '07-stretto-engine', '08-suspension-garland']
 	);
 });
 
@@ -111,6 +112,44 @@ test('Mensuration Web uses causal single-line proportional followers', () => {
 	assert.deepEqual(validateArrangementPreset(impossibleLiveDiminution), [
 		'Live proportional ratios below 1 require phrase capture'
 	]);
+});
+
+test('Suspension Garland uses one bounded transport-scheduled Species IV line', () => {
+	assert.equal(SUSPENSION_GARLAND_PRESET.play.transportRequired, true);
+	assert.deepEqual(SUSPENSION_GARLAND_PRESET.requirements, ['species_counterpoint']);
+	assert.equal(SUSPENSION_GARLAND_PRESET.config.harmony.mode, 'PassThrough');
+	assert.equal(SUSPENSION_GARLAND_PRESET.config.harmony.voiceCount, 1);
+	assert.equal(SUSPENSION_GARLAND_PRESET.config.companion.enabled, true);
+	assert.equal(SUSPENSION_GARLAND_PRESET.config.companion.canon.enabled, false);
+	assert.deepEqual(SUSPENSION_GARLAND_PRESET.config.companion.counterpoint, {
+		enabled: true,
+		species: 'Species4',
+		transposeDegrees: 2,
+		preferAbove: true,
+		holdMode: { kind: 'near_future', tail_beats: 2 }
+	});
+	assert.match(SUSPENSION_GARLAND_PRESET.approximation, /cannot predict your next note/);
+	assert.deepEqual(validateArrangementPreset(SUSPENSION_GARLAND_PRESET), []);
+	assert.deepEqual(arrangementConfigCapabilities(SUSPENSION_GARLAND_PRESET.config), [
+		'harmony',
+		'species_counterpoint'
+	]);
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in SUSPENSION_GARLAND_PRESET.config, false);
+	}
 });
 
 test('Modal Linework matches its bounded research synthesis', () => {

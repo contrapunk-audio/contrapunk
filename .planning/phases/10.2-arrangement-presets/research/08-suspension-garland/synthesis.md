@@ -1,8 +1,10 @@
 # Synthesis: Preset 08 — Suspension Garland
 
-**Decision:** `needs_correctness_fix`  
-**References:** Johann Joseph Fux's fourth-species pedagogy and selected Palestrina four-voice suspension practice  
-**Activation:** blocked; the built-in remains a visible research-pending draft
+**Decision:** `operational_bounded_approximation`
+
+**References:** Johann Joseph Fux's fourth-species pedagogy and selected Palestrina four-voice suspension practice
+
+**Activation:** approved after the shared Species IV lifecycle correction in `135042c`
 
 ## 1. Referenced scope
 
@@ -63,8 +65,8 @@ The performer report exposes a current mismatch: instructions can make NoteOn-dr
 8. A failed candidate falls back to consonant syncopation or no figure; it never emits an unprepared accented dissonance.
 9. Initial baseline supports one generated patient line and one player/agent line; density does not hide lifecycle evidence.
 10. Meter/subdivision is explicit. If implementation remains 4/4-only, the preset declares and validates 4/4 rather than silently assuming it.
-11. The full preparation–suspension–resolution figure is precomputed before its first NoteOn.
-12. Normal completion emits one patient NoteOn, no boundary retrigger, then patient NoteOff plus lower-step resolution NoteOn, followed by one resolution NoteOff.
+11. Live causality is explicit: preparation is chosen consonantly from the current note; when the future strong-beat note arrives, the Lane validates the dissonance and downward consonant resolution before dispatching that new input. An invalid candidate becomes consonant syncopation or is released before the new attack.
+12. A validated normal completion emits one patient NoteOn, no boundary retrigger, then patient NoteOff plus lower-step resolution NoteOn, followed by one resolution NoteOff.
 13. Hold either permits the whole atomic figure or cancels it before preparation; it cannot strand a half-figure.
 14. Stop, Reset, Panic, disable, preset/species/key change, routing stop, and device loss release sounding notes and clear scheduled phases.
 15. No old figure reappears after transport restart or preset replacement.
@@ -75,22 +77,23 @@ The performer report exposes a current mismatch: instructions can make NoteOn-dr
 
 ```text
 REST
-  valid transport + weak phase + legal full P–S–R plan
-    ↓
+  valid transport + current source note
+    ↓ next weak boundary, choose legal consonant preparation
 PREPARED_HELD
-  one patient NoteOn; owner and future phases recorded
-    ↓ next strong boundary, agent change creates legal dissonance
+  one patient NoteOn; owner and expected strong phase recorded
+    ↓ future source NoteOn arrives near that strong boundary
+VALIDATE
+  approved dissonance + consonant downward step → SUSPENDED
+  consonance → CONSONANT_SYNCOPATION
+  invalid dissonance → release before dispatching the new source attack
 SUSPENDED
   no new patient attack; same pitch remains sounding
     ↓ next weak boundary
 RESOLVE
   patient NoteOff + one-step-lower resolution NoteOn
-    ↓ resolution duration / optional chain
+    ↓ no compatible continuation
 RESOLVED
   resolution NoteOff
-    ↓ cadence requested and supported
-PERFECT (future extension)
-  legal perfect goal, then release
     ↓
 REST
 ```
@@ -114,7 +117,7 @@ Reject:
 - performer instructions claiming that one held source note automatically advances the FSM;
 - Species IV or Fux controls marketed as Palestrina's compositional method.
 
-## 7. Exact current-code blocker
+## 7. Pre-correction code blocker
 
 ### `CounterpointState`
 
@@ -137,26 +140,25 @@ External transport phase is preferred, but the FSM advances only while harmonizi
 
 The dedicated temporal extension point is the right place to finish the feature, but current Species4 only schedules a consonant pitch at `now + 0.5`. Its own comments describe it as suspension-ready. It does not prepare, retain, create contextual dissonance, resolve, chain, or perfect.
 
-**Conclusion:** current behavior cannot be activated under the name Suspension Garland.
+**Pre-correction conclusion:** the delayed-attack behavior could not be activated under the name Suspension Garland. Commit `135042c` replaced that shortcut in the dedicated Lane.
 
-## 8. Minimum correction
+## 8. Completed minimum correction
 
-Complete the existing `CounterpointLane` Species4 path rather than adding a preset-specific engine:
+The correction completed the existing `CounterpointLane` Species4 path rather than adding a preset-specific engine:
 
-1. Pass actual meter/subdivision or explicitly constrain the first version to 4/4.
-2. At a weak transport phase, precompute a legal P–S–R figure against the player/agent context.
-3. Schedule one preparation NoteOn.
-4. At the next strong phase, retain the same logical note without another NoteOn while the player/agent change makes a legal dissonance.
-5. At the next weak phase, emit preparation NoteOff and downward-step resolution NoteOn.
-6. Emit resolution NoteOff after its bounded duration.
-7. Keep one source/figure owner across all phases; make cancellation atomic.
-8. Reset/reconfigure through existing Companion/router release paths.
-9. Add focused phase-by-phase tests, including cancellation/Stop at PREPARED, SUSPENDED, and RESOLVE.
-10. Keep cadence/perfection out of initial Result copy unless implemented; list it as a future extension.
+1. Use absolute transport beats and a binary half-beat subdivision; do not derive time from player event count.
+2. From the current source note, choose and schedule one consonant preparation on the next weak boundary.
+3. Retain the same logical note without another NoteOn across the expected strong boundary.
+4. When the future source NoteOn arrives, validate the retained dissonance and consonant downward-step result before dispatching that source attack.
+5. At the next weak phase, emit preparation NoteOff and downward-step resolution NoteOn only for a validated suspension.
+6. Keep consonant motion as consonant syncopation; release invalid dissonance before the new source attack.
+7. Emit resolution NoteOff after its bounded duration.
+8. Keep one source/figure owner across all phases; make cancellation atomic.
+9. Reset/reconfigure through existing Companion/router release paths.
+10. Add focused phase-by-phase tests, including cancellation/Stop at PREPARED, SUSPENDED, and RESOLVE.
+11. Keep cadence/perfection out of initial Result copy unless implemented; list it as a future extension.
 
-## 9. Proposed config after the correction
-
-This is not yet an operational record.
+## 9. Approved operational config
 
 ```ts
 {
@@ -254,8 +256,31 @@ Unresolved:
 - cross-surface transport and external MIDI acceptance;
 - cadence/perfection implementation.
 
-## 13. Decision
+## 13. Implementation evidence
 
-`needs_correctness_fix`
+Commit `135042c` gives Species 4 one explicit monophonic gesture owned by `CounterpointLane`:
 
-Pause the loop at this preset. Keep record 08 visible and locked. Resume with a focused implementation plan for a clock-scheduled, lifecycle-owned `CounterpointLane` Species4 figure. Only after the normal and cancellation tests pass should the parent resynthesize the exact operational config/copy and change research status to approved.
+- absolute transport schedules preparation at the next weak half-beat;
+- the same logical MIDI pitch remains sounding across the expected strong boundary with no retrigger;
+- a new same-channel cantus NoteOn within the strong window is checked before the live input is dispatched;
+- only approved dissonance classes with a consonant one-step-down result enter `Suspended`;
+- the following weak boundary emits ordered `NoteOff(preparation) → NoteOn(resolution)`;
+- incompatible early/late/dissonant motion releases the preparation before the new input; compatible consonance remains explicitly a consonant syncopation;
+- legato ownership transfers before the old NoteOff;
+- Hold deadlines, lane disable, species change, Panic/Stop reset, and backward transport movement cancel future phases and release or externally drain the sounding pitch.
+
+Runnable evidence:
+
+- `cargo test -p contrapunk-companion --lib`: 68 passed;
+- `species4_emits_preparation_hold_and_downward_resolution` proves `E on @ 0.5 → no retrigger @ 1.0 → E off/D on @ 1.5 → D off` for the abstract C→F source motion;
+- focused tests cover unsounded cancellation, sounded Hold expiry, invalid early motion, disable while suspended, reset after resolution, and transport rewind;
+- catalog/persistence tests: 7 passed;
+- Svelte check: zero errors and 29 pre-existing warnings.
+
+The live system cannot know the player's future note when preparation begins. Therefore the approved product claim is intentionally opportunistic, not strict guaranteed species generation for arbitrary input. The public approximation text states this boundary. Same-pitch overlapping NoteOns remain outside the accepted clean monophonic contract.
+
+## 14. Decision
+
+`operational_bounded_approximation`
+
+Preset 08 may be approved with the exact config and copy above. It is a transport-scheduled live suspension study: valid source motion yields a real prepared, retained, downward-resolving suspension; other source motion safely yields consonant syncopation or release. It is not an authentic Fux exercise generator or Palestrina model, and cadence/perfection remains a future extension.

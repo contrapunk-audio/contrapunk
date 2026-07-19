@@ -253,6 +253,73 @@ export const STRETTO_ENGINE_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const SUSPENSION_GARLAND_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '08-suspension-garland',
+	name: 'Suspension Garland',
+	family: 'classical',
+	tags: ['renaissance', 'fourth-species', 'prepared-suspension', 'transport'],
+	builtIn: true,
+	result:
+		'A consonant counterline enters between beats; compatible on-beat motion holds it into tension, then resolves it down one diatonic step.',
+	approximation:
+		"A live, opportunistic fourth-species study inspired by Fux's pedagogy and recurrent suspension practice in selected Palestrina sources. Because Contrapunk cannot predict your next note, incompatible motion becomes consonant syncopation or is released before the new attack. It does not reproduce Palestrina's text setting, ficta, mensural rhythm, changing vocal density, suspension statistics, cadence planning, or historical tuning.",
+	play: {
+		prompt:
+			'At 60–72 BPM, play one note on a strong beat, then a note a perfect fourth above on the next strong beat; listen for the counterline to enter between them, hold without retriggering, and fall by step.',
+		input: 'single_notes',
+		articulation:
+			'Connected single notes with a clean legato handoff at each beat; keyboard pedal up, guitar strings actively muted, no bends or slides.',
+		density: 'One attack per beat for two to four notes; no chords, repeated-note overlaps, or fast runs.',
+		space: 'After each two-to-four-note chain, release and leave one full bar silent.',
+		tempo: '60–72 BPM; 64 BPM is the test default.',
+		transportRequired: true
+	},
+	references: [
+		{
+			name: 'Johann Joseph Fux',
+			context:
+				'Bounded reference to the preparation–suspension–resolution grid of fourth-species pedagogy in Gradus ad Parnassum.'
+		},
+		{
+			name: 'Giovanni Pierluigi da Palestrina',
+			context:
+				'Bounded reference to recurrent prepared suspensions in selected four-voice sacred sources, not continuous fourth species.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['species_counterpoint'],
+	config: {
+		harmony: {
+			scaleMode: 'Dorian',
+			mode: 'PassThrough',
+			voiceCount: 1,
+			voicePosition: 0,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: true,
+			globalHoldMode: { kind: 'cancel' },
+			canon: { enabled: false, form: 'free_imitation', holdMode: null, voices: [] },
+			counterpoint: {
+				enabled: true,
+				species: 'Species4',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: { kind: 'near_future', tail_beats: 2 }
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -311,6 +378,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 2) return MODAL_LINEWORK_PRESET;
 		if (spec.number === 4) return MENSURATION_WEB_PRESET;
 		if (spec.number === 7) return STRETTO_ENGINE_PRESET;
+		if (spec.number === 8) return SUSPENSION_GARLAND_PRESET;
 		return draftPreset(spec);
 	}
 );
