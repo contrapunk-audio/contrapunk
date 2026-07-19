@@ -1,9 +1,9 @@
 {
   "version": 1,
   "phase": "10.2",
-  "status": "paused_research_provider_blocked",
+  "status": "executing",
   "current_wave": 2,
-  "current_slice": "research-preset-02-modal-linework",
+  "current_slice": "implement-preset-02-modal-linework",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -14,25 +14,29 @@
   "draft_presets": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
   "research": {
     "02-modal-linework": {
-      "status": "blocked_incomplete",
+      "status": "ready_for_implementation",
       "required_reports": 3,
-      "completed_reports": 1,
+      "completed_reports": 3,
       "history": {
-        "status": "blocked_provider",
-        "attempts": 1,
-        "error": "ANTHROPIC_VERTEX_PROJECT_ID not set; no openai-codex API key"
+        "status": "complete",
+        "attempts": 3,
+        "path": ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/history.md",
+        "note": "The final runner reported no response, but its complete 231-line artifact passed parent validation."
       },
       "theory": {
-        "status": "complete_unsynthesized",
+        "status": "complete",
         "path": ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md"
       },
       "performance": {
-        "status": "blocked_provider",
-        "attempts": 1,
-        "error": "ANTHROPIC_VERTEX_PROJECT_ID not set; no openai-codex API key"
+        "status": "complete",
+        "attempts": 2,
+        "path": ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/performance.md",
+        "note": "The report was complete with an embedded acceptance report; only the runner's file-only acceptance wrapper rejected it."
       },
       "synthesis": {
-        "status": "blocked_until_all_reports_complete"
+        "status": "ready_for_implementation",
+        "path": ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md",
+        "decision": "ready_for_implementation"
       }
     }
   },
@@ -89,8 +93,6 @@
     {"command": "npm --prefix ui run check (V2 persistence)", "result": "0 errors; 29 pre-existing warnings"}
   ],
   "blockers": [
-    "Preset 02 research gate is blocked: only theory completed; history and performance researchers could not start because ANTHROPIC_VERTEX_PROJECT_ID is unset and no openai-codex API key is available.",
-    "Research subagent providers must be executable; if fewer than three independent perspectives can run, preset activation pauses.",
     "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
   ],
   "decisions": [
@@ -101,6 +103,6 @@
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state."
   ],
-  "last_commit": "61453d5",
-  "next_action": "Configure an executable research provider (for example run under pi-as redhat with ANTHROPIC_VERTEX_PROJECT_ID or log into openai-codex), then retry only preset 02 history and performance reports. Do not synthesize or implement Modal Linework until all three reports succeed."
+  "last_commit": "5a867cb",
+  "next_action": "Implement the Modal Linework synthesis: remove unsafe process-call suspensions from Palestrina voice leading, add the approved immutable V2 record and focused config/lifecycle checks, then wire the V2 catalog UI without changing the preserved performance environment."
 }

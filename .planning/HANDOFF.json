@@ -1,18 +1,18 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-19T12:30:00Z",
+  "timestamp": "2026-07-19T12:22:14Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-02-modal-linework",
+  "task": "implement-preset-02-modal-linework",
   "total_plans": 7,
-  "status": "blocked",
+  "status": "active",
   "loop": {
     "id": 2,
     "title": "Contrapunk research-backed 50 arrangement presets",
-    "status": "paused_at_research_gate",
+    "status": "executing_wave_2",
     "hard_stop": "After first 12 operational presets for user performance testing"
   },
   "completed_work": [
@@ -44,21 +44,21 @@
       "evidence": "2 migration tests passed; UI check zero errors."
     },
     {
-      "name": "Preset 02 Modal Linework music-theory and temporal research",
-      "status": "done_unsynthesized",
-      "artifact": ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md"
+      "name": "Preset 02 Modal Linework three-report research pack and parent synthesis",
+      "status": "done_ready_for_implementation",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md"
+      ]
     }
   ],
   "remaining_work": [
     {
-      "name": "Complete preset 02 research pack",
-      "status": "blocked",
-      "details": "History/primary-source and performer/interaction reports still required."
-    },
-    {
-      "name": "Synthesize and implement preset 02",
-      "status": "not_started",
-      "details": "Forbidden until all three independent research reports exist."
+      "name": "Implement preset 02 Modal Linework",
+      "status": "in_progress",
+      "details": "Remove unsafe process-call suspension, add the synthesized immutable V2 record and focused config/lifecycle checks, then wire V2 catalog/detail/apply."
     },
     {
       "name": "Research and implement remaining first-12 baseline presets",
@@ -78,23 +78,12 @@
   ],
   "blockers": [
     {
-      "description": "Two required preset 02 researcher agents could not start.",
-      "type": "environment",
-      "evidence": "ANTHROPIC_VERTEX_PROJECT_ID not set; no openai-codex API key.",
-      "workaround": "Run under pi-as redhat with the required project environment or authenticate an executable provider, then retry only the two missing reports."
-    },
-    {
       "description": "Dirty tree contains unrelated Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents work.",
       "type": "technical",
       "workaround": "Stage explicit Phase 10.2 paths only; never stage .pi-subagents/."
     }
   ],
   "human_actions_pending": [
-    {
-      "action": "Make at least three independent researcher agents executable",
-      "context": "Two of the first three research tasks failed before research due provider credentials.",
-      "blocking": true
-    },
     {
       "action": "Test the first 12 presets when the loop reaches its hard checkpoint",
       "context": "The loop must not enter Wave 3 before explicit approval.",
@@ -115,9 +104,11 @@
     "[focused-planning] .planning/STATE.md",
     "[focused-planning] .planning/phases/10.2-arrangement-presets/10.2-STATE.json",
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
-    "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md",
+    "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/history.md",
+    "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/performance.md",
+    "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Configure a working researcher provider, retry preset 02 history and performance reports, then synthesize only after all three reports succeed.",
-  "context_notes": "The completed theory report explicitly warns that current static four-note/Palestrina and suspension machinery is only a bounded approximation. Do not market generic Fux species or a Palestrina style flag as historical authenticity without reconciling the other two reports and the synthesis."
+  "next_action": "Implement the approved bounded Modal Linework synthesis, starting by removing the automatic call-count suspension from Palestrina voice leading.",
+  "context_notes": "All three independent reports and the parent synthesis are complete. The preset is a synchronous note-against-note approximation; it must not claim independent rhythms, historical modal syntax, or authentic dissonance scheduling."
 }
