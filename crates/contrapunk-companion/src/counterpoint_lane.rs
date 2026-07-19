@@ -11,16 +11,14 @@
 //!   passing or auxiliary).
 //! * Species 3 (4:1): four emissions per cantus note at 0 / 0.25 / 0.5 /
 //!   0.75 of the beat (strong + three passing).
-//! * Species 4 (syncopated suspensions): the counterpoint enters half a
-//!   beat after each cantus note, creating ties across barlines and
-//!   suspension/resolution on strong beats.
+//! * Species 4 (syncopated suspensions): prepares a consonance on the
+//!   half-beat, retains that exact note over the next strong beat, and
+//!   resolves a valid live suspension down one diatonic step on the
+//!   following half-beat.
 //!
-//! Each species reuses the existing `CounterpointState` for choosing
-//! the strong-beat pitch (interval rules, parallel-5th avoidance, etc.)
-//! and adds its own scheduling logic on top.
-//!
-//! v1 (this file): Species 1 + 2 fully wired. Species 3/4 land in
-//! follow-up commits.
+//! Species 1-3 reuse `CounterpointState` for strong-beat pitch choice.
+//! Species 4 owns one explicit monophonic gesture because a held MIDI
+//! note cannot be represented safely as unrelated pending attacks.
 
 #![allow(dead_code)]
 
@@ -68,6 +66,30 @@ struct HeldCpEntry {
     channel: u8,
 }
 
+const SPECIES4_STRONG_WINDOW: f64 = 0.2;
+const SPECIES4_LATE_PREPARATION: f64 = 0.25;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Species4Stage {
+    Armed,
+    Prepared,
+    Suspended { resolution: u8, resolve_at: f64 },
+}
+
+/// One monophonic fourth-species gesture. `Prepared` and `Suspended`
+/// mean `pitch` has actually sounded; `Armed` is still silent.
+#[derive(Clone, Copy, Debug)]
+struct Species4Gesture {
+    owner_note: u8,
+    owner_channel: u8,
+    pitch: u8,
+    velocity: u8,
+    prepare_at: f64,
+    strong_at: f64,
+    release_by: Option<f64>,
+    stage: Species4Stage,
+}
+
 pub struct CounterpointLane {
     pub enabled: bool,
     pub species: CounterpointSpecies,
@@ -93,6 +115,10 @@ pub struct CounterpointLane {
     /// Player-note → emitted pitches map, so NoteOff releases the right
     /// set when Species 2/3 has emitted multiple pitches per input.
     held: HashMap<u8, HeldCpEntry>,
+    /// Species 4 is deliberately monophonic: one logical note remains
+    /// owned across preparation, suspension, and resolution.
+    species4: Option<Species4Gesture>,
+    last_tick_beat: Option<f64>,
     /// Lane-level HoldMode override. `None` = inherit Companion global.
     /// Applies to every pending emission seeded by a player NoteOn when
     /// that player note is released. See `lane::HoldMode` for the four
@@ -117,23 +143,30 @@ impl CounterpointLane {
             pending_on: VecDeque::new(),
             pending_off: VecDeque::new(),
             held: HashMap::new(),
+            species4: None,
+            last_tick_beat: None,
             hold_mode: None,
         }
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
-        self.enabled = enabled;
-        if !enabled {
+        if self.enabled && !enabled {
             self.pending_on.clear();
             self.pending_off.clear();
+            self.flush_species4();
             self.held.clear();
             self.state.reset();
             self.cantus_history.clear();
         }
+        self.enabled = enabled;
     }
 
     pub fn set_species(&mut self, species: CounterpointSpecies) {
         if self.species != species {
+            if self.species == CounterpointSpecies::Species4 {
+                self.flush_species4();
+                self.cantus_history.clear();
+            }
             self.species = species;
             // Resetting the state on species change so the new species
             // doesn't inherit history that was scored under the old
@@ -180,6 +213,163 @@ impl CounterpointLane {
             None => self.pending_on.push_front(p),
         }
     }
+
+    fn is_consonant(a: u8, b: u8) -> bool {
+        matches!(a.abs_diff(b) % 12, 0 | 3 | 4 | 7 | 8 | 9)
+    }
+
+    fn is_species4_dissonance(a: u8, b: u8) -> bool {
+        matches!(a.abs_diff(b) % 12, 1 | 2 | 5 | 10 | 11)
+    }
+
+    fn next_weak_beat(now: f64) -> f64 {
+        let half = now.floor() + 0.5;
+        if now <= half {
+            half
+        } else {
+            half + 1.0
+        }
+    }
+
+    fn species4_preparation(
+        &mut self,
+        scale: &mut contrapunk_harmony::Scale,
+        melody: Note,
+    ) -> Option<Note> {
+        let configured = if self.transpose_degrees == 0 {
+            Some(melody)
+        } else {
+            scale.harmonize_smart(melody, self.transpose_degrees, self.prefer_above)
+        };
+        configured
+            .filter(|candidate| Self::is_consonant(u8::from(melody), u8::from(*candidate)))
+            .or_else(|| self.pick_pitch(scale, melody))
+            .filter(|candidate| Self::is_consonant(u8::from(melody), u8::from(*candidate)))
+    }
+
+    fn arm_species4(
+        &mut self,
+        scale: &mut contrapunk_harmony::Scale,
+        melody: Note,
+        velocity: u8,
+        channel: u8,
+        now: f64,
+    ) {
+        let Some(preparation) = self.species4_preparation(scale, melody) else {
+            self.species4 = None;
+            return;
+        };
+        let prepare_at = Self::next_weak_beat(now);
+        self.species4 = Some(Species4Gesture {
+            owner_note: u8::from(melody),
+            owner_channel: channel,
+            pitch: u8::from(preparation),
+            velocity,
+            prepare_at,
+            strong_at: prepare_at + 0.5,
+            release_by: None,
+            stage: Species4Stage::Armed,
+        });
+    }
+
+    fn on_species4_note_on(
+        &mut self,
+        scale: &mut contrapunk_harmony::Scale,
+        melody: Note,
+        velocity: u8,
+        channel: u8,
+        now: f64,
+    ) -> LaneOutput {
+        let Some(mut gesture) = self.species4.take() else {
+            self.arm_species4(scale, melody, velocity, channel, now);
+            return LaneOutput::default();
+        };
+
+        let mut ops = Vec::new();
+        match gesture.stage {
+            Species4Stage::Armed => {
+                // The preparation has not sounded, so the newest live
+                // note can replace it without any cleanup.
+                self.arm_species4(scale, melody, velocity, channel, now);
+            }
+            Species4Stage::Prepared => {
+                let on_expected_strong = (now - gesture.strong_at).abs() <= SPECIES4_STRONG_WINDOW;
+                let melody_midi = u8::from(melody);
+                let consonant = Self::is_consonant(gesture.pitch, melody_midi);
+                let resolution = Note::try_from(gesture.pitch)
+                    .ok()
+                    .and_then(|pitch| scale.transpose_diatonic(pitch, -1));
+
+                let resolution =
+                    resolution.filter(|note| Self::is_consonant(u8::from(*note), melody_midi));
+                match (
+                    on_expected_strong && channel == gesture.owner_channel,
+                    consonant,
+                    resolution,
+                ) {
+                    (true, false, Some(resolution))
+                        if Self::is_species4_dissonance(gesture.pitch, melody_midi) =>
+                    {
+                        gesture.owner_note = melody_midi;
+                        gesture.velocity = velocity;
+                        gesture.release_by = None;
+                        gesture.stage = Species4Stage::Suspended {
+                            resolution: u8::from(resolution),
+                            resolve_at: gesture.strong_at + 0.5,
+                        };
+                        self.species4 = Some(gesture);
+                    }
+                    (true, true, _) => {
+                        // A legal consonant syncopation, not a suspension.
+                        // Keep it as the preparation for the next strong beat.
+                        gesture.owner_note = melody_midi;
+                        gesture.velocity = velocity;
+                        gesture.release_by = None;
+                        gesture.strong_at += 1.0;
+                        self.species4 = Some(gesture);
+                    }
+                    _ => {
+                        // Release before the new live NoteOn is dispatched;
+                        // an arbitrary unprepared dissonance must never sound.
+                        ops.push(DispatchOp::NoteOff {
+                            target: self.voice_output,
+                            note: gesture.pitch,
+                            channel: gesture.owner_channel,
+                        });
+                        self.arm_species4(scale, melody, velocity, channel, now);
+                    }
+                }
+            }
+            Species4Stage::Suspended { .. } => {
+                // Another melody change before the planned resolution
+                // invalidates the pre-checked sonority.
+                ops.push(DispatchOp::NoteOff {
+                    target: self.voice_output,
+                    note: gesture.pitch,
+                    channel: gesture.owner_channel,
+                });
+                self.arm_species4(scale, melody, velocity, channel, now);
+            }
+        }
+
+        LaneOutput {
+            ops,
+            ..Default::default()
+        }
+    }
+
+    fn flush_species4(&mut self) {
+        let Some(gesture) = self.species4.take() else {
+            return;
+        };
+        if gesture.stage != Species4Stage::Armed {
+            self.pending_off.push_back(PendingCpOff {
+                fire_at: 0.0,
+                note: gesture.pitch,
+                channel: gesture.owner_channel,
+            });
+        }
+    }
 }
 
 impl Default for CounterpointLane {
@@ -206,6 +396,8 @@ impl Lane for CounterpointLane {
         self.pending_on.clear();
         self.pending_off.clear();
         self.held.clear();
+        self.species4 = None;
+        self.last_tick_beat = None;
         self.state.reset();
         self.cantus_history.clear();
     }
@@ -233,6 +425,22 @@ impl Lane for CounterpointLane {
                 let Ok(melody_note) = Note::try_from(note) else {
                     return LaneOutput::default();
                 };
+
+                // Species 4 owns a single transport-scheduled gesture;
+                // do not mix it with the generic pending/held ledger.
+                if self.species == CounterpointSpecies::Species4 {
+                    if self.cantus_history.len() >= 8 {
+                        self.cantus_history.pop_front();
+                    }
+                    self.cantus_history.push_back((melody_note, now));
+                    return self.on_species4_note_on(
+                        &mut scale,
+                        melody_note,
+                        velocity,
+                        channel,
+                        now,
+                    );
+                }
 
                 // Apply diatonic transpose to the starting reference so
                 // the counterpoint sits in a configured interval band.
@@ -320,22 +528,7 @@ impl Lane for CounterpointLane {
                             emitted_notes.push(m);
                         }
                     }
-                    CounterpointSpecies::Species4 => {
-                        // Syncopated: emission lands half a beat later
-                        // than the cantus onset. When the next cantus
-                        // note arrives, the held pitch is the
-                        // "suspension". v1: just the half-beat delay;
-                        // proper resolution machinery follows in the
-                        // next slice.
-                        self.insert_pending(PendingCpOn {
-                            fire_at: now + 0.5,
-                            note: primary_midi,
-                            velocity,
-                            channel,
-                            player_note: note,
-                        });
-                        emitted_notes.push(primary_midi);
-                    }
+                    CounterpointSpecies::Species4 => unreachable!("handled above"),
                 }
 
                 self.held.insert(
@@ -347,7 +540,57 @@ impl Lane for CounterpointLane {
                     },
                 );
             }
-            InputEvent::NoteOff { note, channel: _ } => {
+            InputEvent::NoteOff { note, channel } => {
+                // Species 4 transfers ownership on a new strong-beat
+                // NoteOn before the old legato NoteOff arrives.
+                if self.species == CounterpointSpecies::Species4 {
+                    let Some(mut gesture) = self.species4.take() else {
+                        return LaneOutput::default();
+                    };
+                    if gesture.owner_note != note || gesture.owner_channel != channel {
+                        self.species4 = Some(gesture);
+                        return LaneOutput::default();
+                    }
+
+                    let global_hold = world
+                        .global_hold_mode
+                        .lock()
+                        .map(|g| *g)
+                        .unwrap_or_default();
+                    let effective = self.hold_mode.unwrap_or(global_hold);
+                    let beats_per_bar = world.transport.time_signature().0 as f64;
+                    let release_by = match effective {
+                        HoldMode::Cancel => None,
+                        HoldMode::NearFuture { tail_beats } => Some(now + tail_beats),
+                        HoldMode::PhraseEnd => {
+                            Some((now / beats_per_bar).floor() * beats_per_bar + beats_per_bar)
+                        }
+                        HoldMode::Forever => Some(match gesture.stage {
+                            Species4Stage::Suspended { resolve_at, .. } => resolve_at + 1.0,
+                            _ => gesture.strong_at + 0.5,
+                        }),
+                    };
+
+                    if effective == HoldMode::Cancel {
+                        let ops = if gesture.stage == Species4Stage::Armed {
+                            Vec::new()
+                        } else {
+                            vec![DispatchOp::NoteOff {
+                                target: self.voice_output,
+                                note: gesture.pitch,
+                                channel: gesture.owner_channel,
+                            }]
+                        };
+                        return LaneOutput {
+                            ops,
+                            ..Default::default()
+                        };
+                    }
+                    gesture.release_by = release_by;
+                    self.species4 = Some(gesture);
+                    return LaneOutput::default();
+                }
+
                 // Resolve effective HoldMode (lane override > global).
                 // Pre-v1.2 CounterpointLane behavior was effectively
                 // HoldMode::Cancel (it dropped all pending NoteOns and
@@ -411,27 +654,11 @@ impl Lane for CounterpointLane {
     }
 
     fn tick(&mut self, world: &WorldState) -> LaneOutput {
-        if !self.enabled {
-            return LaneOutput::default();
-        }
         let now = world.transport.total_beats();
         let mut ops: Vec<DispatchOp> = Vec::new();
 
-        while let Some(front) = self.pending_on.front() {
-            if front.fire_at > now {
-                break;
-            }
-            let p = self.pending_on.pop_front().unwrap();
-            ops.push(DispatchOp::NoteOn {
-                target: self.voice_output,
-                note: p.note,
-                velocity: p.velocity,
-                channel: p.channel,
-            });
-        }
-
-        // Off queue isn't kept sorted (small N, infrequent), so scan
-        // linearly. Retain anything still in the future.
+        // Cleanup queued by disable/species changes must drain even
+        // after the lane gate closes.
         let mut idx = 0;
         while idx < self.pending_off.len() {
             if self.pending_off[idx].fire_at <= now {
@@ -444,6 +671,105 @@ impl Lane for CounterpointLane {
             } else {
                 idx += 1;
             }
+        }
+
+        // A host seek/loop can move total_beats backwards. Release the
+        // sounding gesture and discard every old deadline before any
+        // event can reappear on the new timeline.
+        if self
+            .last_tick_beat
+            .map(|previous| now + f64::EPSILON < previous)
+            .unwrap_or(false)
+        {
+            if let Some(gesture) = self.species4.take() {
+                if gesture.stage != Species4Stage::Armed {
+                    ops.push(DispatchOp::NoteOff {
+                        target: self.voice_output,
+                        note: gesture.pitch,
+                        channel: gesture.owner_channel,
+                    });
+                }
+            }
+        }
+        self.last_tick_beat = Some(now);
+
+        if !self.enabled {
+            return LaneOutput {
+                ops,
+                ..Default::default()
+            };
+        }
+
+        if let Some(mut gesture) = self.species4.take() {
+            if gesture.release_by.map(|at| now >= at).unwrap_or(false) {
+                if gesture.stage != Species4Stage::Armed {
+                    ops.push(DispatchOp::NoteOff {
+                        target: self.voice_output,
+                        note: gesture.pitch,
+                        channel: gesture.owner_channel,
+                    });
+                }
+            } else {
+                match gesture.stage {
+                    Species4Stage::Armed if now >= gesture.prepare_at => {
+                        if now <= gesture.prepare_at + SPECIES4_LATE_PREPARATION {
+                            ops.push(DispatchOp::NoteOn {
+                                target: self.voice_output,
+                                note: gesture.pitch,
+                                velocity: gesture.velocity,
+                                channel: gesture.owner_channel,
+                            });
+                            gesture.stage = Species4Stage::Prepared;
+                            self.species4 = Some(gesture);
+                        }
+                    }
+                    Species4Stage::Prepared if now >= gesture.strong_at + 0.5 => {
+                        // No new cantus arrived near the expected strong
+                        // beat. End the consonant syncopation on the weak
+                        // boundary instead of inventing a suspension.
+                        ops.push(DispatchOp::NoteOff {
+                            target: self.voice_output,
+                            note: gesture.pitch,
+                            channel: gesture.owner_channel,
+                        });
+                    }
+                    Species4Stage::Suspended {
+                        resolution,
+                        resolve_at,
+                    } if now >= resolve_at => {
+                        ops.push(DispatchOp::NoteOff {
+                            target: self.voice_output,
+                            note: gesture.pitch,
+                            channel: gesture.owner_channel,
+                        });
+                        ops.push(DispatchOp::NoteOn {
+                            target: self.voice_output,
+                            note: resolution,
+                            velocity: gesture.velocity.saturating_sub(8).max(48),
+                            channel: gesture.owner_channel,
+                        });
+                        gesture.pitch = resolution;
+                        gesture.prepare_at = resolve_at;
+                        gesture.strong_at = resolve_at + 0.5;
+                        gesture.stage = Species4Stage::Prepared;
+                        self.species4 = Some(gesture);
+                    }
+                    _ => self.species4 = Some(gesture),
+                }
+            }
+        }
+
+        while let Some(front) = self.pending_on.front() {
+            if front.fire_at > now {
+                break;
+            }
+            let p = self.pending_on.pop_front().unwrap();
+            ops.push(DispatchOp::NoteOn {
+                target: self.voice_output,
+                note: p.note,
+                velocity: p.velocity,
+                channel: p.channel,
+            });
         }
 
         LaneOutput {
@@ -608,12 +934,7 @@ mod tests {
     }
 
     #[test]
-    fn hold_mode_near_future_drops_beyond_window() {
-        // Species 4 emits a single suspension at fire_at = now + 0.5
-        // with no onset entry, so tail_beats = 0.1 cleanly drops the
-        // only pending entry. (Species 2 keeps the onset entry — its
-        // own NearFuture cancellation is covered by the "keeps within
-        // window" + "drops half-beat passing" cases above.)
+    fn hold_mode_near_future_drops_unsounded_species4_gesture() {
         let (mut lane, world, transport) = fixture();
         lane.set_enabled(true);
         lane.set_species(CounterpointSpecies::Species4);
@@ -628,10 +949,7 @@ mod tests {
             },
             &world,
         );
-        assert!(
-            !lane.pending_on.is_empty(),
-            "Species 4 should buffer a 0.5b suspension"
-        );
+        assert_eq!(lane.species4.map(|g| g.stage), Some(Species4Stage::Armed));
 
         lane.on_input(
             InputEvent::NoteOff {
@@ -640,10 +958,299 @@ mod tests {
             },
             &world,
         );
-        assert!(
-            lane.pending_on.iter().all(|p| p.player_note != 60),
-            "NearFuture(0.1) should drop the 0.5b Species 4 suspension entry"
+        advance_to_beat(&transport, 0.1);
+        assert!(lane.tick(&world).ops.is_empty());
+        assert!(lane.species4.is_none());
+    }
+
+    #[test]
+    fn species4_emits_preparation_hold_and_downward_resolution() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_species(CounterpointSpecies::Species4);
+        lane.transpose_degrees = 2;
+        lane.hold_mode = Some(HoldMode::NearFuture { tail_beats: 2.0 });
+
+        // C on the strong beat prepares E on the following weak half.
+        advance_to_beat(&transport, 0.0);
+        assert!(lane
+            .on_input(
+                InputEvent::NoteOn {
+                    note: 60,
+                    velocity: 100,
+                    channel: 0,
+                },
+                &world,
+            )
+            .ops
+            .is_empty());
+        assert!(lane.tick(&world).ops.is_empty());
+
+        advance_to_beat(&transport, 0.5);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOn {
+                target: VoiceOutputTarget::Synth,
+                note: 64,
+                velocity: 100,
+                channel: 0,
+            }]
         );
+
+        // F makes the retained E a valid 4-3-style dissonance. The
+        // old legato NoteOff must not terminate the transferred cycle.
+        advance_to_beat(&transport, 1.0);
+        assert!(lane
+            .on_input(
+                InputEvent::NoteOn {
+                    note: 65,
+                    velocity: 96,
+                    channel: 0,
+                },
+                &world,
+            )
+            .ops
+            .is_empty());
+        assert!(lane
+            .on_input(
+                InputEvent::NoteOff {
+                    note: 60,
+                    channel: 0,
+                },
+                &world,
+            )
+            .ops
+            .is_empty());
+        assert!(
+            lane.tick(&world).ops.is_empty(),
+            "strong beat must not retrigger"
+        );
+
+        advance_to_beat(&transport, 1.5);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![
+                DispatchOp::NoteOff {
+                    target: VoiceOutputTarget::Synth,
+                    note: 64,
+                    channel: 0,
+                },
+                DispatchOp::NoteOn {
+                    target: VoiceOutputTarget::Synth,
+                    note: 62,
+                    velocity: 88,
+                    channel: 0,
+                },
+            ]
+        );
+
+        // With no next strong-beat cantus, the consonant resolution
+        // releases on the following weak boundary.
+        advance_to_beat(&transport, 2.5);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOff {
+                target: VoiceOutputTarget::Synth,
+                note: 62,
+                channel: 0,
+            }]
+        );
+        assert!(lane.species4.is_none());
+    }
+
+    #[test]
+    fn species4_sounded_note_releases_at_hold_deadline() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_species(CounterpointSpecies::Species4);
+        lane.transpose_degrees = 2;
+        lane.hold_mode = Some(HoldMode::NearFuture { tail_beats: 0.1 });
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.5);
+        let _ = lane.tick(&world);
+        advance_to_beat(&transport, 0.6);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        advance_to_beat(&transport, 0.7);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOff {
+                target: VoiceOutputTarget::Synth,
+                note: 64,
+                channel: 0,
+            }]
+        );
+        assert!(lane.species4.is_none());
+    }
+
+    #[test]
+    fn species4_early_melody_change_releases_before_rearming() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_species(CounterpointSpecies::Species4);
+        lane.transpose_degrees = 2;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.5);
+        assert!(matches!(
+            lane.tick(&world).ops.as_slice(),
+            [DispatchOp::NoteOn { note: 64, .. }]
+        ));
+
+        advance_to_beat(&transport, 0.75);
+        assert_eq!(
+            lane.on_input(
+                InputEvent::NoteOn {
+                    note: 62,
+                    velocity: 100,
+                    channel: 0,
+                },
+                &world,
+            )
+            .ops,
+            vec![DispatchOp::NoteOff {
+                target: VoiceOutputTarget::Synth,
+                note: 64,
+                channel: 0,
+            }]
+        );
+        assert_eq!(lane.species4.map(|g| g.stage), Some(Species4Stage::Armed));
+    }
+
+    #[test]
+    fn species4_disable_flushes_sounded_note_and_cancels_future_events() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_species(CounterpointSpecies::Species4);
+        lane.transpose_degrees = 2;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.5);
+        let _ = lane.tick(&world);
+        advance_to_beat(&transport, 1.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 65,
+                velocity: 96,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(matches!(
+            lane.species4.map(|g| g.stage),
+            Some(Species4Stage::Suspended { .. })
+        ));
+
+        lane.set_enabled(false);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOff {
+                target: VoiceOutputTarget::Synth,
+                note: 64,
+                channel: 0,
+            }]
+        );
+        advance_to_beat(&transport, 2.0);
+        assert!(lane.tick(&world).ops.is_empty());
+    }
+
+    #[test]
+    fn species4_reset_cancels_every_future_phase() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_species(CounterpointSpecies::Species4);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.5);
+        let _ = lane.tick(&world);
+        advance_to_beat(&transport, 1.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 65,
+                velocity: 96,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 1.5);
+        let resolved = lane.tick(&world);
+        assert!(matches!(
+            resolved.ops.as_slice(),
+            [
+                DispatchOp::NoteOff { note: 64, .. },
+                DispatchOp::NoteOn { note: 62, .. }
+            ]
+        ));
+
+        // Panic/Stop dispatches All Notes Off before this reset call.
+        lane.reset_runtime();
+        advance_to_beat(&transport, 2.5);
+        assert!(lane.tick(&world).ops.is_empty());
+        assert!(lane.species4.is_none());
+    }
+
+    #[test]
+    fn species4_transport_rewind_releases_active_gesture() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_species(CounterpointSpecies::Species4);
+        lane.transpose_degrees = 2;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.5);
+        let _ = lane.tick(&world);
+
+        advance_to_beat(&transport, 0.25);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOff {
+                target: VoiceOutputTarget::Synth,
+                note: 64,
+                channel: 0,
+            }]
+        );
+        assert!(lane.species4.is_none());
     }
 
     #[test]
