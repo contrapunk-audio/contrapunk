@@ -42,8 +42,13 @@ export const ARRANGEMENT_CAPABILITIES = [
 ] as const;
 
 export type ArrangementCapability = (typeof ARRANGEMENT_CAPABILITIES)[number];
-export type ArrangementFamily = 'classical' | 'jazz' | 'game';
-export type PresetResearchStatus = 'pending' | 'researched' | 'approved' | 'blocked';
+export type ArrangementFamily = 'classical' | 'jazz' | 'game' | 'custom';
+export type PresetResearchStatus =
+	| 'pending'
+	| 'researched'
+	| 'approved'
+	| 'blocked'
+	| 'not_required';
 
 export interface PresetReference {
 	name: string;
