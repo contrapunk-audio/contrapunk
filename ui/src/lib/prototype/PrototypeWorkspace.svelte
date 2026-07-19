@@ -16,22 +16,17 @@
 	import { transport } from '$lib/stores/transport.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
-	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import CompanionPanel from '$lib/components/CompanionPanel.svelte';
 	import ControlPanel from '$lib/components/ControlPanel.svelte';
 	import EnsemblePresetBar from '$lib/components/EnsemblePresetBar.svelte';
-	import Fretboard from '$lib/components/Fretboard.svelte';
-	import HistoryStrip from '$lib/components/HistoryStrip.svelte';
 	import InputPanel from '$lib/components/InputPanel.svelte';
 	import OutputPanel from '$lib/components/OutputPanel.svelte';
 	import PerformanceView from '$lib/components/PerformanceView.svelte';
-	import Piano from '$lib/components/Piano.svelte';
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
 	import ArrangementMixer from './ArrangementMixer.svelte';
 	import ExpressionRoll from './ExpressionRoll.svelte';
 
-	type PerformanceAnchor = 'piano' | 'fretboard' | 'history';
 	type SetupSection = 'input' | 'harmony' | 'canon' | 'counterpoint' | 'output' | 'presets' | 'advanced';
 
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
@@ -41,7 +36,6 @@
 	let initialized = $state(false);
 	let initError = $state<string | null>(null);
 	let panicSent = $state(false);
-	let performanceAnchor = $state<PerformanceAnchor>('piano');
 	let setupDialog = $state<HTMLDialogElement>();
 	let setupOpen = $state(false);
 	let setupSection = $state<SetupSection>('input');
@@ -186,24 +180,6 @@
 
 			<div class="live-grid">
 				<ExpressionRoll />
-				<div class="live-side">
-					<div class="active-strip"><ActiveNotes /></div>
-					<section class="instrument" aria-labelledby="instrument-title">
-						<header>
-							<h2 id="instrument-title">Notes</h2>
-							<div class="segmented" role="group" aria-label="Instrument visualization">
-								<button class:active={performanceAnchor === 'piano'} onclick={() => (performanceAnchor = 'piano')}>Piano</button>
-								<button class:active={performanceAnchor === 'fretboard'} onclick={() => (performanceAnchor = 'fretboard')}>Fretboard</button>
-								<button class:active={performanceAnchor === 'history'} onclick={() => (performanceAnchor = 'history')}>History</button>
-							</div>
-						</header>
-						<div class="instrument-stage">
-							{#if performanceAnchor === 'piano'}<Piano showKeyLabels={false} />
-							{:else if performanceAnchor === 'fretboard'}<Fretboard />
-							{:else}<HistoryStrip />{/if}
-						</div>
-					</section>
-				</div>
 			</div>
 			<ArrangementMixer {openSetup} />
 		{/if}
@@ -312,17 +288,8 @@
 	.quick-controls select { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--proto-text); font: 600 11px var(--font-grotesk); }
 	.quick-controls .spread span { display: flex; justify-content: space-between; }
 	.quick-controls input[type='range'] { width: 100%; accent-color: var(--proto-text); }
-	.live-grid { display: grid; min-height: 0; grid-template-columns: minmax(0, 1.55fr) minmax(380px, 1fr); gap: 8px; }
-	.live-side { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
-	.active-strip { --color-accent-cyan: #33ddff; padding: 8px 10px; border: 1px solid var(--proto-line); background: var(--proto-panel); }
-	.instrument { display: grid; min-height: 0; grid-template-rows: 49px minmax(0, 1fr); border: 1px solid var(--proto-line); background: var(--proto-panel); }
-	.instrument > header { display: flex; min-height: 49px; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--proto-line); }
-	.instrument h2 { margin: 0; font-size: 14px; font-weight: 650; }
-	.segmented { display: flex; border: 1px solid var(--proto-line-strong); }
-	.segmented button { min-height: 28px; padding: 0 10px; border: 0; border-right: 1px solid var(--proto-line-strong); background: transparent; color: var(--proto-muted); font: 600 9px var(--font-grotesk); }
-	.segmented button:last-child { border-right: 0; }
-	.segmented button.active { background: var(--proto-text); color: var(--proto-bg); }
-	.instrument-stage { min-height: 0; padding: 8px; overflow: hidden; }
+	.live-grid { min-height: 0; }
+	.live-grid > :global(*) { height: 100%; }
 	.notice { padding: 18px; border: 1px solid var(--proto-line); background: var(--proto-panel); color: var(--proto-muted); font-size: 12px; }
 	.notice.error { border-color: #777; color: #fff; }
 	.setup-dialog { width: calc(100vw - 16px); max-width: none; height: calc(100vh - 16px); max-height: none; padding: 0; border: 1px solid #777; background: var(--proto-bg); color: var(--proto-text); font-family: var(--font-grotesk); filter: grayscale(1); }

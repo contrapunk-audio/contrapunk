@@ -3,6 +3,7 @@
 	import { platformName } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midiToName } from '$lib/embed/music-utils';
+	import { PIANO_CANON, PIANO_COUNTERPOINT, PIANO_HARMONY, PIANO_INPUT } from '$lib/theme/colors';
 
 	type Role = 'player' | 'harmony' | 'canon' | 'counterpoint';
 	type PitchSample = { at: number; midi: number; rms: number; clarity: number };
@@ -23,14 +24,15 @@
 	const MAX_PITCH_SAMPLES = 512;
 	const MAX_GATES = 512;
 	const colors: Record<Role, string> = {
-		player: '#f1c75b',
-		harmony: '#ec6f9e',
-		canon: '#d8b85a',
-		counterpoint: '#a7d878'
+		player: PIANO_INPUT,
+		harmony: PIANO_HARMONY,
+		canon: PIANO_CANON,
+		counterpoint: PIANO_COUNTERPOINT
 	};
 	const offsets: Record<Role, number> = { player: -4, harmony: -1.5, canon: 1.5, counterpoint: 4 };
 
 	let canvas = $state<HTMLCanvasElement>();
+	let orientation = $state<'horizontal' | 'vertical'>('horizontal');
 	let pitchName = $state('—');
 	let frequency = $state<number | null>(null);
 	let cents = $state(0);
@@ -126,46 +128,74 @@
 				maxNote = Math.min(127, minNote + 36);
 			}
 		}
-		const plotWidth = Math.max(1, width - KEY_RAIL);
-		const plotHeight = Math.max(1, height - 16);
-		const xFor = (at: number) => KEY_RAIL + ((at - cutoff) / WINDOW_MS) * plotWidth;
-		const yFor = (note: number) => 8 + (1 - (note - minNote) / (maxNote - minNote)) * plotHeight;
+		const vertical = orientation === 'vertical';
+		const railSize = vertical ? 28 : KEY_RAIL;
+		const plotWidth = Math.max(1, width - (vertical ? 0 : KEY_RAIL));
+		const plotHeight = Math.max(1, height - (vertical ? railSize : 16));
+		const timeFor = (at: number) => vertical
+			? railSize + ((at - cutoff) / WINDOW_MS) * plotHeight
+			: KEY_RAIL + ((at - cutoff) / WINDOW_MS) * plotWidth;
+		const pitchFor = (note: number) => vertical
+			? ((note - minNote) / (maxNote - minNote)) * width
+			: 8 + (1 - (note - minNote) / (maxNote - minNote)) * plotHeight;
+		const pointFor = (at: number, note: number): [number, number] => vertical
+			? [pitchFor(note), timeFor(at)]
+			: [timeFor(at), pitchFor(note)];
 
 		for (let note = minNote; note <= maxNote; note++) {
-			const y = yFor(note);
+			const pitch = pitchFor(note);
 			const black = [1, 3, 6, 8, 10].includes(note % 12);
 			ctx.fillStyle = black ? '#1b1b1f' : '#d8d8da';
-			ctx.fillRect(0, y - 2.5, black ? 33 : KEY_RAIL, 5);
+			if (vertical) ctx.fillRect(pitch - 2.5, 0, 5, black ? 18 : railSize);
+			else ctx.fillRect(0, pitch - 2.5, black ? 33 : KEY_RAIL, 5);
 			ctx.strokeStyle = note % 12 === 0 ? '#38383e' : '#202025';
 			ctx.lineWidth = note % 12 === 0 ? 1 : 0.5;
 			ctx.beginPath();
-			ctx.moveTo(KEY_RAIL, Math.round(y) + 0.5);
-			ctx.lineTo(width, Math.round(y) + 0.5);
+			if (vertical) {
+				ctx.moveTo(Math.round(pitch) + 0.5, railSize);
+				ctx.lineTo(Math.round(pitch) + 0.5, height);
+			} else {
+				ctx.moveTo(KEY_RAIL, Math.round(pitch) + 0.5);
+				ctx.lineTo(width, Math.round(pitch) + 0.5);
+			}
 			ctx.stroke();
 			if (note % 12 === 0) {
 				ctx.fillStyle = '#74747c';
 				ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
-				ctx.fillText(midiToName(note), 4, Math.max(9, y - 4));
+				ctx.textAlign = vertical ? 'center' : 'start';
+				ctx.fillText(midiToName(note), vertical ? pitch : 4, vertical ? railSize - 3 : Math.max(9, pitch - 4));
 			}
 		}
+		ctx.textAlign = 'start';
 		for (let step = 0; step <= 8; step++) {
-			const x = KEY_RAIL + (step / 8) * plotWidth;
+			const time = vertical
+				? railSize + (step / 8) * plotHeight
+				: KEY_RAIL + (step / 8) * plotWidth;
 			ctx.strokeStyle = step === 8 ? '#55555c' : '#242429';
 			ctx.lineWidth = 1;
 			ctx.beginPath();
-			ctx.moveTo(Math.round(x) + 0.5, 0);
-			ctx.lineTo(Math.round(x) + 0.5, height);
+			if (vertical) {
+				ctx.moveTo(0, Math.round(time) + 0.5);
+				ctx.lineTo(width, Math.round(time) + 0.5);
+			} else {
+				ctx.moveTo(Math.round(time) + 0.5, 0);
+				ctx.lineTo(Math.round(time) + 0.5, height);
+			}
 			ctx.stroke();
 		}
 
 		for (const gate of gates) {
 			const start = Math.max(cutoff, gate.startedAt);
 			const end = Math.min(now, gate.endedAt ?? now);
-			const x = xFor(start);
-			const gateWidth = Math.max(3, xFor(end) - x);
+			const [startX, startY] = pointFor(start, gate.note);
+			const [endX, endY] = pointFor(end, gate.note);
 			ctx.globalAlpha = gate.endedAt === null ? 0.95 : 0.62;
 			ctx.fillStyle = colors[gate.role];
-			ctx.fillRect(x, yFor(gate.note) + offsets[gate.role] - 2.5, gateWidth, 5);
+			if (vertical) {
+				ctx.fillRect(startX + offsets[gate.role] - 2.5, startY, 5, Math.max(3, endY - startY));
+			} else {
+				ctx.fillRect(startX, startY + offsets[gate.role] - 2.5, Math.max(3, endX - startX), 5);
+			}
 		}
 		ctx.globalAlpha = 1;
 
@@ -177,8 +207,7 @@
 			ctx.beginPath();
 			let previous: PitchSample | null = null;
 			for (const sample of pitchSamples) {
-				const x = xFor(sample.at);
-				const y = yFor(sample.midi);
+				const [x, y] = pointFor(sample.at, sample.midi);
 				if (!previous || sample.at - previous.at > 150) ctx.moveTo(x, y);
 				else ctx.lineTo(x, y);
 				previous = sample;
@@ -186,18 +215,20 @@
 			ctx.stroke();
 			for (let index = 0; index < pitchSamples.length; index += 3) {
 				const sample = pitchSamples[index];
+				const [x, y] = pointFor(sample.at, sample.midi);
 				const age = (now - sample.at) / WINDOW_MS;
 				ctx.globalAlpha = Math.max(0.12, (1 - age) * Math.max(0.25, sample.clarity));
 				ctx.fillStyle = '#42e8c4';
 				ctx.beginPath();
-				ctx.arc(xFor(sample.at), yFor(sample.midi), 1.2 + Math.min(4, sample.rms * 32), 0, Math.PI * 2);
+				ctx.arc(x, y, 1.2 + Math.min(4, sample.rms * 32), 0, Math.PI * 2);
 				ctx.fill();
 			}
 			const head = pitchSamples[pitchSamples.length - 1];
+			const [headX, headY] = pointFor(head.at, head.midi);
 			ctx.globalAlpha = guitarLive ? 1 : 0.35;
 			ctx.fillStyle = '#42e8c4';
 			ctx.beginPath();
-			ctx.arc(xFor(head.at), yFor(head.midi), 3 + Math.min(4, head.rms * 36), 0, Math.PI * 2);
+			ctx.arc(headX, headY, 3 + Math.min(4, head.rms * 36), 0, Math.PI * 2);
 			ctx.fill();
 			ctx.globalAlpha = 1;
 		}
@@ -257,9 +288,21 @@
 	});
 </script>
 
-<section class="expression-roll" aria-labelledby="expression-title">
+<section
+	class="expression-roll"
+	aria-labelledby="expression-title"
+	style={`--player-color:${colors.player};--harmony-color:${colors.harmony};--canon-color:${colors.canon};--counterpoint-color:${colors.counterpoint}`}
+>
 	<header>
-		<h2 id="expression-title">Performance</h2>
+		<div class="roll-title">
+			<h2 id="expression-title">{engine.chordName || '—'}</h2>
+			<button
+				type="button"
+				aria-label="Flip piano roll orientation"
+				title={orientation === 'horizontal' ? 'Place pitch left to right and time top to bottom' : 'Place pitch bottom to top and time left to right'}
+				onclick={() => (orientation = orientation === 'horizontal' ? 'vertical' : 'horizontal')}
+			>Flip {orientation === 'horizontal' ? '↕' : '↔'}</button>
+		</div>
 		<div class="legend" aria-label="Sound roles">
 			<span class:live={guitarLive}><i class="guitar"></i>Guitar pitch</span>
 			<span class:live={playerLive}><i class="player"></i>Emitted MIDI</span>
@@ -269,9 +312,9 @@
 		</div>
 	</header>
 	<div class="roll-frame">
-		<canvas bind:this={canvas} aria-label="Eight-second piano roll comparing continuous guitar pitch with emitted MIDI and generated ensemble notes"></canvas>
+		<canvas bind:this={canvas} aria-label={`Eight-second piano roll with time moving ${orientation === 'horizontal' ? 'left to right' : 'top to bottom'}`}></canvas>
 		{#if !hasHistory}
-			<div class="empty">Play a note to reveal its shape.</div>
+			<div class="empty" class:vertical={orientation === 'vertical'}>Play a note to reveal its shape.</div>
 		{/if}
 	</div>
 	<footer>
@@ -284,19 +327,23 @@
 <style>
 	.expression-roll { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; border: 1px solid var(--proto-line); background: var(--proto-panel); }
 	header { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 12px; border-bottom: 1px solid var(--proto-line); }
-	h2 { margin: 0; color: var(--proto-text); font-size: 14px; font-weight: 650; }
+	.roll-title { display: flex; min-width: 0; align-items: center; gap: 10px; }
+	h2 { min-width: 1.5em; margin: 0; overflow: hidden; color: var(--proto-text); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+	.roll-title button { min-height: 26px; padding: 0 8px; border: 1px solid var(--proto-line-strong); background: transparent; color: var(--proto-muted); font: 650 9px var(--font-grotesk); }
+	.roll-title button:hover { border-color: var(--proto-text); color: var(--proto-text); }
 	.legend { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; color: var(--proto-muted); font-size: 10px; }
 	.legend span { display: inline-flex; align-items: center; gap: 5px; }
 	.legend i { width: 12px; height: 2px; background: var(--proto-dim); }
 	.legend span.live { color: var(--proto-text); }
 	.legend span.live i.guitar { background: #42e8c4; }
-	.legend span.live i.player { background: #f1c75b; }
-	.legend span.live i.harmony { background: #ec6f9e; }
-	.legend span.live i.canon { background: #d8b85a; }
-	.legend span.live i.counterpoint { background: #a7d878; }
+	.legend span.live i.player { background: var(--player-color); }
+	.legend span.live i.harmony { background: var(--harmony-color); }
+	.legend span.live i.canon { background: var(--canon-color); }
+	.legend span.live i.counterpoint { background: var(--counterpoint-color); }
 	.roll-frame { position: relative; min-height: 0; background: #0b0b0d; }
 	canvas { display: block; width: 100%; height: 100%; }
 	.empty { position: absolute; inset: 0; display: grid; place-items: center; padding-left: 50px; color: var(--proto-dim); font-size: 12px; pointer-events: none; }
+	.empty.vertical { padding-top: 28px; padding-left: 0; }
 	footer { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--proto-line); }
 	footer > div { min-width: 0; padding: 8px 11px; border-right: 1px solid var(--proto-line); }
 	footer > div:last-child { border-right: 0; }

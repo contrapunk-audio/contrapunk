@@ -1005,19 +1005,11 @@ impl Lane for CanonLane {
                         // at the same release_at — the canon voice's
                         // chord releases simultaneously.
                         for &canon_note in &fire.canon_notes {
-                            // C2 dedup: rapid retrigger of the same
-                            // player_note before the prior release
-                            // fires would otherwise accumulate
-                            // duplicate NoteOffs in the queue, leaking
-                            // memory and emitting double NoteOffs to
-                            // the synth. Drop any stale entry for this
-                            // (voice_idx, canon_note) pair before
-                            // pushing the new release.
-                            self.pending_off.retain(|p| {
-                                !(p.player_note == note
-                                    && p.voice_idx == fire.voice_idx
-                                    && p.canon_note == canon_note)
-                            });
+                            // Keep one release per emitted attack. A
+                            // retrigger can overlap a time-stretched
+                            // predecessor at the same pitch; replacing
+                            // its queued NoteOff would leave one owner
+                            // sounding forever.
                             self.pending_off.push(PendingOff {
                                 fire_at: release_at,
                                 canon_note,
@@ -2779,20 +2771,14 @@ mod tests {
         );
     }
 
-    /// C2 regression: rapid retrigger of the same player_note before
-    /// the prior release drains must not accumulate duplicate
-    /// pending_off entries. Each (player_note, voice_idx, canon_note)
-    /// tuple should have at most one queued release at any time.
+    /// Regression: a time-stretched note may still be sounding when
+    /// the player retriggers the same pitch. Both attacks need their
+    /// own release; deduplicating pending NoteOffs strands one owner.
     #[test]
-    fn rapid_retrigger_does_not_duplicate_pending_off() {
+    fn rapid_retrigger_releases_every_emitted_note() {
         let (mut lane, world, transport) = fixture();
         lane.set_enabled(true);
-        // Single voice, time_ratio=2 so voice_off_fire is well in the
-        // future and the pending_off doesn't drain naturally between
-        // the two release cycles below.
-        let voice = CanonVoice::with_time_ratio(0.0, 2, 2.0);
-        lane.set_voices(vec![voice]);
-        // Forever so we keep natural release scheduling on each cycle.
+        lane.set_voices(vec![CanonVoice::with_time_ratio(0.0, 2, 2.0)]);
         *world.global_hold_mode.lock().unwrap() = HoldMode::Forever;
 
         advance_to_beat(&transport, 0.0);
@@ -2804,8 +2790,17 @@ mod tests {
             },
             &world,
         );
-        let _ = lane.tick(&world);
-        advance_to_beat(&transport, 0.1);
+        let first_on = lane.tick(&world);
+        assert_eq!(
+            first_on
+                .ops
+                .iter()
+                .filter(|op| matches!(op, DispatchOp::NoteOn { .. }))
+                .count(),
+            1
+        );
+
+        advance_to_beat(&transport, 0.5);
         lane.on_input(
             InputEvent::NoteOff {
                 note: 60,
@@ -2813,14 +2808,7 @@ mod tests {
             },
             &world,
         );
-        let after_first = lane
-            .pending_off
-            .iter()
-            .filter(|p| p.player_note == 60)
-            .count();
-
-        // Retrigger BEFORE the first release fires.
-        advance_to_beat(&transport, 0.2);
+        advance_to_beat(&transport, 0.6);
         lane.on_input(
             InputEvent::NoteOn {
                 note: 60,
@@ -2829,8 +2817,7 @@ mod tests {
             },
             &world,
         );
-        let _ = lane.tick(&world);
-        advance_to_beat(&transport, 0.3);
+        advance_to_beat(&transport, 0.7);
         lane.on_input(
             InputEvent::NoteOff {
                 note: 60,
@@ -2838,20 +2825,36 @@ mod tests {
             },
             &world,
         );
-        let after_second = lane
-            .pending_off
-            .iter()
-            .filter(|p| p.player_note == 60)
-            .count();
 
-        // The second cycle should REPLACE the first cycle's
-        // pending_off entries, not append. Same voice emits the same
-        // canon_note in both cycles, so dedup by (voice_idx, canon_note)
-        // keeps the count flat. Without C2 fix this grows linearly.
         assert_eq!(
-            after_second, after_first,
-            "rapid retrigger should dedup pending_off; first={} second={}",
-            after_first, after_second
+            lane.pending_off
+                .iter()
+                .filter(|p| p.player_note == 60)
+                .count(),
+            2,
+            "each overlapping attack needs a matching queued release"
         );
+
+        advance_to_beat(&transport, 1.1);
+        let first_off = lane.tick(&world);
+        advance_to_beat(&transport, 1.3);
+        let second_on = lane.tick(&world);
+        advance_to_beat(&transport, 1.5);
+        let second_off = lane.tick(&world);
+        let note_ons = first_on
+            .ops
+            .iter()
+            .chain(second_on.ops.iter())
+            .filter(|op| matches!(op, DispatchOp::NoteOn { .. }))
+            .count();
+        let note_offs = first_off
+            .ops
+            .iter()
+            .chain(second_off.ops.iter())
+            .filter(|op| matches!(op, DispatchOp::NoteOff { .. }))
+            .count();
+        assert_eq!(note_ons, 2);
+        assert_eq!(note_offs, 2);
+        assert!(lane.pending_off.is_empty());
     }
 }
