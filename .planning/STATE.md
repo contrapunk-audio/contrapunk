@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: executing
-stopped_at: Phase 10.2 Wave 2 preset 07 research/synthesis complete; implementing Stretto Engine.
+stopped_at: Phase 10.2 Wave 2 presets 02, 04, and 07 operational; next research gate is preset 08 Suspension Garland.
 last_updated: "2026-07-19T12:22:14Z"
-last_activity: 2026-07-19 — Three independent Stretto Engine reports and parent synthesis approved a fixed shrinking-gap Strict Canon approximation.
+last_activity: 2026-07-19 — Shipped Stretto Engine with fixed shrinking Strict Canon entry gaps, visible approximation limits, and deterministic group-tail cleanup.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 2/12 operational and preset 07 ready for implementation
-Last activity: 2026-07-19 — Stretto Engine is scoped to selected Bach procedures and explicitly rejects generic automatic-fugue or universal end-tightening claims.
+Status: Executing Wave 2; 3/12 baseline presets operational
+Last activity: 2026-07-19 — Modal Linework, Mensuration Web, and Stretto Engine are approved; the remaining 47 records stay visible and research-gated.
 
 ### Phase 10.2 Start — 2026-07-19
 
