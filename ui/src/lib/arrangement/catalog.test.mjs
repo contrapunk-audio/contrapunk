@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
 	BUILT_IN_ARRANGEMENT_PRESETS,
+	COLOR_MODE_WINDOWS_PRESET,
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
 	PLANED_CATHEDRAL_PRESET,
@@ -36,7 +37,8 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			'04-mensuration-web',
 			'07-stretto-engine',
 			'08-suspension-garland',
-			'12-planed-cathedral'
+			'12-planed-cathedral',
+			'14-color-mode-windows'
 		]
 	);
 });
@@ -196,6 +198,47 @@ test('Planed Cathedral fixes one exact whole-tone three-note plane', () => {
 		'transport'
 	]) {
 		assert.equal(preserved in PLANED_CATHEDRAL_PRESET.config, false);
+	}
+});
+
+test('Color-Mode Windows fixes one exact Mode-2 diminished-seventh plane', () => {
+	assert.deepEqual(COLOR_MODE_WINDOWS_PRESET.requirements, ['harmony']);
+	assert.equal(COLOR_MODE_WINDOWS_PRESET.play.transportRequired, false);
+	assert.deepEqual(COLOR_MODE_WINDOWS_PRESET.config.harmony, {
+		scaleMode: 'DiminishedHalfWhole',
+		mode: 'DiatonicThirds',
+		voiceCount: 4,
+		voicePosition: 3,
+		voiceLeadingEnabled: false,
+		voiceLeadingStyle: 'Free',
+		octaveMode: 'None',
+		octaveIntensity: 1,
+		interchangeEnabled: false,
+		interchangeRange: 3,
+		counterpointSpecies: 'Species1',
+		counterpointStrictness: 'Strict'
+	});
+	assert.equal(COLOR_MODE_WINDOWS_PRESET.config.companion.enabled, false);
+	assert.match(COLOR_MODE_WINDOWS_PRESET.approximation, /does not rotate/);
+	assert.match(COLOR_MODE_WINDOWS_PRESET.approximation, /nine-note Mode 3/);
+	assert.deepEqual(validateArrangementPreset(COLOR_MODE_WINDOWS_PRESET), []);
+	assert.deepEqual(arrangementConfigCapabilities(COLOR_MODE_WINDOWS_PRESET.config), ['harmony']);
+
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in COLOR_MODE_WINDOWS_PRESET.config, false);
 	}
 });
 

@@ -382,6 +382,68 @@ export const PLANED_CATHEDRAL_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const COLOR_MODE_WINDOWS_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '14-color-mode-windows',
+	name: 'Color-Mode Windows',
+	family: 'classical',
+	tags: ['early-modern', 'mode-2', 'octatonic', 'player-shaped-form'],
+	builtIn: true,
+	result:
+		'Each in-collection note opens a fixed four-note Mode-2 diminished-seventh window; your repeated cells, register, attack, and silence frame the contrasts.',
+	approximation:
+		"A static fixed-transposition Mode-2 window inspired by one pitch-and-voicing property of Messiaen's modal-harmonic language as codified in 1944. It does not reproduce his added or resonance chords, pedals, tonal poles, nine-note Mode 3, rhythmic procedures, birdsong, orchestration, theology, or personal chord-color perceptions, and it does not rotate collections automatically. You supply the cells, contrasts, register, dynamics, articulation, duration, and silence.",
+	play: {
+		prompt:
+			'Play a crisp two-to-four-note cell from the shown collection, then leave a long gap. Repeat it once higher or stronger, change only one note, and hear each generated chord as a separate color window.',
+		input: 'motif',
+		articulation:
+			'Clear 0.6–2 second notes with complete releases; one 2–3 second destination, no pedal, overlap, bends, slides, or ringing strings.',
+		density: 'Two to four source notes per cell; one physical note at a time.',
+		space: 'Leave 0.3–0.8 seconds between notes and 1.5–3 seconds after each cell.',
+		tempo: '54–76 BPM if a reference pulse helps; transport is optional and remains untouched.',
+		transportRequired: false
+	},
+	references: [
+		{
+			name: 'Olivier Messiaen',
+			context:
+				'Bounded reference to Mode-2 modal-harmonic color in the language codified in 1944 and selected works from approximately 1935–44.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['harmony'],
+	config: {
+		harmony: {
+			scaleMode: 'DiminishedHalfWhole',
+			mode: 'DiatonicThirds',
+			voiceCount: 4,
+			voicePosition: 3,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: false,
+			globalHoldMode: { kind: 'cancel' },
+			canon: { enabled: false, form: 'free_imitation', holdMode: null, voices: [] },
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -442,6 +504,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 7) return STRETTO_ENGINE_PRESET;
 		if (spec.number === 8) return SUSPENSION_GARLAND_PRESET;
 		if (spec.number === 12) return PLANED_CATHEDRAL_PRESET;
+		if (spec.number === 14) return COLOR_MODE_WINDOWS_PRESET;
 		return draftPreset(spec);
 	}
 );
