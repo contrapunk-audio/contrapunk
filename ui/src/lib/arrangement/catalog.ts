@@ -110,6 +110,77 @@ export const MODAL_LINEWORK_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const MENSURATION_WEB_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '04-mensuration-web',
+	name: 'Mensuration Web',
+	family: 'classical',
+	tags: ['renaissance', 'proportional-canon', 'free-imitation', 'transport'],
+	builtIn: true,
+	result:
+		'One short motif unfolds as four single-note lines at locked 1:1, 3:2, and 2:1 timing relationships.',
+	approximation:
+		"A scalar proportional Free Imitation effect inspired by the coordinated canonic procedure of Ockeghem's Missa prolationum. It does not reconstruct the Mass's two written lines, mensural notation, binary/ternary note-value rules, ficta, canonic interval plan, cadences, tactus, or historical performance.",
+	play: {
+		prompt:
+			'Play one exact three-to-six-note line, clean and even, then leave a wide silence and listen as the same shape opens at locked proportional rates.',
+		input: 'motif',
+		articulation:
+			'Clean non-legato or soft tenuto with deliberate releases; no pedal, slides, trills, or overlapping strings.',
+		density: 'One note per beat at first; three to six source attacks total.',
+		space: 'Stay silent until the 2:1 tail ends, then wait at least two more transport beats.',
+		tempo: '66–84 BPM; 72 BPM is the test default.',
+		transportRequired: true
+	},
+	references: [
+		{
+			name: 'Johannes Ockeghem',
+			context:
+				'Bounded procedural reference to the paired mensuration canons of Missa prolationum.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['free_imitation'],
+	config: {
+		harmony: {
+			scaleMode: 'Dorian',
+			mode: 'PassThrough',
+			voiceCount: 1,
+			voicePosition: 0,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: true,
+			globalHoldMode: { kind: 'cancel' },
+			canon: {
+				enabled: true,
+				form: 'free_imitation',
+				holdMode: { kind: 'forever' },
+				voices: [
+					singleLineFollower(7, 1),
+					singleLineFollower(4, 1.5),
+					singleLineFollower(-4, 2)
+				]
+			},
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -164,8 +235,30 @@ const DRAFT_SPECS: DraftSpec[] = [
 ];
 
 export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAFT_SPECS.map(
-	(spec) => (spec.number === 2 ? MODAL_LINEWORK_PRESET : draftPreset(spec))
+	(spec) => {
+		if (spec.number === 2) return MODAL_LINEWORK_PRESET;
+		if (spec.number === 4) return MENSURATION_WEB_PRESET;
+		return draftPreset(spec);
+	}
 );
+
+function singleLineFollower(transposeDegrees: number, timeRatio: number) {
+	return {
+		delayBeats: 0,
+		transposeDegrees,
+		timeRatio,
+		harmonyMode: 'PassThrough' as const,
+		referenceVoice: null,
+		voiceCount: 1,
+		voicePosition: 0,
+		voiceLeadingEnabled: false,
+		voiceLeadingStyle: 'Free' as const,
+		octaveMode: 'None' as const,
+		counterpointSpecies: 'Species1' as const,
+		counterpointStrictness: 'Strict' as const,
+		holdMode: null
+	};
+}
 
 function draftPreset(spec: DraftSpec): ArrangementPresetV2 {
 	return {

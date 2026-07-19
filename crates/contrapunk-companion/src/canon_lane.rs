@@ -1932,6 +1932,95 @@ mod tests {
         }
     }
 
+    #[test]
+    fn mensuration_web_uses_causal_ratios_and_releases_the_forever_tail() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.hold_mode = Some(HoldMode::Forever);
+
+        let follower = |transpose_degrees, time_ratio| {
+            let mut voice = CanonVoice::with_time_ratio(0.0, transpose_degrees, time_ratio);
+            voice.harmony_mode = Some(HarmonyMode::PassThrough);
+            voice.voice_count = Some(1);
+            voice.voice_position = Some(0);
+            voice.voice_leading_enabled = Some(false);
+            voice.voice_leading_style = Some(VoiceLeadingStyle::Free);
+            voice.octave_mode = Some(OctaveMode::None);
+            voice
+        };
+        lane.set_voices(vec![follower(7, 1.0), follower(4, 1.5), follower(-4, 2.0)]);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 80,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.5);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        advance_to_beat(&transport, 1.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 62,
+                velocity: 80,
+                channel: 0,
+            },
+            &world,
+        );
+        let second_onsets: Vec<f64> = lane
+            .pending_on
+            .iter()
+            .filter(|pending| pending.player_note == 62)
+            .map(|pending| pending.fire_at)
+            .collect();
+        assert_eq!(second_onsets, vec![1.0, 1.5, 2.0]);
+
+        advance_to_beat(&transport, 1.5);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 62,
+                channel: 0,
+            },
+            &world,
+        );
+        let mut second_releases: Vec<f64> = lane
+            .pending_off
+            .iter()
+            .filter(|pending| pending.player_note == 62)
+            .map(|pending| pending.fire_at)
+            .collect();
+        second_releases.sort_by(f64::total_cmp);
+        assert_eq!(second_releases, vec![1.5, 2.25, 3.0]);
+
+        advance_to_beat(&transport, 3.1);
+        let output = lane.tick(&world);
+        let note_ons = output
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DispatchOp::NoteOn { .. }))
+            .count();
+        let note_offs = output
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DispatchOp::NoteOff { .. }))
+            .count();
+        assert_eq!(note_ons, 6);
+        assert_eq!(note_offs, 6);
+        assert!(lane.pending_on.is_empty());
+        assert!(lane.pending_off.is_empty());
+        assert!(lane.held.is_empty());
+    }
+
     /// Phrase anchor resets after silence exceeding the threshold.
     /// Without this, an augmentation voice would stretch the entire
     /// performance history into the future. Test: two inputs separated

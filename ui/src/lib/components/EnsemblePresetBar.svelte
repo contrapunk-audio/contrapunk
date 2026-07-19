@@ -4,6 +4,7 @@
 	import {
 		arrangementConfigCapabilities,
 		missingArrangementCapabilities,
+		validateArrangementPreset,
 		type ArrangementPresetV2
 	} from '$lib/arrangement/presets';
 	import { arrangement } from '$lib/stores/arrangement.svelte';
@@ -29,7 +30,10 @@
 	let researchLocked = $derived(
 		selected?.builtIn === true && selected.researchStatus !== 'approved'
 	);
-	let canApply = $derived(!!selected && !researchLocked && missing.length === 0 && !applying);
+	let presetErrors = $derived(selected ? validateArrangementPreset(selected) : []);
+	let canApply = $derived(
+		!!selected && !researchLocked && missing.length === 0 && presetErrors.length === 0 && !applying
+	);
 	let options = $derived(
 		presets.map((preset) => ({
 			value: preset.id,
@@ -41,7 +45,9 @@
 			? 'Research pending — Apply stays locked.'
 			: missing.length
 				? `Unavailable here — missing ${missing.join(', ')}.`
-				: 'Available on this surface.'
+				: presetErrors.length
+					? `Invalid preset — ${presetErrors.join('; ')}.`
+					: 'Available on this surface.'
 	);
 
 	onMount(() => {
@@ -151,7 +157,7 @@
 				{#if selected.approximation}<p class="approximation">{selected.approximation}</p>{/if}
 			</div>
 			<div class="evidence font-code">
-				<div class:locked={researchLocked || missing.length > 0} class="availability">{availability}</div>
+				<div class:locked={researchLocked || missing.length > 0 || presetErrors.length > 0} class="availability">{availability}</div>
 				<div>{selected.play.input.replaceAll('_', ' ')} · {selected.play.transportRequired ? 'transport required' : 'transport optional'}</div>
 				<div>{selected.play.articulation}</div>
 				<div>{selected.play.density} {selected.play.space}</div>

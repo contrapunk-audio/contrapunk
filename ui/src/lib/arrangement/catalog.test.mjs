@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BUILT_IN_ARRANGEMENT_PRESETS, MODAL_LINEWORK_PRESET } from './catalog.ts';
-import { arrangementConfigCapabilities, validateArrangementConfig } from './presets.ts';
+import {
+	BUILT_IN_ARRANGEMENT_PRESETS,
+	MENSURATION_WEB_PRESET,
+	MODAL_LINEWORK_PRESET
+} from './catalog.ts';
+import {
+	arrangementConfigCapabilities,
+	validateArrangementConfig,
+	validateArrangementPreset
+} from './presets.ts';
 
-test('catalog exposes 50 unique immutable built-in records with one approved baseline', () => {
+test('catalog exposes 50 unique immutable built-ins and only approved baselines', () => {
 	assert.equal(BUILT_IN_ARRANGEMENT_PRESETS.length, 50);
 	assert.equal(new Set(BUILT_IN_ARRANGEMENT_PRESETS.map((preset) => preset.id)).size, 50);
 	assert.equal(new Set(BUILT_IN_ARRANGEMENT_PRESETS.map((preset) => preset.name)).size, 50);
@@ -20,8 +28,45 @@ test('catalog exposes 50 unique immutable built-in records with one approved bas
 		BUILT_IN_ARRANGEMENT_PRESETS.filter((preset) => preset.researchStatus === 'approved').map(
 			(preset) => preset.id
 		),
-		['02-modal-linework']
+		['02-modal-linework', '04-mensuration-web']
 	);
+});
+
+test('Mensuration Web uses causal single-line proportional followers', () => {
+	assert.equal(MENSURATION_WEB_PRESET.play.transportRequired, true);
+	assert.deepEqual(MENSURATION_WEB_PRESET.requirements, ['free_imitation']);
+	assert.equal(MENSURATION_WEB_PRESET.config.harmony.mode, 'PassThrough');
+	assert.equal(MENSURATION_WEB_PRESET.config.harmony.voiceCount, 1);
+	assert.equal(MENSURATION_WEB_PRESET.config.companion.canon.form, 'free_imitation');
+	assert.deepEqual(
+		MENSURATION_WEB_PRESET.config.companion.canon.voices.map((voice) => voice.timeRatio),
+		[1, 1.5, 2]
+	);
+	assert.ok(
+		MENSURATION_WEB_PRESET.config.companion.canon.voices.every(
+			(voice) => voice.harmonyMode === 'PassThrough' && voice.voiceCount === 1
+		)
+	);
+	assert.deepEqual(validateArrangementPreset(MENSURATION_WEB_PRESET), []);
+
+	const impossibleLiveDiminution = {
+		...MENSURATION_WEB_PRESET,
+		config: {
+			...MENSURATION_WEB_PRESET.config,
+			companion: {
+				...MENSURATION_WEB_PRESET.config.companion,
+				canon: {
+					...MENSURATION_WEB_PRESET.config.companion.canon,
+					voices: MENSURATION_WEB_PRESET.config.companion.canon.voices.map((voice, index) =>
+						index === 0 ? { ...voice, timeRatio: 0.5 } : voice
+					)
+				}
+			}
+		}
+	};
+	assert.deepEqual(validateArrangementPreset(impossibleLiveDiminution), [
+		'Live proportional ratios below 1 require phrase capture'
+	]);
 });
 
 test('Modal Linework matches its bounded research synthesis', () => {

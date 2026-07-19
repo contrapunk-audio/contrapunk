@@ -170,6 +170,19 @@ export function arrangementConfigCapabilities(config: ArrangementConfig): Arrang
 	return [...capabilities];
 }
 
+export function validateArrangementPreset(preset: ArrangementPresetV2): string[] {
+	const errors = validateArrangementConfig(preset.config);
+	if (
+		preset.researchStatus === 'approved' &&
+		preset.config.companion.canon.enabled &&
+		!preset.requirements.includes('phrase_capture') &&
+		preset.config.companion.canon.voices.some((voice) => voice.timeRatio < 1)
+	) {
+		errors.push('Live proportional ratios below 1 require phrase capture');
+	}
+	return errors;
+}
+
 export function validateArrangementConfig(config: ArrangementConfig): string[] {
 	const errors: string[] = [];
 	if (config.harmony.voiceCount < 1 || config.harmony.voiceCount > 8) {
@@ -183,6 +196,11 @@ export function validateArrangementConfig(config: ArrangementConfig): string[] {
 	}
 	if (config.companion.canon.voices.length > 8) {
 		errors.push('Canon supports at most 8 voices');
+	}
+	for (const [index, voice] of config.companion.canon.voices.entries()) {
+		if (!Number.isFinite(voice.timeRatio) || voice.timeRatio < 0.125 || voice.timeRatio > 8) {
+			errors.push(`Canon voice ${index + 1} timeRatio must be between 0.125 and 8`);
+		}
 	}
 	for (const [role, value] of Object.entries(config.mix)) {
 		if (!Number.isFinite(value) || value < 0 || value > 1) {
