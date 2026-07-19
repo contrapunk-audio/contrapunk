@@ -6,9 +6,9 @@
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-08-suspension-garland",
+  "task": "fix-species4-suspension-lifecycle",
   "total_plans": 7,
-  "status": "active",
+  "status": "blocked",
   "loop": {
     "id": 2,
     "title": "Contrapunk research-backed 50 arrangement presets",
@@ -82,9 +82,19 @@
       ]
     },
     {
-      "name": "Research and implement remaining first-12 baselines",
-      "status": "in_progress",
-      "details": "Current: research 08. Then order: 12, 14, 23, 25, 27, 36, 43, 48. Three researchers plus parent synthesis per preset."
+      "name": "Preset 08 Suspension Garland research pack and parent synthesis",
+      "status": "done_blocked_correctness_fix",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/synthesis.md"
+      ]
+    },
+    {
+      "name": "Fix Species4 lifecycle, then implement remaining first-12 baselines",
+      "status": "blocked",
+      "details": "Current: complete a real clock-scheduled Species4 CounterpointLane. Then preset order: 08, 12, 14, 23, 25, 27, 36, 43, 48."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -98,6 +108,12 @@
     }
   ],
   "blockers": [
+    {
+      "description": "Preset 08 cannot activate because current Species4 does not implement a preparation–held-suspension–resolution lifecycle.",
+      "type": "correctness",
+      "evidence": "CounterpointLane Species4 only delays an attack; CounterpointState is NoteOn-driven, phase-inaccurate, 4/4-hardcoded, and has no true held-note ownership.",
+      "workaround": "Finish the existing CounterpointLane with clock-scheduled atomic P–S–R and cancellation tests; keep the draft locked until verified."
+    },
     {
       "description": "Dirty tree contains unrelated Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents work.",
       "type": "technical",
@@ -130,6 +146,6 @@
     "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch the three independent research perspectives for preset 08 Suspension Garland, then parent-synthesize before changing its draft.",
-  "context_notes": "Modal Linework, Mensuration Web, and Stretto Engine are operational (3/12). Stretto Engine remains a fixed overlapping-answer approximation with no motif recognition, tonal-answer generation, automatic fugue, or universal Bach end-tightening claim."
+  "next_action": "Design and implement the smallest clock-scheduled, lifecycle-owned Species4 correction in CounterpointLane, with normal and cancellation tests at every phase; do not unlock preset 08 yet.",
+  "context_notes": "Three baselines are operational. Preset 08 research decision is needs_correctness_fix. The research pack explicitly separates Fux pedagogy, Palestrina corpus practice, and current unsupported Species4 behavior."
 }

@@ -1,9 +1,9 @@
 {
   "version": 1,
   "phase": "10.2",
-  "status": "executing",
+  "status": "paused_species4_correctness_blocker",
   "current_wave": 2,
-  "current_slice": "research-preset-08-suspension-garland",
+  "current_slice": "fix-species4-suspension-lifecycle",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -103,6 +103,35 @@
         "commit": "ff74c6d",
         "preset_id": "07-stretto-engine"
       }
+    },
+    "08-suspension-garland": {
+      "status": "blocked_correctness_fix",
+      "required_reports": 3,
+      "completed_reports": 3,
+      "history": {
+        "status": "complete",
+        "attempts": 2,
+        "path": ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/history.md"
+      },
+      "theory": {
+        "status": "complete",
+        "attempts": 2,
+        "path": ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/theory.md"
+      },
+      "performance": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/performance.md"
+      },
+      "synthesis": {
+        "status": "needs_correctness_fix",
+        "path": ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/synthesis.md",
+        "decision": "needs_correctness_fix"
+      },
+      "implementation": {
+        "status": "blocked",
+        "reason": "CounterpointLane Species4 only delays an attack; CounterpointState is NoteOn-driven and does not provide a weak-to-strong held-note resolution lifecycle."
+      }
     }
   },
   "completed_requirements": ["ARRP-01", "ARRP-02", "ARRP-04", "ARRP-05"],
@@ -201,6 +230,8 @@
     {"command": "npm --prefix ui run check (Stretto Engine)", "result": "0 errors; 29 pre-existing warnings"}
   ],
   "blockers": [
+    "Preset 08 cannot activate: CounterpointLane Species4 is only a half-beat delayed attack and lacks preparation, retained-note suspension, downward-step resolution, and atomic ownership.",
+    "CounterpointState Species4 prepares on strong NoteOn, resolves on the next call, hardcodes 4/4, and cannot advance a held note from transport time.",
     "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
   ],
   "decisions": [
@@ -211,6 +242,6 @@
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state."
   ],
-  "last_commit": "ff74c6d",
-  "next_action": "Launch the three independent research perspectives for baseline preset 08 Suspension Garland (Fux/Palestrina), then parent-synthesize before changing its research-pending draft."
+  "last_commit": "7dd7234",
+  "next_action": "Resume with a focused plan for clock-scheduled, lifecycle-owned Species4 in CounterpointLane: precompute weak preparation, retain one logical pitch through the strong suspension, resolve down a diatonic step on the next weak phase, and test cancellation at every phase. Keep preset 08 locked until those tests pass."
 }
