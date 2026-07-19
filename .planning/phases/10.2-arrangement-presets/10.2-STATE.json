@@ -3,14 +3,14 @@
   "phase": "10.2",
   "status": "executing",
   "current_wave": 2,
-  "current_slice": "implement-preset-04-mensuration-web",
+  "current_slice": "research-preset-07-stretto-engine",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
     "status": "not_reached"
   },
   "baseline_order": [2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48],
-  "operational_presets": [2],
+  "operational_presets": [2, 4],
   "draft_presets": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
   "research": {
     "02-modal-linework": {
@@ -45,7 +45,7 @@
       }
     },
     "04-mensuration-web": {
-      "status": "ready_for_implementation",
+      "status": "operational",
       "required_reports": 3,
       "completed_reports": 3,
       "history": {
@@ -64,9 +64,14 @@
         "path": ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/performance.md"
       },
       "synthesis": {
-        "status": "ready_for_implementation",
+        "status": "implemented",
         "path": ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/synthesis.md",
         "decision": "ready_for_implementation"
+      },
+      "implementation": {
+        "status": "operational",
+        "commit": "3b96b4e",
+        "preset_id": "04-mensuration-web"
       }
     }
   },
@@ -116,10 +121,21 @@
       "evidence": [
         "Three independent cited reports and parent synthesis are committed.",
         "Automatic process-call suspension was deleted from Palestrina voice leading; temporal dissonance remains beat-aware.",
-        "Exactly 50 unique draft built-ins exist; only researched preset 02 is approved and applicable.",
+        "Exactly 50 unique draft built-ins exist; only researched baselines are approved and applicable.",
         "The V2 UI shows Result, Play guidance, references, approximation, research/availability status, and missing capabilities.",
         "Save As captures arrangement state plus user-authored name, Result, Play prompt, and references without editing built-ins.",
         "Modal Linework deterministic NoteOn/NoteOff regression ends with no active notes."
+      ]
+    },
+    {
+      "id": "preset-04-mensuration-web",
+      "status": "verified",
+      "evidence": [
+        "Three independent cited reports and parent synthesis are committed.",
+        "Config emits one player line plus three single-note PassThrough followers at 1:1, 3:2, and 2:1 on one transport clock.",
+        "Approved live proportional presets reject ratios below 1.0 unless phrase capture is declared.",
+        "Forever-tail timing regression verifies exact onsets/releases and ends with empty pending, held, and active lifecycle state.",
+        "Approximation copy rejects claims of double-canon reconstruction, historical mensural notation, or exact Ockeghem counterpoint."
       ]
     }
   ],
@@ -135,7 +151,10 @@
     {"command": "npm --prefix ui run check (V2 persistence)", "result": "0 errors; 29 pre-existing warnings"},
     {"command": "cargo test -p contrapunk-harmony --lib", "result": "267 passed"},
     {"command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs", "result": "4 passed"},
-    {"command": "npm --prefix ui run check (Modal Linework catalog/UI)", "result": "0 errors; 29 pre-existing warnings"}
+    {"command": "npm --prefix ui run check (Modal Linework catalog/UI)", "result": "0 errors; 29 pre-existing warnings"},
+    {"command": "cargo test -p contrapunk-companion --lib", "result": "61 passed"},
+    {"command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs", "result": "5 passed"},
+    {"command": "npm --prefix ui run check (Mensuration Web)", "result": "0 errors; 29 pre-existing warnings"}
   ],
   "blockers": [
     "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
@@ -148,6 +167,6 @@
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state."
   ],
-  "last_commit": "f551524",
-  "next_action": "Implement the exact synthesized Mensuration Web config with three single-note PassThrough followers at 1:1, 3:2, and 2:1, validate live-ratio causality and Forever-tail cleanup, then approve preset 04."
+  "last_commit": "3b96b4e",
+  "next_action": "Launch the three independent research perspectives for baseline preset 07 Stretto Engine (Bach fugues), then parent-synthesize before changing its research-pending draft."
 }
