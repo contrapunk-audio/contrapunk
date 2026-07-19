@@ -1,9 +1,9 @@
 {
   "version": 1,
   "phase": "10.2",
-  "status": "planned",
+  "status": "executing",
   "current_wave": 1,
-  "current_slice": "free-imitation-lifecycle-evidence",
+  "current_slice": "arrangement-preset-v2-contract",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -14,18 +14,37 @@
   "draft_presets": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
   "research": {},
   "completed_requirements": [],
-  "commands": [],
+  "completed_slices": [
+    {
+      "id": "free-imitation-lifecycle-evidence",
+      "status": "verified",
+      "evidence": [
+        "Strict Canon no longer injects per-voice Forever holds that override visible group Hold.",
+        "Switching to Free Imitation clears legacy per-voice/lane Strict Canon Hold overrides.",
+        "Tauri and WASM Stop/Reset issue All Notes Off and reset Companion runtime before a frozen/reset clock can strand future releases.",
+        "Lane Cancel releases an inherited voice at the frozen current beat."
+      ]
+    }
+  ],
+  "commands": [
+    {"command": "cargo test -p contrapunk-companion lane_cancel_releases_inherited_voice_while_transport_stopped --lib", "result": "1 passed"},
+    {"command": "cargo test -p contrapunk-companion hold_mode --lib", "result": "17 passed"},
+    {"command": "cargo test -p contrapunk-companion --lib", "result": "60 passed"},
+    {"command": "cargo test -p contrapunk-tauri", "result": "36 passed"},
+    {"command": "npm --prefix ui run check", "result": "0 errors; 29 pre-existing warnings"}
+  ],
   "blockers": [
-    "Free Imitation release behavior still needs deterministic running/stopped transport evidence.",
     "Research subagent providers must be executable; if fewer than three independent perspectives can run, preset activation pauses.",
     "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
   ],
   "decisions": [
+    "Strict Canon Hold is group-owned: strict voices inherit the lane instead of forcing per-voice Forever.",
+    "Transport Stop and Reset are hard musical boundaries that silence outputs and clear delayed lane runtime.",
     "Every operational preset requires three cited research reports and a parent synthesis following 10.2-RESEARCH-TEMPLATE.md.",
     "Research must explain scoped artist/style evolution within phrases, across sections, and across relevant career periods.",
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state."
   ],
-  "last_commit": "d9da646",
-  "next_action": "Run Wave 1 Free Imitation lifecycle regression before creating ArrangementPresetV2."
+  "last_commit": "f2360b0",
+  "next_action": "Commit the verified lifecycle slice, then add the minimum ArrangementPresetV2, CapabilityId, and ArrangementConfig contract without catalog UI."
 }

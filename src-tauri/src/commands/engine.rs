@@ -162,10 +162,36 @@ pub fn inject_note_off(note: u8, state: State<AppState>) -> Result<Vec<u8>, Stri
 
 /// Request the router's tracked NoteOff/CC123 drain and silence the
 /// built-in synth immediately. Safe when routing is already stopped.
+pub(crate) fn request_all_notes_off(state: &AppState) {
+    let _ = state.synth_tx.send(SynthEvent::AllNotesOff);
+    state
+        .companion
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .reset_runtime();
+
+    // Route a real CC123 through the active router so it can release
+    // tracked external MIDI, clear UI note ownership, and reset the
+    // HarmonyEngine. Transport Stop/Reset use this same path; merely
+    // freezing the beat clock would strand future Canon NoteOffs.
+    let delivered_to_router = state
+        .router_tx
+        .lock()
+        .ok()
+        .and_then(|tx| tx.as_ref().map(|tx| tx.send(vec![0xB0, 123, 0]).is_ok()))
+        .unwrap_or(false);
+    if !delivered_to_router {
+        state
+            .engine
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear_active_notes();
+    }
+}
+
 #[tauri::command]
 pub fn panic_all_notes_off(state: State<AppState>) {
-    state.panic_pending.store(true, Ordering::SeqCst);
-    let _ = state.synth_tx.send(SynthEvent::AllNotesOff);
+    request_all_notes_off(&state);
 }
 
 /// Starts MIDI routing from the specified input to the specified outputs.

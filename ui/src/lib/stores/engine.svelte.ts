@@ -1422,6 +1422,7 @@ class EngineStore {
 		if (form === this.imitativeForm) return;
 		const previousForm = this.imitativeForm;
 		const previousVoices = this.canonVoices.map((voice) => ({ ...voice }));
+		const previousLaneHold = this.canonLaneHoldMode;
 		this.imitativeForm = form;
 		try {
 			if (form === 'strict_canon') {
@@ -1435,18 +1436,30 @@ class EngineStore {
 						voice_position: 0,
 						voice_leading_enabled: false,
 						octave_mode: 'None',
-						hold_mode: { kind: 'forever' } as const,
+						// Strict Canon owns Hold at group level. A per-voice
+						// Forever override would silently beat the visible
+						// group Cancel/Near/Phrase selection.
+						hold_mode: null,
 						preset_id: null
 					})
 				);
 				if (!this.companionEnabled) await this.setCompanionEnabled(true);
 				await this.setCanonVoices(followers);
 				await this.setCanonLaneHoldMode({ kind: 'forever' });
+			} else {
+				// Clear legacy Strict Canon voice overrides and return
+				// Free Imitation to the global Hold default. Per-voice and
+				// group choices remain editable after the transition.
+				await this.setCanonVoices(
+					this.canonVoices.map((voice) => ({ ...voice, hold_mode: null }))
+				);
+				await this.setCanonLaneHoldMode(null);
 			}
 			this.persist();
 		} catch (error) {
 			this.imitativeForm = previousForm;
 			this.canonVoices = previousVoices;
+			this.canonLaneHoldMode = previousLaneHold;
 			throw error;
 		}
 	}

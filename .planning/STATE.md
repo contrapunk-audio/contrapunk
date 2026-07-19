@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: planning
-stopped_at: Phase 10.2 waves, 50-preset catalog, research gate, and execution loop documented; implementation has not started.
-last_updated: "2026-07-19T10:24:50Z"
-last_activity: 2026-07-19 — Added Phase 10.2 with a mandatory three-researcher style/evolution pack per operational preset and a hard user checkpoint after the first 12.
+stopped_at: Phase 10.2 Wave 1 lifecycle slice verified; ArrangementPresetV2 contract is next.
+last_updated: "2026-07-19T11:45:00Z"
+last_activity: 2026-07-19 — Fixed Strict/Free Imitation Hold precedence and made transport Stop/Reset clear delayed Companion runtime across Tauri/WASM.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 1 — safety and ArrangementPresetV2 foundation
-Status: Planned; loop saved next, implementation not started
-Last activity: 2026-07-19 — Accepted 50 technique-named concepts, documented per-preset performance guidance, and required artist/style evolution research before implementation.
+Status: Executing; lifecycle slice verified, V2 contract next
+Last activity: 2026-07-19 — Strict Canon voices now inherit group Hold, Free Imitation clears legacy strict overrides, and Stop/Reset cannot strand future Canon releases.
 
 ### Phase 10.2 Start — 2026-07-19
 

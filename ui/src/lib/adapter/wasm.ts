@@ -1426,6 +1426,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 	async transportStop(): Promise<void> {
 		this._transport.running = false;
 		this.stopClock();
+		// A frozen beat clock cannot mature future Canon NoteOffs.
+		// Silence outputs and clear every Companion queue before stop.
+		await this.panicAllNotesOff();
 		// Push a final state update so pips drop the active state.
 		transport.applyBeatUpdate({
 			totalBeat: this._transport.totalBeat,
@@ -1437,6 +1440,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async transportReset(): Promise<void> {
+		await this.panicAllNotesOff();
 		this._transport.beatInBar = 0;
 		this._transport.totalBeat = 0;
 		this._transport.bar = 0;

@@ -84,10 +84,10 @@ impl Companion {
             .expect("global_hold_mode mutex poisoned")
     }
 
-    /// Replace the global hold mode default. New value applies to the
-    /// NEXT NoteOff event seen by any lane — already-buffered pending
-    /// emissions follow the mode that was in effect when their NoteOn
-    /// scheduled them (resolution is deferred to release-time).
+    /// Replace the global hold mode default. The new value applies to
+    /// the next NoteOff seen by any inheriting lane/voice, including
+    /// emissions buffered before this setter ran. Hold resolution is
+    /// intentionally deferred until the source note is released.
     pub fn set_global_hold_mode(&self, mode: crate::lane::HoldMode) {
         if let Ok(mut g) = self.world.global_hold_mode.lock() {
             *g = mode;

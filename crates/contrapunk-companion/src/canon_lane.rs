@@ -2440,6 +2440,54 @@ mod tests {
         }
     }
 
+    /// Strict Canon exposes Hold at group/lane level. Voices must
+    /// inherit that value: an injected per-voice Forever override
+    /// would beat the visible group Cancel and strand the release when
+    /// the clock is stopped. Cancel is due at the frozen beat, so tick
+    /// can release it without transport advancement.
+    #[test]
+    fn lane_cancel_releases_inherited_voice_while_transport_stopped() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_voices(vec![CanonVoice::with_time_ratio(0.0, 2, 2.0)]);
+        lane.hold_mode = Some(HoldMode::Cancel);
+        *world.global_hold_mode.lock().unwrap() = HoldMode::Forever;
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(lane
+            .tick(&world)
+            .ops
+            .iter()
+            .any(|op| matches!(op, DispatchOp::NoteOn { .. })));
+
+        advance_to_beat(&transport, 0.5);
+        transport.stop();
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+
+        let out = lane.tick(&world);
+        assert!(
+            out.ops
+                .iter()
+                .any(|op| matches!(op, DispatchOp::NoteOff { .. })),
+            "lane Cancel must release at the frozen current beat"
+        );
+        assert!(lane.pending_off.is_empty());
+    }
+
     /// Per-voice Forever override should preserve the natural release
     /// time even when global is Cancel — proves voice > lane > global
     /// resolution works for pending_off too, not just pending_on.
