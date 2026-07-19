@@ -2053,6 +2053,35 @@ mod tests {
     }
 
     #[test]
+    fn modal_linework_baseline_is_deterministic_and_releases_every_note() {
+        fn configured_engine() -> HarmonyEngine {
+            let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 4);
+            engine.set_scale_mode(ScaleMode::Dorian);
+            engine.set_voice_position(1);
+            engine.set_voice_leading_enabled(true);
+            engine.set_voice_leading_style(VoiceLeadingStyle::Palestrina);
+            engine.set_counterpoint_species(CounterpointSpecies::Species1);
+            engine.set_counterpoint_strictness(CounterpointStrictness::Strict);
+            engine
+        }
+
+        let phrase = [Note::C4, Note::D4, Note::Eb4, Note::F4, Note::Eb4];
+        let mut first = configured_engine();
+        let mut second = configured_engine();
+
+        for note in phrase {
+            let first_on = first.harmonize_note_on(note);
+            let second_on = second.harmonize_note_on(note);
+            assert_eq!(first_on, second_on);
+            assert_eq!(first_on.len(), 4);
+            assert_eq!(first.harmonize_note_off(note), first_on);
+            assert_eq!(second.harmonize_note_off(note), second_on);
+            assert!(first.active_notes.is_empty());
+            assert!(second.active_notes.is_empty());
+        }
+    }
+
+    #[test]
     fn test_vl_style_getter_setter() {
         use crate::voice_leading::VoiceLeadingStyle;
 

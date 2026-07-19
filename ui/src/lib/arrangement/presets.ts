@@ -141,6 +141,7 @@ export interface ArrangementPresetV2 {
 	tags: string[];
 	builtIn: boolean;
 	result: string;
+	approximation?: string;
 	play: PresetPlayGuide;
 	references: PresetReference[];
 	researchStatus: PresetResearchStatus;
@@ -154,6 +155,19 @@ export function missingArrangementCapabilities(
 	available: ReadonlySet<ArrangementCapability>
 ): ArrangementCapability[] {
 	return preset.requirements.filter((capability) => !available.has(capability));
+}
+
+export function arrangementConfigCapabilities(config: ArrangementConfig): ArrangementCapability[] {
+	const capabilities = new Set<ArrangementCapability>(['harmony']);
+	if (config.harmony.voiceLeadingEnabled) capabilities.add('voice_leading');
+	if (config.companion.enabled && config.companion.canon.enabled) {
+		capabilities.add(config.companion.canon.form);
+	}
+	if (config.companion.enabled && config.companion.counterpoint.enabled) {
+		capabilities.add('species_counterpoint');
+	}
+	if (Object.values(config.mix).some((value) => value !== 1)) capabilities.add('role_mix');
+	return [...capabilities];
 }
 
 export function validateArrangementConfig(config: ArrangementConfig): string[] {

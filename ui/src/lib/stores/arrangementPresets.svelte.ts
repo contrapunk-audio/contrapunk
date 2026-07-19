@@ -2,6 +2,7 @@ import {
 	ARRANGEMENT_PRESET_SCHEMA_VERSION,
 	type ArrangementPresetV2
 } from '$lib/arrangement/presets';
+import { BUILT_IN_ARRANGEMENT_PRESETS } from '$lib/arrangement/catalog';
 import {
 	loadUserArrangementPresets,
 	saveUserArrangementPresets
@@ -9,6 +10,14 @@ import {
 
 class ArrangementPresetStore {
 	userPresets = $state<ArrangementPresetV2[]>(loadUserArrangementPresets());
+
+	get builtInPresets(): readonly ArrangementPresetV2[] {
+		return BUILT_IN_ARRANGEMENT_PRESETS;
+	}
+
+	get allPresets(): readonly ArrangementPresetV2[] {
+		return [...BUILT_IN_ARRANGEMENT_PRESETS, ...this.userPresets];
+	}
 
 	create(preset: Omit<ArrangementPresetV2, 'schemaVersion' | 'id' | 'builtIn'>): string {
 		const id = `user-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
