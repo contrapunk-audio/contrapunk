@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: executing
-stopped_at: Phase 10.2 Wave 2 preset 08 operational; next research gate is preset 12 Planed Cathedral.
+stopped_at: Phase 10.2 Wave 2 preset 12 operational; next research gate is preset 14 Color-Mode Windows.
 last_updated: "2026-07-19T12:22:14Z"
-last_activity: 2026-07-19 — Shipped Suspension Garland after replacing delayed Species IV attacks with a transport-scheduled prepared/held/downward-resolution lifecycle.
+last_activity: 2026-07-19 — Shipped Planed Cathedral as a bounded exact whole-tone augmented plane with a player-shaped register/dynamic/silence arc.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 4/12 baseline presets operational
-Last activity: 2026-07-19 — Modal Linework, Mensuration Web, Stretto Engine, and Suspension Garland are approved; the remaining 46 records stay visible and research-gated.
+Status: Executing Wave 2; 5/12 baseline presets operational
+Last activity: 2026-07-19 — Modal Linework, Mensuration Web, Stretto Engine, Suspension Garland, and Planed Cathedral are approved; the remaining 45 records stay visible and research-gated.
 
 ### Phase 10.2 Start — 2026-07-19
 
