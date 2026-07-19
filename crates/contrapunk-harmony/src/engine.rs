@@ -39,7 +39,7 @@ use crate::stateful::{
     ContraryMotionState, CounterpointSpecies, CounterpointState, CounterpointStrictness,
 };
 use crate::voice_leading::{
-    revoice_chord, StyleRules, SuspensionState, VoiceAnchor, VoiceLeadingStyle, VoiceRegister,
+    revoice_chord, StyleRules, VoiceAnchor, VoiceLeadingStyle, VoiceRegister,
 };
 
 /// Voice leading post-processor that re-voices harmony output for smooth transitions.
@@ -52,7 +52,6 @@ struct VoiceLeadingProcessor {
     previous_voicing: Option<Vec<Note>>,
     /// Register assignments (index 0 = melody placeholder, 1+ = harmony voices)
     registers: Vec<VoiceRegister>,
-    suspension_state: SuspensionState,
 }
 
 impl VoiceLeadingProcessor {
@@ -60,14 +59,12 @@ impl VoiceLeadingProcessor {
         let style = VoiceLeadingStyle::default();
         let style_rules = StyleRules::for_style(style);
         let registers = Self::build_registers(voice_count);
-        let suspension_state = SuspensionState::new(style == VoiceLeadingStyle::Palestrina);
         Self {
             enabled: false,
             style,
             style_rules,
             previous_voicing: None,
             registers,
-            suspension_state,
         }
     }
 
@@ -150,13 +147,11 @@ impl VoiceLeadingProcessor {
 
     fn reset(&mut self) {
         self.previous_voicing = None;
-        self.suspension_state.reset();
     }
 
     fn set_style(&mut self, style: VoiceLeadingStyle) {
         self.style = style;
         self.style_rules = StyleRules::for_style(style);
-        self.suspension_state = SuspensionState::new(style == VoiceLeadingStyle::Palestrina);
         self.previous_voicing = None;
     }
 
@@ -924,15 +919,8 @@ impl HarmonyEngine {
                     }
                 }
             }
-            // Apply suspension if style requires it
-            let prev_notes = self.voice_leading.previous_voicing.clone();
-            self.voice_leading.suspension_state.process(
-                &mut final_result,
-                prev_notes.as_deref(),
-                &self.scale,
-            );
-
-            // Store current voicing for next call
+            // Temporal dissonance belongs to beat-aware counterpoint/Companion lanes,
+            // not a pitch-voicing style. Store the plain voicing for the next call.
             self.voice_leading.previous_voicing = Some(final_result.clone());
         }
 
@@ -2049,6 +2037,19 @@ mod tests {
 
         let result = engine.harmonize(Note::C4);
         assert_eq!(result[0], Note::C4);
+    }
+
+    #[test]
+    fn palestrina_voice_leading_does_not_invent_unscheduled_suspension() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_voice_leading_enabled(true);
+        engine.set_voice_leading_style(VoiceLeadingStyle::Palestrina);
+
+        engine.harmonize(Note::C4);
+        let result = engine.harmonize(Note::D4);
+        let pitch_classes: Vec<u8> = result.iter().map(|note| u8::from(*note) % 12).collect();
+
+        assert_eq!(pitch_classes, vec![2, 5, 9]);
     }
 
     #[test]
