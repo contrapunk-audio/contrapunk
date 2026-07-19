@@ -792,10 +792,9 @@
 							<option value="free_imitation">Free Imitation</option>
 						</select>
 					</label>
-					<label class="lane-hold-pick" title="Override Companion's global HoldMode for this lane only. 'Inherit' uses the global setting.">
+					<label class="lane-hold-pick" title="Hold behavior for the whole Canon group. 'Inherit' uses the global setting.">
 						<span class="font-code">HOLD</span>
 						<select
-							disabled={engine.imitativeForm === 'strict_canon'}
 							value={engine.canonLaneHoldMode === null ? 'inherit' : engine.canonLaneHoldMode.kind}
 							onchange={(e) => {
 								const v = (e.target as HTMLSelectElement).value;
@@ -1152,7 +1151,7 @@
 
 							<div
 								class="voice-param voice-param-mode"
-								title={`Mode — harmony engine routed for this voice's stack.\n\n${voice.harmony_mode ? `Currently: ${voice.harmony_mode}\n${modeHelp(voice.harmony_mode)}` : `Currently: inheriting the global engine mode (${engine.mode}).\n${modeHelp(engine.mode)}`}\n\nCounterpoint expands into the four Fux species — pick "Counterpoint · Species N" to set both at once. Counterpoint strictness is always Strict (no Relaxed mode).`}
+								title={`${engine.imitativeForm === 'strict_canon' ? 'Locked by Strict Canon. Switch Form to Free Imitation to choose a per-voice mode.' : "Mode — harmony engine routed for this voice's stack."}\n\n${voice.harmony_mode ? `Currently: ${voice.harmony_mode}\n${modeHelp(voice.harmony_mode)}` : `Currently: inheriting the global engine mode (${engine.mode}).\n${modeHelp(engine.mode)}`}\n\nCounterpoint expands into the four Fux species — pick "Counterpoint · Species N" to set both at once. Counterpoint strictness is always Strict (no Relaxed mode).`}
 							>
 								<span class="param-label font-ui">Mode</span>
 								<PixelSelect
@@ -1198,7 +1197,7 @@
 
 							<div
 								class="voice-param voice-param-mode"
-								title={`Hold — what happens to this voice's pending notes when you release the seeding input.\n\nInherit = use the lane's setting (which itself may inherit the Companion global).\nCancel = drop all pending the moment you release.\nNear = let pending within 1 beat fire.\nPhrase = let pending within the current bar fire.\nForever = no cancellation (this voice always completes scheduled notes).`}
+								title={`${engine.imitativeForm === 'strict_canon' ? 'Locked per voice by Strict Canon. Use the Canon group Hold control above.' : "Hold — what happens to this voice's pending notes when you release the seeding input."}\n\nInherit = use the lane's setting (which itself may inherit the Companion global).\nCancel = drop all pending the moment you release.\nNear = let pending within 1 beat fire.\nPhrase = let pending within the current bar fire.\nForever = no cancellation (this voice always completes scheduled notes).`}
 							>
 								<span class="param-label font-ui">Hold</span>
 								<PixelSelect
