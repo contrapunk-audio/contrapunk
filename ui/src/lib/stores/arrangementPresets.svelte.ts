@@ -10,6 +10,8 @@ import {
 
 class ArrangementPresetStore {
 	userPresets = $state<ArrangementPresetV2[]>(loadUserArrangementPresets());
+	selectedId = $state('02-modal-linework');
+	appliedId = $state<string | null>(null);
 
 	get builtInPresets(): readonly ArrangementPresetV2[] {
 		return BUILT_IN_ARRANGEMENT_PRESETS;

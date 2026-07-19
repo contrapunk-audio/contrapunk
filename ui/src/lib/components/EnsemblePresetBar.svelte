@@ -10,8 +10,7 @@
 	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { arrangementPresets } from '$lib/stores/arrangementPresets.svelte';
 
-	let selectedId = $state('02-modal-linework');
-	let appliedId = $state<string | null>(null);
+	let { compact = false }: { compact?: boolean } = $props();
 	let applying = $state(false);
 	let saveOpen = $state(false);
 	let saveName = $state('');
@@ -21,7 +20,7 @@
 	let error = $state('');
 
 	let presets = $derived(arrangementPresets.allPresets);
-	let selected = $derived(presets.find((preset) => preset.id === selectedId));
+	let selected = $derived(presets.find((preset) => preset.id === arrangementPresets.selectedId));
 	let missing = $derived(
 		selected
 			? missingArrangementCapabilities(selected, arrangement.availableCapabilities)
@@ -60,7 +59,7 @@
 		error = '';
 		try {
 			await arrangement.apply(selected.config);
-			appliedId = selected.id;
+			arrangementPresets.appliedId = selected.id;
 		} catch (cause) {
 			error = `Apply failed: ${cause}`;
 		} finally {
@@ -109,8 +108,8 @@
 			suggestedSoundPresetId: source?.suggestedSoundPresetId,
 			config
 		});
-		selectedId = id;
-		appliedId = id;
+		arrangementPresets.selectedId = id;
+		arrangementPresets.appliedId = id;
 		saveOpen = false;
 		error = '';
 	}
@@ -127,21 +126,26 @@
 	}
 </script>
 
-<section class="preset-bar" aria-label="Arrangement preset">
+<section
+	class="preset-bar"
+	class:compact
+	aria-label="Arrangement preset"
+	title={compact && selected ? `${availability}\nResult: ${selected.result}\nPlay it like: ${selected.play.prompt}` : undefined}
+>
 	<div class="toolbar">
-		<div class="preset-label font-ui">ARRANGEMENT</div>
+		<div class="preset-label font-ui">{compact ? 'PRESET' : 'ARRANGEMENT'}</div>
 		<PixelSelect
 			options={options}
-			value={selectedId}
+			value={arrangementPresets.selectedId}
 			label="Arrangement preset"
 			help="Selects a researched arrangement. Nothing changes until Apply. Hollow diamonds are visible drafts that remain locked."
 			onchange={(value) => {
-				selectedId = value;
+				arrangementPresets.selectedId = value;
 				error = '';
 			}}
 		/>
 		<button class="apply font-ui" type="button" disabled={!canApply} onclick={applySelected}>
-			{applying ? 'APPLYING…' : appliedId === selectedId ? 'APPLIED' : 'APPLY'}
+			{applying ? 'APPLYING…' : arrangementPresets.appliedId === arrangementPresets.selectedId ? 'APPLIED' : 'APPLY'}
 		</button>
 		<button class="save font-ui" type="button" onclick={openSaveAs}>SAVE AS…</button>
 	</div>
@@ -199,6 +203,12 @@
 		gap: 7px;
 	}
 	.preset-label { color: var(--color-accent-cyan); font-size: 9px; letter-spacing: 1px; }
+	.preset-bar.compact { order: 0; flex: 1; min-width: 0; gap: 0; padding: 0; border: 0; background: transparent; }
+	.preset-bar.compact .toolbar { grid-template-columns: 52px minmax(180px, 1fr) auto; }
+	.preset-bar.compact .details,
+	.preset-bar.compact .save,
+	.preset-bar.compact .save-editor,
+	.preset-bar.compact .error { display: none; }
 	button { min-height: 27px; padding: 0 9px; border-radius: 0; cursor: pointer; }
 	.apply { border: 1px solid var(--color-accent-cyan); background: rgba(18, 49, 64, 0.86); color: var(--color-accent-cyan); }
 	.save { border: 1px solid var(--color-border); background: var(--color-widget-bg); color: var(--color-text-secondary); }

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import EnsemblePresetBar from '$lib/components/EnsemblePresetBar.svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
@@ -120,6 +121,7 @@
 <section class="arrangement" aria-labelledby="arrangement-title">
 	<header>
 		<h2 id="arrangement-title"><span aria-hidden="true">⎇</span>Arrangement</h2>
+		<EnsemblePresetBar compact />
 		<span class="header-icon" title="Built-in synth levels" aria-label="Built-in synth levels">◧</span>
 	</header>
 
@@ -202,8 +204,9 @@
 
 <style>
 	.arrangement { display: grid; height: 100%; min-height: 0; grid-template-rows: 40px minmax(0, 1fr); border: 1px solid var(--proto-line); background: var(--proto-panel); }
-	header { display: flex; min-height: 0; align-items: center; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid var(--proto-line); }
-	header h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 13px; font-weight: 650; }
+	header { display: flex; min-height: 0; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--proto-line); }
+	header h2 { display: flex; flex: none; align-items: center; gap: 7px; margin: 0; font-size: 13px; font-weight: 650; }
+	header :global(.preset-bar.compact) { max-width: 560px; margin-left: auto; }
 	header h2 span, .header-icon { color: var(--proto-muted); font: 12px var(--font-code); }
 	.flow { display: grid; min-height: 0; grid-template-columns: minmax(112px, .8fr) 18px minmax(128px, .9fr) minmax(420px, 3fr) 18px minmax(128px, .9fr); align-items: stretch; gap: 0; padding: 6px; overflow: hidden; }
 	.arrow { display: grid; place-items: center; color: var(--proto-muted); font: 16px var(--font-code); }
