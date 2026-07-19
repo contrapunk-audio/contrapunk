@@ -263,10 +263,10 @@ export const SUSPENSION_GARLAND_PRESET: ArrangementPresetV2 = {
 	result:
 		'A consonant counterline enters between beats; compatible on-beat motion holds it into tension, then resolves it down one diatonic step.',
 	approximation:
-		"A live, opportunistic fourth-species study inspired by Fux's pedagogy and recurrent suspension practice in selected Palestrina sources. Because Contrapunk cannot predict your next note, incompatible motion becomes consonant syncopation or is released before the new attack. It does not reproduce Palestrina's text setting, ficta, mensural rhythm, changing vocal density, suspension statistics, cadence planning, or historical tuning.",
+		"A live, opportunistic fourth-species study inspired by Fux's pedagogy and recurrent suspension practice in selected Palestrina sources. It uses a simple beat/half-beat grid independent of bar meter. Because Contrapunk cannot predict your next note, incompatible motion becomes consonant syncopation or is released before the new attack. It does not reproduce Palestrina's text setting, ficta, mensural rhythm, changing vocal density, suspension statistics, cadence planning, or historical tuning.",
 	play: {
 		prompt:
-			'At 60–72 BPM, play one note on a strong beat, then a note a perfect fourth above on the next strong beat; listen for the counterline to enter between them, hold without retriggering, and fall by step.',
+			'At 60–72 BPM, play one note on a transport beat, then a note a perfect fourth above on the next beat; listen for the counterline to enter between them, hold without retriggering, and fall by step.',
 		input: 'single_notes',
 		articulation:
 			'Connected single notes with a clean legato handoff at each beat; keyboard pedal up, guitar strings actively muted, no bends or slides.',
