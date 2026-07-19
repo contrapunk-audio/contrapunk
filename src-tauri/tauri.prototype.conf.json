@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "Contrapunk Prototype",
+  "identifier": "com.contrapunk.prototype",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Contrapunk Prototype",
+        "url": "prototype",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}
