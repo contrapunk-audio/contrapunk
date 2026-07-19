@@ -8,7 +8,7 @@
   "plan": 2,
   "task": "research-preset-14-color-mode-windows",
   "total_plans": 7,
-  "status": "active",
+  "status": "blocked",
   "loop": {
     "id": 2,
     "title": "Contrapunk research-backed 50 arrangement presets",
@@ -123,6 +123,11 @@
   ],
   "blockers": [
     {
+      "description": "Preset 14 needs three fresh independent research children, but this session has used 38/40 child slots.",
+      "type": "research_capacity",
+      "workaround": "Resume in a fresh session and launch all three roles together before synthesis. Do not use the parent as a substitute perspective."
+    },
+    {
       "description": "Dirty tree contains unrelated Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents work.",
       "type": "technical",
       "workaround": "Stage explicit Phase 10.2 paths only; never stage .pi-subagents/."
@@ -151,6 +156,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch the three independent research perspectives for preset 14 Color-Mode Windows, then parent-synthesize before changing its draft.",
-  "context_notes": "Five baselines are operational. Planed Cathedral is a static exact [0,4,8] whole-tone plane; the performer supplies the formal arc, and public copy rejects La cathédrale reconstruction or whole-career Debussy claims."
+  "next_action": "Start a fresh session and launch exactly three independent research perspectives for preset 14 Color-Mode Windows, then parent-synthesize before changing its draft.",
+  "context_notes": "Five baselines are operational. No preset 14 research child was launched because starting only two would knowingly leave the required three-report gate incomplete. Planed Cathedral remains a static exact [0,4,8] whole-tone plane with player-supplied form."
 }
