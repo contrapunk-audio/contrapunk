@@ -125,6 +125,7 @@ fn main() {
             commands::engine::stop_routing,
             commands::engine::inject_note_on,
             commands::engine::inject_note_off,
+            commands::engine::panic_all_notes_off,
             // Per-voice output routing
             commands::routing::set_voice_output,
             commands::routing::get_voice_outputs,

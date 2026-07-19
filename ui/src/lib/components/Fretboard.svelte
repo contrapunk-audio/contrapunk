@@ -15,6 +15,8 @@
 	inputNotes={engine.inputNotes}
 	harmonyNotes={engine.harmonyNotes}
 	borrowedNotes={engine.borrowedNotes}
+	canonNotes={engine.canonNotes}
+	counterpointNotes={engine.counterpointNotes}
 	onNoteOn={(midi) => adapter.injectNoteOn(midi, 100)}
 	onNoteOff={(midi) => adapter.injectNoteOff(midi)}
 	showLabels={ui.showNoteLabels}

@@ -195,56 +195,58 @@
 
 <section class="vgc-wrap">
 	<header class="vgc-header">
-		<h3 class="font-ui">Voice generation chain</h3>
-		<p class="vgc-sub font-ui">
-			Click a card to edit. Live indicators land in a v2 pass.
-		</p>
+		<div>
+			<h3 class="font-ui">Arrangement map</h3>
+			<p class="vgc-sub font-ui">A visual summary of who plays, who follows, and where each part goes.</p>
+		</div>
+		<span class="source-pill font-code" title="Current live input source">SOURCE · {inputSourceLabel(midi.selectedInput)}</span>
 	</header>
 
-	<div class="vgc-flow">
-		<div class="vgc-node source-node font-ui" title="Live input source">
-			<div class="node-title">Input</div>
-			<div class="node-sub">{inputSourceLabel(midi.selectedInput)}</div>
-		</div>
+	<div class="core-parts">
+		<button class="part-card player-part" type="button" onclick={openMelodyEditor} title="Your live melody and its position in the harmonic texture.">
+			<div class="part-top font-ui"><strong>YOU PLAY</strong><span>TEAL · CH 1</span></div>
+			<div class="part-main font-code">{rows[0]?.label ?? 'Melody'} · live subject</div>
+			<div class="part-meta font-code">{inputSourceLabel(midi.selectedInput)} → {rows[0]?.output ?? 'Synth'}</div>
+		</button>
+		<div class="relationship-mark font-ui" aria-hidden="true">+</div>
+		<button class="part-card harmony-part" type="button" onclick={openMelodyEditor} title="The chordal voices generated at the same time as your melody.">
+			<div class="part-top font-ui"><strong>HARMONIC SUPPORT</strong><span>MAGENTA · CH 2–5</span></div>
+			<div class="part-main font-code">{engine.mode} · {Math.max(0, engine.voiceCount - 1)} generated voice{engine.voiceCount === 2 ? '' : 's'}</div>
+			<div class="part-meta font-code">{engine.voiceLeadingEnabled ? `${engine.voiceLeadingStyle} voice leading` : 'Direct movement'} · Spread {Math.round(engine.octaveIntensity * 100)}%</div>
+		</button>
+	</div>
 
-		<div class="vgc-arrow font-ui">▶</div>
+	<div class="companion-heading font-ui">
+		<span>COUNTERPOINT LINES</span>
+		<span>{rows.filter((row) => row.kind !== 'melody').length || 'NO'} ACTIVE</span>
+	</div>
+	<div class="vgc-voices">
+		{#each rows.filter((row) => row.kind !== 'melody') as row (row.kind + ':' + (row.index ?? row.label))}
+			<VoiceCard
+				kind={row.kind}
+				label={row.label}
+				index={row.index}
+				transpose={row.transpose}
+				timeOffsetBeats={row.timeOffsetBeats}
+				holdMode={row.holdMode}
+				output={row.output}
+				onclick={row.onclick}
+			/>
+		{:else}
+			<div class="empty-lines font-code">No counterpoint lines enabled. Harmonic Support still follows your melody.</div>
+		{/each}
+	</div>
 
-		<div class="vgc-voices">
-			{#each rows as row (row.kind + ':' + (row.index ?? row.label))}
-				<VoiceCard
-					kind={row.kind}
-					label={row.label}
-					index={row.index}
-					transpose={row.transpose}
-					timeOffsetBeats={row.timeOffsetBeats}
-					holdMode={row.holdMode}
-					output={row.output}
-					onclick={row.onclick}
-				/>
-			{/each}
-		</div>
-
-		<div class="vgc-arrow font-ui">▶</div>
-
+	<div class="output-map">
+		<span class="output-label font-ui">OUTPUT</span>
+		<div class="output-line" aria-hidden="true"></div>
 		<div class="vgc-outputs">
 			{#each outputNodes as out (out.id)}
-				<div class="vgc-node out-node font-ui" title={out.label}>
+				<div class="vgc-node out-node font-ui" title={`Destination: ${out.label}`}>
 					<div class="node-title">{out.label}</div>
 					<div class="node-sub">
-						{#if out.label === 'Synth'}
-							{adapter.capabilities.audioFx ? 'built-in' : 'host'}
-						{:else if out.label === 'Off'}
-							muted
-						{:else if out.label === 'Companion'}
-							internal
-						{:else}
-							external
-						{/if}
+						{out.label === 'Synth' ? (adapter.capabilities.audioFx ? 'built-in' : 'host') : out.label === 'Off' ? 'muted' : out.label === 'Companion' ? 'internal' : 'external'}
 					</div>
-				</div>
-			{:else}
-				<div class="vgc-node out-node muted font-ui">
-					<div class="node-title">No output</div>
 				</div>
 			{/each}
 		</div>
@@ -253,104 +255,97 @@
 
 <style>
 	.vgc-wrap {
-		display: flex;
-		flex-direction: column;
+		display: grid;
 		gap: 8px;
-		padding: 10px 12px;
+		padding: 9px;
 		background: linear-gradient(180deg, #0f0d1d, #0a0918);
 		border: 1px solid var(--color-border);
 	}
-
+	.vgc-header,
+	.part-top,
+	.companion-heading,
+	.output-map {
+		display: flex;
+		align-items: center;
+	}
+	.vgc-header { justify-content: space-between; gap: 10px; }
 	.vgc-header h3 {
 		margin: 0;
-		font-size: var(--font-size-sm);
 		color: var(--color-accent-gold);
+		font-size: var(--font-size-sm);
 		letter-spacing: 2px;
 		text-transform: uppercase;
 	}
-
-	.vgc-sub {
-		margin: 2px 0 0;
+	.vgc-sub { margin: 2px 0 0; color: var(--color-text-dim); font-size: var(--font-size-xs); }
+	.source-pill {
+		padding: 4px 7px;
+		border: 1px solid var(--color-accent-cyan-dim, var(--color-border));
+		color: var(--color-accent-cyan);
 		font-size: var(--font-size-xs);
-		color: var(--color-text-dim);
+		white-space: nowrap;
 	}
-
-	.vgc-flow {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		flex-wrap: wrap;
-	}
-
-	.vgc-voices {
-		display: flex;
-		flex-wrap: wrap;
+	.core-parts {
+		display: grid;
+		grid-template-columns: minmax(170px, 0.8fr) auto minmax(250px, 1.4fr);
+		align-items: stretch;
 		gap: 6px;
-		flex: 1;
+	}
+	.part-card {
 		min-width: 0;
-	}
-
-	.vgc-outputs {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.vgc-node {
-		padding: 6px 10px;
-		background: var(--color-widget-bg);
+		padding: 8px 9px;
 		border: 1px solid var(--color-border);
-		min-width: 90px;
+		border-radius: 0;
+		background: rgba(28, 25, 52, 0.92);
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.part-card:hover { background: rgba(35, 31, 62, 0.98); }
+	.player-part { border-left: 4px solid var(--color-piano-input); }
+	.harmony-part { border-left: 4px solid var(--color-piano-harmony); }
+	.part-top { justify-content: space-between; gap: 6px; }
+	.part-top strong { color: var(--color-text-primary); font-size: 9px; letter-spacing: 0.8px; }
+	.part-top span { color: var(--color-text-dim); font-size: 7px; }
+	.part-main { margin-top: 7px; color: var(--color-text-primary); font-size: 10px; }
+	.part-meta { margin-top: 4px; color: var(--color-text-secondary); font-size: 8px; }
+	.relationship-mark { align-self: center; color: var(--color-accent-cyan); font-size: 13px; }
+	.companion-heading {
+		justify-content: space-between;
+		padding: 3px 0;
+		border-bottom: 1px solid var(--color-border);
+		color: var(--color-text-secondary);
+		font-size: 8px;
+		letter-spacing: 1.4px;
+	}
+	.companion-heading span:last-child { color: var(--color-accent-gold); }
+	.vgc-voices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+	.vgc-voices :global(.voice-card) { width: 100%; max-width: none; min-width: 0; border-left-width: 4px; }
+	.empty-lines {
+		grid-column: 1 / -1;
+		padding: 9px;
+		border: 1px dashed var(--color-border);
+		color: var(--color-text-dim);
+		font-size: var(--font-size-xs);
+	}
+	.output-map { gap: 8px; padding-top: 2px; }
+	.output-label { color: var(--color-accent-amber); font-size: 8px; letter-spacing: 1.2px; }
+	.output-line { height: 1px; flex: 1; background: linear-gradient(90deg, var(--color-accent-amber), transparent); opacity: 0.5; }
+	.vgc-outputs { display: flex; flex-wrap: wrap; gap: 4px; }
+	.vgc-node {
+		min-width: 86px;
+		padding: 5px 8px;
+		border: 1px solid var(--color-accent-amber);
+		background: var(--color-widget-bg);
 		text-align: center;
 	}
-
-	.node-title {
-		font-size: var(--font-size-xs);
-		color: var(--color-accent-magenta);
-		letter-spacing: 1px;
-	}
-
-	.node-sub {
-		font-size: var(--font-size-xs);
-		color: var(--color-text-dim);
-		margin-top: 2px;
-	}
-
-	.source-node {
-		border-color: var(--color-accent-cyan-dim, var(--color-accent-cyan));
-	}
-	.source-node .node-title {
-		color: var(--color-accent-cyan);
-	}
-
-	.out-node {
-		border-color: var(--color-accent-amber);
-	}
-	.out-node .node-title {
-		color: var(--color-accent-amber);
-	}
-
-	.out-node.muted {
-		opacity: 0.4;
-	}
-
-	.vgc-arrow {
-		color: var(--color-accent-cyan);
-		font-size: var(--font-size-sm);
-	}
+	.node-title { color: var(--color-accent-amber); font-size: var(--font-size-xs); letter-spacing: 1px; }
+	.node-sub { margin-top: 2px; color: var(--color-text-dim); font-size: var(--font-size-xs); }
 
 	@media (max-width: 760px) {
-		.vgc-flow {
-			flex-direction: column;
-			align-items: stretch;
-		}
-		.vgc-arrow {
-			text-align: center;
-			transform: rotate(90deg);
-		}
-		.vgc-outputs {
-			flex-direction: row;
-			flex-wrap: wrap;
-		}
+		.vgc-header { align-items: flex-start; }
+		.core-parts { grid-template-columns: 1fr; }
+		.relationship-mark { display: none; }
+		.vgc-voices { grid-template-columns: 1fr; }
+		.output-map { align-items: flex-start; }
 	}
 </style>

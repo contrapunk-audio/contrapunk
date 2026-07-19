@@ -837,6 +837,14 @@ impl Lane for CanonLane {
         InputFilter::All
     }
 
+    fn reset_runtime(&mut self) {
+        self.pending_on.clear();
+        self.pending_off.clear();
+        self.held.clear();
+        self.sequence_anchor = None;
+        self.last_input_beat = None;
+    }
+
     fn on_input(&mut self, ev: InputEvent, world: &WorldState) -> LaneOutput {
         if !self.enabled || self.voices.is_empty() {
             return LaneOutput::default();

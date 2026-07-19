@@ -144,6 +144,8 @@ export type CounterpointSpeciesName =
 
 export type CounterpointStrictnessName = 'Relaxed' | 'Strict';
 
+export type ImitativeFormName = 'strict_canon' | 'free_imitation';
+
 export const COUNTERPOINT_SPECIES: {
 	name: CounterpointSpeciesName;
 	label: string;
@@ -536,12 +538,26 @@ interface PersistedSettings {
 	// Companion + Canon (#3) — persisted in version 3+.
 	companionEnabled: boolean;
 	canonEnabled: boolean;
+	imitativeForm: ImitativeFormName;
 	canonVoices: Array<{
 		delay_beats: number;
 		transpose_degrees: number;
 		time_ratio: number;
 		harmony_mode?: string | null | undefined;
 		reference_voice?: number | null | undefined;
+		voice_count?: number | null | undefined;
+		voice_position?: number | null | undefined;
+		voice_leading_enabled?: boolean | null | undefined;
+		voice_leading_style?: string | null | undefined;
+		octave_mode?: string | null | undefined;
+		counterpoint_species?: string | null | undefined;
+		counterpoint_strictness?: string | null | undefined;
+		hold_mode?:
+			| null
+			| { kind: 'cancel' }
+			| { kind: 'near_future'; tail_beats: number }
+			| { kind: 'phrase_end' }
+			| { kind: 'forever' };
 		preset_id?: string | null | undefined;
 	}>;
 	// HoldMode (#11) — persisted from v10. Global default for the
@@ -606,6 +622,9 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	// modes are one click away in the FORMS rail.)
 	companionEnabled: true,
 	canonEnabled: true,
+	// The existing cascaded/stateful configuration is broader than a
+	// strict canon, so describe it honestly until the user opts in.
+	imitativeForm: 'free_imitation',
 	// Stateful cascade: V1 references the player, V2 references V1,
 	// V3 references V2. Each mini-engine inherits the prior voice's
 	// CounterpointState (interval history + harmony pitch buffer +
@@ -725,6 +744,10 @@ function loadSettings(): PersistedSettings | null {
 				typeof parsed.canonEnabled === 'boolean'
 					? parsed.canonEnabled
 					: SETTINGS_DEFAULTS.canonEnabled,
+			imitativeForm:
+				parsed.imitativeForm === 'strict_canon' || parsed.imitativeForm === 'free_imitation'
+					? parsed.imitativeForm
+					: SETTINGS_DEFAULTS.imitativeForm,
 			canonVoices: Array.isArray(parsed.canonVoices)
 				? parsed.canonVoices
 						.slice(0, 8)
@@ -742,6 +765,14 @@ function loadSettings(): PersistedSettings | null {
 								time_ratio?: number;
 								harmony_mode?: string | null;
 								reference_voice?: number | null;
+								voice_count?: number | null;
+								voice_position?: number | null;
+								voice_leading_enabled?: boolean | null;
+								voice_leading_style?: string | null;
+								octave_mode?: string | null;
+								counterpoint_species?: string | null;
+								counterpoint_strictness?: string | null;
+								hold_mode?: unknown;
 								preset_id?: string | null;
 							}) => ({
 								delay_beats: Math.max(0, Math.min(16, v.delay_beats)),
@@ -753,6 +784,20 @@ function loadSettings(): PersistedSettings | null {
 								harmony_mode: typeof v.harmony_mode === 'string' ? v.harmony_mode : null,
 								reference_voice:
 									typeof v.reference_voice === 'number' ? v.reference_voice : null,
+								voice_count:
+									typeof v.voice_count === 'number' ? Math.max(1, Math.min(4, Math.round(v.voice_count))) : null,
+								voice_position:
+									typeof v.voice_position === 'number' ? Math.max(0, Math.min(3, Math.round(v.voice_position))) : null,
+								voice_leading_enabled:
+									typeof v.voice_leading_enabled === 'boolean' ? v.voice_leading_enabled : null,
+								voice_leading_style:
+									typeof v.voice_leading_style === 'string' ? v.voice_leading_style : null,
+								octave_mode: typeof v.octave_mode === 'string' ? v.octave_mode : null,
+								counterpoint_species:
+									typeof v.counterpoint_species === 'string' ? v.counterpoint_species : null,
+								counterpoint_strictness:
+									typeof v.counterpoint_strictness === 'string' ? v.counterpoint_strictness : null,
+								hold_mode: parseLaneHoldMode(v.hold_mode),
 								preset_id: typeof v.preset_id === 'string' ? v.preset_id : null
 							})
 						)
@@ -854,6 +899,7 @@ class EngineStore {
 		| { kind: 'forever' }
 	>({ kind: 'near_future', tail_beats: 1.0 });
 	canonEnabled = $state(false);
+	imitativeForm = $state<ImitativeFormName>('free_imitation');
 	canonDelayBeats = $state(1.0);
 	canonTransposeDegrees = $state(0);
 	/** Canon lane HoldMode override (#11). `null` = inherit Companion
@@ -926,11 +972,9 @@ class EngineStore {
 	inputNotes = $state<number[]>([]);
 	harmonyNotes = $state<number[]>([]);
 	borrowedNotes = $state<number[]>([]);
-	/** Companion-emitted notes attributed by lane (#11 follow-up:
-	 *  per-lane piano colors). Empty on the Tauri build today;
-	 *  populated from the WASM bridge's per-lane attribution. The
-	 *  Piano + Fretboard components read these and apply distinct
-	 *  fill colors per lane. */
+	/** Companion-emitted notes attributed by lane. All surfaces keep
+	 *  these separate from generic harmony so visualizations can render
+	 *  Canon and Counterpoint with distinct colors. */
 	canonNotes = $state<number[]>([]);
 	counterpointNotes = $state<number[]>([]);
 	inScaleNotes = $derived(computeScaleNotes(this.key, this.scaleMode));
@@ -960,18 +1004,57 @@ class EngineStore {
 			counterpointStrictness: this.counterpointStrictness,
 			companionEnabled: this.companionEnabled,
 			canonEnabled: this.canonEnabled,
+			imitativeForm: this.imitativeForm,
 			canonVoices: this.canonVoices.map((v) => ({
 				delay_beats: v.delay_beats,
 				transpose_degrees: v.transpose_degrees,
 				time_ratio: v.time_ratio,
 				harmony_mode: v.harmony_mode ?? null,
 				reference_voice: v.reference_voice ?? null,
+				voice_count: v.voice_count ?? null,
+				voice_position: v.voice_position ?? null,
+				voice_leading_enabled: v.voice_leading_enabled ?? null,
+				voice_leading_style: v.voice_leading_style ?? null,
+				octave_mode: v.octave_mode ?? null,
+				counterpoint_species: v.counterpoint_species ?? null,
+				counterpoint_strictness: v.counterpoint_strictness ?? null,
+				hold_mode: v.hold_mode ?? null,
 				preset_id: v.preset_id ?? null
 			})),
 			companionHoldMode: this.companionHoldMode,
 			canonLaneHoldMode: this.canonLaneHoldMode,
 			counterpointLaneHoldMode: this.counterpointLaneHoldMode
 		});
+	}
+
+	/** Restore only Companion state on host-owned plugin surfaces.
+	 * Opening a plugin editor must never overwrite DAW/session parameters. */
+	async restoreCompanionSettings() {
+		const saved = loadSettings() ?? SETTINGS_DEFAULTS;
+		const ops: Array<() => Promise<void>> = [
+			() => adapter.canonSetVoices(saved.canonVoices),
+			() => adapter.canonSetEnabled(saved.canonEnabled),
+			() => adapter.companionSetEnabled(saved.companionEnabled),
+			() => adapter.companionSetGlobalHoldMode(saved.companionHoldMode),
+			() => adapter.canonConfigure({ hold_mode: saved.canonLaneHoldMode }),
+			() => adapter.counterpointConfigure({ hold_mode: saved.counterpointLaneHoldMode })
+		];
+		for (const op of ops) {
+			try {
+				await op();
+			} catch (e) {
+				console.warn('[contrapunk] Failed to restore plugin ensemble state:', e);
+			}
+		}
+		this.companionEnabled = saved.companionEnabled;
+		this.canonEnabled = saved.canonEnabled;
+		this.imitativeForm = saved.imitativeForm;
+		this.canonVoices = saved.canonVoices;
+		this.canonDelayBeats = saved.canonVoices[0]?.delay_beats ?? 1;
+		this.canonTransposeDegrees = saved.canonVoices[0]?.transpose_degrees ?? 0;
+		this.companionHoldMode = saved.companionHoldMode;
+		this.canonLaneHoldMode = saved.canonLaneHoldMode;
+		this.counterpointLaneHoldMode = saved.counterpointLaneHoldMode;
 	}
 
 	/**
@@ -1069,6 +1152,7 @@ class EngineStore {
 		this.counterpointStrictness = saved.counterpointStrictness;
 		this.companionEnabled = saved.companionEnabled;
 		this.canonEnabled = saved.canonEnabled;
+		this.imitativeForm = saved.imitativeForm;
 		this.canonVoices = saved.canonVoices;
 
 		// Sync back to pick up any clamped/validated values from the backend
@@ -1334,6 +1418,39 @@ class EngineStore {
 		}
 	}
 
+	async setImitativeForm(form: ImitativeFormName) {
+		if (form === this.imitativeForm) return;
+		const previousForm = this.imitativeForm;
+		const previousVoices = this.canonVoices.map((voice) => ({ ...voice }));
+		this.imitativeForm = form;
+		try {
+			if (form === 'strict_canon') {
+				const followers = (this.canonVoices.length ? this.canonVoices : [{ delay_beats: 1, transpose_degrees: 0 }]).map(
+					(voice) => ({
+						...voice,
+						time_ratio: 1,
+						harmony_mode: 'PassThrough',
+						reference_voice: null,
+						voice_count: 1,
+						voice_position: 0,
+						voice_leading_enabled: false,
+						octave_mode: 'None',
+						hold_mode: { kind: 'forever' } as const,
+						preset_id: null
+					})
+				);
+				if (!this.companionEnabled) await this.setCompanionEnabled(true);
+				await this.setCanonVoices(followers);
+				await this.setCanonLaneHoldMode({ kind: 'forever' });
+			}
+			this.persist();
+		} catch (error) {
+			this.imitativeForm = previousForm;
+			this.canonVoices = previousVoices;
+			throw error;
+		}
+	}
+
 	async setCanonDelay(beats: number) {
 		const prev = this.canonDelayBeats;
 		const clamped = Math.max(0, Math.min(8, beats));
@@ -1536,6 +1653,8 @@ class EngineStore {
 		this.inputNotes = [];
 		this.harmonyNotes = [];
 		this.borrowedNotes = [];
+		this.canonNotes = [];
+		this.counterpointNotes = [];
 		this.chordName = '';
 		this.lastBorrowedFrom = '';
 	}
@@ -1559,6 +1678,9 @@ class EngineStore {
 		this.modeNumber = state.modeNumber;
 		this.scaleMode = state.scaleMode as ScaleModeName;
 		this.octaveMode = state.octaveMode as OctaveModeName;
+		if (typeof state.octaveIntensity === 'number') {
+			this.octaveIntensity = Math.max(0, Math.min(1, state.octaveIntensity));
+		}
 		this.voiceLeadingEnabled = state.voiceLeadingEnabled;
 		this.voiceLeadingStyle = state.voiceLeadingStyle as VoiceLeadingStyleName;
 		this.interchangeEnabled = state.interchangeEnabled;

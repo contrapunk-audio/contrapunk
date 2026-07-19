@@ -15,6 +15,8 @@ import type {
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
+	PluginInputMode,
+	PluginMidiOutputMode,
 	Preset,
 	TransportState,
 	VoiceOutputTarget
@@ -33,6 +35,14 @@ declare global {
 
 /** Current state from the plugin host, updated via listen() */
 let currentParams: Record<string, unknown> = {};
+
+const FLAT_TO_SHARP: Record<string, string> = {
+	Db: 'C#',
+	Eb: 'D#',
+	Gb: 'F#',
+	Ab: 'G#',
+	Bb: 'A#'
+};
 
 export class PluginAdapter implements ContrapunkAdapter {
 	readonly capabilities = {
@@ -70,30 +80,42 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// picker would conflict. Plugin emits ch1 melody, ch2-ch5 harmony,
 		// ch6 canon, ch7 counterpoint.
 		perVoicePortRouting: false,
+		// Plugin-only host MIDI mode selector.
+		pluginMidiOutputMode: true,
 		// Plugin guitar path runs through the DAW; calibration profile
 		// persistence isn't wired (would need host file access).
 		calibrationFlow: false
 	} as const;
 
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;
+	private pluginParamsCallback: (() => void) | null = null;
 	private _detuneCents = 0;
 	private _isReady = false;
 
 	async init(): Promise<void> {
-		// Register listener for messages from the Rust plugin host
+		if (this._isReady) return;
+		let resolveInitialParams: (() => void) | null = null;
+		const initialParams = new Promise<void>((resolve) => {
+			resolveInitialParams = resolve;
+		});
+
+		// Register listener before sending ready so the first host snapshot
+		// cannot race the UI's initial getEngineState() call.
 		window.plugin.listen((msg: string) => {
 			try {
 				const data = JSON.parse(msg);
 				if (data.type === 'paramsUpdate') {
 					currentParams = data;
+					resolveInitialParams?.();
+					resolveInitialParams = null;
+					this.pluginParamsCallback?.();
 				} else if (data.type === 'noteUpdate' && this.noteUpdateCallback) {
 					this.noteUpdateCallback({
 						inputNotes: data.inputNotes ?? [],
 						harmonyNotes: data.harmonyNotes ?? [],
 						borrowedNotes: data.borrowedNotes ?? [],
-						// Plugin has no Companion lanes yet, but forward the
-						// fields anyway so the Piano store doesn't latch
-						// stale state from a prior surface.
+						// Companion lanes arrive as independent ownership sets
+						// so source-aware views do not infer attribution by pitch.
 						canonNotes: data.canonNotes ?? [],
 						counterpointNotes: data.counterpointNotes ?? [],
 						chordName: data.chordName ?? '',
@@ -111,6 +133,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 		// Signal ready — the Rust side will respond with initial params
 		window.plugin.send(JSON.stringify({ type: 'ready' }));
+		await initialParams;
 		this._isReady = true;
 	}
 
@@ -120,11 +143,12 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async getEngineState(): Promise<EngineState> {
 		return {
-			key: (currentParams.key as string) ?? 'C',
+			key: FLAT_TO_SHARP[(currentParams.key as string) ?? 'C'] ?? ((currentParams.key as string) ?? 'C'),
 			mode: (currentParams.mode as string) ?? 'DiatonicThirds',
 			modeNumber: 0,
 			scaleMode: 'Ionian',
 			octaveMode: (currentParams.octaveMode as string) ?? 'None',
+			octaveIntensity: (currentParams.octaveIntensity as number) ?? 1,
 			voiceLeadingEnabled: (currentParams.voiceLeading as boolean) ?? false,
 			voiceLeadingStyle: 'Free',
 			interchangeEnabled: false,
@@ -310,6 +334,46 @@ export class PluginAdapter implements ContrapunkAdapter {
 	}
 	async getVoiceOutputs(): Promise<VoiceOutputTarget[]> {
 		return this._voiceOutputs.slice();
+	}
+
+	async getPluginInputMode(): Promise<PluginInputMode> {
+		return currentParams.inputMode === 'Audio' ? 'audio' : 'midi';
+	}
+
+	async setPluginInputMode(mode: PluginInputMode): Promise<void> {
+		const value = mode === 'audio' ? 'Audio' : 'Midi';
+		currentParams = { ...currentParams, inputMode: value };
+		this.send('setInputMode', value);
+	}
+
+	async getPluginMidiOutputMode(): Promise<PluginMidiOutputMode> {
+		return currentParams.midiOutputMode === 'PassThrough' ? 'pass_through' : 'full';
+	}
+
+	async setPluginMidiOutputMode(mode: PluginMidiOutputMode): Promise<void> {
+		const value = mode === 'pass_through' ? 'PassThrough' : 'Full';
+		currentParams = { ...currentParams, midiOutputMode: value };
+		this.send('setMidiOutputMode', value);
+	}
+
+	async getPluginSynthEnabled(): Promise<boolean> {
+		return (currentParams.synthEnabled as boolean) ?? true;
+	}
+
+	async setPluginSynthEnabled(enabled: boolean): Promise<void> {
+		currentParams = { ...currentParams, synthEnabled: enabled };
+		this.send('setSynthEnabled', enabled);
+	}
+
+	async panicAllNotesOff(): Promise<void> {
+		this.send('panic', true);
+	}
+
+	onPluginParamsUpdate(callback: () => void): () => void {
+		this.pluginParamsCallback = callback;
+		return () => {
+			if (this.pluginParamsCallback === callback) this.pluginParamsCallback = null;
+		};
 	}
 
 	// -- Real-time state --

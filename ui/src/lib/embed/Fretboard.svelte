@@ -46,6 +46,8 @@
 		inputNotes,
 		harmonyNotes,
 		borrowedNotes = [],
+		canonNotes = [],
+		counterpointNotes = [],
 		onNoteOn,
 		onNoteOff,
 		frets: fretsProp,
@@ -56,6 +58,8 @@
 		inputNotes: number[];
 		harmonyNotes: number[];
 		borrowedNotes?: number[];
+		canonNotes?: number[];
+		counterpointNotes?: number[];
 		onNoteOn?: (midi: number) => void;
 		onNoteOff?: (midi: number) => void;
 		/** When omitted, fret count adapts to viewport width:
@@ -118,17 +122,67 @@
 		return STRING_Y_START + (5 - stringIdx) * STRING_SPACING;
 	}
 
-	function cellState(midi: number): 'input' | 'harmony' | 'borrowed' | null {
+	type CellState = 'input' | 'harmony' | 'canon' | 'counterpoint' | 'borrowed';
+
+	function cellState(midi: number): CellState | null {
 		if (inputNotes.includes(midi)) return 'input';
+		if (canonNotes.includes(midi)) return 'canon';
+		if (counterpointNotes.includes(midi)) return 'counterpoint';
 		if (harmonyNotes.includes(midi)) return 'harmony';
 		if (borrowedNotes.includes(midi)) return 'borrowed';
 		return null;
 	}
-	function fillFor(state: 'input' | 'harmony' | 'borrowed'): string {
-		return state === 'input' ? COLOR_INPUT : state === 'harmony' ? COLOR_HARMONY : COLOR_BORROWED;
+	function fillFor(state: CellState): string {
+		if (state === 'input') return COLOR_INPUT;
+		if (state === 'canon') return '#ffdd44';
+		if (state === 'counterpoint') return '#a3e635';
+		if (state === 'harmony') return COLOR_HARMONY;
+		return COLOR_BORROWED;
 	}
 
 	const pressedByPointer = new Map<number, { string: number; fret: number; midi: number }>();
+	let focusedCell = $state({ string: 0, fret: 0 });
+	let keyboardHeld = $state<number | null>(null);
+
+	function focusCell(string: number, fret: number) {
+		focusedCell = {
+			string: Math.max(0, Math.min(STANDARD_TUNING.length - 1, string)),
+			fret: Math.max(0, Math.min(frets, fret))
+		};
+		requestAnimationFrame(() => {
+			const target = document.querySelector<SVGRectElement>(
+				`[data-fret-cell="${focusedCell.string}-${focusedCell.fret}"]`
+			);
+			target?.focus();
+		});
+	}
+
+	function handleFretKeyDown(s: number, f: number, midi: number, e: KeyboardEvent) {
+		if (!interactive) return;
+		if (e.key === 'ArrowLeft') {
+			e.preventDefault();
+			focusCell(s, f - 1);
+		} else if (e.key === 'ArrowRight') {
+			e.preventDefault();
+			focusCell(s, f + 1);
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			focusCell(s + 1, f);
+		} else if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			focusCell(s - 1, f);
+		} else if ((e.key === ' ' || e.key === 'Enter') && keyboardHeld === null) {
+			e.preventDefault();
+			keyboardHeld = midi;
+			onNoteOn?.(midi);
+		}
+	}
+
+	function releaseKeyboardNote() {
+		if (keyboardHeld === null) return;
+		onNoteOff?.(keyboardHeld);
+		keyboardHeld = null;
+	}
 
 	function handleFretDown(s: number, f: number, e: PointerEvent) {
 		if (!interactive) return;
@@ -237,6 +291,7 @@
 					<rect
 						class="fret-hit"
 						class:interactive
+						data-fret-cell={`${s}-${f}`}
 						x={cx - w / 2}
 						y={y - STRING_SPACING / 2}
 						width={w}
@@ -246,9 +301,15 @@
 						onpointerup={handleFretUp}
 						onpointercancel={handleFretUp}
 						onpointerleave={handleFretUp}
+						onfocus={() => (focusedCell = { string: s, fret: f })}
+						onkeydown={(e) => handleFretKeyDown(s, f, midi, e)}
+						onkeyup={(e) => {
+							if (e.key === ' ' || e.key === 'Enter') releaseKeyboardNote();
+						}}
+						onblur={releaseKeyboardNote}
 						role="button"
-						tabindex="-1"
-						aria-label={`string ${s + 1} fret ${f}`}
+						tabindex={interactive && focusedCell.string === s && focusedCell.fret === f ? 0 : -1}
+						aria-label={`${midiToName(midi)}, string ${s + 1}, fret ${f}`}
 					/>
 					{#if state}
 						<rect
@@ -267,7 +328,7 @@
 								x={cx}
 								y={y + 2.5}
 								text-anchor="middle"
-								fill={state === 'input' ? '#0a0612' : '#f5e9c9'}
+								fill={state === 'input' || state === 'canon' || state === 'counterpoint' ? '#0a0612' : '#f5e9c9'}
 								out:ghostFade={{ duration: ghostDuration }}
 							>
 								{midiToName(midi)}

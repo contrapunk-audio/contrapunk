@@ -24,6 +24,9 @@ export type VoiceOutputTarget =
 	| { kind: 'midi_port'; port: number }
 	| { kind: 'off' };
 
+export type PluginInputMode = 'midi' | 'audio';
+export type PluginMidiOutputMode = 'full' | 'pass_through';
+
 /** What lanes do with pending emissions when the player releases the
  *  NoteOn that seeded them (#11). Shape mirrors the Rust `HoldMode`
  *  enum's JSON serialization (`hold_mode_to_json` in
@@ -67,6 +70,7 @@ export interface EngineState {
 	modeNumber: number;
 	scaleMode: string;
 	octaveMode: string;
+	octaveIntensity?: number;
 	voiceLeadingEnabled: boolean;
 	voiceLeadingStyle: string;
 	interchangeEnabled: boolean;
@@ -87,11 +91,9 @@ export interface NoteState {
 	chordName: string;
 	lastBorrowedFrom: string;
 	currentKey: string;
-	/** Companion-emitted notes attributed by originating lane (#11
-	 *  follow-up — per-lane piano colors). Empty arrays when the
-	 *  attribution is unavailable (Tauri build today). The Piano /
-	 *  Fretboard components render these with distinct colors so
-	 *  users can see which lane is playing what. */
+	/** Companion-emitted notes attributed by originating lane. Harmony,
+	 *  Canon, and Counterpoint are separate ownership sets so same-pitch
+	 *  voices remain visible independently across all surfaces. */
 	canonNotes?: number[];
 	counterpointNotes?: number[];
 }
@@ -238,6 +240,9 @@ export interface AdapterCapabilities {
 	 *  channels and our per-voice picker would conflict. Tauri + WASM
 	 *  both expose real MIDI out via the adapter's setVoiceOutput. */
 	perVoicePortRouting: boolean;
+	/** Whether plugin mode exposes a host-side MIDI output mode selector
+	 *  (Full Contrapunk vs pass-through-only). False outside plugin mode. */
+	pluginMidiOutputMode: boolean;
 	/** Whether the surface supports loading + saving the per-string
 	 *  calibration profile to disk and applying it to the live guitar
 	 *  pipeline. Tauri only for v1 — uses `app_data_dir()`. WASM /
@@ -456,6 +461,17 @@ export interface ContrapunkAdapter {
 	 * (8). Each entry is the destination for that voice index.
 	 */
 	getVoiceOutputs(): Promise<VoiceOutputTarget[]>;
+
+	// -- Plugin host routing controls --
+	getPluginInputMode(): Promise<PluginInputMode>;
+	setPluginInputMode(mode: PluginInputMode): Promise<void>;
+	getPluginMidiOutputMode(): Promise<PluginMidiOutputMode>;
+	setPluginMidiOutputMode(mode: PluginMidiOutputMode): Promise<void>;
+	getPluginSynthEnabled(): Promise<boolean>;
+	setPluginSynthEnabled(enabled: boolean): Promise<void>;
+	panicAllNotesOff(): Promise<void>;
+	/** Subscribe to DAW/plugin parameter changes (automation, controller assignments). */
+	onPluginParamsUpdate(callback: () => void): () => void;
 
 	// -- Real-time state --
 

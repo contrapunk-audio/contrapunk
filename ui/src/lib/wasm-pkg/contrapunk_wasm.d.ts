@@ -37,6 +37,10 @@ export class CompanionWasm {
      * render per-lane attribution (different piano colors per lane).
      */
     on_note_on(note: number, velocity: number, channel: number): string;
+    /**
+     * Clear delayed/held lane state without changing configuration.
+     */
+    reset_runtime(): void;
     set_enabled(enabled: boolean): void;
     /**
      * Set the Companion's global HoldMode default. JSON shape:
@@ -309,6 +313,7 @@ export interface InitOutput {
     readonly companionwasm_new: () => number;
     readonly companionwasm_on_note_off: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_on_note_on: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly companionwasm_reset_runtime: (a: number) => void;
     readonly companionwasm_set_enabled: (a: number, b: number) => void;
     readonly companionwasm_set_global_hold_mode: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_set_global_state: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;

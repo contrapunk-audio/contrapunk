@@ -1,5 +1,4 @@
 <script lang="ts">
-	import StatusBar from '$lib/components/StatusBar.svelte';
 	import ControlPanel from '$lib/components/ControlPanel.svelte';
 	import Piano from '$lib/components/Piano.svelte';
 	import PerformanceView from '$lib/components/PerformanceView.svelte';
@@ -8,11 +7,13 @@
 	import ActiveNotes from '$lib/components/ActiveNotes.svelte';
 	import Fretboard from '$lib/components/Fretboard.svelte';
 	import HistoryStrip from '$lib/components/HistoryStrip.svelte';
+	import LiveLines from '$lib/components/LiveLines.svelte';
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
 	import CompanionPanel from '$lib/components/CompanionPanel.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
 	import InputPanel from '$lib/components/InputPanel.svelte';
 	import OutputPanel from '$lib/components/OutputPanel.svelte';
+	import PluginWorkspace from '$lib/components/PluginWorkspace.svelte';
 	import { adapter } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
@@ -45,7 +46,11 @@
 				ui.restoreTabs();
 				await adapter.init();
 				await engine.syncFromBackend();
-				await engine.restoreSettings();
+				if (adapter.capabilities.pluginMidiOutputMode) {
+					await engine.restoreCompanionSettings();
+				} else {
+					await engine.restoreSettings();
+				}
 				// Browser path: only refreshes devices if the user previously
 				// granted Web MIDI access. First-time visitors see the
 				// "Enable MIDI" button in MidiPermissionCard.svelte instead.
@@ -201,7 +206,7 @@
   +--------------------------------------------------+
 -->
 
-<div class="app-layout">
+<div class="app-layout" class:plugin-workspace={initDone}>
 	<!-- Music-reactive vignette overlay (CSS-only, no JS cost) -->
 	{#if ui.animationsEnabled && hasActiveNotes}
 		<div
@@ -215,13 +220,13 @@
 		<div class="init-error font-ui">{initError}</div>
 	{/if}
 
-	<!-- Top: Status bar -->
-	<StatusBar />
-
 	<!-- Settings modal (overlays the whole app when open) -->
 	<SettingsModal />
 
 	{#if initDone}
+		{#if adapter.capabilities.pluginMidiOutputMode || adapter.capabilities.inputSourcePicker}
+			<PluginWorkspace />
+		{:else}
 		{#snippet tabButton(tabId: 'play' | 'io' | 'companion' | 'voices', tabLabel: string)}
 			<button
 				class="tab-btn font-ui"
@@ -250,7 +255,7 @@
 		</div>
 
 		{#if ui.activeTab === 'play'}
-		<div role="tabpanel" id="panel-play" aria-labelledby="tab-play">
+		<div class="play-panel" role="tabpanel" id="panel-play" aria-labelledby="tab-play">
 			{#if ui.panels.controls}
 				<!-- Harmony controls only — MIDI/Guitar/Calibration
 				     all moved to the I/O tab so the Harmony surface
@@ -274,8 +279,9 @@
 				</div>
 			{/if}
 
-			{#if ui.panels.history || ui.panels.fretboard || ui.panels.piano}
+			{#if ui.panels.lines || ui.panels.history || ui.panels.fretboard || ui.panels.piano}
 				<div class="piano-area">
+					{#if ui.panels.lines}<LiveLines />{/if}
 					{#if ui.panels.history}<HistoryStrip />{/if}
 					{#if ui.panels.fretboard}<Fretboard />{/if}
 					{#if ui.panels.piano}<Piano />{/if}
@@ -360,6 +366,7 @@
 				<VoicesPanel />
 			</div>
 		{/if}
+		{/if}
 	{:else if !initError}
 		<div class="init-loading font-ui">Initializing engine...</div>
 	{/if}
@@ -386,6 +393,11 @@
 		/* Transparent so particles show through wherever panels don't
 		   paint. Panels below set their own semi-transparent backgrounds. */
 		background: transparent;
+	}
+
+	.app-layout.plugin-workspace {
+		display: block;
+		overflow: hidden;
 	}
 
 	.tab-strip {
@@ -439,6 +451,12 @@
 	.subtab-btn.active {
 		color: var(--color-accent-cyan);
 		border-bottom-color: var(--color-accent-cyan);
+	}
+
+	.play-panel {
+		min-height: 0;
+		overflow-y: auto;
+		background: rgba(15, 14, 26, 0.88);
 	}
 
 	.io-area {

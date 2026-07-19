@@ -29,6 +29,55 @@ use crate::state::{AppState, VoiceOutputTarget};
 const VIRTUAL_COMPUTER_KEYBOARD: usize = 999_998;
 const GUITAR_AUDIO_SENTINEL: usize = 999_997;
 
+type NoteCounts = HashMap<u8, u32>;
+type RoutedNoteCounts = HashMap<(VoiceOutputTarget, u8, u8), u32>;
+
+fn count_note_on(notes: &mut NoteCounts, note: u8) {
+    let count = notes.entry(note).or_insert(0);
+    *count = count.saturating_add(1);
+}
+
+fn count_note_off(notes: &mut NoteCounts, note: u8) {
+    if let Some(count) = notes.get_mut(&note) {
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            notes.remove(&note);
+        }
+    }
+}
+
+fn routed_note_key(
+    target: VoiceOutputTarget,
+    channel: u8,
+    note: u8,
+) -> (VoiceOutputTarget, u8, u8) {
+    let channel = if target == VoiceOutputTarget::Synth {
+        0
+    } else {
+        channel
+    };
+    (target, channel, note)
+}
+
+fn count_routed_note_on(notes: &mut RoutedNoteCounts, key: (VoiceOutputTarget, u8, u8)) -> bool {
+    let first_owner = !notes.contains_key(&key);
+    let count = notes.entry(key).or_insert(0);
+    *count = count.saturating_add(1);
+    first_owner
+}
+
+fn count_routed_note_off(notes: &mut RoutedNoteCounts, key: (VoiceOutputTarget, u8, u8)) -> bool {
+    let Some(count) = notes.get_mut(&key) else {
+        return false;
+    };
+    *count = count.saturating_sub(1);
+    if *count > 0 {
+        return false;
+    }
+    notes.remove(&key);
+    true
+}
+
 /// Payload for the "note-update" Tauri event.
 #[derive(Clone, Serialize)]
 pub struct NoteUpdatePayload {
@@ -39,11 +88,11 @@ pub struct NoteUpdatePayload {
     pub last_borrowed_from: String,
     pub current_key: String,
     /// Notes currently sounding from the Companion's canon lane.
-    /// Subset of `harmony_notes` — included separately so the piano
-    /// can color them distinctly from generic harmony output.
+    /// Kept separate so source-aware visualizations do not confuse
+    /// imitative entries with generic harmonic support.
     pub canon_notes: Vec<u8>,
     /// Notes currently sounding from the Companion's counterpoint lane.
-    /// Subset of `harmony_notes` — same role as `canon_notes`.
+    /// Same source-attribution role as `canon_notes`.
     pub counterpoint_notes: Vec<u8>,
 }
 
@@ -97,6 +146,14 @@ pub fn inject_note_off(note: u8, state: State<AppState>) -> Result<Vec<u8>, Stri
     let tx = tx_guard.as_ref().ok_or("Routing not active")?;
     tx.send(vec![0x80, note, 0]).map_err(|e| e.to_string())?;
     Ok(vec![note])
+}
+
+/// Request the router's tracked NoteOff/CC123 drain and silence the
+/// built-in synth immediately. Safe when routing is already stopped.
+#[tauri::command]
+pub fn panic_all_notes_off(state: State<AppState>) {
+    state.panic_pending.store(true, Ordering::SeqCst);
+    let _ = state.synth_tx.send(SynthEvent::AllNotesOff);
 }
 
 /// Starts MIDI routing from the specified input to the specified outputs.
@@ -420,13 +477,12 @@ fn run_tauri_router(
     // "I picked soprano in a 4-voice setup but the engine had only
     // 2 voices" reports.)
 
-    // Per-lane attribution sets — kept distinct from `harmony_notes`
-    // so the Piano UI can color canon (gold) and counterpoint (lime)
-    // emissions separately. `dispatch_companion_ops` inserts/removes
-    // here based on the lane tag, *in addition to* the unified
-    // `harmony_notes` set the rest of the router still reads.
-    let canon_notes: Arc<Mutex<HashSet<u8>>> = Arc::new(Mutex::new(HashSet::new()));
-    let counterpoint_notes: Arc<Mutex<HashSet<u8>>> = Arc::new(Mutex::new(HashSet::new()));
+    // Per-lane counters preserve overlapping voices at the same pitch.
+    // They stay separate from generic harmony so Live Lines can render
+    // each musical source without subtracting ambiguous pitch unions.
+    let canon_notes: Arc<Mutex<NoteCounts>> = Arc::new(Mutex::new(HashMap::new()));
+    let counterpoint_notes: Arc<Mutex<NoteCounts>> = Arc::new(Mutex::new(HashMap::new()));
+    let mut companion_output_notes: RoutedNoteCounts = HashMap::new();
 
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();
@@ -483,6 +539,7 @@ fn run_tauri_router(
                 &harmony_notes,
                 &canon_notes,
                 &counterpoint_notes,
+                &mut companion_output_notes,
             );
         }
 
@@ -640,12 +697,26 @@ fn run_tauri_router(
                     // story is deferred — this gives users a one-button
                     // escape today.
                     if cc_number == 123 {
-                        let notes_to_release =
-                            drain_all_tracked_notes(&input_notes, &harmony_notes, &borrowed_notes);
+                        let notes_to_release = drain_all_tracked_notes(
+                            &input_notes,
+                            &harmony_notes,
+                            &borrowed_notes,
+                            &canon_notes,
+                            &counterpoint_notes,
+                        );
                         let num_ports = output_router.connection_count();
                         for n in notes_to_release {
                             broadcast_note_off(n, num_ports, &synth_tx, &mut output_router);
                         }
+                        companion_output_notes.clear();
+                        engine
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .clear_active_notes();
+                        companion
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .reset_runtime();
                         eprintln!("[router] CC 123 panic: cleared all tracked notes");
                         // Continue to also forward to UI below so the
                         // Performance view's CC mapping still sees it.
@@ -684,6 +755,7 @@ fn run_tauri_router(
                             &harmony_notes,
                             &canon_notes,
                             &counterpoint_notes,
+                            &mut companion_output_notes,
                         );
                         suppress_default = sup;
                     }
@@ -758,6 +830,37 @@ fn run_tauri_router(
             }
         }
     }
+
+    // Release downstream sound while the router and its output handles
+    // are still alive. Clearing bookkeeping alone would leave external
+    // instruments and the built-in synth ringing after Stop.
+    let notes_to_release = drain_all_tracked_notes(
+        &input_notes,
+        &harmony_notes,
+        &borrowed_notes,
+        &canon_notes,
+        &counterpoint_notes,
+    );
+    let num_ports = output_router.connection_count();
+    for note in notes_to_release {
+        broadcast_note_off(note, num_ports, &synth_tx, &mut output_router);
+    }
+    let _ = synth_tx.send(SynthEvent::AllNotesOff);
+    for channel in 0u8..16 {
+        let message = [0xB0 | channel, 123, 0];
+        for port in 0..num_ports {
+            let _ = output_router.send_to_port(port, &message);
+        }
+    }
+
+    engine
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear_active_notes();
+    companion
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .reset_runtime();
 
     // Clear note state on exit. Per-lane sets (canon_notes /
     // counterpoint_notes) MUST also be cleared — otherwise stale
@@ -1240,15 +1343,16 @@ fn dispatch_companion_ops(
     num_ports: usize,
     synth_tx: &mpsc::Sender<SynthEvent>,
     output: &mut OutputRouter,
-    harmony_notes: &Arc<Mutex<HashSet<u8>>>,
-    canon_notes: &Arc<Mutex<HashSet<u8>>>,
-    counterpoint_notes: &Arc<Mutex<HashSet<u8>>>,
+    _harmony_notes: &Arc<Mutex<HashSet<u8>>>,
+    canon_notes: &Arc<Mutex<NoteCounts>>,
+    counterpoint_notes: &Arc<Mutex<NoteCounts>>,
+    output_notes: &mut RoutedNoteCounts,
 ) {
     use crate::companion::DispatchOp;
     for (lane, op) in tagged {
         // Per-lane set the note belongs to, if any. Other lane tags
         // (or AllNotesOff) leave both untouched.
-        let lane_set: Option<&Arc<Mutex<HashSet<u8>>>> = match *lane {
+        let lane_notes: Option<&Arc<Mutex<NoteCounts>>> = match *lane {
             "canon" => Some(canon_notes),
             "counterpoint" => Some(counterpoint_notes),
             _ => None,
@@ -1260,27 +1364,24 @@ fn dispatch_companion_ops(
                 velocity,
                 channel,
             } => {
-                dispatch_voice(
-                    *target,
-                    *channel,
-                    VoiceDispatch::NoteOn {
-                        note: *note,
-                        velocity: *velocity,
-                    },
-                    num_ports,
-                    synth_tx,
-                    output,
-                );
-                // Track in the unified harmony set so the Piano knows
-                // a note is sounding even without lane attribution.
-                {
-                    let mut h = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
-                    h.insert(*note);
+                let first_owner =
+                    count_routed_note_on(output_notes, routed_note_key(*target, *channel, *note));
+                if first_owner {
+                    dispatch_voice(
+                        *target,
+                        *channel,
+                        VoiceDispatch::NoteOn {
+                            note: *note,
+                            velocity: *velocity,
+                        },
+                        num_ports,
+                        synth_tx,
+                        output,
+                    );
                 }
-                // Plus the per-lane set so the Piano can color it.
-                if let Some(set) = lane_set {
-                    let mut s = set.lock().unwrap_or_else(|e| e.into_inner());
-                    s.insert(*note);
+                if let Some(notes) = lane_notes {
+                    let mut notes = notes.lock().unwrap_or_else(|e| e.into_inner());
+                    count_note_on(&mut notes, *note);
                 }
             }
             DispatchOp::NoteOff {
@@ -1288,27 +1389,31 @@ fn dispatch_companion_ops(
                 note,
                 channel,
             } => {
-                dispatch_voice(
-                    *target,
-                    *channel,
-                    VoiceDispatch::NoteOff {
-                        note: *note,
-                        velocity: 0,
-                    },
-                    num_ports,
-                    synth_tx,
-                    output,
-                );
-                {
-                    let mut h = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
-                    h.remove(note);
+                let last_owner =
+                    count_routed_note_off(output_notes, routed_note_key(*target, *channel, *note));
+                if last_owner {
+                    dispatch_voice(
+                        *target,
+                        *channel,
+                        VoiceDispatch::NoteOff {
+                            note: *note,
+                            velocity: 0,
+                        },
+                        num_ports,
+                        synth_tx,
+                        output,
+                    );
                 }
-                if let Some(set) = lane_set {
-                    let mut s = set.lock().unwrap_or_else(|e| e.into_inner());
-                    s.remove(note);
+                if let Some(notes) = lane_notes {
+                    let mut notes = notes.lock().unwrap_or_else(|e| e.into_inner());
+                    count_note_off(&mut notes, *note);
                 }
             }
             DispatchOp::AllNotesOff { .. } => {
+                output_notes.clear();
+                if let Some(notes) = lane_notes {
+                    notes.lock().unwrap_or_else(|e| e.into_inner()).clear();
+                }
                 // Per-port `ports` field deferred to audio-graph
                 // milestone; for now broadcast all 16 MIDI channels'
                 // CC 123 to every connected output, matching the
@@ -1324,12 +1429,12 @@ fn dispatch_companion_ops(
     }
 }
 
-/// Drain every tracked note from the three router HashSets and return
-/// the union so the caller can dispatch NoteOff for each. Handles the
+/// Drain every tracked note source and return the pitch union so the
+/// caller can dispatch NoteOff for each. Handles the
 /// CC 123 (All Notes Off) panic path in run_tauri_router.
 ///
-/// Acquires the three locks in a fixed order (input → harmony →
-/// borrowed) to avoid deadlock with the rest of the router which
+/// Acquires locks in a fixed order (input → harmony → borrowed →
+/// canon → counterpoint) to avoid deadlock with the rest of the router which
 /// also reads them in similar order. Recovers from poisoned mutexes
 /// rather than panicking — matches the convention in the router's
 /// emit loop.
@@ -1337,15 +1442,21 @@ fn drain_all_tracked_notes(
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
+    canon_notes: &Arc<Mutex<NoteCounts>>,
+    counterpoint_notes: &Arc<Mutex<NoteCounts>>,
 ) -> HashSet<u8> {
     let union: HashSet<u8> = {
         let in_n = input_notes.lock().unwrap_or_else(|e| e.into_inner());
         let harm = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
         let borr = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
+        let canon = canon_notes.lock().unwrap_or_else(|e| e.into_inner());
+        let counterpoint = counterpoint_notes.lock().unwrap_or_else(|e| e.into_inner());
         in_n.iter()
             .chain(harm.iter())
             .chain(borr.iter())
             .copied()
+            .chain(canon.keys().copied())
+            .chain(counterpoint.keys().copied())
             .collect()
     };
     // Now clear each set (separate scope so the prior read locks
@@ -1360,6 +1471,14 @@ fn drain_all_tracked_notes(
     }
     {
         let mut s = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
+        s.clear();
+    }
+    {
+        let mut s = canon_notes.lock().unwrap_or_else(|e| e.into_inner());
+        s.clear();
+    }
+    {
+        let mut s = counterpoint_notes.lock().unwrap_or_else(|e| e.into_inner());
         s.clear();
     }
     union
@@ -1427,7 +1546,7 @@ fn cents_to_pitch_bend_msg(cents: i32) -> [u8; 3] {
 
 /// Build the payload sent on the "note-update" Tauri event.
 ///
-/// Pure function: takes references to the three note sets + the
+/// Pure function: takes references to the note sets/counters + the
 /// strings already extracted from the engine, returns the payload.
 /// The router holds the locks; this function never blocks on I/O.
 ///
@@ -1442,14 +1561,14 @@ fn build_note_update_payload(
     chord_name: String,
     last_borrowed_from: String,
     current_key: String,
-    canon_notes: &HashSet<u8>,
-    counterpoint_notes: &HashSet<u8>,
+    canon_notes: &NoteCounts,
+    counterpoint_notes: &NoteCounts,
 ) -> NoteUpdatePayload {
     let mut in_vec: Vec<u8> = input_notes.iter().copied().collect();
     let mut harm_vec: Vec<u8> = harmony_notes.iter().copied().collect();
     let mut borr_vec: Vec<u8> = borrowed_notes.iter().copied().collect();
-    let mut canon_vec: Vec<u8> = canon_notes.iter().copied().collect();
-    let mut cp_vec: Vec<u8> = counterpoint_notes.iter().copied().collect();
+    let mut canon_vec: Vec<u8> = canon_notes.keys().copied().collect();
+    let mut cp_vec: Vec<u8> = counterpoint_notes.keys().copied().collect();
     in_vec.sort_unstable();
     harm_vec.sort_unstable();
     borr_vec.sort_unstable();
@@ -1515,8 +1634,8 @@ mod tests {
         let input: HashSet<u8> = [67u8, 60, 64].iter().copied().collect();
         let harmony: HashSet<u8> = [55u8, 71, 60].iter().copied().collect();
         let borrowed: HashSet<u8> = [70u8].iter().copied().collect();
-        let canon: HashSet<u8> = [71u8, 60].iter().copied().collect();
-        let cp: HashSet<u8> = [55u8].iter().copied().collect();
+        let canon: NoteCounts = [(71u8, 2), (60, 1)].into_iter().collect();
+        let cp: NoteCounts = [(55u8, 1)].into_iter().collect();
         let payload = build_note_update_payload(
             &input,
             &harmony,
@@ -1540,6 +1659,7 @@ mod tests {
     #[test]
     fn test_build_note_update_payload_empty_state() {
         let empty: HashSet<u8> = HashSet::new();
+        let empty_counts: NoteCounts = HashMap::new();
         let payload = build_note_update_payload(
             &empty,
             &empty,
@@ -1547,8 +1667,8 @@ mod tests {
             String::new(),
             String::new(),
             "C".into(),
-            &empty,
-            &empty,
+            &empty_counts,
+            &empty_counts,
         );
         assert!(payload.input_notes.is_empty());
         assert!(payload.harmony_notes.is_empty());
@@ -1557,6 +1677,29 @@ mod tests {
         assert!(payload.counterpoint_notes.is_empty());
         assert!(payload.chord_name.is_empty());
         assert_eq!(payload.current_key, "C");
+    }
+
+    #[test]
+    fn note_counts_preserve_overlapping_lane_voices() {
+        let mut notes = NoteCounts::new();
+        count_note_on(&mut notes, 64);
+        count_note_on(&mut notes, 64);
+        count_note_off(&mut notes, 64);
+        assert_eq!(notes.get(&64), Some(&1));
+        count_note_off(&mut notes, 64);
+        assert!(!notes.contains_key(&64));
+    }
+
+    #[test]
+    fn routed_note_counts_hold_same_pitch_until_last_owner() {
+        let mut notes = RoutedNoteCounts::new();
+        let first = routed_note_key(VoiceOutputTarget::Synth, 5, 64);
+        let second = routed_note_key(VoiceOutputTarget::Synth, 6, 64);
+        assert_eq!(first, second, "synth ownership is pitch-only");
+        assert!(count_routed_note_on(&mut notes, first));
+        assert!(!count_routed_note_on(&mut notes, second));
+        assert!(!count_routed_note_off(&mut notes, first));
+        assert!(count_routed_note_off(&mut notes, second));
     }
 
     /// A clean signal at A4 (440 Hz) above the clarity threshold must
@@ -1612,13 +1755,16 @@ mod tests {
             [67u8, 71].iter().copied().collect::<HashSet<u8>>(),
         ));
         let borrowed = Arc::new(Mutex::new([70u8].iter().copied().collect::<HashSet<u8>>()));
-        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
-        let expected: HashSet<u8> = [60, 64, 67, 70, 71].iter().copied().collect();
+        let canon = Arc::new(Mutex::new([(72u8, 2)].into_iter().collect::<NoteCounts>()));
+        let counterpoint = Arc::new(Mutex::new([(53u8, 1)].into_iter().collect::<NoteCounts>()));
+        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed, &canon, &counterpoint);
+        let expected: HashSet<u8> = [53, 60, 64, 67, 70, 71, 72].iter().copied().collect();
         assert_eq!(drained, expected);
-        // All three sets must be empty after the drain.
         assert!(input.lock().unwrap().is_empty());
         assert!(harmony.lock().unwrap().is_empty());
         assert!(borrowed.lock().unwrap().is_empty());
+        assert!(canon.lock().unwrap().is_empty());
+        assert!(counterpoint.lock().unwrap().is_empty());
     }
 
     /// Empty sets must produce an empty union without panicking.
@@ -1627,7 +1773,9 @@ mod tests {
         let input = Arc::new(Mutex::new(HashSet::<u8>::new()));
         let harmony = Arc::new(Mutex::new(HashSet::<u8>::new()));
         let borrowed = Arc::new(Mutex::new(HashSet::<u8>::new()));
-        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
+        let canon = Arc::new(Mutex::new(NoteCounts::new()));
+        let counterpoint = Arc::new(Mutex::new(NoteCounts::new()));
+        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed, &canon, &counterpoint);
         assert!(drained.is_empty());
     }
 
@@ -1640,7 +1788,9 @@ mod tests {
             [60u8, 64].iter().copied().collect::<HashSet<u8>>(),
         ));
         let borrowed = Arc::new(Mutex::new(HashSet::<u8>::new()));
-        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
+        let canon = Arc::new(Mutex::new([(60u8, 2)].into_iter().collect::<NoteCounts>()));
+        let counterpoint = Arc::new(Mutex::new(NoteCounts::new()));
+        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed, &canon, &counterpoint);
         let expected: HashSet<u8> = [60, 64].iter().copied().collect();
         assert_eq!(drained, expected);
     }
@@ -1660,6 +1810,8 @@ mod tests {
             [60u8, 64].iter().copied().collect::<HashSet<u8>>(),
         ));
         let borrowed = Arc::new(Mutex::new(HashSet::<u8>::new()));
+        let canon = Arc::new(Mutex::new(NoteCounts::new()));
+        let counterpoint = Arc::new(Mutex::new(NoteCounts::new()));
 
         // Poison the middle lock from a spawned thread by holding it
         // while panicking. .join() catches the panic so the test
@@ -1679,7 +1831,7 @@ mod tests {
 
         // drain_all_tracked_notes must still see the wrapped data
         // (60, 64 from the harmony set) instead of panicking.
-        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed);
+        let drained = drain_all_tracked_notes(&input, &harmony, &borrowed, &canon, &counterpoint);
         let expected: HashSet<u8> = [60, 64].iter().copied().collect();
         assert_eq!(
             drained, expected,

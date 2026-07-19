@@ -9,7 +9,10 @@ use nih_plug_webview::{
 };
 use std::borrow::Cow;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 
 use contrapunk_companion::Companion;
 
@@ -27,14 +30,15 @@ pub struct ContrapunkEditorHandler {
     /// pushes a `noteUpdate` message so the Piano / Fretboard light
     /// up while the plugin is generating MIDI.
     note_state: Arc<Mutex<PluginNoteState>>,
-    /// Shared with the audio thread. Editor IPC handlers reach into
-    /// the Companion via `try_lock` to apply user config changes
-    /// (HoldMode, canon voices, etc.) without blocking the per-block
-    /// `tick_tagged` call in `process()`.
+    /// Shared with the audio thread. Editor IPC handlers take the
+    /// Companion lock to guarantee user-rate config changes are applied;
+    /// the audio thread uses `try_lock` and may skip one processing tick.
     companion: Arc<Mutex<Companion>>,
     /// Last `noteUpdate` payload pushed. Used to suppress redundant
     /// sends when nothing changed — keeps the JS bridge quiet.
     last_note_json: String,
+    /// Set by UI panic button; drained by plugin process() on audio thread.
+    panic_requested: Arc<AtomicBool>,
 }
 
 impl ContrapunkEditorHandler {
@@ -46,10 +50,13 @@ impl ContrapunkEditorHandler {
             "mode": format!("{:?}", self.params.harmony_mode.value()),
             "voiceLeading": self.params.voice_leading.value(),
             "octaveMode": format!("{:?}", self.params.octave_mode.value()),
+            "octaveIntensity": self.params.octave_intensity.value(),
             "voicePosition": self.params.voice_position.value(),
             "voiceCount": self.params.voice_count.value(),
             "autoKey": self.params.auto_key.value(),
             "inputMode": format!("{:?}", self.params.input_mode.value()),
+            "synthEnabled": self.params.synth_enabled.value(),
+            "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
         })
         .to_string()
     }
@@ -60,14 +67,10 @@ impl ContrapunkEditorHandler {
     fn note_update_json(&mut self) -> Option<String> {
         let (input, harmony, canon, counterpoint) = {
             let s = self.note_state.lock().ok()?;
-            let mut input: Vec<u8> = s.input_notes.iter().copied().collect();
-            let mut harmony: Vec<u8> = s.harmony_notes.iter().copied().collect();
-            let mut canon: Vec<u8> = s.canon_notes.iter().copied().collect();
-            let mut counterpoint: Vec<u8> = s.counterpoint_notes.iter().copied().collect();
-            input.sort_unstable();
-            harmony.sort_unstable();
-            canon.sort_unstable();
-            counterpoint.sort_unstable();
+            let input: Vec<u8> = s.input_notes.active_notes().collect();
+            let harmony: Vec<u8> = s.harmony_notes.active_notes().collect();
+            let canon: Vec<u8> = s.canon_notes.active_notes().collect();
+            let counterpoint: Vec<u8> = s.counterpoint_notes.active_notes().collect();
             (input, harmony, canon, counterpoint)
         };
         let key = format!("{:?}", self.params.key.value());
@@ -148,6 +151,12 @@ impl EditorHandler for ContrapunkEditorHandler {
                     }
                 }
             }
+            "setOctaveIntensity" => {
+                if let Some(amount) = msg.get("value").and_then(|v| v.as_f64()) {
+                    let setter = cx.get_param_setter();
+                    setter.set_parameter(&self.params.octave_intensity, amount as f32);
+                }
+            }
             "setAutoKey" => {
                 if let Some(enabled) = msg.get("value").and_then(|v| v.as_bool()) {
                     let setter = cx.get_param_setter();
@@ -168,41 +177,51 @@ impl EditorHandler for ContrapunkEditorHandler {
                     }
                 }
             }
+            "setMidiOutputMode" => {
+                if let Some(mode_str) = msg.get("value").and_then(|v| v.as_str()) {
+                    if let Some(output_variant) = parse_midi_output_mode(mode_str) {
+                        let setter = cx.get_param_setter();
+                        setter.set_parameter(&self.params.midi_output_mode, output_variant);
+                    }
+                }
+            }
+            "setSynthEnabled" => {
+                if let Some(enabled) = msg.get("value").and_then(|v| v.as_bool()) {
+                    let setter = cx.get_param_setter();
+                    setter.set_parameter(&self.params.synth_enabled, enabled);
+                }
+            }
+            "panic" => {
+                self.panic_requested.store(true, Ordering::Release);
+            }
             // ─── Companion IPC ────────────────────────────────────
-            // All companion handlers use `try_lock` so a busy audio
-            // thread doesn't block the editor message dispatcher.
-            // UI commands are user-rate (≤10/sec); dropped messages
-            // are recoverable (user retries or on_params_changed
-            // resyncs).
+            // Companion commands are user-rate and must not be dropped.
+            // The editor may wait briefly; the audio thread never waits.
             "companionSetEnabled" => {
                 if let Some(enabled) = msg.get("value").and_then(|v| v.as_bool()) {
-                    if let Ok(c) = self.companion.try_lock() {
-                        c.enabled
-                            .store(enabled, std::sync::atomic::Ordering::Release);
-                    }
+                    let c = self.companion.lock().unwrap_or_else(|e| e.into_inner());
+                    c.enabled
+                        .store(enabled, std::sync::atomic::Ordering::Release);
                 }
             }
             "companionSetGlobalHoldMode" => {
                 if let Some(hm_json) = msg.get("value") {
                     if let Some(mode) = contrapunk_companion::lane::hold_mode_from_json(hm_json) {
-                        if let Ok(c) = self.companion.try_lock() {
-                            c.set_global_hold_mode(mode);
-                        }
+                        let c = self.companion.lock().unwrap_or_else(|e| e.into_inner());
+                        c.set_global_hold_mode(mode);
                     }
                 }
             }
             "canonConfigure" => {
                 if let Some(partial) = msg.get("value") {
-                    if let Ok(mut c) = self.companion.try_lock() {
-                        let _ = c.configure_lane("canon", partial.clone());
-                    }
+                    let mut c = self.companion.lock().unwrap_or_else(|e| e.into_inner());
+                    let _ = c.configure_lane("canon", partial.clone());
                 }
             }
             "counterpointConfigure" => {
                 if let Some(partial) = msg.get("value") {
-                    if let Ok(mut c) = self.companion.try_lock() {
-                        let _ = c.configure_lane("counterpoint", partial.clone());
-                    }
+                    let mut c = self.companion.lock().unwrap_or_else(|e| e.into_inner());
+                    let _ = c.configure_lane("counterpoint", partial.clone());
                 }
             }
             "canonSetVoices" => {
@@ -210,10 +229,9 @@ impl EditorHandler for ContrapunkEditorHandler {
                 // canon_set_voices command builds. Delegate to the
                 // canon lane's configure_lane wrapped with { voices }.
                 if let Some(voices) = msg.get("value") {
-                    if let Ok(mut c) = self.companion.try_lock() {
-                        let payload = serde_json::json!({ "voices": voices });
-                        let _ = c.configure_lane("canon", payload);
-                    }
+                    let mut c = self.companion.lock().unwrap_or_else(|e| e.into_inner());
+                    let payload = serde_json::json!({ "voices": voices });
+                    let _ = c.configure_lane("canon", payload);
                 }
             }
             _ => {}
@@ -231,6 +249,7 @@ pub fn create_editor(
     params: Arc<ContrapunkParams>,
     note_state: Arc<Mutex<PluginNoteState>>,
     companion: Arc<Mutex<Companion>>,
+    panic_requested: Arc<AtomicBool>,
     state: &Arc<WebViewState>,
 ) -> WebViewEditor {
     let protocol = "contrapunk".to_string();
@@ -251,6 +270,7 @@ pub fn create_editor(
         note_state,
         companion,
         last_note_json: String::new(),
+        panic_requested,
     };
 
     WebViewEditor::new_with_webview(handler, state, config, move |w| {
@@ -329,7 +349,7 @@ fn get_plugin_build_asset(path: &str) -> Option<&'static [u8]> {
 
 // ── Parameter parsing helpers ───────────────────────────────────────
 
-use crate::{PluginInputMode, PluginKey, PluginMode, PluginOctaveMode};
+use crate::{PluginInputMode, PluginKey, PluginMidiOutputMode, PluginMode, PluginOctaveMode};
 
 fn parse_key(s: &str) -> Option<PluginKey> {
     match s {
@@ -379,6 +399,14 @@ fn parse_input_mode(s: &str) -> Option<PluginInputMode> {
     match s {
         "Midi" | "MIDI" => Some(PluginInputMode::Midi),
         "Audio" | "Audio (Guitar)" => Some(PluginInputMode::Audio),
+        _ => None,
+    }
+}
+
+fn parse_midi_output_mode(s: &str) -> Option<PluginMidiOutputMode> {
+    match s {
+        "Full" | "Full Contrapunk" | "full" => Some(PluginMidiOutputMode::Full),
+        "PassThrough" | "Pass Through" | "pass_through" => Some(PluginMidiOutputMode::PassThrough),
         _ => None,
     }
 }

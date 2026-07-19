@@ -7,6 +7,14 @@
 	import { voiceLibrary } from '$lib/stores/voiceLibrary.svelte';
 	import { compositeModeOptions, encodeMode, decodeMode } from '$lib/harmony/modeComposite';
 
+	let {
+		focusGroup = 'imitative',
+		focusVersion = 0
+	}: {
+		focusGroup?: 'imitative' | 'species';
+		focusVersion?: number;
+	} = $props();
+
 	// Per-voice harmony mode options. Reuses the same composite list as
 	// the Harmony tab + Voices tab, plus an "Inherit global" entry at
 	// the top for the canon's per-voice override.
@@ -444,6 +452,19 @@
 	];
 
 	let selectedTemplate = $state<string | null>(null);
+	let selectedGroup = $state<'imitative' | 'species'>('imitative');
+	let selectedVoice = $state(0);
+
+	$effect(() => {
+		void focusVersion;
+		selectedGroup = focusGroup;
+	});
+
+	$effect(() => {
+		if (selectedVoice >= engine.canonVoices.length) {
+			selectedVoice = Math.max(0, engine.canonVoices.length - 1);
+		}
+	});
 
 	// User-defined forms — saved snapshots of the current voice config.
 	// Stored separately from the main settings so they survive schema
@@ -507,16 +528,12 @@
 	async function applyTemplate(t: Form) {
 		selectedTemplate = t.id;
 		if (!t.voices) return;
+		if (engine.imitativeForm !== 'free_imitation') {
+			await engine.setImitativeForm('free_imitation');
+		}
 		await engine.setCanonVoices(t.voices);
 		if (!engine.companionEnabled) await engine.setCompanionEnabled(true);
 		if (!engine.canonEnabled) await engine.setCanonEnabled(true);
-	}
-
-	async function toggleCompanion() {
-		const next = !engine.companionEnabled;
-		await engine.setCompanionEnabled(next);
-		// Also flip canon so the master toggle has audible effect.
-		await engine.setCanonEnabled(next);
 	}
 
 	// --- Readout helpers ---
@@ -533,6 +550,14 @@
 		const name = abs <= 7 ? names[abs] : `${abs}°`;
 		const dir = d > 0 ? '↑' : '↓';
 		return `${name} ${dir}`;
+	}
+
+	function setGlobalHold(kind: string) {
+		if (kind === 'near_future') {
+			engine.setCompanionHoldMode({ kind: 'near_future', tail_beats: 1 });
+		} else {
+			engine.setCompanionHoldMode({ kind: kind as 'cancel' | 'phrase_end' | 'forever' });
+		}
 	}
 
 	// --- Timeline geometry ---
@@ -683,76 +708,47 @@
 </script>
 
 <div class="companion-root">
-	<!-- HEADER: single master toggle. Canon is implicit today. -->
 	<header class="header">
 		<div class="header-left">
-			<h2 class="title font-ui">Companion</h2>
-			<span class="subtitle font-code">reactive companions — canon today, more lanes incoming</span>
+			<h2 class="title font-ui">Counterpoint</h2>
+			<span class="subtitle font-code">one focused group at a time</span>
 		</div>
-		<button
-			class="pixel-btn toggle-btn master-toggle"
-			class:toggle-on={engine.companionEnabled}
-			onclick={toggleCompanion}
-			title={engine.companionEnabled
-				? 'Companion is ON — voices will play in response to your input. Click to disable.'
-				: 'Companion is OFF. Click to enable reactive voices.'}
-		>
-			{engine.companionEnabled ? 'ON' : 'OFF'}
-		</button>
-	</header>
-
-	<!-- HOLD BEHAVIOR — what lanes do with already-scheduled emissions
-	     when the player releases the note that seeded them (#11).
-	     Global default; per-lane / per-voice overrides exist in the
-	     core but UI for overrides is hidden in v1. -->
-	<div class="hold-mode-row" title="What the canon / counterpoint lanes do with pending notes when you release the input. Global default — applies to every lane unless that lane has its own override.">
-		<span class="status-label font-ui">HOLD</span>
-		<div class="hold-mode-buttons">
-			<button
-				class="pixel-btn hold-btn"
-				class:hold-on={engine.companionHoldMode.kind === 'cancel'}
-				onclick={() => engine.setCompanionHoldMode({ kind: 'cancel' })}
-				title="CANCEL — kill every pending companion note the moment you release. Performative, 'lift = stop' feel."
-			>Cancel</button>
-			<button
-				class="pixel-btn hold-btn"
-				class:hold-on={engine.companionHoldMode.kind === 'near_future'}
-				onclick={() => engine.setCompanionHoldMode({ kind: 'near_future', tail_beats: 1.0 })}
-				title="NEAR FUTURE — let pending notes scheduled within `tail_beats` of now fire; cancel anything further out. Default — near-term echoes still ring, multi-bar canons cancel."
-			>Near</button>
-			<button
-				class="pixel-btn hold-btn"
-				class:hold-on={engine.companionHoldMode.kind === 'phrase_end'}
-				onclick={() => engine.setCompanionHoldMode({ kind: 'phrase_end' })}
-				title="PHRASE END — let pending notes within the current bar fire; cancel anything beyond. 'Finish this idea, then stop.'"
-			>Phrase</button>
-			<button
-				class="pixel-btn hold-btn"
-				class:hold-on={engine.companionHoldMode.kind === 'forever'}
-				onclick={() => engine.setCompanionHoldMode({ kind: 'forever' })}
-				title="FOREVER — no cancellation. Every scheduled note fires on its beat regardless of release. Preserves canon-as-canon (delayed echoes always complete)."
-			>Forever</button>
-		</div>
-		{#if engine.companionHoldMode.kind === 'near_future'}
-			<label class="hold-tail-input">
-				<span class="font-code">tail:</span>
-				<input
-					type="number"
-					min="0"
-					max="32"
-					step="0.25"
-					value={engine.companionHoldMode.tail_beats}
-					oninput={(e) => {
-						const v = parseFloat((e.target as HTMLInputElement).value);
-						if (!isNaN(v) && v >= 0 && v <= 32) {
-							engine.setCompanionHoldMode({ kind: 'near_future', tail_beats: v });
-						}
-					}}
-				/>
-				<span class="font-code">beats</span>
+		<div class="header-controls">
+			<label class="compact-pick">
+				<span class="font-ui">GROUP</span>
+				<select bind:value={selectedGroup}>
+					<option value="imitative">1 · Imitative Counterpoint</option>
+					<option value="species">2 · Species Counterpoint</option>
+				</select>
 			</label>
-		{/if}
-	</div>
+			<label class="compact-pick" title="What pending counterpoint notes do when you release the source note.">
+				<span class="font-ui">HOLD</span>
+				<select value={engine.companionHoldMode.kind} onchange={(e) => setGlobalHold((e.target as HTMLSelectElement).value)}>
+					<option value="cancel">Cancel immediately</option>
+					<option value="near_future">Finish near notes</option>
+					<option value="phrase_end">Finish phrase</option>
+					<option value="forever">Always finish</option>
+				</select>
+			</label>
+			{#if engine.companionHoldMode.kind === 'near_future'}
+				<label class="compact-pick tail-pick">
+					<span class="font-ui">TAIL</span>
+					<input
+						type="number"
+						min="0"
+						max="32"
+						step="0.25"
+						value={engine.companionHoldMode.tail_beats}
+						oninput={(e) => {
+							const value = parseFloat((e.target as HTMLInputElement).value);
+							if (!isNaN(value) && value >= 0 && value <= 32) engine.setCompanionHoldMode({ kind: 'near_future', tail_beats: value });
+						}}
+					/>
+				</label>
+			{/if}
+			<span class="group-status font-ui">{engine.companionEnabled ? '● ACTIVE' : 'READY'}</span>
+		</div>
+	</header>
 
 	<!-- BODY: vertical stack of Lane cards. Each lane is a self-
 	     contained module — header (name + enable toggle), body
@@ -775,21 +771,31 @@
 			</span>
 		</div>
 
-		<!-- CANON LANE card. Delayed-echo voices that mirror the player
-		     with configurable delay, transpose, and per-voice harmony.
-		     Forms rail lives inside this card now so the FORMS belong
-		     to the canon, not a global concern. -->
+		<!-- Only the selected group is expanded. The other group keeps
+		     running; this selector changes the editor, not the music. -->
+		{#if selectedGroup === 'imitative'}
 		<div
 			class="lane-card canon-lane-card"
 			class:lane-active={engine.canonEnabled}
 		>
 			<div class="lane-header">
-				<span class="lane-title font-ui">CANON</span>
-				<span class="lane-subtitle font-code">delayed echoes · cascaded voices</span>
+				<span class="lane-title font-ui">COUNTERPOINT GROUP 1</span>
+				<span class="lane-subtitle font-code">Imitative counterpoint · {engine.imitativeForm === 'strict_canon' ? 'Strict Canon' : 'Free Imitation'}</span>
 				<span class="lane-actions">
+					<label class="lane-hold-pick" title="Strict Canon preserves one subject exactly; Free Imitation unlocks independent voice transformations.">
+						<span class="font-code">FORM</span>
+						<select
+							value={engine.imitativeForm}
+							onchange={(e) => engine.setImitativeForm((e.target as HTMLSelectElement).value as 'strict_canon' | 'free_imitation')}
+						>
+							<option value="strict_canon">Strict Canon</option>
+							<option value="free_imitation">Free Imitation</option>
+						</select>
+					</label>
 					<label class="lane-hold-pick" title="Override Companion's global HoldMode for this lane only. 'Inherit' uses the global setting.">
 						<span class="font-code">HOLD</span>
 						<select
+							disabled={engine.imitativeForm === 'strict_canon'}
 							value={engine.canonLaneHoldMode === null ? 'inherit' : engine.canonLaneHoldMode.kind}
 							onchange={(e) => {
 								const v = (e.target as HTMLSelectElement).value;
@@ -812,7 +818,11 @@
 					<button
 						class="pixel-btn"
 						class:toggle-on={engine.canonEnabled}
-						onclick={() => engine.setCanonEnabled(!engine.canonEnabled)}
+						onclick={async () => {
+							const enabled = !engine.canonEnabled;
+							if (enabled && !engine.companionEnabled) await engine.setCompanionEnabled(true);
+							await engine.setCanonEnabled(enabled);
+						}}
 						title={engine.canonEnabled
 							? 'Canon Lane is ON — delayed voices fire on every player note.'
 							: 'Canon Lane is OFF. Click to enable.'}
@@ -823,85 +833,92 @@
 			</div>
 
 			<div class="lane-body canon-lane-body">
-			<aside class="templates">
-			<div
-				class="section-header font-ui"
-				title="Forms are voice presets. Built-ins showcase Contrapunk's harmony engine; you can save your own with +Save."
-			>
-				FORMS
-				<button
-					class="pixel-btn"
-					onclick={() => {
-						showSaveForm = !showSaveForm;
-						newFormName = '';
-					}}
-					title="Save the current voice configuration as a custom form. Stored locally — survives reload."
-				>
-					+ Save
-				</button>
-			</div>
-
-			{#if showSaveForm}
-				<div class="save-form font-code">
-					<input
-						type="text"
-						bind:value={newFormName}
-						placeholder="Form name…"
-						class="pixel-input"
-						onkeydown={(e) => {
-							if (e.key === 'Enter') saveCurrentAsForm();
-							if (e.key === 'Escape') showSaveForm = false;
-						}}
-					/>
-					<button class="pixel-btn" onclick={saveCurrentAsForm} disabled={!newFormName.trim()}>
-						Save
-					</button>
+			{#if engine.imitativeForm === 'strict_canon'}
+				<div class="strict-contract font-code">
+					◆ STRICT IMITATION · Subject = You Play · rhythm and melodic shape locked · delay and transposition remain editable
 				</div>
 			{/if}
-
-			{#each TEMPLATES as t (t.id)}
-				{@const isUser = t.id.startsWith('user-')}
-				<div class="template-row-wrap" class:user-form={isUser}>
-					<button
-						class="template-row"
-						class:active={selectedTemplate === t.id}
-						onclick={() => applyTemplate(t)}
-						title={t.desc}
-					>
-						<div class="template-name font-ui">
-							{t.name}
-							{#if isUser}<span class="user-badge font-code">USER</span>{/if}
-						</div>
-						<div class="template-desc font-code">{t.desc}</div>
-					</button>
-					{#if isUser}
-						<button
-							class="pixel-btn delete-form"
-							onclick={() => deleteUserForm(t.id)}
-							title="Delete this form"
-						>
-							×
-						</button>
-					{/if}
+			<div class="subject-map" aria-label="Imitative counterpoint voice map">
+				<div class="subject-node">
+					<div class="map-node-head font-ui"><strong>YOU PLAY</strong><span>SUBJECT</span></div>
+					<div class="map-node-main font-code">Live melody</div>
+					<div class="map-node-meta font-code">rhythm · contour · phrasing</div>
 				</div>
-			{/each}
-		</aside>
+				<div class="subject-arrow font-ui" aria-hidden="true">FOLLOWS ›</div>
+				<div class="followers-map">
+					<div class="followers-head font-ui"><span>FOLLOWER VOICES</span><span>{engine.canonVoices.length} ACTIVE</span></div>
+					<div class="follower-grid">
+						{#each engine.canonVoices as voice, index}
+							<button
+								class="follower-node"
+								class:selected={selectedVoice === index}
+								type="button"
+								title={`Edit Voice ${index + 1}: enters after ${voice.delay_beats} beats, ${transposeLabel(voice.transpose_degrees)}`}
+								onclick={() => (selectedVoice = index)}
+							>
+								<span class="follower-name font-ui">VOICE {index + 1}</span>
+								<strong class="font-code">+{voice.delay_beats}b · {transposeLabel(voice.transpose_degrees)}</strong>
+								<small class="font-code">{voice.time_ratio === 1 ? 'same rhythm' : ratioLabel(voice.time_ratio)}</small>
+							</button>
+						{/each}
+					</div>
+				</div>
+			</div>
+			<div class="preset-toolbar">
+				<label class="compact-pick preset-pick">
+					<span class="font-ui">GROUP PRESET</span>
+					<select
+						value={selectedTemplate ?? ''}
+						onchange={(e) => {
+							const template = TEMPLATES.find((item) => item.id === (e.target as HTMLSelectElement).value);
+							if (template) applyTemplate(template);
+						}}
+					>
+						<option value="" disabled>Choose a preset…</option>
+						<optgroup label="Built in">
+							{#each TEMPLATES.filter((item) => !item.id.startsWith('user-')) as template}
+								<option value={template.id}>{template.name}</option>
+							{/each}
+						</optgroup>
+						{#if userForms.length}
+							<optgroup label="My presets">
+								{#each userForms as template}
+									<option value={template.id}>{template.name}</option>
+								{/each}
+							</optgroup>
+						{/if}
+					</select>
+				</label>
+				{#if selectedTemplate}
+					<span class="preset-description font-code">{TEMPLATES.find((item) => item.id === selectedTemplate)?.desc ?? ''}</span>
+				{/if}
+				<button class="pixel-btn" onclick={() => { showSaveForm = !showSaveForm; newFormName = ''; }}>SAVE AS</button>
+				{#if selectedTemplate?.startsWith('user-')}
+					<button class="pixel-btn delete-form" onclick={() => { if (selectedTemplate) deleteUserForm(selectedTemplate); }} title="Delete selected preset">DELETE</button>
+				{/if}
+			</div>
+			{#if showSaveForm}
+				<div class="save-form compact-save font-code">
+					<input type="text" bind:value={newFormName} placeholder="Preset name…" class="pixel-input" onkeydown={(e) => { if (e.key === 'Enter') saveCurrentAsForm(); if (e.key === 'Escape') showSaveForm = false; }} />
+					<button class="pixel-btn" onclick={saveCurrentAsForm} disabled={!newFormName.trim()}>SAVE</button>
+				</div>
+			{/if}
 
 		<!-- CANON RIGHT — timeline + voice cards. Lives inside the
 		     canon-lane-body alongside the forms rail. Empty state still
 		     renders the layout so the UI doesn't lurch. -->
 		<section class="canon-right">
 			<!-- TIMELINE VISUALIZATION -->
-			<div
+			<details
 				class="timeline-card"
-				title="When you play a note, each voice enters at its delay offset. The grid is measured in bars / beats of the active transport time signature, not arbitrary 4/4."
+				title="When you play a note, each voice enters at its delay offset."
 			>
-				<div class="section-header font-ui">
-					ENTRY TIMELINE
+				<summary class="section-header font-ui">
+					<span>ENTRY TIMELINE</span>
 					<span class="hint font-code">
-						player → delayed voices ({timelineBeats} beat{timelineBeats === 1 ? '' : 's'} · {transport.beatsPerBar}/{transport.beatUnit})
+						{engine.canonVoices.length} voices · {timelineBeats} beats · click to expand
 					</span>
-				</div>
+				</summary>
 				<div class="timeline">
 					<!-- Beat / bar grid lines. Every beat is labeled with
 					     its beat-within-bar number (1..bpb). Bar boundaries
@@ -990,27 +1007,39 @@
 						</div>
 					{/each}
 				</div>
-			</div>
+			</details>
 
 			<!-- VOICE CARDS -->
 			<div class="voices-card">
 				<div
-					class="section-header font-ui"
-					title="One card per canon voice. Each voice has its own delay, time-scale, harmony mode, and cascade target. Up to 8 voices."
+					class="section-header voice-editor-header font-ui"
+					title="Edit one voice at a time. Every voice remains visible in the timeline and continues playing."
 				>
-					VOICES ({engine.canonVoices.length})
+					<span>VOICE EDITOR</span>
+					<label class="compact-pick voice-pick">
+						<span>VOICE</span>
+						<select value={selectedVoice} onchange={(e) => (selectedVoice = Number((e.target as HTMLSelectElement).value))}>
+							{#each engine.canonVoices as _, index}
+								<option value={index}>Voice {index + 1}</option>
+							{/each}
+						</select>
+					</label>
 					<button
 						class="pixel-btn"
 						disabled={engine.canonVoices.length >= 8}
-						onclick={() => engine.addCanonVoice()}
-						title="Add a new canon voice (up to 8 total). Defaults to a 1-beat unison echo."
+						onclick={async () => {
+							const next = engine.canonVoices.length;
+							await engine.addCanonVoice();
+							selectedVoice = next;
+						}}
+						title="Add a new canon voice (up to 8 total)."
 					>
-						+ Add Voice
+						+ ADD
 					</button>
 				</div>
 				<div class="voice-grid">
 					{#each engine.canonVoices as voice, i (i)}
-						<div class="voice-card">
+						<div class="voice-card" hidden={i !== selectedVoice}>
 							<div
 								class="voice-header"
 								title="Voice {i + 1} of {engine.canonVoices.length}"
@@ -1049,6 +1078,7 @@
 								>
 									<Knob
 										value={voice.time_ratio}
+										disabled={engine.imitativeForm === 'strict_canon'}
 										min={SPEED_MIN}
 										max={SPEED_MAX}
 										step={SPEED_STEP}
@@ -1063,6 +1093,20 @@
 													? `${(1 / v).toFixed(2)}×↑`
 													: `${v.toFixed(2)}×↓`}
 										onchange={(v) => engine.updateCanonVoice(i, { time_ratio: v })}
+									/>
+								</div>
+								<div title="Diatonic interval from the subject. Strict Canon keeps this transformation available at group level.">
+									<Knob
+										value={voice.transpose_degrees}
+										min={-7}
+										max={7}
+										step={1}
+										defaultValue={0}
+										label="Interval"
+										accent="var(--color-accent-gold, #ffdd44)"
+										size={56}
+										format={(v) => transposeLabel(Math.round(v))}
+										onchange={(v) => engine.updateCanonVoice(i, { transpose_degrees: Math.round(v) })}
 									/>
 								</div>
 							</div>
@@ -1083,6 +1127,7 @@
 									value={voice.preset_id ?? ''}
 									placeholder="— unbind —"
 									small={true}
+									disabled={engine.imitativeForm === 'strict_canon'}
 									onchange={(v) => {
 										if (!v) {
 											engine.updateCanonVoice(i, { preset_id: null });
@@ -1115,6 +1160,7 @@
 									value={encodeMode(voice.harmony_mode, voice.counterpoint_species)}
 									placeholder="Inherit"
 									small={true}
+									disabled={engine.imitativeForm === 'strict_canon'}
 									onchange={(v) => {
 										const decoded = decodeMode(v);
 										engine.updateCanonVoice(i, {
@@ -1142,6 +1188,7 @@
 									value={voice.reference_voice != null ? String(voice.reference_voice) : ''}
 									placeholder="Player"
 									small={true}
+									disabled={engine.imitativeForm === 'strict_canon'}
 									onchange={(v) =>
 										engine.updateCanonVoice(i, {
 											reference_voice: v === '' ? null : parseInt(v, 10)
@@ -1165,6 +1212,7 @@
 									value={voice.hold_mode == null ? 'inherit' : voice.hold_mode.kind}
 									placeholder="Inherit"
 									small={true}
+									disabled={engine.imitativeForm === 'strict_canon'}
 									onchange={(v) => {
 										const mode =
 											v === 'inherit'
@@ -1184,19 +1232,17 @@
 		</section>
 		</div>
 		</div>
+		{:else}
 
-		<!-- COUNTERPOINT LANE — sibling Lane card, peer to the canon
-		     above. Subdivides time per Fux species. Independent of the
-		     canon: its own toggle, its own cantus history, its own
-		     CounterpointState. -->
+		<!-- Species Counterpoint uses the same focused group editor. -->
 		<div
 			class="lane-card counterpoint-lane-card"
 			class:lane-active={cp.enabled}
 			title="Counterpoint Lane — a dedicated species-counterpoint voice running alongside the canon. Subdivides time per Fux species: Species 2 = 2 notes per cantus, Species 3 = 4 notes, Species 4 = syncopated entry. Picks pitches via the same CounterpointState rules (no parallel 5ths/8ves, stepwise preferred)."
 		>
 			<div class="lane-header">
-				<span class="lane-title font-ui">COUNTERPOINT</span>
-				<span class="lane-subtitle font-code">Fux species · subdivided emissions</span>
+				<span class="lane-title font-ui">COUNTERPOINT GROUP 2</span>
+				<span class="lane-subtitle font-code">Species counterpoint · Fux rules</span>
 				<span class="lane-actions">
 					<label class="lane-hold-pick" title="Override Companion's global HoldMode for this lane only. 'Inherit' uses the global setting.">
 						<span class="font-code">HOLD</span>
@@ -1225,9 +1271,10 @@
 					<button
 						class="pixel-btn"
 						class:toggle-on={cp.enabled}
-						onclick={() => {
+						onclick={async () => {
 							cp.enabled = !cp.enabled;
-							adapter.counterpointSetConfig({ enabled: cp.enabled });
+							if (cp.enabled && !engine.companionEnabled) await engine.setCompanionEnabled(true);
+							await adapter.counterpointSetConfig({ enabled: cp.enabled });
 						}}
 						title={cp.enabled
 							? 'Counterpoint Lane is ON — emits a subdivided counterpoint line.'
@@ -1239,6 +1286,19 @@
 			</div>
 
 			<div class="lane-body cp-lane-body">
+				<div class="species-map" aria-label="Species counterpoint relationship">
+					<div class="subject-node">
+						<div class="map-node-head font-ui"><strong>YOU PLAY</strong><span>CANTUS</span></div>
+						<div class="map-node-main font-code">Live melody</div>
+					</div>
+					<div class="species-connector font-ui" aria-hidden="true">AGAINST ›</div>
+					<div class="species-node">
+						<div class="map-node-head font-ui"><strong>SPECIES LINE</strong><span>LIME · CH 7</span></div>
+						<div class="map-node-main font-code">{cp.species} · {cp.prefer_above ? 'above' : 'below'}</div>
+						<div class="map-node-meta font-code">{cp.transpose_degrees > 0 ? '+' : ''}{cp.transpose_degrees}° · independent movement</div>
+					</div>
+				</div>
+				<div class="cp-control-grid">
 				<label class="cp-row">
 					<span class="param-label font-ui">Species</span>
 					<PixelSelect
@@ -1282,6 +1342,7 @@
 						step={1}
 						defaultValue={2}
 						label="Interval"
+						help="Sets the starting diatonic distance between your melody and the independent species Counterpoint line."
 						accent="var(--color-accent-magenta, #ff33aa)"
 						size={48}
 						format={(v) => (v === 0 ? 'unison' : `${v > 0 ? '+' : ''}${v}°`)}
@@ -1291,13 +1352,14 @@
 						}}
 					/>
 				</div>
+				</div>
 			</div>
 		</div>
+		{/if}
 
 		<!-- FOOTER HINT -->
 		<div class="footer-hint font-code">
-			Each Lane runs independently — toggle them on or off above. Voices fire relative to a phrase
-			anchor; the canon resets after 2 beats of silence. Transport must be playing.
+			Groups run independently. Group 1 preserves the flexible Free Imitation controls; Group 2 follows the selected species rules.
 		</div>
 	</div>
 </div>
@@ -1323,7 +1385,38 @@
 		display: flex;
 		align-items: baseline;
 		gap: 8px;
+		min-width: 0;
 	}
+
+	.header-controls {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.compact-pick {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		color: var(--color-text-secondary);
+		font-size: var(--font-size-xs);
+		white-space: nowrap;
+	}
+
+	.compact-pick select,
+	.compact-pick input {
+		min-height: 26px;
+		padding: 3px 6px;
+		border: 1px solid var(--color-border);
+		border-radius: 0;
+		background: var(--color-bg);
+		color: var(--color-text-primary);
+		font: var(--font-size-xs) var(--font-code, monospace);
+	}
+
+	.tail-pick input { width: 4.5em; }
 
 	.title {
 		margin: 0;
@@ -1336,8 +1429,10 @@
 		opacity: 0.6;
 	}
 
-	.master-toggle {
-		min-width: 70px;
+	.group-status {
+		color: var(--color-accent-cyan);
+		font-size: var(--font-size-xs);
+		letter-spacing: 0.8px;
 	}
 
 	.body-stack {
@@ -1399,11 +1494,95 @@
 	}
 
 	.canon-lane-body {
-		display: grid;
-		grid-template-columns: 220px 1fr;
+		display: flex;
+		flex-direction: column;
 		min-height: 0;
-		overflow: hidden;
 	}
+
+	.strict-contract {
+		grid-column: 1 / -1;
+		padding: 6px 9px;
+		border-bottom: 1px solid rgba(255, 221, 68, 0.55);
+		background: rgba(49, 40, 18, 0.82);
+		color: var(--color-accent-gold, #ffdd44);
+		font-size: 9px;
+	}
+
+	.subject-map {
+		display: grid;
+		grid-template-columns: minmax(150px, 0.55fr) auto minmax(280px, 1.45fr);
+		align-items: stretch;
+		gap: 7px;
+		padding: 8px;
+		border-bottom: 1px solid var(--color-border);
+		background: rgba(11, 10, 21, 0.75);
+	}
+	.subject-node {
+		padding: 8px;
+		border: 1px solid var(--color-border);
+		border-left: 4px solid var(--color-piano-input, #4fe8c3);
+		background: rgba(27, 24, 49, 0.95);
+	}
+	.map-node-head,
+	.followers-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+	}
+	.map-node-head strong { color: var(--color-text-primary); font-size: 9px; }
+	.map-node-head span,
+	.followers-head { color: var(--color-text-dim); font-size: 7px; letter-spacing: 0.8px; }
+	.map-node-main { margin-top: 7px; color: var(--color-piano-input, #4fe8c3); font-size: 10px; }
+	.map-node-meta { margin-top: 4px; color: var(--color-text-secondary); font-size: 8px; }
+	.subject-arrow { align-self: center; color: var(--color-accent-gold); font-size: 8px; writing-mode: vertical-rl; }
+	.followers-map { min-width: 0; }
+	.followers-head { margin-bottom: 5px; }
+	.followers-head span:last-child { color: var(--color-accent-gold); }
+	.follower-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+	.follower-node {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		align-items: center;
+		gap: 3px 8px;
+		min-width: 0;
+		padding: 6px 7px;
+		border: 1px solid var(--color-border);
+		border-left: 4px solid var(--color-accent-gold);
+		border-radius: 0;
+		background: rgba(27, 24, 49, 0.95);
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.follower-node:hover,
+	.follower-node.selected { border-color: var(--color-accent-gold); background: rgba(49, 40, 18, 0.72); }
+	.follower-name { color: var(--color-accent-gold); font-size: 8px; }
+	.follower-node strong { justify-self: end; color: var(--color-text-primary); font-size: 8px; white-space: nowrap; }
+	.follower-node small { grid-column: 1 / -1; color: var(--color-text-dim); font-size: 7px; }
+
+	.preset-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		padding: 7px 8px;
+		border-bottom: 1px solid var(--color-border);
+		background: rgba(15, 14, 26, 0.5);
+	}
+
+	.preset-pick { flex: 0 1 310px; }
+	.preset-pick select { width: 100%; }
+	.preset-description {
+		min-width: 0;
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--color-text-secondary);
+		font-size: var(--font-size-xs);
+		opacity: 0.7;
+	}
+	.compact-save { margin: 0 8px 7px; }
 
 	.canon-right {
 		display: flex;
@@ -1413,17 +1592,29 @@
 		overflow-y: auto;
 	}
 
-	.cp-lane-body {
-		padding: 8px;
+	.cp-lane-body { padding: 8px; }
+	.species-map {
+		display: grid;
+		grid-template-columns: minmax(150px, 0.8fr) auto minmax(220px, 1.2fr);
+		align-items: stretch;
+		gap: 7px;
+		margin-bottom: 8px;
 	}
-
-	.templates {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
+	.species-node {
 		padding: 8px;
-		border-right: 1px solid var(--color-border);
-		overflow-y: auto;
+		border: 1px solid var(--color-border);
+		border-left: 4px solid #a3e635;
+		background: rgba(27, 24, 49, 0.95);
+	}
+	.species-node .map-node-main { color: #a3e635; }
+	.species-connector { align-self: center; color: #a3e635; font-size: 8px; }
+	.cp-control-grid {
+		display: grid;
+		grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+		align-items: center;
+		gap: 8px;
+		padding: 7px;
+		border: 1px solid var(--color-border);
 		background: rgba(15, 14, 26, 0.5);
 	}
 
@@ -1436,44 +1627,6 @@
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		margin-bottom: 6px;
-	}
-
-	.template-row-wrap {
-		display: grid;
-		grid-template-columns: 1fr auto;
-		gap: 2px;
-		align-items: stretch;
-	}
-
-	.template-row {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 1px;
-		padding: 6px 8px;
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
-		text-align: left;
-		cursor: pointer;
-		color: inherit;
-		min-width: 0;
-	}
-
-	.template-row:hover {
-		border-color: var(--color-accent-cyan, #33ddff);
-	}
-
-	.template-row.active {
-		border-color: var(--color-accent-magenta, #ff33aa);
-		background: rgba(255, 51, 170, 0.1);
-	}
-
-	.user-badge {
-		font-size: 0.6em;
-		color: var(--color-accent-cyan, #33ddff);
-		opacity: 0.8;
-		letter-spacing: 0.1em;
-		margin-left: 4px;
 	}
 
 	.delete-form {
@@ -1505,17 +1658,6 @@
 		border-color: var(--color-accent-cyan, #33ddff);
 	}
 
-	.template-name {
-		font-size: var(--font-size-sm);
-		color: var(--color-accent-cyan, #33ddff);
-	}
-
-	.template-desc {
-		font-size: var(--font-size-xs);
-		opacity: 0.6;
-		line-height: 1.3;
-	}
-
 	.engine-status {
 		display: flex;
 		align-items: center;
@@ -1525,16 +1667,6 @@
 		border: 1px solid var(--color-border);
 	}
 
-	.hold-mode-row {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 6px 8px;
-		margin-top: 6px;
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
-		flex-wrap: wrap;
-	}
 	.lane-hold-pick {
 		display: inline-flex;
 		align-items: center;
@@ -1552,44 +1684,6 @@
 		border: 1px solid var(--color-border);
 		font-family: var(--font-code, monospace);
 	}
-	.hold-mode-buttons {
-		display: flex;
-		gap: 4px;
-	}
-	.hold-btn {
-		font-size: var(--font-size-xs);
-		padding: 3px 8px;
-		border: 1px solid var(--color-border);
-		background: transparent;
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-	}
-	.hold-btn:hover {
-		color: var(--color-text-primary);
-		border-color: var(--color-text-secondary);
-	}
-	.hold-btn.hold-on {
-		background: var(--color-accent-magenta, #ff33aa);
-		color: var(--color-bg, #0a0a1a);
-		border-color: var(--color-accent-magenta, #ff33aa);
-	}
-	.hold-tail-input {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		font-size: var(--font-size-xs);
-		color: var(--color-text-secondary);
-	}
-	.hold-tail-input input {
-		width: 4em;
-		padding: 2px 4px;
-		font-family: var(--font-code, monospace);
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		color: var(--color-text-primary);
-	}
-
 	.status-label {
 		font-size: var(--font-size-xs);
 		color: var(--color-text-secondary);
@@ -1612,6 +1706,9 @@
 		border: 1px solid var(--color-border);
 		padding: 8px;
 	}
+	.timeline-card > summary { cursor: pointer; margin: 0; }
+	.timeline-card[open] > summary { margin-bottom: 6px; }
+	.timeline-card > summary::marker { color: var(--color-accent-cyan); }
 
 	.hint {
 		font-size: var(--font-size-xs);
@@ -1754,11 +1851,17 @@
 		color: #ffaa33;
 	}
 
-	.voice-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: 6px;
+	.voice-editor-header {
+		justify-content: flex-start;
+		gap: 8px;
 	}
+	.voice-editor-header > span:first-child { margin-right: auto; }
+	.voice-pick select { min-width: 120px; }
+
+	.voice-grid {
+		display: block;
+	}
+	.voice-card[hidden] { display: none; }
 
 	.voice-card {
 		display: flex;
@@ -1787,7 +1890,7 @@
 
 	.voice-knobs {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: repeat(3, 1fr);
 		gap: 4px;
 		justify-items: center;
 		padding: 4px 0 6px;
@@ -1807,14 +1910,6 @@
 
 	.voice-param-mode {
 		grid-template-columns: 4.5em 1fr;
-	}
-
-	.cp-controls {
-		display: grid;
-		grid-template-columns: 1fr 1fr auto;
-		gap: 10px;
-		align-items: center;
-		padding: 4px 0;
 	}
 
 	.cp-row {
@@ -1840,5 +1935,16 @@
 		opacity: 0.5;
 		line-height: 1.4;
 		padding: 4px 8px;
+	}
+
+	@media (max-width: 900px) {
+		.header { align-items: flex-start; gap: 8px; }
+		.header-controls { flex-wrap: wrap; }
+		.subtitle, .preset-description { display: none; }
+		.preset-pick { flex: 1; }
+		.subject-map, .species-map, .cp-control-grid { grid-template-columns: 1fr; }
+		.subject-arrow, .species-connector { display: none; }
+		.lane-header { grid-template-columns: 1fr auto; }
+		.lane-subtitle { display: none; }
 	}
 </style>

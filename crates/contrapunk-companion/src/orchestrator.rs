@@ -94,6 +94,15 @@ impl Companion {
         }
     }
 
+    /// Clear every lane's in-flight runtime state while preserving its
+    /// configuration. This is allocation-free and safe for panic/stop
+    /// handling on the processing thread.
+    pub fn reset_runtime(&mut self) {
+        for lane in &mut self.lanes {
+            lane.reset_runtime();
+        }
+    }
+
     /// Run one iteration: Sense → Mutate → Decide. Returns the
     /// concatenated dispatch ops from all Decide lanes.
     ///

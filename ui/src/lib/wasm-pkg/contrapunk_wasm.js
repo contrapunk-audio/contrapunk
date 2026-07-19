@@ -162,6 +162,12 @@ export class CompanionWasm {
         }
     }
     /**
+     * Clear delayed/held lane state without changing configuration.
+     */
+    reset_runtime() {
+        wasm.companionwasm_reset_runtime(this.__wbg_ptr);
+    }
+    /**
      * @param {boolean} enabled
      */
     set_enabled(enabled) {

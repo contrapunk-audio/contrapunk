@@ -202,6 +202,14 @@ impl Lane for CounterpointLane {
         InputFilter::All
     }
 
+    fn reset_runtime(&mut self) {
+        self.pending_on.clear();
+        self.pending_off.clear();
+        self.held.clear();
+        self.state.reset();
+        self.cantus_history.clear();
+    }
+
     fn on_input(&mut self, ev: InputEvent, world: &WorldState) -> LaneOutput {
         if !self.enabled {
             return LaneOutput::default();

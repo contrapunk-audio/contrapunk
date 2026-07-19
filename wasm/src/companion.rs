@@ -22,7 +22,7 @@ use wmidi::Note;
 use contrapunk_companion::lane::InputEvent;
 use contrapunk_companion::{CanonLane, CounterpointLane};
 use contrapunk_companion::{Companion, DispatchOp, WorldState};
-use contrapunk_harmony::{HarmonyEngine, HarmonyMode, Key, ScaleMode};
+use contrapunk_harmony::{HarmonyEngine, HarmonyMode, Key};
 use contrapunk_transport::Transport;
 
 use crate::enum_strings::{parse_key, parse_mode, parse_scale_mode};
@@ -197,6 +197,12 @@ impl CompanionWasm {
     pub fn tick(&mut self) -> Result<String, JsValue> {
         let tagged = self.inner.tick_tagged(&self.dummy_engine);
         serialize_tagged_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Clear delayed/held lane state without changing configuration.
+    #[wasm_bindgen]
+    pub fn reset_runtime(&mut self) {
+        self.inner.reset_runtime();
     }
 
     /// Debug snapshot — JSON dump of the global engine snapshot + each

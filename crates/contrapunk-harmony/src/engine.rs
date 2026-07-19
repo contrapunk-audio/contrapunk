@@ -1400,6 +1400,18 @@ impl HarmonyEngine {
         std::mem::take(&mut self.pending_releases)
     }
 
+    /// Clear all note-lifecycle bookkeeping after panic, transport stop,
+    /// or an input/output-mode transition. Unlike parameter-change
+    /// reharmonization, this intentionally does not queue held inputs for
+    /// replay: downstream sound has already been silenced.
+    pub fn clear_active_notes(&mut self) {
+        self.active_notes.clear();
+        self.active_port_maps.clear();
+        self.pending_releases.clear();
+        self.pending_reharm_inputs.clear();
+        self.last_port_map.clear();
+    }
+
     /// Drain the list of input MIDI notes that were held when a
     /// parameter change wiped `active_notes`. The router re-runs
     /// `harmonize_note_on` for each so the new parameters take effect
@@ -1612,6 +1624,17 @@ mod tests {
         // C4 should still be tracked
         let c4_off = engine.harmonize_note_off(Note::C4);
         assert_eq!(c4_off, vec![Note::C4, Note::E4]);
+    }
+
+    #[test]
+    fn test_panic_clear_does_not_replay_or_release_stale_harmony() {
+        let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::DiatonicThirds);
+        engine.harmonize_note_on(Note::C4);
+        engine.clear_active_notes();
+
+        assert!(engine.take_pending_releases().is_empty());
+        assert!(engine.take_reharm_inputs().is_empty());
+        assert_eq!(engine.harmonize_note_off(Note::C4), vec![Note::C4]);
     }
 
     #[test]

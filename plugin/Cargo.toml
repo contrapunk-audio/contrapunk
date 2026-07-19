@@ -24,3 +24,4 @@ contrapunk-companion = { path = "../crates/contrapunk-companion" }
 contrapunk-transport = { path = "../crates/contrapunk-transport" }
 wmidi = "4.0"
 serde_json = "1.0"
+ringbuf = "0.4"

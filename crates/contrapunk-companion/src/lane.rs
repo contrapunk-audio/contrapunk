@@ -268,6 +268,12 @@ pub trait Lane: Send + Sync {
         LaneOutput::default()
     }
 
+    /// Clear runtime queues and held-note state without changing the
+    /// lane's configuration or enabled state. Panic, transport stop,
+    /// and input-mode transitions call this to prevent delayed notes
+    /// from reappearing after an all-notes-off.
+    fn reset_runtime(&mut self) {}
+
     /// Snapshot this Lane's state for rig persistence. Default empty
     /// (stateless Lane). Concrete impls that own buffers / counters
     /// override this.

@@ -9,9 +9,12 @@
 
 	// Derived reactive state
 	let inputNames = $derived(notesToNames(engine.inputNotes));
-	let harmonyNames = $derived(notesToNames(engine.harmonyNotes));
+	let ensembleNotes = $derived([
+		...new Set([...engine.harmonyNotes, ...engine.canonNotes, ...engine.counterpointNotes])
+	]);
+	let harmonyNames = $derived(notesToNames(ensembleNotes));
 	let hasInput = $derived(engine.inputNotes.length > 0);
-	let hasHarmony = $derived(engine.harmonyNotes.length > 0);
+	let hasHarmony = $derived(ensembleNotes.length > 0);
 	// Strip the trailing "(IVmaj7 in C)" roman-numeral analysis suffix
 	// the Rust chord_display_with_analysis appends. Find the LAST " ("
 	// (not the first — that would mangle partial chord names like
@@ -59,7 +62,7 @@
 	</div>
 
 	<div class="side harmony-side">
-		<span class="section-label font-ui">HARMONY</span>
+		<span class="section-label font-ui">ENSEMBLE</span>
 		{#if hasHarmony}
 			<span class="note-list harmony-notes font-code">{harmonyNames.join(' ')}</span>
 		{:else}

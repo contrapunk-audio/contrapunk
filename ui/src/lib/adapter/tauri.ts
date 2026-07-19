@@ -23,6 +23,8 @@ import type {
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
+	PluginInputMode,
+	PluginMidiOutputMode,
 	Preset,
 	ReverbState,
 	SynthState,
@@ -113,6 +115,8 @@ export class TauriAdapter implements ContrapunkAdapter {
 		// Tauri owns MIDI routing via midir; per-voice port pickers
 		// drive setVoiceOutput end-to-end.
 		perVoicePortRouting: true,
+		// Plugin-only host MIDI mode selector.
+		pluginMidiOutputMode: false,
 		// Calibration profile persists to app_data_dir() and applies on
 		// next routing start via GuitarBridge -> GuitarInput.
 		calibrationFlow: true
@@ -548,6 +552,32 @@ export class TauriAdapter implements ContrapunkAdapter {
 		} catch (e) {
 			throw new Error(`Failed to get voice outputs: ${e}`);
 		}
+	}
+
+	async getPluginInputMode(): Promise<PluginInputMode> {
+		return 'midi';
+	}
+
+	async setPluginInputMode(_mode: PluginInputMode): Promise<void> {}
+
+	async getPluginMidiOutputMode(): Promise<PluginMidiOutputMode> {
+		return 'full';
+	}
+
+	async setPluginMidiOutputMode(_mode: PluginMidiOutputMode): Promise<void> {}
+
+	async getPluginSynthEnabled(): Promise<boolean> {
+		return true;
+	}
+
+	async setPluginSynthEnabled(_enabled: boolean): Promise<void> {}
+
+	async panicAllNotesOff(): Promise<void> {
+		await invoke('panic_all_notes_off');
+	}
+
+	onPluginParamsUpdate(_callback: () => void): () => void {
+		return () => {};
 	}
 
 	async injectNoteOn(note: number, velocity?: number): Promise<number[]> {

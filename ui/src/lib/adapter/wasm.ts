@@ -13,6 +13,8 @@ import type {
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
+	PluginInputMode,
+	PluginMidiOutputMode,
 	Preset,
 	TransportState,
 	VoiceOutputTarget
@@ -42,15 +44,39 @@ let companion: any = null;
 // Animation-frame loop that advances the Companion's transport and
 // drains pending lane emissions. Started on first injectNoteOn.
 let companionTickHandle: number | null = null;
-// MIDI numbers the Companion currently holds on, by lane (#11
-// per-lane piano colors). Each set is updated on note_on / note_off
-// from `dispatchOpsJson` based on the `lane` field in the op. The
-// legacy `activeCompanionNotes` is kept as a union view for callers
-// that don't care about attribution. Lane-specific sets feed the
-// piano + fretboard highlights with distinct colors per lane.
-const activeCompanionNotes: Set<number> = new Set();
-const activeCanonNotes: Set<number> = new Set();
-const activeCounterpointNotes: Set<number> = new Set();
+// Per-source ownership counts preserve overlapping voices at the same
+// pitch. A Set incorrectly removed the pitch when the first of several
+// Canon/Counterpoint owners released it.
+type NoteCounts = Map<number, number>;
+const activeCompanionNotes: NoteCounts = new Map();
+const activeCanonNotes: NoteCounts = new Map();
+const activeCounterpointNotes: NoteCounts = new Map();
+
+function countNoteOn(notes: NoteCounts, note: number): boolean {
+	const firstOwner = !notes.has(note);
+	notes.set(note, (notes.get(note) ?? 0) + 1);
+	return firstOwner;
+}
+
+function countNoteOff(notes: NoteCounts, note: number): boolean {
+	const count = (notes.get(note) ?? 0) - 1;
+	if (count > 0) {
+		notes.set(note, count);
+		return false;
+	}
+	const hadOwner = notes.delete(note);
+	return hadOwner;
+}
+
+function activeNotes(notes: NoteCounts): number[] {
+	return [...notes.keys()].sort((a, b) => a - b);
+}
+
+function clearCompanionNotes(): void {
+	activeCompanionNotes.clear();
+	activeCanonNotes.clear();
+	activeCounterpointNotes.clear();
+}
 
 /** Debug logger — set `window.__cpDebug = true` in DevTools to
  *  print a snapshot of the Companion + per-voice state on every
@@ -113,6 +139,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// kind/port. Brutal-critic #12 caveat — was advertising a
 		// capability we didn't have.
 		perVoicePortRouting: false,
+		// Plugin-only host MIDI mode selector.
+		pluginMidiOutputMode: false,
 		// No persistence layer for the calibration profile on web yet
 		// — hide the Calibrate button + status badge.
 		calibrationFlow: false
@@ -252,27 +280,34 @@ export class WasmAdapter implements ContrapunkAdapter {
 			return;
 		}
 		for (const op of ops) {
-			const laneSet =
+			const laneNotes =
 				op.lane === 'canon'
 					? activeCanonNotes
 					: op.lane === 'counterpoint'
 						? activeCounterpointNotes
 						: null;
 			if (op.kind === 'note_on' && typeof op.note === 'number') {
-				const v = op.velocity ?? 100;
-				embedAudio.noteOn(op.note, v);
-				activeCompanionNotes.add(op.note);
-				if (laneSet) laneSet.add(op.note);
-				if (this.activeOutputs.length > 0) {
-					this.activeOutputs[0].send([0x90, op.note, v]);
+				const velocity = op.velocity ?? 100;
+				const firstOwner = countNoteOn(activeCompanionNotes, op.note);
+				if (laneNotes) countNoteOn(laneNotes, op.note);
+				if (firstOwner) {
+					embedAudio.noteOn(op.note, velocity);
+					if (this.activeOutputs.length > 0) {
+						this.activeOutputs[0].send([0x90, op.note, velocity]);
+					}
 				}
 			} else if (op.kind === 'note_off' && typeof op.note === 'number') {
-				embedAudio.noteOff(op.note);
-				activeCompanionNotes.delete(op.note);
-				if (laneSet) laneSet.delete(op.note);
-				if (this.activeOutputs.length > 0) {
-					this.activeOutputs[0].send([0x80, op.note, 0]);
+				const lastOwner = countNoteOff(activeCompanionNotes, op.note);
+				if (laneNotes) countNoteOff(laneNotes, op.note);
+				if (lastOwner) {
+					embedAudio.noteOff(op.note);
+					if (this.activeOutputs.length > 0) {
+						this.activeOutputs[0].send([0x80, op.note, 0]);
+					}
 				}
+			} else if (op.kind === 'all_notes_off') {
+				embedAudio.allNotesOff();
+				clearCompanionNotes();
 			}
 		}
 	}
@@ -295,6 +330,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 		this.stopNotePolling();
 		this.stopClock();
+		embedAudio.allNotesOff();
+		clearCompanionNotes();
 		if (this._audioCtx) {
 			try {
 				void this._audioCtx.close();
@@ -909,6 +946,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 			}
 		}
 
+		embedAudio.allNotesOff();
+		clearCompanionNotes();
+		try {
+			companion?.reset_runtime?.();
+		} catch {
+			/* Companion may not be initialized */
+		}
+
 		// Disconnect MIDI input handler
 		if (this.activeInput) {
 			this.activeInput.onmidimessage = null;
@@ -941,6 +986,47 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 	async getVoiceOutputs(): Promise<VoiceOutputTarget[]> {
 		return this._voiceOutputs.slice();
+	}
+
+	async getPluginInputMode(): Promise<PluginInputMode> {
+		return 'midi';
+	}
+
+	async setPluginInputMode(_mode: PluginInputMode): Promise<void> {}
+
+	async getPluginMidiOutputMode(): Promise<PluginMidiOutputMode> {
+		return 'full';
+	}
+
+	async setPluginMidiOutputMode(_mode: PluginMidiOutputMode): Promise<void> {}
+
+	async getPluginSynthEnabled(): Promise<boolean> {
+		return true;
+	}
+
+	async setPluginSynthEnabled(_enabled: boolean): Promise<void> {}
+
+	async panicAllNotesOff(): Promise<void> {
+		for (const output of this.activeOutputs) {
+			try {
+				output.send([0xb0, 120, 0]);
+				output.send([0xb0, 123, 0]);
+			} catch {
+				/* disconnected output */
+			}
+		}
+		embedAudio.allNotesOff();
+		clearCompanionNotes();
+		try {
+			engine?.clear_notes?.();
+			companion?.reset_runtime?.();
+		} catch {
+			/* backend may not be initialized */
+		}
+	}
+
+	onPluginParamsUpdate(_callback: () => void): () => void {
+		return () => {};
 	}
 
 	async injectNoteOn(note: number, velocity?: number): Promise<number[]> {
@@ -1022,36 +1108,26 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			const raw = engine.get_note_state();
-			const engineHarmony: number[] = raw?.harmony_notes ?? [];
-			// Merge companion-emitted notes (Canon + Counterpoint
-			// lanes) into harmonyNotes so the ActiveNotes strip + the
-			// Piano + Fretboard highlight them. The Tauri build gets
-			// these from the router thread's note-state aggregation;
-			// in WASM we accumulate them in `activeCompanionNotes` via
-			// dispatchOpsJson. Set-merge dedups overlap with the
-			// engine's own harmony output.
-			const merged = new Set<number>(engineHarmony);
-			for (const n of activeCompanionNotes) merged.add(n);
 			return {
 				inputNotes: raw?.input_notes ?? [],
-				harmonyNotes: Array.from(merged),
+				harmonyNotes: raw?.harmony_notes ?? [],
 				borrowedNotes: raw?.borrowed_notes ?? [],
 				chordName: raw?.chord_name ?? '',
 				lastBorrowedFrom: raw?.last_borrowed_from ?? '',
 				currentKey: engine.current_key?.() ?? 'C',
-				canonNotes: Array.from(activeCanonNotes),
-				counterpointNotes: Array.from(activeCounterpointNotes)
+				canonNotes: activeNotes(activeCanonNotes),
+				counterpointNotes: activeNotes(activeCounterpointNotes)
 			};
 		} catch {
 			return {
 				inputNotes: [],
-				harmonyNotes: Array.from(activeCompanionNotes),
+				harmonyNotes: [],
 				borrowedNotes: [],
 				chordName: '',
 				lastBorrowedFrom: '',
 				currentKey: 'C',
-				canonNotes: Array.from(activeCanonNotes),
-				counterpointNotes: Array.from(activeCounterpointNotes)
+				canonNotes: activeNotes(activeCanonNotes),
+				counterpointNotes: activeNotes(activeCounterpointNotes)
 			};
 		}
 	}

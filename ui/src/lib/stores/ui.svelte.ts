@@ -32,6 +32,7 @@ const MAX_FONT_SCALE = 1.5;
 export type PanelId =
 	| 'controls'
 	| 'activeNotes'
+	| 'lines'
 	| 'history'
 	| 'fretboard'
 	| 'piano';
@@ -39,6 +40,7 @@ export type PanelId =
 export const PANELS: { id: PanelId; label: string }[] = [
 	{ id: 'controls', label: 'Controls' },
 	{ id: 'activeNotes', label: 'Notes' },
+	{ id: 'lines', label: 'Lines' },
 	{ id: 'history', label: 'History' },
 	{ id: 'fretboard', label: 'Fret' },
 	{ id: 'piano', label: 'Piano' }
@@ -49,9 +51,10 @@ export type PanelVisibility = Record<PanelId, boolean>;
 const DEFAULT_PANELS: PanelVisibility = {
 	controls: true,
 	activeNotes: true,
-	history: true,
-	fretboard: true,
-	piano: true
+	lines: true,
+	history: false,
+	fretboard: false,
+	piano: false
 };
 
 /** Top-level layout choice: the simplified 8-knob Performance view vs.
@@ -381,6 +384,23 @@ class UiStore {
 			const next: PanelVisibility = { ...DEFAULT_PANELS };
 			for (const { id } of PANELS) {
 				if (typeof parsed[id] === 'boolean') next[id] = parsed[id];
+			}
+			// Before Live Lines existed, the default saved all three legacy
+			// visualizations as visible. Migrate only that exact old default
+			// to the new progressive anchor; preserve any deliberate custom
+			// combination the user already chose.
+			if (
+				typeof parsed.lines !== 'boolean' &&
+				parsed.history === true &&
+				parsed.fretboard === true &&
+				parsed.piano === true
+			) {
+				next.history = false;
+				next.fretboard = false;
+				next.piano = false;
+				this.panels = next;
+				this.persistPanels();
+				return;
 			}
 			this.panels = next;
 		} catch {

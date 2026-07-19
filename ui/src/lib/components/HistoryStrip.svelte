@@ -29,12 +29,14 @@
 	// underneath. Width still matches Fretboard.
 	const H = 180;
 
-	type Kind = 'input' | 'harmony' | 'borrowed';
+	type Kind = 'input' | 'harmony' | 'canon' | 'counterpoint' | 'borrowed';
 	interface Entry { kind: Kind; midi: number; ts: number; }
 
 	const COLORS: Record<Kind, string> = {
 		input: '#4fe8c3',
 		harmony: '#ff2e88',
+		canon: '#ffdd44',
+		counterpoint: '#a3e635',
 		borrowed: '#8a5cff',
 	};
 
@@ -47,14 +49,16 @@
 
 	/** Build a stable string signature of the current engine state so we
 	 *  can detect "same chord, no change" and skip duplicate pushes. */
-	function stateSig(inp: number[], har: number[], bor: number[]): string {
-		return `i:${[...inp].sort().join(',')}|h:${[...har].sort().join(',')}|b:${[...bor].sort().join(',')}`;
+	function stateSig(inp: number[], har: number[], bor: number[], canon: number[], counterpoint: number[]): string {
+		return `i:${[...inp].sort().join(',')}|h:${[...har].sort().join(',')}|b:${[...bor].sort().join(',')}|c:${[...canon].sort().join(',')}|p:${[...counterpoint].sort().join(',')}`;
 	}
 
-	function buildMoment(inp: number[], har: number[], bor: number[]): Moment {
+	function buildMoment(inp: number[], har: number[], bor: number[], canon: number[], counterpoint: number[]): Moment {
 		const keys: Array<{ midi: number; kind: Kind }> = [];
 		for (const m of inp) keys.push({ midi: m, kind: 'input' });
 		for (const m of har) keys.push({ midi: m, kind: 'harmony' });
+		for (const m of canon) keys.push({ midi: m, kind: 'canon' });
+		for (const m of counterpoint) keys.push({ midi: m, kind: 'counterpoint' });
 		for (const m of bor) keys.push({ midi: m, kind: 'borrowed' });
 		// Sort top-to-bottom by pitch so VexFlow renders chord heads cleanly.
 		keys.sort((a, b) => b.midi - a.midi);
@@ -65,13 +69,15 @@
 		const inp = engine.inputNotes;
 		const har = engine.harmonyNotes;
 		const bor = engine.borrowedNotes;
-		const sig = stateSig(inp, har, bor);
+		const canon = engine.canonNotes;
+		const counterpoint = engine.counterpointNotes;
+		const sig = stateSig(inp, har, bor, canon, counterpoint);
 		if (sig === lastSig) return;
 		lastSig = sig;
 		// Skip the initial all-empty snapshot so the strip doesn't start
 		// with a silent rest — only push when at least one voice is active.
-		if (inp.length === 0 && har.length === 0 && bor.length === 0) return;
-		const moment = buildMoment(inp, har, bor);
+		if (inp.length === 0 && har.length === 0 && bor.length === 0 && canon.length === 0 && counterpoint.length === 0) return;
+		const moment = buildMoment(inp, har, bor, canon, counterpoint);
 		history = [...history.slice(-(WINDOW - 1)), moment];
 	});
 
