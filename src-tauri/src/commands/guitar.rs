@@ -99,30 +99,18 @@ pub fn set_guitar_config(
     state: State<AppState>,
 ) -> Result<(), String> {
     let sample_rate = 48000; // default; updated by bridge on actual start
-    let config = GuitarInputConfig {
-        buffer_size: GuitarInputConfig::buffer_size_for_latency(latency_ms, sample_rate),
-        hop_size: 256,
-        sample_rate,
-        onset_threshold: 0.015,
-        string_confidence_min: string_confidence,
-        bends_enabled: bends,
-        legato_enabled: legato,
-        slides_enabled: slides,
-        vibrato_detection: vibrato,
-        vibrato_passthrough: true,
-        filter_enabled: false,
-        min_clarity: 0.40,
-        cooldown_samples: sample_rate / 10,
-        attack_min_ms: 40,
-        n_harmonics: 6,
-        input_gain: gain,
-        flux_threshold: 0.5,
-        per_string_channels: true,
-        pitch_bend_range: 2,
-        pressure_enabled: true,
-        pressure_hold: 0.3,
-        brightness_enabled: true,
-    };
+    let mut config = GuitarInputConfig::default();
+    config.buffer_size = GuitarInputConfig::buffer_size_for_latency(latency_ms, sample_rate);
+    config.sample_rate = sample_rate;
+    config.string_confidence_min = string_confidence;
+    config.bends_enabled = bends;
+    config.legato_enabled = legato;
+    config.slides_enabled = slides;
+    config.vibrato_detection = vibrato;
+    config.cooldown_samples = sample_rate / 10;
+    config.input_gain = gain;
+    // Tauri emits ordinary MIDI rather than negotiating an MPE bend range.
+    config.pitch_bend_range = 2;
     *state.guitar_config.lock().map_err(|e| e.to_string())? = Some(config);
     Ok(())
 }

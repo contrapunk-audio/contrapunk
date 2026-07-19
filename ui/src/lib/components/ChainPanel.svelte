@@ -141,7 +141,8 @@
 				/>
 				<div class="knob-row">
 					<Knob
-						label="A"
+						label="Attack"
+						help="How quickly sound reaches full level after MIDI NoteOn."
 						value={synth.attackMs}
 						min={1}
 						max={1500}
@@ -153,7 +154,8 @@
 						onchange={(v) => synth.setAttackMs(Math.round(v))}
 					/>
 					<Knob
-						label="D"
+						label="Decay"
+						help="Time to fall from the attack peak to the sustain level."
 						value={synth.decayMs}
 						min={1}
 						max={2000}
@@ -165,7 +167,8 @@
 						onchange={(v) => synth.setDecayMs(Math.round(v))}
 					/>
 					<Knob
-						label="S"
+						label="Sustain level"
+						help="Held volume while Guitar Input keeps MIDI NoteOn active; it does not lengthen the note."
 						value={synth.sustain}
 						min={0}
 						max={1}
@@ -177,7 +180,8 @@
 						onchange={(v) => synth.setSustain(v)}
 					/>
 					<Knob
-						label="R"
+						label="Release tail"
+						help="How long sound fades after Guitar Input emits MIDI NoteOff. Increase this for a longer tail."
 						value={synth.releaseMs}
 						min={1}
 						max={4000}

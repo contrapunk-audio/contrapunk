@@ -3,7 +3,6 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { adapter } from '$lib/adapter';
-	import VoiceGenerationChain from './VoiceGenerationChain.svelte';
 	import ChainPanel from './ChainPanel.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 
@@ -73,9 +72,6 @@
 </script>
 
 <div class="output-panel">
-	<!-- PRIMARY: Voice Generation Chain visualization -->
-	<VoiceGenerationChain />
-
 	{#if adapter.capabilities.perVoicePortRouting}
 		<!-- Per-voice MIDI port routing — replicates the OUTPUTS section
 		     that previously lived in the Play tab. Hidden in plugin

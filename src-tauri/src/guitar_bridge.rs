@@ -43,6 +43,16 @@ pub struct GuitarBridge {
 
 fn send_events(tx: &mpsc::Sender<Vec<u8>>, events: Vec<MidiEvent>, pitch_bend_range: u8) {
     for event in events {
+        #[cfg(debug_assertions)]
+        match &event {
+            MidiEvent::NoteOn { note, velocity, .. } => {
+                eprintln!("[guitar-midi] NoteOn note={note} velocity={velocity}");
+            }
+            MidiEvent::NoteOff { note, .. } => {
+                eprintln!("[guitar-midi] NoteOff note={note}");
+            }
+            _ => {}
+        }
         let bytes = event.to_midi_bytes(pitch_bend_range);
         if !bytes.is_empty() {
             let _ = tx.send(bytes);

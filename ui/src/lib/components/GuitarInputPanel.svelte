@@ -1,8 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { guitar } from '$lib/stores/guitar.svelte';
+	import { engine } from '$lib/stores/engine.svelte';
+	import { midi } from '$lib/stores/midi.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 	import SignalGraphs from './SignalGraphs.svelte';
+	import { midiToName } from '$lib/embed/music-utils';
+
+	const GUITAR_AUDIO_SENTINEL = 999_997;
 
 	const techniques = [
 		{ key: 'bends' as const, label: 'BENDS', get active() { return guitar.bendsEnabled; } },
@@ -11,18 +16,30 @@
 		{ key: 'vibrato' as const, label: 'VIBRATO', get active() { return guitar.vibratoEnabled; } },
 	];
 
-	let latencyDisplay = $derived(`${guitar.latencyMs}ms`);
 	let gainDisplay = $derived(guitar.gain.toFixed(2));
 	let confidenceDisplay = $derived(`${Math.round(guitar.stringConfidence * 100)}%`);
 
 	let detectionLine = $derived(
 		guitar.detecting
-			? `${guitar.currentNote || '---'}  ${guitar.confidence}%  [ch${guitar.activeChannel}]`
-			: 'No signal'
+			? guitar.currentNote
+				? `${guitar.currentNote}  ·  ${guitar.confidence}%  ·  Input ${guitar.activeChannel}`
+				: `Listening  ·  Input ${guitar.activeChannel}`
+			: `Ready  ·  Input ${guitar.selectedChannel}`
 	);
 
 	let channelMismatch = $derived(
-		guitar.detecting && guitar.activeChannel !== guitar.selectedChannel
+		guitar.detecting &&
+		guitar.activeChannel > 0 &&
+		guitar.activeChannel !== guitar.selectedChannel
+	);
+	let routedMidiNotes = $derived(engine.inputNotes.map(midiToName));
+	let hasRoutedMidi = $derived(guitar.detecting && routedMidiNotes.length > 0);
+	let midiOutputLine = $derived(
+		hasRoutedMidi
+			? `MIDI OUT  ·  ${routedMidiNotes.join('  ')}`
+			: guitar.detecting
+				? 'MIDI OUT  ·  Waiting for a stable pitch'
+				: 'MIDI OUT  ·  Start routing to convert guitar'
 	);
 
 	let deviceOptions = $derived(
@@ -36,16 +53,25 @@
 		Array.from({ length: guitar.maxChannels }, (_, i) => i + 1)
 	);
 
-	function handleDeviceChange(value: string) {
-		if (value) {
-			guitar.selectDevice(value);
-			guitar.syncDevice();
+	async function applyInputChange(change: () => void) {
+		const restart = engine.isRunning && midi.selectedInput === GUITAR_AUDIO_SENTINEL;
+		guitar.audioDeviceError = '';
+		try {
+			if (restart) await engine.stop();
+			change();
+			await guitar.syncDevice();
+			if (restart) await engine.start(GUITAR_AUDIO_SENTINEL, midi.selectedOutputs);
+		} catch (error) {
+			guitar.audioDeviceError = `Could not switch guitar input: ${error}`;
 		}
 	}
 
-	function handleChannelChange(ch: number) {
-		guitar.selectChannel(ch);
-		guitar.syncDevice();
+	async function handleDeviceChange(value: string) {
+		if (value) await applyInputChange(() => guitar.selectDevice(value));
+	}
+
+	async function handleChannelChange(ch: number) {
+		await applyInputChange(() => guitar.selectChannel(ch));
 	}
 
 	function handleTechniqueToggle(technique: 'bends' | 'legato' | 'slides' | 'vibrato') {
@@ -187,15 +213,16 @@
 					/>
 				</div>
 				<div class="channel-header">
-					<span class="device-label font-ui channel-label">CHANNEL</span>
-					<label class="channel-override font-ui">
-						CH#
+					<span class="device-label font-ui channel-label">INPUT CHANNEL</span>
+					<label class="channel-override font-ui" title="Detected number of interface inputs; override only if detection is wrong">
+						INPUTS
 						<input
 							type="number"
 							class="channel-count-input font-code"
 							min="1"
 							max="32"
 							value={guitar.maxChannels}
+							aria-label="Available input channels"
 							onchange={(e) => {
 								const val = parseInt((e.target as HTMLInputElement).value, 10);
 								if (val >= 1 && val <= 32) guitar.setManualMaxChannels(val);
@@ -218,48 +245,22 @@
 			{/if}
 		</div>
 
-		<!-- Interactive Dials row -->
-		<div class="dials-row">
-			<div class="dial-container">
-				<div class="dial dial-cyan">
-					<button class="dial-arrow dial-up font-ui" onclick={() => guitar.setLatency(guitar.latencyMs + 1)} aria-label="Increase latency">+</button>
-					<span class="dial-value">{latencyDisplay}</span>
-					<button class="dial-arrow dial-down font-ui" onclick={() => guitar.setLatency(guitar.latencyMs - 1)} aria-label="Decrease latency">-</button>
-				</div>
-				<span class="dial-label font-ui">LATENCY</span>
+		<!-- Observable conversion status: raw pitch and actual routed MIDI are separate. -->
+		<div class="conversion-status" aria-live="polite">
+			<div class="detection-status font-ui" class:detecting={guitar.detecting}>
+				<span class="status-label">PITCH</span>{detectionLine}
 			</div>
-
-			<div class="dial-container">
-				<div class="dial dial-amber">
-					<button class="dial-arrow dial-up font-ui" onclick={() => guitar.setGain(guitar.gain + 0.05)} aria-label="Increase gain">+</button>
-					<span class="dial-value">{gainDisplay}</span>
-					<button class="dial-arrow dial-down font-ui" onclick={() => guitar.setGain(guitar.gain - 0.05)} aria-label="Decrease gain">-</button>
-				</div>
-				<span class="dial-label font-ui">GAIN</span>
-			</div>
-
-			<div class="dial-container">
-				<div class="dial dial-teal">
-					<button class="dial-arrow dial-up font-ui" onclick={() => guitar.setStringConfidence(guitar.stringConfidence + 0.05)} aria-label="Increase confidence">+</button>
-					<span class="dial-value">{confidenceDisplay}</span>
-					<button class="dial-arrow dial-down font-ui" onclick={() => guitar.setStringConfidence(guitar.stringConfidence - 0.05)} aria-label="Decrease confidence">-</button>
-				</div>
-				<span class="dial-label font-ui">CONFIDENCE</span>
+			<div class="midi-status font-code" class:midi-active={hasRoutedMidi}>
+				{midiOutputLine}
 			</div>
 		</div>
+		{#if channelMismatch}
+			<div class="channel-warning font-ui">
+				Input {guitar.activeChannel} is active; Input {guitar.selectedChannel} is selected.
+			</div>
+		{/if}
 
-		<!-- Technique toggles -->
-		<div class="techniques-row">
-			{#each techniques as tech}
-				<button
-					class="technique-btn pixel-btn"
-					class:technique-active={tech.active}
-					onclick={() => handleTechniqueToggle(tech.key)}
-				>
-					{tech.label}
-				</button>
-			{/each}
-		</div>
+		<SignalGraphs />
 
 		<!-- Truthful tuner workflow: this tunes strings; detector profiles are separate. -->
 		<button
@@ -270,39 +271,60 @@
 		>
 			{guitar.calibrating ? 'TUNING...' : 'TUNE GUITAR'}
 		</button>
-
-		<!-- Open the guitar pipeline debug window (Tauri only — no-op in browser) -->
-		<button
-			class="calibrate-btn pixel-btn"
-			onclick={async () => {
-				try {
-					const { invoke } = await import('@tauri-apps/api/core');
-					await invoke('open_debug_pipeline_window');
-				} catch (e) {
-					console.warn('[guitar] debug window unavailable (browser?):', e);
-				}
-			}}
-		>
-			DEBUG PIPELINE
-		</button>
 		{#if guitar.calibrationStatus}
 			<div class="calibration-status font-ui" class:calibrated={guitar.calibrated}>
 				{guitar.calibrationStatus}
 			</div>
 		{/if}
 
-		<!-- Live detection status -->
-		<div class="detection-status font-ui" class:detecting={guitar.detecting}>
-			{detectionLine}
-		</div>
-		{#if channelMismatch}
-			<div class="channel-warning font-ui">
-				Using ch{guitar.activeChannel} (wanted ch{guitar.selectedChannel} — restart to change)
-			</div>
-		{/if}
+		<details class="guitar-advanced">
+			<summary class="font-ui">DETECTION & EXPRESSION</summary>
+			<div class="advanced-body">
+				<div class="validated-profile font-ui">
+					<strong>FAST RESPONSE</strong>
+					<span>21 ms analysis · 10 ms confirmation · ~27 ms corpus p95</span>
+				</div>
+				<div class="dials-row">
+					<div class="dial-container">
+						<div class="dial dial-amber">
+							<button class="dial-arrow dial-up font-ui" onclick={() => guitar.setGain(guitar.gain + 0.05)} aria-label="Increase input gain">+</button>
+							<span class="dial-value">{gainDisplay}</span>
+							<button class="dial-arrow dial-down font-ui" onclick={() => guitar.setGain(guitar.gain - 0.05)} aria-label="Decrease input gain">-</button>
+						</div>
+						<span class="dial-label font-ui">INPUT GAIN</span>
+					</div>
+					<div class="dial-container">
+						<div class="dial dial-teal">
+							<button class="dial-arrow dial-up font-ui" onclick={() => guitar.setStringConfidence(guitar.stringConfidence + 0.05)} aria-label="Increase string identification threshold">+</button>
+							<span class="dial-value">{confidenceDisplay}</span>
+							<button class="dial-arrow dial-down font-ui" onclick={() => guitar.setStringConfidence(guitar.stringConfidence - 0.05)} aria-label="Decrease string identification threshold">-</button>
+						</div>
+						<span class="dial-label font-ui">STRING ID</span>
+					</div>
+				</div>
 
-		<!-- Signal graphs (MiGiC-style) -->
-		<SignalGraphs />
+				<div class="techniques-row">
+					{#each techniques as tech}
+						<button class="technique-btn pixel-btn" class:technique-active={tech.active} aria-pressed={tech.active} onclick={() => handleTechniqueToggle(tech.key)}>{tech.label}</button>
+					{/each}
+				</div>
+
+				<div class="advanced-actions">
+					<button class="advanced-btn pixel-btn" onclick={() => guitar.resetDetectionDefaults()}>RESET DETECTOR DEFAULTS</button>
+					<button
+						class="advanced-btn pixel-btn"
+						onclick={async () => {
+							try {
+								const { invoke } = await import('@tauri-apps/api/core');
+								await invoke('open_debug_pipeline_window');
+							} catch (e) {
+								console.warn('[guitar] debug window unavailable (browser?):', e);
+							}
+						}}
+					>DEBUG PIPELINE</button>
+				</div>
+			</div>
+		</details>
 	</div>
 {/if}
 
@@ -392,17 +414,6 @@
 		align-items: center;
 		gap: 6px;
 	}
-	.channel-max-input {
-		width: 36px;
-		height: 18px;
-		background: var(--color-widget-bg);
-		border: 1px solid var(--color-border);
-		color: var(--color-accent-cyan);
-		font-family: var(--font-code);
-		font-size: var(--font-size-xs);
-		text-align: center;
-		padding: 0;
-	}
 	.channel-btn {
 		width: 18px;
 		height: 18px;
@@ -432,6 +443,22 @@
 	}
 
 	/* === Interactive Dials === */
+	.validated-profile {
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 8px;
+		padding: 5px 7px;
+		font-size: 10px;
+		color: var(--color-text-secondary);
+		border-left: 2px solid var(--color-accent-cyan);
+		background: rgba(51, 221, 255, 0.05);
+	}
+
+	.validated-profile strong {
+		color: var(--color-accent-cyan);
+	}
+
 	.dials-row {
 		display: flex;
 		justify-content: space-between;
@@ -458,10 +485,6 @@
 		justify-content: center;
 		margin-bottom: 3px;
 		gap: 1px;
-	}
-
-	.dial-cyan {
-		border-color: var(--color-accent-cyan);
 	}
 
 	.dial-amber {
@@ -501,10 +524,6 @@
 
 	.dial-arrow:hover {
 		color: var(--color-text-primary);
-	}
-
-	.dial-cyan .dial-arrow:hover {
-		color: var(--color-accent-cyan);
 	}
 
 	.dial-amber .dial-arrow:hover {
@@ -585,6 +604,19 @@
 	}
 
 	/* === Detection status === */
+	.conversion-status {
+		display: grid;
+		gap: 3px;
+		margin-bottom: 4px;
+	}
+
+	.status-label {
+		margin-right: 8px;
+		color: var(--color-text-secondary);
+		font-size: 10px;
+		letter-spacing: 0.08em;
+	}
+
 	.detection-status {
 		font-size: var(--font-size-xs);
 		color: var(--color-text-dim);
@@ -599,6 +631,55 @@
 	}
 
 	.detection-status.detecting {
+		color: var(--color-text-primary);
+		border-color: var(--color-accent-teal);
+	}
+
+	.midi-status {
+		padding: 5px 7px;
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+		background: var(--color-bg-panel);
+		border: 1px solid var(--color-border);
+	}
+
+	.midi-status.midi-active {
+		color: var(--color-piano-input);
+		border-color: var(--color-piano-input);
+		box-shadow: 0 0 6px rgba(0, 228, 54, 0.2);
+	}
+
+	.guitar-advanced {
+		border: 1px solid var(--color-border);
+		background: var(--color-bg-panel);
+	}
+
+	.guitar-advanced summary {
+		padding: 6px 8px;
+		color: var(--color-text-secondary);
+		font-size: var(--font-size-xs);
+		cursor: pointer;
+		list-style-position: inside;
+	}
+
+	.guitar-advanced[open] summary {
+		color: var(--color-accent-cyan);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.advanced-body {
+		padding: 8px;
+	}
+
+	.advanced-actions {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+	}
+
+	.advanced-btn {
+		padding: 5px 6px !important;
+		font-size: 10px !important;
 		color: var(--color-text-secondary);
 	}
 

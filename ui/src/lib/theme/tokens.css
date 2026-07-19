@@ -4,11 +4,9 @@
    "A DAW that feels like exploring a neon-lit dungeon"
    ================================================================= */
 
-/* Self-hosted primary fonts — match the redesigned contrapunk.com.
-   Files live in /static/fonts/ and are served from the app origin so
-   typography works offline and in the Tauri desktop build without
-   talking to fonts.gstatic.com. The app is locked to this pair
-   (Space Grotesk + JetBrains Mono) — no runtime font switcher. */
+/* Self-hosted technical fonts. UI and body copy use the native platform
+   sans-serif for maximum legibility; JetBrains Mono remains available for
+   notes, channels, measurements, and other aligned technical readouts. */
 @font-face {
 	font-family: 'Space Grotesk';
 	font-style: normal;
@@ -112,31 +110,26 @@
 	--glow-teal: 0 0 8px #00ccaa55, 0 0 20px #00ccaa22;
 
 	/* === Typography ===
-	   Locked to an opinionated pair (Space Grotesk + JetBrains Mono)
-	   matching the redesigned contrapunk.com. Self-hosted via @font-face
-	   above — no CDN fetch at runtime. */
+	   Native UI typography is clearer at compact DAW sizes and needs no
+	   runtime font download. JetBrains Mono is reserved for data. */
 	--font-grotesk: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
 	--font-jetbrains: 'JetBrains Mono', ui-monospace, monospace;
-	--font-reading: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-reading: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-	/* Semantic font roles — mirror the redesigned contrapunk.com.
-	     --font-display: hero + page titles                    → JetBrains Mono bold
-	     --font-ui:      buttons, nav, pills, labels, chrome   → Space Grotesk
-	     --font-code:    code snippets, stats, URLs            → JetBrains Mono
-	     --font-body:    paragraphs + running text             → Space Grotesk */
-	--font-display: var(--font-jetbrains);
-	--font-ui: var(--font-grotesk);
+	/* Semantic font roles. */
+	--font-display: var(--font-reading);
+	--font-ui: var(--font-reading);
 	--font-code: var(--font-jetbrains);
 	--font-mono: var(--font-jetbrains);
-	--font-body: var(--font-grotesk);
+	--font-body: var(--font-reading);
 
 	/* Base font sizes scale with viewport so the UI stays proportional
 	   on any monitor. clamp(min, responsive, max) keeps them legible
 	   everywhere without going microscopic or huge. Multiplied by
 	   --font-scale for the user-controlled font-size slider (range
 	   0.75–1.5) — independent of --ui-scale which zooms layout. */
-	--font-size-xs: calc(clamp(8px, 0.75vmin + 6px, 14px) * var(--font-scale));
-	--font-size-sm: calc(clamp(10px, 0.9vmin + 7px, 16px) * var(--font-scale));
+	--font-size-xs: calc(clamp(11px, 0.75vmin + 7px, 14px) * var(--font-scale));
+	--font-size-sm: calc(clamp(13px, 0.9vmin + 7px, 17px) * var(--font-scale));
 	--font-size-md: calc(clamp(12px, 1.1vmin + 8px, 20px) * var(--font-scale));
 	--font-size-lg: calc(clamp(16px, 1.5vmin + 10px, 28px) * var(--font-scale));
 	--font-size-xl: calc(clamp(24px, 2.2vmin + 14px, 40px) * var(--font-scale));

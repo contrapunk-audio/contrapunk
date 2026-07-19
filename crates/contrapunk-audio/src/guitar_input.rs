@@ -77,7 +77,7 @@ pub struct GuitarInputConfig {
 }
 
 const fn default_attack_min_ms() -> u16 {
-    40
+    10
 }
 
 impl Default for GuitarInputConfig {
@@ -2951,6 +2951,37 @@ mod tests {
             "should be Attack or Sustain after loud signal, got {:?}",
             pipeline.note_state()
         );
+    }
+
+    #[test]
+    fn sustained_beating_note_does_not_retrigger() {
+        let sample_rate = 48_000;
+        let mut pipeline = GuitarInput::new(GuitarInputConfig {
+            sample_rate,
+            buffer_size: 1024,
+            hop_size: 256,
+            cooldown_samples: sample_rate / 10,
+            ..GuitarInputConfig::default()
+        });
+        let frames = sample_rate * 2;
+        let mut audio = guitar_signal(110.0, 0.001, sample_rate, frames);
+        for (i, sample) in audio.iter_mut().enumerate() {
+            let time = i as f32 / sample_rate as f32;
+            let attack = (i as f32 / 480.0).min(1.0);
+            let beating = 0.75 + 0.25 * (2.0 * PI * 5.5 * time).sin();
+            *sample *= 0.08 * attack * beating;
+        }
+
+        let events: Vec<_> = audio
+            .chunks(128)
+            .flat_map(|chunk| pipeline.process_block(chunk))
+            .collect();
+        let note_ons = events
+            .iter()
+            .filter(|event| matches!(event, MidiEvent::NoteOn { .. }))
+            .count();
+
+        assert_eq!(note_ons, 1, "sustained beating emitted {note_ons} NoteOns");
     }
 
     #[test]

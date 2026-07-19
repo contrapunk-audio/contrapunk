@@ -6,6 +6,8 @@
 
 	const WIDTH = 240;
 	const HEIGHT = 48;
+	// Shipping onset threshold (0.02 RMS), scaled like signalLevel (RMS × 5).
+	const TRIGGER_LINE = 0.1;
 
 	function drawGraph(
 		canvas: HTMLCanvasElement,
@@ -62,10 +64,7 @@
 
 	function render() {
 		if (ampCanvas) {
-			const noiseThreshold = guitar.noiseGateEnabled
-				? guitar.noiseGateThreshold * 5 // scale to match signalLevel (rms * 5)
-				: null;
-			drawGraph(ampCanvas, guitar.amplitudeHistory, noiseThreshold, '#00e5cc', '#ffaa00');
+			drawGraph(ampCanvas, guitar.amplitudeHistory, TRIGGER_LINE, '#00e5cc', '#ffaa00');
 		}
 		animFrame = requestAnimationFrame(render);
 	}
@@ -87,23 +86,9 @@
 	<div class="graph-row">
 		<span class="graph-label font-ui">AMP</span>
 		<canvas bind:this={ampCanvas} width={WIDTH} height={HEIGHT} class="signal-canvas"></canvas>
-		<div class="gate-controls">
-			<button
-				class="gate-btn font-ui"
-				class:gate-on={guitar.noiseGateEnabled}
-				onclick={() => { guitar.noiseGateEnabled = !guitar.noiseGateEnabled; }}
-				title="Noise Gate"
-			>NG</button>
-			<input
-				type="range"
-				class="gate-slider"
-				min="0.001"
-				max="0.1"
-				step="0.001"
-				value={guitar.noiseGateThreshold}
-				oninput={(e) => { guitar.noiseGateThreshold = parseFloat((e.target as HTMLInputElement).value); }}
-				title={`Threshold: ${(guitar.noiseGateThreshold * 1000).toFixed(0)} mRMS`}
-			/>
+		<div class="trigger-legend font-ui" title="Fixed Phase 10.1 onset threshold: 20 mRMS">
+			<span class="trigger-swatch"></span>
+			TRIGGER
 		</div>
 	</div>
 </div>
@@ -137,46 +122,19 @@
 		image-rendering: pixelated;
 	}
 
-	.gate-controls {
+	.trigger-legend {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 2px;
-		width: 32px;
+		justify-content: center;
+		gap: 3px;
+		width: 42px;
+		font-size: 9px;
+		color: var(--color-text-secondary);
 	}
 
-	.gate-btn {
-		font-size: var(--font-size-xs);
-		padding: 2px 4px;
-		background: var(--color-widget-inactive);
-		border: 1px solid var(--color-border);
-		color: var(--color-text-dim);
-		cursor: pointer;
-	}
-
-	.gate-btn.gate-on {
-		background: var(--color-accent-teal);
-		color: #fff;
-		border-color: var(--color-accent-cyan-dim);
-	}
-
-	.gate-slider {
-		width: 28px;
-		height: 8px;
-		-webkit-appearance: none;
-		appearance: none;
-		background: var(--color-bg-panel);
-		border: 1px solid var(--color-border);
-		outline: none;
-		cursor: pointer;
-	}
-
-	.gate-slider::-webkit-slider-thumb {
-		-webkit-appearance: none;
-		width: 6px;
-		height: 10px;
-		background: var(--color-accent-amber);
-		border: none;
-		cursor: pointer;
+	.trigger-swatch {
+		width: 22px;
+		border-top: 1px dashed var(--color-accent-amber);
 	}
 </style>

@@ -451,13 +451,25 @@ export class TauriAdapter implements ContrapunkAdapter {
 
 	async startRouting(inputIdx: number, outputIndices: number[]): Promise<void> {
 		try {
+			const GUITAR_AUDIO_SENTINEL = 999_997;
+			if (inputIdx === GUITAR_AUDIO_SENTINEL) {
+				// Persisted UI selections are not guaranteed to have been touched
+				// this session. Synchronize them at the exact start boundary so the
+				// bridge cannot silently fall back to device/input zero.
+				await guitar.syncDevice();
+				await guitar.syncConfig();
+			}
+
 			await invoke('start_routing', { inputIdx, outputIndices });
 			this._isRunning = true;
 
 			// If guitar audio mode, listen for signal events and feed guitar store
-			const GUITAR_AUDIO_SENTINEL = 999_997;
 			if (inputIdx === GUITAR_AUDIO_SENTINEL) {
 				guitar.detecting = true;
+				// A successful bridge start means cpal accepted this input.
+				// The store is 1-indexed for display; the backend already received
+				// the corresponding 0-indexed channel through syncDevice().
+				guitar.activeChannel = guitar.selectedChannel;
 
 				// Double-start guard: if a previous start left a
 				// listener wired up (engine.start called twice without
@@ -516,9 +528,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 				this._guitarSignalUnsub = null;
 			}
 			guitar.detecting = false;
-			guitar.currentNote = '';
-			guitar.confidence = 0;
-			guitar.velocity = 0;
+			guitar.resetLiveState();
 		} catch (e) {
 			throw new Error(`Failed to stop routing: ${e}`);
 		}

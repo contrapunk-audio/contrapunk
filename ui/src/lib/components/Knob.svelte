@@ -18,6 +18,7 @@
 		step = 0.01,
 		defaultValue,
 		label = '',
+		help = '',
 		format,
 		size = 72,
 		accent = 'var(--color-accent-cyan)',
@@ -30,6 +31,8 @@
 		step?: number;
 		defaultValue?: number;
 		label?: string;
+		/** Plain-language description shown on hover. */
+		help?: string;
 		format?: (v: number) => string;
 		size?: number;
 		accent?: string;
@@ -126,7 +129,7 @@
 	}
 </script>
 
-<div class="knob" class:disabled style:width="{size}px">
+<div class="knob" class:disabled style:width="{size}px" title={help || undefined}>
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div
 		class="knob-dial"
@@ -152,7 +155,8 @@
 	>
 		{#if (hovering || dragging) && label}
 			<div class="knob-tooltip font-ui">
-				{label}<span class="tooltip-sep">:</span><span class="tooltip-val">{displayValue(value)}</span>
+				<div>{label}<span class="tooltip-sep">:</span><span class="tooltip-val">{displayValue(value)}</span></div>
+				{#if help}<div class="tooltip-help">{help}</div>{/if}
 			</div>
 		{/if}
 		<svg viewBox="0 0 100 100" style:display="block">
@@ -267,6 +271,14 @@
 		box-shadow: 0 0 8px rgba(77, 221, 221, 0.3);
 		-webkit-font-smoothing: none;
 		text-rendering: optimizeSpeed;
+	}
+	.tooltip-help {
+		width: 230px;
+		margin-top: 4px;
+		color: var(--color-text-secondary);
+		font-family: var(--font-code, monospace);
+		line-height: 1.35;
+		white-space: normal;
 	}
 	.tooltip-sep {
 		color: var(--color-text-dim);

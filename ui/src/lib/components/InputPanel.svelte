@@ -13,18 +13,20 @@
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
 
-	type Source = 'midi' | 'guitar' | 'voice' | 'none';
+	type Source = 'midi' | 'keyboard' | 'guitar' | 'voice' | 'none';
 
-	/** Map the (potentially null) midi.selectedInput onto a Source. A
-	 *  null selection now reports 'none' so the radio doesn't light up
-	 *  the MIDI tile when nothing is wired (brutal-critic #3). */
+	/** Keep hardware MIDI and computer typing distinct. Treating both as
+	 *  one "MIDI" source made the virtual keyboard look like the only
+	 *  available device while hardware discovery was still running. */
 	const sourceFromSelection = (sel: number | null): Source => {
 		if (sel === null) return 'none';
 		if (sel === VIRTUAL_GUITAR_AUDIO) return 'guitar';
+		if (sel === VIRTUAL_COMPUTER_KEYBOARD) return 'keyboard';
 		return 'midi';
 	};
 
-	let source = $derived<Source>(sourceFromSelection(midi.selectedInput));
+	let requestedSource = $state<Source | null>(null);
+	let source = $derived<Source>(requestedSource ?? sourceFromSelection(midi.selectedInput));
 
 	// Remember the user's last PHYSICAL MIDI device so clicking the MIDI
 	// radio after a guitar session restores it, instead of either
@@ -71,24 +73,27 @@
 			voiceUnavailableHint = true;
 			return;
 		}
+		requestedSource = next;
 		voiceUnavailableHint = false;
 		if (next === 'guitar') {
 			await switchInput(() => midi.selectVirtualInput(VIRTUAL_GUITAR_AUDIO));
 			return;
 		}
-		if (source === 'midi') {
-			await midi.refresh();
+		if (next === 'keyboard') {
+			await switchInput(() => midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD));
 			return;
 		}
+		await midi.refresh();
+		if (source === 'midi' && isPhysicalMidi(midi.selectedInput)) return;
 		await switchInput(() => {
-			let restored = false;
-			if (lastMidiSelection !== null) {
-				midi.selectInput(lastMidiSelection);
-				restored = midi.selectedInput === lastMidiSelection;
-			}
-			if (!restored) {
-				midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
-			}
+			const restored =
+				lastMidiSelection !== null &&
+				midi.inputs.some((device) => device.index === lastMidiSelection);
+			const device = restored
+				? lastMidiSelection
+				: (midi.inputs[0]?.index ?? null);
+			if (device === null) midi.clearInput();
+			else midi.selectInput(device);
 		});
 	}
 
@@ -176,27 +181,20 @@
 		}
 	});
 
-	let isComputerKeyboard = $derived(midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD);
-
-	// MIDI source — only "real" MIDI devices + Computer Keyboard.
-	// Guitar Audio is hoisted out into the top-level source radio.
-	let midiInputOptions = $derived([
-		...midi.inputs.map((d) => ({ value: String(d.index), label: d.name })),
-		{ value: String(VIRTUAL_COMPUTER_KEYBOARD), label: 'Computer Keyboard' }
-	]);
+	// Hardware inputs only. Computer Keys has its own top-level source
+	// choice so users never mistake it for the only discovered device.
+	let midiInputOptions = $derived(
+		midi.inputs.map((device) => ({ value: String(device.index), label: device.name }))
+	);
 
 	async function handleMidiInputChange(value: string) {
+		requestedSource = 'midi';
 		await switchInput(() => {
 			if (value === '') {
 				midi.clearInput();
 				return;
 			}
-			const idx = parseInt(value, 10);
-			if (idx === VIRTUAL_COMPUTER_KEYBOARD) {
-				midi.selectVirtualInput(idx);
-			} else {
-				midi.selectInput(idx);
-			}
+			midi.selectInput(parseInt(value, 10));
 		});
 	}
 
@@ -217,10 +215,8 @@
 </script>
 
 <div class="input-panel">
-	<!-- Source radio: MIDI / Guitar Audio / Voice (disabled). Replaces
-	     the inline Guitar Audio option in the MIDI input dropdown so the
-	     source choice is a top-level concern. Voice is reserved for the
-	     v1.4 vocal pipeline (PSOLA harmonizer). -->
+	<!-- Source selection separates hardware MIDI from computer typing.
+	     Voice remains reserved for the later vocal pipeline. -->
 	<div class="source-radio pixel-card">
 		<div class="section-header font-ui">SOURCE</div>
 		<div class="radio-row" role="radiogroup" aria-label="Input source">
@@ -231,9 +227,20 @@
 				type="button"
 				aria-checked={source === 'midi'}
 				onclick={() => selectSource('midi')}
-				title="MIDI keyboard or computer-keyboard input"
+				title="Use a connected hardware MIDI controller"
 			>
-				MIDI
+				MIDI Controller
+			</button>
+			<button
+				class="source-btn pixel-btn font-ui"
+				class:active={source === 'keyboard'}
+				role="radio"
+				type="button"
+				aria-checked={source === 'keyboard'}
+				onclick={() => selectSource('keyboard')}
+				title="Play notes with the computer keyboard"
+			>
+				Computer Keys
 			</button>
 			<button
 				class="source-btn pixel-btn font-ui"
@@ -275,12 +282,13 @@
 
 	{#if source === 'midi'}
 		<div class="midi-section pixel-card">
-			<div class="section-header font-ui">INPUT</div>
+			<div class="section-header font-ui">MIDI CONTROLLER</div>
 			<div class="input-row">
 				<PixelSelect
 					options={midiInputOptions}
-					value={midi.selectedInput !== null ? String(midi.selectedInput) : ''}
-					placeholder="Select..."
+					value={isPhysicalMidi(midi.selectedInput) ? String(midi.selectedInput) : ''}
+					placeholder={midi.isLoading ? 'Scanning MIDI devices…' : 'Select controller…'}
+					label="MIDI controller"
 					onchange={handleMidiInputChange}
 				/>
 				<button
@@ -292,11 +300,12 @@
 					{midi.isLoading ? '...' : 'R'}
 				</button>
 			</div>
-
-			{#if isComputerKeyboard}
-				<div class="keyboard-hint font-code">
-					Z-M: C3-B3, Q-U: C4-C5
+			{#if !midi.isLoading && midi.inputs.length === 0}
+				<div class="device-status warning font-ui">
+					No hardware MIDI controller found. Connect one, then press R to scan again.
 				</div>
+			{:else if !midi.isLoading}
+				<div class="device-status font-ui">{midi.inputs.length} controller{midi.inputs.length === 1 ? '' : 's'} available</div>
 			{/if}
 
 			{#if midi.error}
@@ -310,6 +319,26 @@
 						options={voicePositionOptions}
 						value={String(engine.voicePosition)}
 						placeholder="Voice"
+						label="You play"
+						small={true}
+						onchange={onVoicePositionChange}
+					/>
+				</div>
+			{/if}
+		</div>
+	{:else if source === 'keyboard'}
+		<div class="midi-section pixel-card keyboard-source">
+			<div class="section-header font-ui">COMPUTER KEYS</div>
+			<p class="keyboard-copy font-ui">Play immediately from your typing keyboard.</p>
+			<div class="keyboard-hint font-code">Z–M: C3–B3 · Q–U: C4–C5</div>
+			{#if engine.voiceCount > 1}
+				<div class="you-play-row">
+					<span class="you-play-label font-ui">You play</span>
+					<PixelSelect
+						options={voicePositionOptions}
+						value={String(engine.voicePosition)}
+						placeholder="Voice"
+						label="You play"
 						small={true}
 						onchange={onVoicePositionChange}
 					/>
@@ -320,8 +349,12 @@
 		<GuitarInputPanel />
 
 		{#if adapter.capabilities.calibrationFlow}
-			<div class="midi-section pixel-card calibration-section">
-				<div class="section-header font-ui">DETECTOR PROFILE</div>
+			<details class="midi-section pixel-card calibration-section">
+				<summary class="profile-summary font-ui">
+					<span>DETECTOR PROFILE</span>
+					<span>{calibrationStatus?.existsOnDisk ? 'CUSTOM' : 'DEFAULT'}</span>
+				</summary>
+				<div class="calibration-body">
 				{#if calibrationStatus}
 					<div class="calibration-row">
 						<span
@@ -363,13 +396,14 @@
 						RESET
 					</button>
 				</div>
-				<p class="cal-note font-ui">
-					Use TUNE GUITAR above to tune the strings. Detector calibration is
-					separate: drop a CLI-generated
-					<code>guitar_calibration_profile.json</code> into the path above,
-					then RELOAD to apply it.
-				</p>
-			</div>
+					<p class="cal-note font-ui">
+						Use TUNE GUITAR above to tune the strings. Detector calibration is
+						separate: drop a CLI-generated
+						<code>guitar_calibration_profile.json</code> into the path above,
+						then RELOAD to apply it.
+					</p>
+				</div>
+			</details>
 		{/if}
 	{/if}
 </div>
@@ -395,7 +429,8 @@
 	}
 
 	.radio-row {
-		display: flex;
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: 4px;
 	}
 
@@ -445,11 +480,23 @@
 		text-align: center;
 	}
 
+	.device-status,
+	.keyboard-copy {
+		margin: 4px 0 0;
+		color: var(--color-text-secondary);
+		font-size: var(--font-size-xs);
+		line-height: 1.4;
+	}
+
+	.device-status.warning { color: var(--color-accent-gold); }
+
+	.keyboard-source { padding: 8px; }
+
 	.keyboard-hint {
 		color: var(--color-accent-cyan);
 		font-size: var(--font-size-xs);
 		margin-top: 4px;
-		padding: 2px 4px;
+		padding: 5px 6px;
 		background: var(--color-bg-panel);
 		border: 1px solid var(--color-border);
 	}
@@ -503,10 +550,24 @@
 	}
 
 	.calibration-section {
+		margin-top: 4px;
+	}
+
+	.profile-summary {
+		display: flex;
+		justify-content: space-between;
+		padding: 6px 8px;
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+		cursor: pointer;
+	}
+
+	.calibration-body {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		margin-top: 4px;
+		padding: 4px 6px 6px;
+		border-top: 1px solid var(--color-border);
 	}
 
 	.calibration-row {

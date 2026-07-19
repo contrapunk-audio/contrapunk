@@ -11,6 +11,10 @@ import { GuitarAudioCapture } from '$lib/audio/guitarCapture';
 import { detectPitch, frequencyToMidi, midiToNoteName } from '$lib/audio/pitchDetector';
 
 const STORAGE_KEY = 'contrapunk-guitar';
+const STORAGE_VERSION = 3;
+const DEFAULT_LATENCY_MS = 21; // 1024 samples at 48 kHz: Phase 10.1 corpus configuration
+const DEFAULT_GAIN = 1.0;
+const DEFAULT_STRING_CONFIDENCE = 0.5;
 
 function loadSaved(): Record<string, any> {
 	try {
@@ -21,13 +25,13 @@ function loadSaved(): Record<string, any> {
 
 class GuitarInputStore {
 	// -- Config (mirrors GuitarInputConfig in Rust) --
-	latencyMs = $state(21);
-	gain = $state(1.0);
-	stringConfidence = $state(0.4);
+	latencyMs = $state(DEFAULT_LATENCY_MS);
+	gain = $state(DEFAULT_GAIN);
+	stringConfidence = $state(DEFAULT_STRING_CONFIDENCE);
 	bendsEnabled = $state(true);
 	legatoEnabled = $state(true);
 	slidesEnabled = $state(true);
-	vibratoEnabled = $state(false);
+	vibratoEnabled = $state(true);
 
 	// -- Audio device selection --
 	audioDevices: MediaDeviceInfo[] = $state([]);
@@ -37,25 +41,25 @@ class GuitarInputStore {
 
 	constructor() {
 		const saved = loadSaved();
-		if (saved.latencyMs !== undefined) this.latencyMs = saved.latencyMs;
-		if (saved.gain !== undefined) this.gain = saved.gain;
-		if (saved.stringConfidence !== undefined) this.stringConfidence = saved.stringConfidence;
-		if (saved.bendsEnabled !== undefined) this.bendsEnabled = saved.bendsEnabled;
-		if (saved.legatoEnabled !== undefined) this.legatoEnabled = saved.legatoEnabled;
-		if (saved.slidesEnabled !== undefined) this.slidesEnabled = saved.slidesEnabled;
-		if (saved.vibratoEnabled !== undefined) this.vibratoEnabled = saved.vibratoEnabled;
+		// Phase 10.1 changed the validated detector defaults. Ignore stale DSP
+		// values from the old schema while preserving the user's device choice.
+		if (saved.version === STORAGE_VERSION) {
+			if (saved.gain !== undefined) this.gain = saved.gain;
+			if (saved.stringConfidence !== undefined) this.stringConfidence = saved.stringConfidence;
+			if (saved.bendsEnabled !== undefined) this.bendsEnabled = saved.bendsEnabled;
+			if (saved.legatoEnabled !== undefined) this.legatoEnabled = saved.legatoEnabled;
+			if (saved.slidesEnabled !== undefined) this.slidesEnabled = saved.slidesEnabled;
+			if (saved.vibratoEnabled !== undefined) this.vibratoEnabled = saved.vibratoEnabled;
+		}
 		if (saved.selectedDeviceId) this.selectedDeviceId = saved.selectedDeviceId;
 		if (saved.selectedChannel) this.selectedChannel = saved.selectedChannel;
 		if (saved.calibrated) this.calibrated = saved.calibrated;
-		if (saved.noiseGateEnabled !== undefined) this.noiseGateEnabled = saved.noiseGateEnabled;
-		if (saved.noiseGateThreshold !== undefined) this.noiseGateThreshold = saved.noiseGateThreshold;
-		if (saved.freqGateEnabled !== undefined) this.freqGateEnabled = saved.freqGateEnabled;
-		if (saved.freqGateRange !== undefined) this.freqGateRange = saved.freqGateRange;
 	}
 
 	private persist() {
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify({
+				version: STORAGE_VERSION,
 				latencyMs: this.latencyMs,
 				gain: this.gain,
 				stringConfidence: this.stringConfidence,
@@ -66,10 +70,6 @@ class GuitarInputStore {
 				selectedDeviceId: this.selectedDeviceId,
 				selectedChannel: this.selectedChannel,
 				calibrated: this.calibrated,
-				noiseGateEnabled: this.noiseGateEnabled,
-				noiseGateThreshold: this.noiseGateThreshold,
-				freqGateEnabled: this.freqGateEnabled,
-				freqGateRange: this.freqGateRange,
 			}));
 		} catch {}
 	}
@@ -91,13 +91,11 @@ class GuitarInputStore {
 	/** Current pitch clarity (0.0-1.0, updated every frame). Non-reactive — only read by canvas. */
 	signalClarity = 0;
 
-	// -- Gate controls --
-	/** Noise gate: reject signals below this RMS threshold. */
-	noiseGateEnabled = $state(true);
-	noiseGateThreshold = $state(0.01);
-	/** Frequency gate: reject detections outside expected guitar range (cents from expected). */
-	freqGateEnabled = $state(true);
-	freqGateRange = $state(1200); // cents — 1 octave
+	// Browser capture still uses an internal pre-DSP noise gate. It is not a
+	// user control because Tauri's shipping GuitarInput has its own fixed onset
+	// policy; keeping this internal avoids a cross-surface no-op knob.
+	noiseGateEnabled = true;
+	noiseGateThreshold = 0.01;
 
 	// -- Signal history for graphs (rolling buffers) --
 	/** Last N amplitude values for the graph. */
@@ -118,6 +116,20 @@ class GuitarInputStore {
 		if (this.clarityHistory.length > GuitarInputStore.HISTORY_SIZE) {
 			this.clarityHistory.shift();
 		}
+	}
+
+	/** Clear transient capture state after stop, restart, or device loss. */
+	resetLiveState() {
+		this.activeChannel = 0;
+		this.currentNote = '';
+		this.currentString = '';
+		this.currentFret = 0;
+		this.confidence = 0;
+		this.velocity = 0;
+		this.signalLevel = 0;
+		this.signalClarity = 0;
+		this.amplitudeHistory.length = 0;
+		this.clarityHistory.length = 0;
 	}
 
 	// -- Tuning workflow state --
@@ -454,12 +466,6 @@ class GuitarInputStore {
 		}
 	}
 
-	/** Set latency with bounds checking and sync. */
-	setLatency(value: number) {
-		this.latencyMs = Math.max(1, Math.min(50, value));
-		this.syncConfig(); this.persist();
-	}
-
 	/** Set gain with bounds checking and sync. */
 	setGain(value: number) {
 		this.gain = Math.max(0.1, Math.min(2.0, Math.round(value * 20) / 20));
@@ -470,6 +476,19 @@ class GuitarInputStore {
 	setStringConfidence(value: number) {
 		this.stringConfidence = Math.max(0.1, Math.min(1.0, Math.round(value * 20) / 20));
 		this.syncConfig(); this.persist();
+	}
+
+	/** Restore the Phase 10.1 configuration used by corpus acceptance. */
+	async resetDetectionDefaults() {
+		this.latencyMs = DEFAULT_LATENCY_MS;
+		this.gain = DEFAULT_GAIN;
+		this.stringConfidence = DEFAULT_STRING_CONFIDENCE;
+		this.bendsEnabled = true;
+		this.legatoEnabled = true;
+		this.slidesEnabled = true;
+		this.vibratoEnabled = true;
+		this.persist();
+		await this.syncConfig();
 	}
 
 	/** Enumerate available audio input devices via the Web Audio API. */
@@ -630,16 +649,12 @@ class GuitarInputStore {
 
 	/** Sync the selected device and channel to the backend. */
 	async syncDevice() {
-		try {
-			// For Tauri: send the device label (cpal name) instead of browser deviceId hash,
-			// and convert 1-indexed UI channel to 0-indexed for cpal.
-			const device = this.audioDevices.find(d => d.deviceId === this.selectedDeviceId);
-			const deviceName = device?.label || this.selectedDeviceId;
-			const channel0 = Math.max(0, this.selectedChannel - 1);
-			await adapter.setGuitarDevice(deviceName, channel0);
-		} catch {
-			// Silently ignore — backend may not be ready yet
-		}
+		// For Tauri: send the device label (cpal name) instead of browser deviceId hash,
+		// and convert 1-indexed UI channel to 0-indexed for cpal.
+		const device = this.audioDevices.find(d => d.deviceId === this.selectedDeviceId);
+		const deviceName = device?.label || this.selectedDeviceId;
+		const channel0 = Math.max(0, this.selectedChannel - 1);
+		await adapter.setGuitarDevice(deviceName, channel0);
 	}
 }
 
