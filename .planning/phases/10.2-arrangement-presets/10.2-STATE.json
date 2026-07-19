@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing",
   "current_wave": 1,
-  "current_slice": "arrangement-preset-v2-contract",
+  "current_slice": "centralized-arrangement-snapshot",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -24,6 +24,15 @@
         "Tauri and WASM Stop/Reset issue All Notes Off and reset Companion runtime before a frozen/reset clock can strand future releases.",
         "Lane Cancel releases an inherited voice at the frozen current beat."
       ]
+    },
+    {
+      "id": "arrangement-preset-v2-contract",
+      "status": "verified",
+      "evidence": [
+        "Typed schema separates musical metadata, performer guidance, references, research status, capability requirements, harmony, Companion, and base role mix.",
+        "The config intentionally cannot contain tonic, tempo, devices, routing, sound, master level, mute/solo, plugins, or transport state.",
+        "npm --prefix ui run check passes with zero errors."
+      ]
     }
   ],
   "commands": [
@@ -31,7 +40,8 @@
     {"command": "cargo test -p contrapunk-companion hold_mode --lib", "result": "17 passed"},
     {"command": "cargo test -p contrapunk-companion --lib", "result": "60 passed"},
     {"command": "cargo test -p contrapunk-tauri", "result": "36 passed"},
-    {"command": "npm --prefix ui run check", "result": "0 errors; 29 pre-existing warnings"}
+    {"command": "npm --prefix ui run check", "result": "0 errors; 29 pre-existing warnings"},
+    {"command": "npm --prefix ui run check (ArrangementPresetV2)", "result": "0 errors; 29 pre-existing warnings"}
   ],
   "blockers": [
     "Research subagent providers must be executable; if fewer than three independent perspectives can run, preset activation pauses.",
@@ -45,6 +55,6 @@
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state."
   ],
-  "last_commit": "f2360b0",
-  "next_action": "Commit the verified lifecycle slice, then add the minimum ArrangementPresetV2, CapabilityId, and ArrangementConfig contract without catalog UI."
+  "last_commit": "161368c",
+  "next_action": "Commit the V2 contract, then centralize snapshot/apply state currently split across EngineStore, CompanionPanel, and ArrangementMixer."
 }

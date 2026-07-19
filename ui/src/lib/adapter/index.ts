@@ -59,6 +59,7 @@ export type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
+	HoldMode,
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
