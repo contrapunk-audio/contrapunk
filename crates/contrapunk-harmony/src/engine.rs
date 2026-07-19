@@ -2735,6 +2735,26 @@ mod tests {
         assert_eq!(e.bass_register_threshold(), 127);
     }
 
+    #[test]
+    fn whole_tone_three_voice_plane_keeps_shape_and_balanced_release() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine.set_scale_mode(ScaleMode::WholeTone);
+        engine.set_voice_position(2);
+        engine.set_voice_leading_enabled(false);
+        engine.set_octave_mode(OctaveMode::None);
+        engine.set_interchange_enabled(false);
+
+        for input_midi in [60, 62, 64, 66, 68, 70] {
+            let input = Note::try_from(input_midi).unwrap();
+            let expected: Vec<Note> = [input_midi, input_midi + 4, input_midi + 8]
+                .into_iter()
+                .map(|midi| Note::try_from(midi).unwrap())
+                .collect();
+            assert_eq!(engine.harmonize_note_on(input), expected);
+            assert_eq!(engine.harmonize_note_off(input), expected);
+        }
+    }
+
     /// External transport, when set, must take precedence over the
     /// internal synthetic counter. Sanity check that the synthetic
     /// fallback doesn't override an explicitly-driven phase.

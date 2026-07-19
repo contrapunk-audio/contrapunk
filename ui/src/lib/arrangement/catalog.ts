@@ -320,6 +320,68 @@ export const SUSPENSION_GARLAND_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const PLANED_CATHEDRAL_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '12-planed-cathedral',
+	name: 'Planed Cathedral',
+	family: 'classical',
+	tags: ['early-modern', 'whole-tone', 'exact-planing', 'player-shaped-form'],
+	builtIn: true,
+	result:
+		'Each in-collection note becomes a fixed three-note whole-tone augmented plane; your register, velocity, and silence shape the rise and withdrawal.',
+	approximation:
+		"A static whole-tone chord plane inspired by one selected coloristic process in Debussy's mature piano writing. It does not reconstruct La cathédrale engloutie, model Debussy's pentatonic, diatonic, or chromatic collection changes, preserve an independent pedal, reproduce piano resonance or orchestration, infer a phrase arc, or represent his whole career. You supply emergence and submergence through register, velocity, duration, density, and silence.",
+	play: {
+		prompt:
+			'Hold one soft in-collection note at a time. Rise and grow until one broad, bright peak, then fall away into lower notes and longer silences; release every note cleanly before the next.',
+		input: 'single_notes',
+		articulation:
+			'Rounded 2–5 second tones with complete releases; one 5–7 second peak, no physical overlap, pedal, bends, slides, or ringing strings.',
+		density: 'Three to six planes per 15 seconds; exactly one physical source note at a time.',
+		space: 'Leave 0.5–2 seconds between planes and 2–4 seconds before and after the peak.',
+		tempo: '48–66 BPM if a reference pulse helps; transport is optional and remains untouched.',
+		transportRequired: false
+	},
+	references: [
+		{
+			name: 'Claude Debussy',
+			context:
+				'Bounded reference to selected collection-bound planing, register, dynamics, and silence in mature piano works from approximately 1903–1910.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['harmony'],
+	config: {
+		harmony: {
+			scaleMode: 'WholeTone',
+			mode: 'DiatonicThirds',
+			voiceCount: 3,
+			voicePosition: 2,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: false,
+			globalHoldMode: { kind: 'cancel' },
+			canon: { enabled: false, form: 'free_imitation', holdMode: null, voices: [] },
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -379,6 +441,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 4) return MENSURATION_WEB_PRESET;
 		if (spec.number === 7) return STRETTO_ENGINE_PRESET;
 		if (spec.number === 8) return SUSPENSION_GARLAND_PRESET;
+		if (spec.number === 12) return PLANED_CATHEDRAL_PRESET;
 		return draftPreset(spec);
 	}
 );

@@ -4,6 +4,7 @@ import {
 	BUILT_IN_ARRANGEMENT_PRESETS,
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
+	PLANED_CATHEDRAL_PRESET,
 	STRETTO_ENGINE_PRESET,
 	SUSPENSION_GARLAND_PRESET
 } from './catalog.ts';
@@ -30,7 +31,13 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 		BUILT_IN_ARRANGEMENT_PRESETS.filter((preset) => preset.researchStatus === 'approved').map(
 			(preset) => preset.id
 		),
-		['02-modal-linework', '04-mensuration-web', '07-stretto-engine', '08-suspension-garland']
+		[
+			'02-modal-linework',
+			'04-mensuration-web',
+			'07-stretto-engine',
+			'08-suspension-garland',
+			'12-planed-cathedral'
+		]
 	);
 });
 
@@ -149,6 +156,46 @@ test('Suspension Garland uses one bounded transport-scheduled Species IV line', 
 		'transport'
 	]) {
 		assert.equal(preserved in SUSPENSION_GARLAND_PRESET.config, false);
+	}
+});
+
+test('Planed Cathedral fixes one exact whole-tone three-note plane', () => {
+	assert.deepEqual(PLANED_CATHEDRAL_PRESET.requirements, ['harmony']);
+	assert.equal(PLANED_CATHEDRAL_PRESET.play.transportRequired, false);
+	assert.deepEqual(PLANED_CATHEDRAL_PRESET.config.harmony, {
+		scaleMode: 'WholeTone',
+		mode: 'DiatonicThirds',
+		voiceCount: 3,
+		voicePosition: 2,
+		voiceLeadingEnabled: false,
+		voiceLeadingStyle: 'Free',
+		octaveMode: 'None',
+		octaveIntensity: 1,
+		interchangeEnabled: false,
+		interchangeRange: 3,
+		counterpointSpecies: 'Species1',
+		counterpointStrictness: 'Strict'
+	});
+	assert.equal(PLANED_CATHEDRAL_PRESET.config.companion.enabled, false);
+	assert.match(PLANED_CATHEDRAL_PRESET.approximation, /does not reconstruct/);
+	assert.deepEqual(validateArrangementPreset(PLANED_CATHEDRAL_PRESET), []);
+	assert.deepEqual(arrangementConfigCapabilities(PLANED_CATHEDRAL_PRESET.config), ['harmony']);
+
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in PLANED_CATHEDRAL_PRESET.config, false);
 	}
 });
 
