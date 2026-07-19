@@ -259,10 +259,7 @@
 
 <section class="expression-roll" aria-labelledby="expression-title">
 	<header>
-		<div>
-			<p class="eyebrow">LIVE PERFORMANCE</p>
-			<h2 id="expression-title">Expression trace</h2>
-		</div>
+		<h2 id="expression-title">Performance</h2>
 		<div class="legend" aria-label="Sound roles">
 			<span class:live={guitarLive}><i class="guitar"></i>Guitar pitch</span>
 			<span class:live={playerLive}><i class="player"></i>Emitted MIDI</span>
@@ -285,9 +282,8 @@
 </section>
 
 <style>
-	.expression-roll { border: 1px solid var(--proto-line); background: var(--proto-panel); }
+	.expression-roll { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; border: 1px solid var(--proto-line); background: var(--proto-panel); }
 	header { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 12px; border-bottom: 1px solid var(--proto-line); }
-	.eyebrow { margin: 0 0 2px; color: var(--proto-muted); font-size: 9px; font-weight: 700; letter-spacing: .16em; }
 	h2 { margin: 0; color: var(--proto-text); font-size: 14px; font-weight: 650; }
 	.legend { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; color: var(--proto-muted); font-size: 10px; }
 	.legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -298,7 +294,7 @@
 	.legend span.live i.harmony { background: #ec6f9e; }
 	.legend span.live i.canon { background: #d8b85a; }
 	.legend span.live i.counterpoint { background: #a7d878; }
-	.roll-frame { position: relative; height: clamp(260px, 45vh, 430px); background: #0b0b0d; }
+	.roll-frame { position: relative; min-height: 0; background: #0b0b0d; }
 	canvas { display: block; width: 100%; height: 100%; }
 	.empty { position: absolute; inset: 0; display: grid; place-items: center; padding-left: 50px; color: var(--proto-dim); font-size: 12px; pointer-events: none; }
 	footer { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--proto-line); }

@@ -165,6 +165,7 @@ fn main() {
             commands::synth::set_synth_cutoff_hz,
             commands::synth::set_synth_resonance,
             commands::synth::set_synth_master_gain,
+            commands::synth::set_synth_mix_gain,
             // Built-in FX (reverb + delay)
             commands::fx::get_reverb_state,
             commands::fx::set_reverb_enabled,

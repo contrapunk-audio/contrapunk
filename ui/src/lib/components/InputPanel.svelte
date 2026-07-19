@@ -314,12 +314,12 @@
 
 			{#if engine.voiceCount > 1}
 				<div class="you-play-row">
-					<span class="you-play-label font-ui">You play</span>
+					<span class="you-play-label font-ui">Your register</span>
 					<PixelSelect
 						options={voicePositionOptions}
 						value={String(engine.voicePosition)}
 						placeholder="Voice"
-						label="You play"
+						label="Your register"
 						small={true}
 						onchange={onVoicePositionChange}
 					/>
@@ -333,12 +333,12 @@
 			<div class="keyboard-hint font-code">Z–M: C3–B3 · Q–U: C4–C5</div>
 			{#if engine.voiceCount > 1}
 				<div class="you-play-row">
-					<span class="you-play-label font-ui">You play</span>
+					<span class="you-play-label font-ui">Your register</span>
 					<PixelSelect
 						options={voicePositionOptions}
 						value={String(engine.voicePosition)}
 						placeholder="Voice"
-						label="You play"
+						label="Your register"
 						small={true}
 						onchange={onVoicePositionChange}
 					/>

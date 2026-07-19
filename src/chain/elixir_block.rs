@@ -5,12 +5,11 @@
 //! configurations must compile cleanly on every surface (CLI, Tauri,
 //! WASM, plugin) — see `ELIXIR-PLAN.md` §3 for the cutover plan.
 //!
-//! A0 implementation: forward [`AudioBlock`] calls into
-//! [`elixir_core::Engine`]. A1 wires `midi_event` through to the
-//! engine's note routing so a single sine voice actually responds to
-//! MIDI notes. Future phases (A2 polyphony, A3 modulation, A4 filter,
-//! A5 FX bus, A6 spectral features) extend without touching this
-//! wrapper's `AudioBlock` interface.
+//! The wrapper has grown with A1-A6 without changing the [`AudioBlock`]
+//! interface: it forwards MIDI and legacy [`SynthEvent`] traffic into
+//! [`elixir_core::Engine`], mirrors the existing public [`SynthParams`]
+//! surface, and lets the audio chain swap from legacy synth to Elixir
+//! behind the `elixir-synth` feature.
 
 use std::sync::{mpsc, Arc};
 
@@ -64,8 +63,8 @@ impl ElixirSynthBlock {
     fn drain_events(&mut self) {
         while let Ok(ev) = self.events.try_recv() {
             match ev {
-                SynthEvent::NoteOn { note, velocity } => self.engine.note_on(note, velocity),
-                SynthEvent::NoteOff { note } => self.engine.note_off(note),
+                SynthEvent::NoteOn { note, velocity, .. } => self.engine.note_on(note, velocity),
+                SynthEvent::NoteOff { note, .. } => self.engine.note_off(note),
                 SynthEvent::AllNotesOff => self.engine.all_notes_off(),
             }
         }
@@ -221,6 +220,7 @@ mod tests {
         tx.send(SynthEvent::NoteOn {
             note: 69,
             velocity: 100,
+            mix_group: 0,
         })
         .unwrap();
         let mut buf = [0.5f32; 1024];
@@ -235,6 +235,7 @@ mod tests {
         tx.send(SynthEvent::NoteOn {
             note: 69,
             velocity: 100,
+            mix_group: 0,
         })
         .unwrap();
         let mut buf = [0.0f32; 1024];

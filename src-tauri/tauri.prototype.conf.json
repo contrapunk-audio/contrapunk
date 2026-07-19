@@ -9,9 +9,13 @@
         "title": "Contrapunk Prototype",
         "url": "prototype",
         "width": 1280,
-        "height": 820,
-        "minWidth": 960,
-        "minHeight": 640
+        "height": 800,
+        "minWidth": 1280,
+        "minHeight": 800,
+        "maxWidth": 1280,
+        "maxHeight": 800,
+        "resizable": false,
+        "maximizable": false
       }
     ]
   },

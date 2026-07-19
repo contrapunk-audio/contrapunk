@@ -30,10 +30,21 @@ impl Waveform {
 /// MIDI-ish events pushed from the router thread into the audio thread.
 #[derive(Clone, Copy, Debug)]
 pub enum SynthEvent {
-    NoteOn { note: u8, velocity: u8 },
-    NoteOff { note: u8 },
+    NoteOn {
+        note: u8,
+        velocity: u8,
+        mix_group: u8,
+    },
+    NoteOff {
+        note: u8,
+        mix_group: u8,
+    },
     AllNotesOff,
 }
+
+/// Per-role mix groups used by the native performance mixer.
+pub const MIX_GROUP_COUNT: usize = 4;
+pub const MIX_GROUP_ALL: u8 = u8::MAX;
 
 /// Shared parameter store. Cloneable `Arc<SynthParams>` for UI + audio.
 ///
@@ -51,6 +62,7 @@ pub struct SynthParams {
     cutoff_hz: AtomicU32,
     resonance_ppt: AtomicU32,
     master_gain_ppt: AtomicU32,
+    mix_gain_ppt: [AtomicU32; MIX_GROUP_COUNT],
     enabled: std::sync::atomic::AtomicBool,
 }
 
@@ -65,6 +77,7 @@ impl Default for SynthParams {
             cutoff_hz: AtomicU32::new(6000),
             resonance_ppt: AtomicU32::new(200),   // 0.20
             master_gain_ppt: AtomicU32::new(250), // 0.25 — conservative
+            mix_gain_ppt: std::array::from_fn(|_| AtomicU32::new(1000)),
             enabled: std::sync::atomic::AtomicBool::new(true),
         }
     }
@@ -104,6 +117,9 @@ impl SynthParams {
     pub fn master_gain(&self) -> f32 {
         self.master_gain_ppt.load(Ordering::Relaxed) as f32 / 1000.0
     }
+    pub fn mix_gains(&self) -> [f32; MIX_GROUP_COUNT] {
+        std::array::from_fn(|i| self.mix_gain_ppt[i].load(Ordering::Relaxed) as f32 / 1000.0)
+    }
 
     // ─── Writers (command thread) ────────────────────────────────
 
@@ -138,5 +154,11 @@ impl SynthParams {
     pub fn set_master_gain(&self, v: f32) {
         let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
         self.master_gain_ppt.store(ppt, Ordering::Relaxed);
+    }
+    pub fn set_mix_gain(&self, group: usize, v: f32) {
+        if let Some(gain) = self.mix_gain_ppt.get(group) {
+            let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
+            gain.store(ppt, Ordering::Relaxed);
+        }
     }
 }

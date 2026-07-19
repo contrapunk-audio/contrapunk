@@ -5,6 +5,8 @@
 	import { getPianoKeyColor } from '$lib/theme/colors';
 	import ChordReadout from '$lib/embed/ChordReadout.svelte';
 
+	let { showKeyLabels = true }: { showKeyLabels?: boolean } = $props();
+
 	/** Contrast text color for a key based on which state is driving its fill.
 	 *  Input (teal) + default-cream fills are light → dark label.
 	 *  Harmony (magenta) + borrowed (violet) fills are mid-dark → light label.
@@ -252,7 +254,7 @@
 				{#each ghosts.filter((g) => g.midi === midi) as g (g.id)}
 					<span class="ghost ghost-{g.kind}" onanimationend={() => removeGhost(g.id)}></span>
 				{/each}
-				{#if active && ui.showNoteLabels}
+				{#if active && ui.showNoteLabels && showKeyLabels}
 					<span class="key-label font-code" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
 			</div>
@@ -289,7 +291,7 @@
 				{#each ghosts.filter((g) => g.midi === midi) as g (g.id)}
 					<span class="ghost ghost-{g.kind}" onanimationend={() => removeGhost(g.id)}></span>
 				{/each}
-				{#if active && ui.showNoteLabels}
+				{#if active && ui.showNoteLabels && showKeyLabels}
 					<span class="key-label font-code" style:color={labelColorFor(midi, isBlackKey(midi))}>{midiToName(midi)}</span>
 				{/if}
 			</div>
@@ -331,7 +333,7 @@
 		user-select: none;
 		-webkit-user-select: none;
 		-webkit-tap-highlight-color: transparent;
-		transition: transform 60ms ease-out;
+		transition: filter 60ms ease-out;
 	}
 
 	.black-key {
@@ -351,7 +353,7 @@
 		user-select: none;
 		-webkit-user-select: none;
 		-webkit-tap-highlight-color: transparent;
-		transition: transform 60ms ease-out;
+		transition: filter 60ms ease-out;
 	}
 
 	.key-label {
@@ -394,9 +396,9 @@
 	}
 
 	@keyframes cp-key-press {
-		0%   { transform: scaleY(0.94); filter: brightness(1.4); }
-		60%  { transform: scaleY(0.98); filter: brightness(1.2); }
-		100% { transform: scaleY(1);    filter: brightness(1);   }
+		0%   { filter: brightness(1.4); }
+		60%  { filter: brightness(1.2); }
+		100% { filter: brightness(1); }
 	}
 
 	/* Overlay elements mounted on arrival (issue #53). animationend

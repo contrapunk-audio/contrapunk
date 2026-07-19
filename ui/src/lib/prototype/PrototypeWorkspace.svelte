@@ -1,7 +1,16 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { adapter } from '$lib/adapter';
-	import { engine, KEY_DISPLAY } from '$lib/stores/engine.svelte';
+	import {
+		ALL_KEYS,
+		ALL_MODES,
+		KEY_DISPLAY,
+		SCALE_FAMILIES,
+		engine,
+		type HarmonyModeName,
+		type KeyName,
+		type ScaleModeName
+	} from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
@@ -18,44 +27,46 @@
 	import PerformanceView from '$lib/components/PerformanceView.svelte';
 	import Piano from '$lib/components/Piano.svelte';
 	import PresetManager from '$lib/components/PresetManager.svelte';
-	import SettingsModal from '$lib/components/SettingsModal.svelte';
-	import TransportBar from '$lib/components/TransportBar.svelte';
-	import VoiceGenerationChain from '$lib/components/VoiceGenerationChain.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
+	import ArrangementMixer from './ArrangementMixer.svelte';
 	import ExpressionRoll from './ExpressionRoll.svelte';
 
-	type Tab = 'perform' | 'harmony' | 'ensemble' | 'io';
 	type PerformanceAnchor = 'piano' | 'fretboard' | 'history';
-	type HarmonyDepth = 'simple' | 'advanced';
-	type EnsembleView = 'arrangement' | 'groups' | 'voices';
+	type SetupSection = 'input' | 'harmony' | 'canon' | 'counterpoint' | 'output' | 'presets' | 'advanced';
 
-	const TABS: Array<{ id: Tab; label: string; description: string }> = [
-		{ id: 'perform', label: 'Perform', description: 'Live sound and conversion' },
-		{ id: 'harmony', label: 'Harmony', description: 'Rules and musical context' },
-		{ id: 'ensemble', label: 'Ensemble', description: 'Canon, counterpoint and voices' },
-		{ id: 'io', label: 'I/O', description: 'Sources, routing and sound' }
-	];
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
+	const scaleOptions = SCALE_FAMILIES.flatMap((family) => family.modes);
 
-	let activeTab = $state<Tab>('perform');
-	let performanceAnchor = $state<PerformanceAnchor>('piano');
-	let harmonyDepth = $state<HarmonyDepth>('simple');
-	let ensembleView = $state<EnsembleView>('arrangement');
 	let initialized = $state(false);
 	let initError = $state<string | null>(null);
 	let panicSent = $state(false);
+	let performanceAnchor = $state<PerformanceAnchor>('piano');
+	let setupDialog = $state<HTMLDialogElement>();
+	let setupOpen = $state(false);
+	let setupSection = $state<SetupSection>('input');
+	let companionFocus = $state<'imitative' | 'species'>('imitative');
+	let companionFocusVersion = $state(0);
 
 	let inputLive = $derived(engine.inputNotes.length > 0);
-	let ensembleLive = $derived(
-		engine.harmonyNotes.length > 0 || engine.canonNotes.length > 0 || engine.counterpointNotes.length > 0
-	);
+	let ensembleLive = $derived(engine.harmonyNotes.length > 0 || engine.canonNotes.length > 0 || engine.counterpointNotes.length > 0);
 	let outputLive = $derived(inputLive || ensembleLive);
 	let sourceName = $derived.by(() => {
-		if (midi.selectedInput === VIRTUAL_GUITAR_AUDIO) return 'Guitar';
+		if (midi.selectedInput === VIRTUAL_GUITAR_AUDIO) return 'Guitar Audio';
 		if (midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD) return 'Computer Keys';
 		if (midi.selectedInput === null) return 'No input';
 		return midi.inputs.find((device) => device.index === midi.selectedInput)?.name ?? 'MIDI Controller';
+	});
+	let spread = $derived(engine.octaveMode === 'None' ? 0 : engine.octaveIntensity);
+	let registerOptions = $derived(
+		Array.from({ length: engine.voiceCount }, (_, index) => ({
+			value: index,
+			label: engine.voiceCount <= 4 ? (['Soprano', 'Alto', 'Tenor', 'Bass'][index] ?? `Voice ${index + 1}`) : `Voice ${index + 1}`
+		}))
+	);
+	let quickModes = $derived.by(() => {
+		if (ALL_MODES.some((mode) => mode.name === engine.mode)) return ALL_MODES;
+		return [{ name: engine.mode, label: engine.mode, shortLabel: engine.mode, tooltip: '' }, ...ALL_MODES];
 	});
 
 	onMount(() => {
@@ -74,7 +85,7 @@
 				} catch {
 					/* Surface has no transport. */
 				}
-				if (midi.selectedInput === null || midi.selectedInput === VIRTUAL_GUITAR_AUDIO) {
+				if (midi.selectedInput === null) {
 					midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
 				}
 				if (!engine.isRunning && midi.selectedInput !== null) {
@@ -109,284 +120,258 @@
 		window.setTimeout(() => (panicSent = false), 700);
 	}
 
-	function selectTab(tab: Tab) {
-		activeTab = tab;
+	async function setSpread(value: number) {
+		if (value <= 0.01) {
+			await engine.setOctaveIntensity(0);
+			await engine.setOctaveMode('None');
+			return;
+		}
+		if (engine.octaveMode === 'None') await engine.setOctaveMode('Spread');
+		await engine.setOctaveIntensity(value);
 	}
 
-	function handleTabKey(event: KeyboardEvent, current: Tab) {
-		const currentIndex = TABS.findIndex((tab) => tab.id === current);
-		let next = currentIndex;
-		if (event.key === 'ArrowRight') next = (currentIndex + 1) % TABS.length;
-		else if (event.key === 'ArrowLeft') next = (currentIndex - 1 + TABS.length) % TABS.length;
-		else if (event.key === 'Home') next = 0;
-		else if (event.key === 'End') next = TABS.length - 1;
-		else return;
-		event.preventDefault();
-		activeTab = TABS[next].id;
-		requestAnimationFrame(() => document.getElementById(`prototype-tab-${activeTab}`)?.focus());
+	async function openSetup(section: string = 'input', focus?: string) {
+		setupOpen = true;
+		setupSection = section as SetupSection;
+		if (section === 'canon' || section === 'counterpoint') {
+			companionFocus = section === 'canon' ? 'imitative' : 'species';
+			companionFocusVersion += 1;
+		}
+		if (!setupDialog?.open) setupDialog?.showModal();
+		await tick();
+		const targetSection = section === 'counterpoint' ? 'canon' : section;
+		const target = document.getElementById(`setup-${targetSection}`) ?? (focus ? document.getElementById(focus) : null);
+		target?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+		target?.focus({ preventScroll: true });
 	}
 </script>
 
 <div class="prototype-shell">
-	<SettingsModal />
 	<header class="app-header">
 		<div class="identity">
-			<strong>CONTRAPUNK</strong>
-			<span>NATIVE PROTOTYPE</span>
+			<img src="/logo.svg" alt="Contrapunk" />
 		</div>
 		<div class="signal-path" aria-label="Current signal path">
-			<span class:live={inputLive}><i class="input"></i>{sourceName}</span>
-			<b aria-hidden="true">›</b>
-			<span class:live={ensembleLive}><i class="ensemble"></i>Ensemble</span>
-			<b aria-hidden="true">›</b>
-			<span class:live={outputLive}><i class="output"></i>Output</span>
+			<span class:live={inputLive}><i></i>{sourceName}</span>
+			<b aria-hidden="true">→</b>
+			<span class:live={ensembleLive}><i></i>Ensemble</span>
+			<b aria-hidden="true">→</b>
+			<span class:live={outputLive}><i></i>Output</span>
 		</div>
 		<div class="header-actions">
-			{#if adapter.capabilities.transportControl}<TransportBar />{/if}
-			<button class="route-button" class:running={engine.isRunning} disabled={!engine.isRunning && midi.selectedInput === null} onclick={toggleRouting}>
-				{engine.isRunning ? 'Stop routing' : 'Start routing'}
-			</button>
-			<button class="quiet-button" class:confirmed={panicSent} onclick={panic}>{panicSent ? 'Cleared' : 'Panic'}</button>
-			<button class="quiet-button" onclick={() => ui.openSettings()}>Settings</button>
+			{#if adapter.capabilities.transportControl}
+				<button class="transport-button" aria-label={transport.running ? 'Stop transport' : 'Play transport'} onclick={() => transport.running ? transport.stop() : transport.play()}>{transport.running ? '■' : '▶'}</button>
+				<label class="tempo"><span>BPM</span><input type="number" min="20" max="400" value={transport.bpm} onchange={(event) => transport.setBpm(Number(event.currentTarget.value))} /></label>
+			{/if}
+			<button class:running={engine.isRunning} disabled={!engine.isRunning && midi.selectedInput === null} onclick={toggleRouting}>{engine.isRunning ? 'Routing on' : 'Start routing'}</button>
+			<button class:confirmed={panicSent} onclick={panic}>{panicSent ? 'Cleared' : 'Panic'}</button>
+			<button class="setup-button" onclick={() => openSetup('input')}>Setup</button>
 		</div>
 	</header>
 
-	<div class="body">
-		<div class="primary-nav" role="tablist" aria-label="Prototype sections">
-			{#each TABS as tab}
-				<button
-					id={`prototype-tab-${tab.id}`}
-					role="tab"
-					aria-selected={activeTab === tab.id}
-					aria-controls={`prototype-panel-${tab.id}`}
-					tabindex={activeTab === tab.id ? 0 : -1}
-					class:active={activeTab === tab.id}
-					onclick={() => selectTab(tab.id)}
-					onkeydown={(event) => handleTabKey(event, tab.id)}
-				>
-					<strong>{tab.label}</strong>
-					<span>{tab.description}</span>
-				</button>
-			{/each}
-			<div class="session-summary">
-				<span>KEY</span><strong>{KEY_DISPLAY[engine.key]}</strong>
-				<span>SCALE</span><strong>{engine.scaleMode}</strong>
-				<span>MODE</span><strong>{engine.mode}</strong>
+	<main class="performance-body">
+		{#if initError}
+			<div class="notice error" role="alert">{initError}</div>
+		{:else if !initialized}
+			<div class="notice">Initializing the real Contrapunk engine…</div>
+		{:else}
+			<section class="quick-controls" aria-label="Performance controls">
+				<label><span>KEY</span><select value={engine.key} onchange={(event) => engine.setKey(event.currentTarget.value as KeyName)}>{#each ALL_KEYS as key}<option value={key}>{KEY_DISPLAY[key]}</option>{/each}</select></label>
+				<label><span>SCALE</span><select value={engine.scaleMode} onchange={(event) => engine.setScaleMode(event.currentTarget.value as ScaleModeName)}>{#each scaleOptions as option}<option value={option.name}>{option.label}</option>{/each}</select></label>
+				<label><span>HARMONY</span><select value={engine.mode} onchange={(event) => engine.setMode(event.currentTarget.value as HarmonyModeName)}>{#each quickModes as mode}<option value={mode.name}>{mode.label}</option>{/each}</select></label>
+				<label><span>VOICES</span><select value={engine.voiceCount} onchange={(event) => engine.setVoiceCount(Number(event.currentTarget.value))}>{#each Array.from({ length: 8 }, (_, index) => index + 1) as count}<option value={count}>{count}</option>{/each}</select></label>
+				<label><span>YOUR REGISTER</span><select value={engine.voicePosition} onchange={(event) => engine.setVoicePosition(Number(event.currentTarget.value))}>{#each registerOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
+				<label class="spread"><span>SPREAD <output>{Math.round(spread * 100)}</output></span><input type="range" min="0" max="1" step="0.01" value={spread} oninput={(event) => setSpread(Number(event.currentTarget.value))} /></label>
+			</section>
+
+			<div class="live-grid">
+				<ExpressionRoll />
+				<div class="live-side">
+					<div class="active-strip"><ActiveNotes /></div>
+					<section class="instrument" aria-labelledby="instrument-title">
+						<header>
+							<h2 id="instrument-title">Notes</h2>
+							<div class="segmented" role="group" aria-label="Instrument visualization">
+								<button class:active={performanceAnchor === 'piano'} onclick={() => (performanceAnchor = 'piano')}>Piano</button>
+								<button class:active={performanceAnchor === 'fretboard'} onclick={() => (performanceAnchor = 'fretboard')}>Fretboard</button>
+								<button class:active={performanceAnchor === 'history'} onclick={() => (performanceAnchor = 'history')}>History</button>
+							</div>
+						</header>
+						<div class="instrument-stage">
+							{#if performanceAnchor === 'piano'}<Piano showKeyLabels={false} />
+							{:else if performanceAnchor === 'fretboard'}<Fretboard />
+							{:else}<HistoryStrip />{/if}
+						</div>
+					</section>
+				</div>
+			</div>
+			<ArrangementMixer {openSetup} />
+		{/if}
+	</main>
+
+	<dialog class="setup-dialog" bind:this={setupDialog} aria-labelledby="setup-title" onclose={() => (setupOpen = false)}>
+		<div class="dialog-frame">
+			<header class="dialog-header">
+				<div><p>CONTRAPUNK</p><h1 id="setup-title">Setup</h1></div>
+				<button aria-label="Close setup" onclick={() => setupDialog?.close()}>Close</button>
+			</header>
+			<div class="dialog-body">
+				<nav aria-label="Setup sections">
+					<button class:active={setupSection === 'input'} onclick={() => openSetup('input')}>01 Input</button>
+					<button class:active={setupSection === 'harmony'} onclick={() => openSetup('harmony')}>02 Harmony</button>
+					<button class:active={setupSection === 'canon' || setupSection === 'counterpoint'} onclick={() => openSetup('canon')}>03 Canon + Counterpoint</button>
+					<button class:active={setupSection === 'output'} onclick={() => openSetup('output')}>04 Output + Sound</button>
+					<button class:active={setupSection === 'presets'} onclick={() => openSetup('presets')}>05 Presets + Voices</button>
+					<button class:active={setupSection === 'advanced'} onclick={() => openSetup('advanced')}>06 Advanced</button>
+				</nav>
+				<div class="setup-scroll">
+					<section id="setup-input" tabindex="-1"><div class="section-heading"><span>01</span><h2>Input</h2></div>{#if adapter.capabilities.inputSourcePicker}<InputPanel />{:else}<div class="notice">The host owns input selection.</div>{/if}</section>
+					<section id="setup-harmony" tabindex="-1"><div class="section-heading"><span>02</span><h2>Harmony</h2></div><div id="harmony-controls">{#if setupOpen}<PerformanceView midiLearnEnabled={setupSection === 'harmony' && midi.selectedInput !== VIRTUAL_GUITAR_AUDIO} />{/if}</div></section>
+					<section id="setup-canon" tabindex="-1"><div class="section-heading"><span>03</span><h2>Canon + Counterpoint</h2></div>{#if adapter.capabilities.companionLanes}<div id="canon-controls"><CompanionPanel focusGroup={companionFocus} focusVersion={companionFocusVersion} /></div>{:else}<div class="notice">Companion lanes are unavailable on this surface.</div>{/if}</section>
+					<section id="setup-output" tabindex="-1"><div class="section-heading"><span>04</span><h2>Output + Sound</h2></div><div id="output-routing"><OutputPanel /></div></section>
+					<section id="setup-presets" tabindex="-1"><div class="section-heading"><span>05</span><h2>Presets + Voices</h2></div><EnsemblePresetBar /><div class="preset-grid"><PresetManager /><VoicesPanel /></div></section>
+					<section id="setup-advanced" tabindex="-1">
+						<div class="section-heading"><span>06</span><h2>Advanced</h2></div>
+						<div class="interface-settings" aria-label="Interface preferences">
+							<label><span>Interface scale</span><input type="range" min="0.75" max="2" step="0.05" value={ui.uiScale} oninput={(event) => ui.setUiScale(Number(event.currentTarget.value))} /><output>{Math.round(ui.uiScale * 100)}%</output></label>
+							<label><span>Text scale</span><input type="range" min="0.75" max="1.5" step="0.05" value={ui.fontScale} oninput={(event) => ui.setFontScale(Number(event.currentTarget.value))} /><output>{Math.round(ui.fontScale * 100)}%</output></label>
+							<label class="check"><input type="checkbox" checked={ui.showNoteLabels} onchange={(event) => ui.setShowNoteLabels(event.currentTarget.checked)} /><span>Show note labels</span></label>
+							<label class="check"><input type="checkbox" checked={ui.noteLingering} onchange={(event) => ui.setNoteLingering(event.currentTarget.checked)} /><span>Released-note trail</span></label>
+							<label class="check"><input type="checkbox" checked={ui.animationsEnabled} onchange={() => ui.toggleAnimations()} /><span>Interface motion</span></label>
+						</div>
+						<ControlPanel />
+					</section>
+				</div>
 			</div>
 		</div>
-
-		<main class="workspace">
-			{#if initError}
-				<div class="notice error" role="alert">{initError}</div>
-			{:else if !initialized}
-				<div class="notice">Initializing the real Contrapunk engine…</div>
-			{:else if activeTab === 'perform'}
-				<div id="prototype-panel-perform" role="tabpanel" aria-labelledby="prototype-tab-perform" class="perform-page">
-					<ExpressionRoll />
-					<div class="active-strip"><ActiveNotes /></div>
-					<div class="section-toolbar">
-						<div><p class="eyebrow">INSTRUMENT VIEW</p><h2>Where the sound lands</h2></div>
-						<div class="segmented" role="group" aria-label="Instrument visualization">
-							<button class:active={performanceAnchor === 'piano'} onclick={() => (performanceAnchor = 'piano')}>Piano</button>
-							<button class:active={performanceAnchor === 'fretboard'} onclick={() => (performanceAnchor = 'fretboard')}>Fretboard</button>
-							<button class:active={performanceAnchor === 'history'} onclick={() => (performanceAnchor = 'history')}>History</button>
-						</div>
-					</div>
-					<div class="instrument-stage">
-						{#if performanceAnchor === 'piano'}<Piano />
-						{:else if performanceAnchor === 'fretboard'}<Fretboard />
-						{:else}<HistoryStrip />{/if}
-					</div>
-				</div>
-			{:else if activeTab === 'harmony'}
-				<div id="prototype-panel-harmony" role="tabpanel" aria-labelledby="prototype-tab-harmony" class="configuration harmony-page">
-					<div class="page-heading">
-						<div><p class="eyebrow">MUSICAL RULES</p><h1>Harmony</h1><p>Choose the tonal context and how supporting voices move.</p></div>
-						<div class="segmented" role="group" aria-label="Harmony control depth">
-							<button class:active={harmonyDepth === 'simple'} onclick={() => (harmonyDepth = 'simple')}>Performance</button>
-							<button class:active={harmonyDepth === 'advanced'} onclick={() => (harmonyDepth = 'advanced')}>Detailed</button>
-						</div>
-					</div>
-					<div class="harmony-grid">
-						<div class="surface-card controls-card">
-							{#if harmonyDepth === 'simple'}<PerformanceView />{:else}<ControlPanel />{/if}
-						</div>
-						<aside class="surface-card presets-card"><PresetManager /></aside>
-					</div>
-				</div>
-			{:else if activeTab === 'ensemble'}
-				<div id="prototype-panel-ensemble" role="tabpanel" aria-labelledby="prototype-tab-ensemble" class="configuration ensemble-page">
-					<div class="page-heading">
-						<div><p class="eyebrow">GENERATED PARTS</p><h1>Ensemble</h1><p>Arrange harmonic support, imitation and independent counterpoint.</p></div>
-						<div class="segmented" role="group" aria-label="Ensemble section">
-							<button class:active={ensembleView === 'arrangement'} onclick={() => (ensembleView = 'arrangement')}>Arrangement</button>
-							<button class:active={ensembleView === 'groups'} onclick={() => (ensembleView = 'groups')}>Counterpoint</button>
-							<button class:active={ensembleView === 'voices'} onclick={() => (ensembleView = 'voices')}>Voice Library</button>
-						</div>
-					</div>
-					<EnsemblePresetBar />
-					<div class="surface-card ensemble-surface">
-						{#if ensembleView === 'arrangement'}
-							<VoiceGenerationChain />
-							<div class="arrangement-summary">
-								<div><span>MELODY</span><strong>Channel 1</strong></div>
-								<div><span>HARMONY</span><strong>Channels 2–5</strong></div>
-								<div><span>CANON</span><strong>Channel 6</strong></div>
-								<div><span>COUNTERPOINT</span><strong>Channel 7</strong></div>
-							</div>
-						{:else if ensembleView === 'groups'}
-							{#if adapter.capabilities.companionLanes}<CompanionPanel />{:else}<div class="notice">Companion lanes are unavailable on this surface.</div>{/if}
-						{:else}<VoicesPanel />{/if}
-					</div>
-				</div>
-			{:else}
-				<div id="prototype-panel-io" role="tabpanel" aria-labelledby="prototype-tab-io" class="configuration io-page">
-					<div class="page-heading">
-						<div><p class="eyebrow">SIGNAL CONFIGURATION</p><h1>Input & output</h1><p>Select what you play, where each voice goes, and how it sounds.</p></div>
-					</div>
-					<div class="io-grid">
-						<section class="surface-card io-column"><h2>Input</h2>{#if adapter.capabilities.inputSourcePicker}<InputPanel />{:else}<div class="notice">The host owns input selection.</div>{/if}</section>
-						<section class="surface-card io-column"><h2>Output & sound</h2><OutputPanel /></section>
-					</div>
-				</div>
-			{/if}
-		</main>
-	</div>
+	</dialog>
 </div>
 
 <style>
+	:global(html), :global(body) { background: #050505 !important; }
 	.prototype-shell {
-		--proto-bg: #0d0d0f;
-		--proto-panel: #131316;
-		--proto-raised: #18181b;
-		--proto-line: #2c2c31;
-		--proto-line-strong: #494950;
-		--proto-text: #f1f1f2;
-		--proto-muted: #929299;
-		--proto-dim: #5b5b63;
-		--color-bg-deep: var(--proto-bg);
-		--color-bg-panel: var(--proto-panel);
-		--color-bg-card: var(--proto-panel);
-		--color-widget-bg: var(--proto-raised);
-		--color-widget-inactive: #242428;
-		--color-border: var(--proto-line);
-		--color-border-active: var(--proto-line-strong);
-		--color-text-primary: var(--proto-text);
-		--color-text-secondary: var(--proto-muted);
-		--color-text-dim: var(--proto-dim);
-		--color-accent-cyan: #c6c6ca;
-		--color-accent-cyan-dim: #707078;
-		--color-accent-magenta: #e0e0e2;
-		--color-accent-magenta-dim: #55555d;
-		--color-accent-teal: #8d8d94;
-		--color-accent-gold: #d0d0d3;
-		--color-accent-amber: #a4a4aa;
-		--color-piano-input: #42e8c4;
-		--color-piano-harmony: #ec6f9e;
-		--color-piano-borrowed: #a98eea;
-		--glow-cyan: none;
-		--glow-teal: none;
-		--glow-magenta: none;
-		display: grid;
-		grid-template-rows: 52px minmax(0, 1fr);
+		--proto-bg: #050505;
+		--proto-panel: #0a0a0a;
+		--proto-surface: #0e0e0e;
+		--proto-hover: #171717;
+		--proto-line: #292929;
+		--proto-line-strong: #4a4a4a;
+		--proto-text: #f2f2f2;
+		--proto-muted: #a2a2a2;
+		--proto-dim: #666;
+		--color-bg-deep: #050505;
+		--color-bg-base: #090909;
+		--color-bg-panel: #0d0d0d;
+		--color-widget-bg: #111;
+		--color-widget-inactive: #181818;
+		--color-accent-magenta: #fff;
+		--color-accent-magenta-dim: #aaa;
+		--color-accent-cyan: #fff;
+		--color-accent-cyan-dim: #aaa;
+		--color-accent-teal: #ddd;
+		--color-accent-pink: #ddd;
+		--color-accent-amber: #bbb;
+		--color-accent-gold: #fff;
+		--color-piano-input: #4fe8c3;
+		--color-piano-harmony: #ff2e88;
+		--color-piano-borrowed: #8a5cff;
+		--color-piano-in-scale: #222;
+		--color-text-primary: #f2f2f2;
+		--color-text-secondary: #aaa;
+		--color-text-dim: #666;
+		--color-border: #292929;
+		--color-border-active: #fff;
 		height: 100vh;
-		width: 100vw;
 		overflow: hidden;
 		background: var(--proto-bg);
 		color: var(--proto-text);
-		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-		-webkit-font-smoothing: antialiased;
-		text-rendering: optimizeLegibility;
+		font-family: var(--font-grotesk);
 	}
-	.app-header { display: grid; grid-template-columns: auto minmax(220px, 1fr) auto; align-items: center; gap: 18px; padding: 0 14px; border-bottom: 1px solid var(--proto-line); background: #101012; }
-	.identity { display: flex; align-items: baseline; gap: 9px; white-space: nowrap; }
-	.identity strong { font-size: 11px; letter-spacing: .18em; }
-	.identity span { color: var(--proto-muted); font-size: 9px; letter-spacing: .09em; }
-	.signal-path { display: flex; align-items: center; justify-content: center; gap: 9px; min-width: 0; color: var(--proto-dim); font-size: 10px; }
-	.signal-path span { display: inline-flex; align-items: center; gap: 5px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.signal-path b { color: var(--proto-dim); font-weight: 400; }
-	.signal-path i { width: 6px; height: 6px; background: var(--proto-dim); border-radius: 50%; }
+	.app-header { position: relative; z-index: 20; display: grid; height: 52px; grid-template-columns: minmax(150px, .8fr) minmax(240px, 1fr) auto; align-items: center; gap: 18px; padding: 0 14px; border-bottom: 1px solid var(--proto-line-strong); background: rgba(5, 5, 5, .96); }
+	.identity { display: flex; align-items: center; gap: 10px; }
+	.identity img { width: 28px; height: 34px; object-fit: contain; }
+	.signal-path { display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--proto-dim); font-size: 10px; }
+	.signal-path span { display: inline-flex; align-items: center; gap: 5px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.signal-path i { width: 5px; height: 5px; border: 1px solid currentColor; border-radius: 50%; }
 	.signal-path span.live { color: var(--proto-text); }
-	.signal-path span.live i.input { background: #42e8c4; }
-	.signal-path span.live i.ensemble { background: #ec6f9e; }
-	.signal-path span.live i.output { background: #f1c75b; }
+	.signal-path span.live i { background: currentColor; }
+	.signal-path b { color: var(--proto-line-strong); font-family: var(--font-code); }
 	.header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
-	.header-actions :global(.transport-bar) { filter: grayscale(1); }
-	button { min-height: 28px; border: 1px solid var(--proto-line-strong); border-radius: 0; background: var(--proto-raised); color: var(--proto-text); font: 600 10px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; cursor: pointer; }
-	button:hover { border-color: #7c7c84; }
-	button:focus-visible { outline: 2px solid #f1f1f2; outline-offset: 2px; }
-	button:disabled { cursor: not-allowed; opacity: .42; }
-	.route-button, .quiet-button { padding: 7px 10px; }
-	.route-button.running { background: var(--proto-text); color: var(--proto-bg); border-color: var(--proto-text); }
-	.quiet-button.confirmed { background: var(--proto-text); color: var(--proto-bg); }
-	.body { min-height: 0; display: grid; grid-template-columns: 188px minmax(0, 1fr); }
-	.primary-nav { min-height: 0; display: flex; flex-direction: column; padding: 10px 8px; border-right: 1px solid var(--proto-line); background: #101012; }
-	.primary-nav > button { display: grid; gap: 4px; min-height: 56px; padding: 9px 10px; border-color: transparent; background: transparent; text-align: left; }
-	.primary-nav > button strong { font-size: 12px; font-weight: 650; }
-	.primary-nav > button span { overflow: hidden; color: var(--proto-muted); font-size: 9px; font-weight: 450; text-overflow: ellipsis; white-space: nowrap; }
-	.primary-nav > button.active { border-color: var(--proto-line-strong); background: var(--proto-raised); }
-	.primary-nav > button.active::before { position: absolute; }
-	.session-summary { display: grid; grid-template-columns: auto 1fr; gap: 7px 8px; margin-top: auto; padding: 11px 9px; border-top: 1px solid var(--proto-line); }
-	.session-summary span { color: var(--proto-muted); font-size: 8px; letter-spacing: .1em; }
-	.session-summary strong { overflow: hidden; color: var(--proto-text); font: 500 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-	.workspace { min-width: 0; min-height: 0; overflow: auto; padding: 12px; background: var(--proto-bg); }
-	.perform-page, .configuration { display: grid; gap: 10px; max-width: 1440px; margin: 0 auto; }
-	.notice { padding: 18px; border: 1px solid var(--proto-line); color: var(--proto-muted); background: var(--proto-panel); font-size: 12px; }
-	.notice.error { color: var(--proto-text); border-style: dashed; }
-	.active-strip { border: 1px solid var(--proto-line); background: var(--proto-panel); }
-	.section-toolbar, .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 2px; }
-	.eyebrow { margin: 0 0 3px; color: var(--proto-muted); font-size: 9px; font-weight: 700; letter-spacing: .16em; }
-	h1, h2 { margin: 0; color: var(--proto-text); font-weight: 650; }
-	h1 { font-size: 21px; letter-spacing: -.02em; }
-	h2 { font-size: 14px; }
-	.page-heading p:last-child { margin: 5px 0 0; color: var(--proto-muted); font-size: 11px; }
-	.segmented { display: flex; gap: 0; }
-	.segmented button { padding: 7px 11px; color: var(--proto-muted); border-color: var(--proto-line); background: transparent; }
-	.segmented button + button { border-left: 0; }
-	.segmented button.active { color: var(--proto-bg); background: var(--proto-text); border-color: var(--proto-text); }
-	.instrument-stage, .surface-card { border: 1px solid var(--proto-line); background: var(--proto-panel); }
-	.instrument-stage { min-height: 120px; overflow: hidden; }
-	.harmony-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, .7fr); gap: 10px; align-items: start; }
-	.controls-card, .presets-card { min-width: 0; padding: 9px; }
-	.presets-card { position: sticky; top: 0; }
-	.ensemble-surface { min-height: 280px; padding: 9px; overflow: auto; }
-	.arrangement-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 9px; border: 1px solid var(--proto-line); }
-	.arrangement-summary > div { padding: 9px; border-right: 1px solid var(--proto-line); }
-	.arrangement-summary > div:last-child { border-right: 0; }
-	.arrangement-summary span { display: block; margin-bottom: 4px; color: var(--proto-muted); font-size: 8px; letter-spacing: .1em; }
-	.arrangement-summary strong { font: 500 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
-	.io-grid { display: grid; grid-template-columns: minmax(320px, .8fr) minmax(420px, 1.2fr); gap: 10px; align-items: start; }
-	.io-column { min-width: 0; overflow: hidden; }
-	.io-column > h2 { padding: 10px 12px; border-bottom: 1px solid var(--proto-line); }
-	.configuration {
-		--color-piano-input: #bcbcc1;
-		--color-piano-harmony: #c6c6cb;
-		--color-piano-borrowed: #aaaab0;
-		filter: grayscale(1);
-	}
-	.prototype-shell :global(.particles-canvas) { display: none !important; }
-	.prototype-shell :global(.scale-overlay) { display: none !important; }
-	.prototype-shell :global(.pixel-card),
-	.prototype-shell :global(.card) { box-shadow: none !important; }
-	.prototype-shell :global(.font-ui) { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; font-weight: 500; }
-	.prototype-shell :global(.font-code) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; }
-	@media (max-width: 1020px) {
-		.app-header { grid-template-columns: 1fr auto; }
+	.header-actions button, .dialog-header button { min-height: 30px; padding: 0 10px; border: 1px solid var(--proto-line-strong); background: transparent; color: var(--proto-text); font: 650 10px var(--font-grotesk); }
+	.header-actions button:hover, .dialog-header button:hover { border-color: var(--proto-text); background: var(--proto-hover); }
+	.header-actions button.running, .header-actions button.confirmed, .header-actions .setup-button { background: var(--proto-text); color: var(--proto-bg); }
+	.header-actions button:disabled { opacity: .35; }
+	.transport-button { width: 31px; padding: 0 !important; font-family: var(--font-code) !important; }
+	.tempo { display: flex; height: 30px; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid var(--proto-line); color: var(--proto-muted); font: 8px var(--font-code); }
+	.tempo input { width: 39px; border: 0; background: transparent; color: var(--proto-text); font: 10px var(--font-code); }
+	.performance-body { box-sizing: border-box; display: grid; width: min(1480px, calc(100% - 20px)); height: calc(100vh - 52px); grid-template-rows: 46px minmax(0, 1fr) 220px; margin: 0 auto; gap: 8px; overflow: hidden; padding: 8px 0; }
+	.quick-controls { display: grid; grid-template-columns: .7fr 1.2fr 1.3fr .55fr .9fr 1fr; border: 1px solid var(--proto-line); background: var(--proto-panel); }
+	.quick-controls label { display: grid; min-width: 0; gap: 3px; padding: 6px 10px; border-right: 1px solid var(--proto-line); }
+	.quick-controls label:last-child { border-right: 0; }
+	.quick-controls span { color: var(--proto-muted); font: 700 8px var(--font-code); letter-spacing: .1em; }
+	.quick-controls select { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--proto-text); font: 600 11px var(--font-grotesk); }
+	.quick-controls .spread span { display: flex; justify-content: space-between; }
+	.quick-controls input[type='range'] { width: 100%; accent-color: var(--proto-text); }
+	.live-grid { display: grid; min-height: 0; grid-template-columns: minmax(0, 1.55fr) minmax(380px, 1fr); gap: 8px; }
+	.live-side { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
+	.active-strip { --color-accent-cyan: #33ddff; padding: 8px 10px; border: 1px solid var(--proto-line); background: var(--proto-panel); }
+	.instrument { display: grid; min-height: 0; grid-template-rows: 49px minmax(0, 1fr); border: 1px solid var(--proto-line); background: var(--proto-panel); }
+	.instrument > header { display: flex; min-height: 49px; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--proto-line); }
+	.instrument h2 { margin: 0; font-size: 14px; font-weight: 650; }
+	.segmented { display: flex; border: 1px solid var(--proto-line-strong); }
+	.segmented button { min-height: 28px; padding: 0 10px; border: 0; border-right: 1px solid var(--proto-line-strong); background: transparent; color: var(--proto-muted); font: 600 9px var(--font-grotesk); }
+	.segmented button:last-child { border-right: 0; }
+	.segmented button.active { background: var(--proto-text); color: var(--proto-bg); }
+	.instrument-stage { min-height: 0; padding: 8px; overflow: hidden; }
+	.notice { padding: 18px; border: 1px solid var(--proto-line); background: var(--proto-panel); color: var(--proto-muted); font-size: 12px; }
+	.notice.error { border-color: #777; color: #fff; }
+	.setup-dialog { width: calc(100vw - 16px); max-width: none; height: calc(100vh - 16px); max-height: none; padding: 0; border: 1px solid #777; background: var(--proto-bg); color: var(--proto-text); font-family: var(--font-grotesk); filter: grayscale(1); }
+	.setup-dialog::backdrop { background: rgba(0, 0, 0, .82); backdrop-filter: blur(5px); }
+	.dialog-frame { display: grid; height: 100%; grid-template-rows: 62px 1fr; }
+	.dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--proto-line-strong); }
+	.dialog-header p { margin: 0 0 2px; color: var(--proto-muted); font: 700 8px var(--font-code); letter-spacing: .16em; }
+	.dialog-header h1 { margin: 0; font-size: 21px; font-weight: 600; }
+	.dialog-body { display: grid; min-height: 0; grid-template-columns: 160px 1fr; }
+	.dialog-body > nav { display: flex; flex-direction: column; padding: 10px; border-right: 1px solid var(--proto-line); background: #080808; }
+	.dialog-body > nav button { min-height: 42px; padding: 0 9px; border: 0; border-bottom: 1px solid var(--proto-line); background: transparent; color: var(--proto-muted); font: 600 10px var(--font-grotesk); text-align: left; }
+	.dialog-body > nav button:hover, .dialog-body > nav button.active { background: var(--proto-hover); color: var(--proto-text); }
+	.dialog-body > nav button.active { box-shadow: inset 2px 0 var(--proto-text); }
+	.setup-scroll { min-width: 0; overflow-y: auto; scroll-behavior: smooth; }
+	.setup-scroll > section { min-height: 300px; padding: 28px; border-bottom: 1px solid var(--proto-line-strong); scroll-margin-top: 0; outline: none; }
+	.setup-scroll > section:focus .section-heading { box-shadow: inset 2px 0 var(--proto-text); }
+	.section-heading { display: flex; align-items: flex-start; gap: 12px; margin: -4px 0 24px; padding: 4px 0 14px; border-bottom: 1px solid var(--proto-line); }
+	.section-heading > span { color: var(--proto-dim); font: 11px var(--font-code); }
+	.section-heading h2 { margin: 0; font-size: 18px; font-weight: 600; }
+	.preset-grid { display: grid; grid-template-columns: minmax(260px, .7fr) minmax(420px, 1.3fr); gap: 12px; margin-top: 12px; }
+	.interface-settings { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px; margin-bottom: 16px; padding: 12px; border: 1px solid var(--proto-line); }
+	.interface-settings label { display: grid; grid-template-columns: 110px 1fr 42px; align-items: center; gap: 8px; color: var(--proto-muted); font-size: 10px; }
+	.interface-settings input[type='range'] { width: 100%; accent-color: var(--proto-text); }
+	.interface-settings output { color: var(--proto-text); font: 9px var(--font-code); text-align: right; }
+	.interface-settings .check { display: flex; min-height: 28px; align-items: center; }
+	.interface-settings input[type='checkbox'] { accent-color: var(--proto-text); }
+	.setup-dialog :global(.companion-root > .header) { align-items: flex-start; flex-direction: column; gap: 12px; padding: 12px 14px; }
+	.setup-dialog :global(.companion-root > .header .header-controls) { width: 100%; flex-wrap: wrap; justify-content: flex-start; gap: 10px 14px; }
+	.setup-dialog :global(.companion-root .header-left .subtitle),
+	.setup-dialog :global(.companion-root .lane-subtitle),
+	.setup-dialog :global(.companion-root .footer-hint) { display: none; }
+	.setup-dialog :global(.companion-root .body-stack) { gap: 12px; padding: 12px; }
+	.setup-dialog :global(.companion-root .lane-header) { grid-template-columns: 1fr; gap: 10px; padding: 10px 12px; }
+	.setup-dialog :global(.companion-root .lane-actions) { justify-self: start; flex-wrap: wrap; gap: 8px; }
+	@media (max-width: 920px) {
+		.app-header { grid-template-columns: auto 1fr; }
 		.signal-path { display: none; }
-		.header-actions :global(.transport-bar) { display: none; }
-		.harmony-grid, .io-grid { grid-template-columns: 1fr; }
-		.presets-card { position: static; }
+		.quick-controls { grid-template-columns: repeat(3, 1fr); }
+		.quick-controls label:nth-child(3) { border-right: 0; }
+		.quick-controls label:nth-child(-n+3) { border-bottom: 1px solid var(--proto-line); }
+		.dialog-body { grid-template-columns: 140px 1fr; }
+		.preset-grid { grid-template-columns: 1fr; }
 	}
-	@media (max-width: 760px) {
-		.prototype-shell { grid-template-rows: auto minmax(0, 1fr); }
-		.app-header { padding: 8px; }
-		.identity span, .quiet-button:last-child { display: none; }
-		.body { grid-template-columns: 1fr; }
-		.primary-nav { display: grid; grid-template-columns: repeat(4, 1fr); padding: 4px; border-right: 0; border-bottom: 1px solid var(--proto-line); }
-		.primary-nav > button { min-height: 40px; padding: 6px; text-align: center; }
-		.primary-nav > button span, .session-summary { display: none; }
-		.workspace { padding: 8px; }
-		.page-heading, .section-toolbar { align-items: flex-start; flex-direction: column; }
-		.arrangement-summary { grid-template-columns: repeat(2, 1fr); }
+	@media (max-width: 680px) {
+		.app-header { position: static; grid-template-columns: 1fr; padding: 8px; }
+		.header-actions { justify-content: flex-start; flex-wrap: wrap; }
+		.quick-controls { grid-template-columns: repeat(2, 1fr); }
+		.quick-controls label { border-bottom: 1px solid var(--proto-line); }
+		.dialog-body { grid-template-columns: 1fr; }
+		.dialog-body > nav { display: grid; grid-template-columns: repeat(3, 1fr); border-right: 0; border-bottom: 1px solid var(--proto-line); }
 	}
 </style>

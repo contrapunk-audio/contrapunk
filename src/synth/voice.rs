@@ -5,7 +5,7 @@ use std::f32::consts::TAU;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
-use super::params::{SynthEvent, SynthParams, Waveform};
+use super::params::{SynthEvent, SynthParams, Waveform, MIX_GROUP_ALL};
 use crate::chain::{AudioBlock, MidiBlockEvent};
 
 const MAX_VOICES: usize = 8;
@@ -24,6 +24,7 @@ struct Voice {
     active: bool,
     note: u8,
     velocity: f32,
+    mix_group: u8,
     phase: f32,
     phase_inc: f32,
     env: f32,
@@ -40,6 +41,7 @@ impl Voice {
             active: false,
             note: 0,
             velocity: 0.0,
+            mix_group: 0,
             phase: 0.0,
             phase_inc: 0.0,
             env: 0.0,
@@ -49,10 +51,11 @@ impl Voice {
         }
     }
 
-    fn trigger(&mut self, note: u8, velocity: u8, sample_rate: f32, age: u64) {
+    fn trigger(&mut self, note: u8, velocity: u8, mix_group: u8, sample_rate: f32, age: u64) {
         self.active = true;
         self.note = note;
         self.velocity = (velocity as f32 / 127.0).clamp(0.0, 1.0);
+        self.mix_group = mix_group;
         self.phase = 0.0;
         self.phase_inc = midi_to_freq(note) * TAU / sample_rate;
         self.env = 0.0;
@@ -89,14 +92,18 @@ impl Synth {
         }
     }
 
-    fn note_on(&mut self, note: u8, velocity: u8) {
+    fn note_on(&mut self, note: u8, velocity: u8, mix_group: u8) {
         self.note_counter = self.note_counter.wrapping_add(1);
         let age = self.note_counter;
 
         // Retrigger existing voice if same note.
         for v in self.voices.iter_mut() {
-            if v.active && v.note == note && v.stage != EnvStage::Release {
-                v.trigger(note, velocity, self.sample_rate, age);
+            if v.active
+                && v.note == note
+                && v.mix_group == mix_group
+                && v.stage != EnvStage::Release
+            {
+                v.trigger(note, velocity, mix_group, self.sample_rate, age);
                 return;
             }
         }
@@ -112,12 +119,16 @@ impl Synth {
                 .map(|(i, _)| i)
                 .unwrap_or(0),
         };
-        self.voices[idx].trigger(note, velocity, self.sample_rate, age);
+        self.voices[idx].trigger(note, velocity, mix_group, self.sample_rate, age);
     }
 
-    fn note_off(&mut self, note: u8) {
+    fn note_off(&mut self, note: u8, mix_group: u8) {
         for v in self.voices.iter_mut() {
-            if v.active && v.note == note && v.stage != EnvStage::Release {
+            if v.active
+                && v.note == note
+                && (mix_group == MIX_GROUP_ALL || v.mix_group == mix_group)
+                && v.stage != EnvStage::Release
+            {
                 v.release();
             }
         }
@@ -132,8 +143,12 @@ impl Synth {
     fn process_events(&mut self) {
         while let Ok(ev) = self.events.try_recv() {
             match ev {
-                SynthEvent::NoteOn { note, velocity } => self.note_on(note, velocity),
-                SynthEvent::NoteOff { note } => self.note_off(note),
+                SynthEvent::NoteOn {
+                    note,
+                    velocity,
+                    mix_group,
+                } => self.note_on(note, velocity, mix_group),
+                SynthEvent::NoteOff { note, mix_group } => self.note_off(note, mix_group),
                 SynthEvent::AllNotesOff => self.all_notes_off(),
             }
         }
@@ -173,6 +188,7 @@ impl Synth {
         let sustain = self.params.sustain_level();
         let release = self.params.release_secs().max(0.0005);
         let master = self.params.master_gain();
+        let mix_gains = self.params.mix_gains();
         let cutoff = self.params.cutoff_hz();
 
         // Per-sample delta for envelope linear ramps.
@@ -233,7 +249,8 @@ impl Synth {
                 }
 
                 // --- Low-pass filter (one-pole) ---
-                let pre = osc * v.env * v.velocity;
+                let role_gain = mix_gains.get(v.mix_group as usize).copied().unwrap_or(1.0);
+                let pre = osc * v.env * v.velocity * role_gain;
                 v.lp_state += alpha * (pre - v.lp_state);
 
                 mix += v.lp_state;
@@ -270,8 +287,8 @@ impl AudioBlock for Synth {
         // applied immediately. This bypasses the mpsc queue used by
         // the router thread path; both are valid entry points.
         match event {
-            MidiBlockEvent::NoteOn { note, velocity } => self.note_on(note, velocity),
-            MidiBlockEvent::NoteOff { note } => self.note_off(note),
+            MidiBlockEvent::NoteOn { note, velocity } => self.note_on(note, velocity, 0),
+            MidiBlockEvent::NoteOff { note } => self.note_off(note, MIX_GROUP_ALL),
             MidiBlockEvent::AllNotesOff => self.all_notes_off(),
             // Legacy synth has no sustain-pedal modelling; the router
             // thread historically held the keys until the user released
@@ -348,6 +365,7 @@ mod tests {
         tx.send(SynthEvent::NoteOn {
             note: 60,
             velocity: 100,
+            mix_group: 0,
         })
         .unwrap();
 
@@ -370,12 +388,17 @@ mod tests {
         tx.send(SynthEvent::NoteOn {
             note: 60,
             velocity: 100,
+            mix_group: 0,
         })
         .unwrap();
         let mut buf = vec![0.0f32; 24_000];
         s.render(&mut buf, 1);
         // Send note-off and render enough to release.
-        tx.send(SynthEvent::NoteOff { note: 60 }).unwrap();
+        tx.send(SynthEvent::NoteOff {
+            note: 60,
+            mix_group: 0,
+        })
+        .unwrap();
         let mut tail = vec![0.0f32; 48_000];
         s.render(&mut tail, 1);
         // After release, voice should be idle.
@@ -390,6 +413,7 @@ mod tests {
             tx.send(SynthEvent::NoteOn {
                 note: n,
                 velocity: 100,
+                mix_group: 0,
             })
             .unwrap();
         }
@@ -406,11 +430,70 @@ mod tests {
         tx.send(SynthEvent::NoteOn {
             note: 60,
             velocity: 100,
+            mix_group: 0,
         })
         .unwrap();
         s.params.set_enabled(false);
         let mut buf = vec![0.0f32; 1024];
         s.render(&mut buf, 1);
         assert!(buf.iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    fn note_off_releases_only_the_matching_mix_group() {
+        let (mut s, tx) = mk_synth();
+        for mix_group in [0, 1] {
+            tx.send(SynthEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                mix_group,
+            })
+            .unwrap();
+        }
+        let mut attack = vec![0.0f32; 1024];
+        s.render(&mut attack, 1);
+        assert_eq!(s.voices.iter().filter(|voice| voice.active).count(), 2);
+
+        tx.send(SynthEvent::NoteOff {
+            note: 60,
+            mix_group: 0,
+        })
+        .unwrap();
+        let mut release = [0.0f32; 1];
+        s.render(&mut release, 1);
+
+        assert!(s
+            .voices
+            .iter()
+            .any(|voice| voice.active && voice.mix_group == 0 && voice.stage == EnvStage::Release));
+        assert!(s
+            .voices
+            .iter()
+            .any(|voice| voice.active && voice.mix_group == 1 && voice.stage != EnvStage::Release));
+    }
+
+    #[test]
+    fn mix_gain_mutes_only_selected_role() {
+        let (mut s, tx) = mk_synth();
+        s.params.set_mix_gain(1, 0.0);
+        tx.send(SynthEvent::NoteOn {
+            note: 60,
+            velocity: 100,
+            mix_group: 1,
+        })
+        .unwrap();
+        let mut muted = vec![0.0f32; 1024];
+        s.render(&mut muted, 1);
+        assert!(muted.iter().all(|&x| x == 0.0));
+
+        tx.send(SynthEvent::NoteOn {
+            note: 64,
+            velocity: 100,
+            mix_group: 0,
+        })
+        .unwrap();
+        let mut audible = vec![0.0f32; 1024];
+        s.render(&mut audible, 1);
+        assert!(audible.iter().any(|&x| x != 0.0));
     }
 }

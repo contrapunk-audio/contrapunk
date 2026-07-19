@@ -6,6 +6,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use contrapunk::synth::params::MIX_GROUP_COUNT;
 use contrapunk::synth::Waveform;
 
 use crate::state::AppState;
@@ -22,6 +23,7 @@ pub struct SynthState {
     pub cutoff_hz: u32,
     pub resonance: f32,
     pub master_gain: f32,
+    pub mix_gains: [f32; 4],
 }
 
 #[tauri::command]
@@ -37,6 +39,7 @@ pub fn get_synth_state(state: State<AppState>) -> SynthState {
         cutoff_hz: p.cutoff_hz() as u32,
         resonance: p.resonance(),
         master_gain: p.master_gain(),
+        mix_gains: p.mix_gains(),
     }
 }
 
@@ -83,4 +86,13 @@ pub fn set_synth_resonance(value: f32, state: State<AppState>) {
 #[tauri::command]
 pub fn set_synth_master_gain(value: f32, state: State<AppState>) {
     state.synth_params.set_master_gain(value);
+}
+
+#[tauri::command]
+pub fn set_synth_mix_gain(group: usize, value: f32, state: State<AppState>) -> Result<(), String> {
+    if group >= MIX_GROUP_COUNT || !value.is_finite() {
+        return Err("invalid synth mix gain".into());
+    }
+    state.synth_params.set_mix_gain(group, value);
+    Ok(())
 }

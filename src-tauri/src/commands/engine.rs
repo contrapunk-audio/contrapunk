@@ -29,8 +29,13 @@ use crate::state::{AppState, VoiceOutputTarget};
 const VIRTUAL_COMPUTER_KEYBOARD: usize = 999_998;
 const GUITAR_AUDIO_SENTINEL: usize = 999_997;
 
+const MIX_INPUT: u8 = 0;
+const MIX_HARMONY: u8 = 1;
+const MIX_CANON: u8 = 2;
+const MIX_COUNTERPOINT: u8 = 3;
+
 type NoteCounts = HashMap<u8, u32>;
-type RoutedNoteCounts = HashMap<(VoiceOutputTarget, u8, u8), u32>;
+type RoutedNoteCounts = HashMap<(VoiceOutputTarget, u8, u8, u8), u32>;
 
 fn count_note_on(notes: &mut NoteCounts, note: u8) {
     let count = notes.entry(note).or_insert(0);
@@ -50,23 +55,30 @@ fn routed_note_key(
     target: VoiceOutputTarget,
     channel: u8,
     note: u8,
-) -> (VoiceOutputTarget, u8, u8) {
-    let channel = if target == VoiceOutputTarget::Synth {
-        0
+    mix_group: u8,
+) -> (VoiceOutputTarget, u8, u8, u8) {
+    let (channel, mix_group) = if target == VoiceOutputTarget::Synth {
+        (0, mix_group)
     } else {
-        channel
+        (channel, MIX_INPUT)
     };
-    (target, channel, note)
+    (target, channel, note, mix_group)
 }
 
-fn count_routed_note_on(notes: &mut RoutedNoteCounts, key: (VoiceOutputTarget, u8, u8)) -> bool {
+fn count_routed_note_on(
+    notes: &mut RoutedNoteCounts,
+    key: (VoiceOutputTarget, u8, u8, u8),
+) -> bool {
     let first_owner = !notes.contains_key(&key);
     let count = notes.entry(key).or_insert(0);
     *count = count.saturating_add(1);
     first_owner
 }
 
-fn count_routed_note_off(notes: &mut RoutedNoteCounts, key: (VoiceOutputTarget, u8, u8)) -> bool {
+fn count_routed_note_off(
+    notes: &mut RoutedNoteCounts,
+    key: (VoiceOutputTarget, u8, u8, u8),
+) -> bool {
     let Some(count) = notes.get_mut(&key) else {
         return false;
     };
@@ -636,6 +648,7 @@ fn run_tauri_router(
                     let target = voice_targets.get(slot).copied().unwrap_or_default();
                     dispatch_voice(
                         target,
+                        MIX_HARMONY,
                         0,
                         VoiceDispatch::NoteOn {
                             note: n,
@@ -1038,6 +1051,7 @@ fn handle_note_on(
     for (i, &n) in notes.iter().enumerate() {
         dispatch_voice(
             target_for(i),
+            if i == 0 { MIX_INPUT } else { MIX_HARMONY },
             channel_idx,
             VoiceDispatch::NoteOn {
                 note: u8::from(n),
@@ -1124,6 +1138,7 @@ fn handle_note_off(
     for (i, &n) in notes.iter().enumerate() {
         dispatch_voice(
             target_for(i),
+            if i == 0 { MIX_INPUT } else { MIX_HARMONY },
             channel_idx,
             VoiceDispatch::NoteOff {
                 note: u8::from(n),
@@ -1196,6 +1211,7 @@ enum VoiceDispatch {
 /// pass captured `HeldVoice` fields directly.
 fn dispatch_voice(
     target: VoiceOutputTarget,
+    mix_group: u8,
     channel: u8,
     event: VoiceDispatch,
     num_ports: usize,
@@ -1217,10 +1233,14 @@ fn dispatch_voice(
 
     match (target, event) {
         (VoiceOutputTarget::Synth, VoiceDispatch::NoteOn { note, velocity }) => {
-            let _ = synth_tx.send(SynthEvent::NoteOn { note, velocity });
+            let _ = synth_tx.send(SynthEvent::NoteOn {
+                note,
+                velocity,
+                mix_group,
+            });
         }
         (VoiceOutputTarget::Synth, VoiceDispatch::NoteOff { note, .. }) => {
-            let _ = synth_tx.send(SynthEvent::NoteOff { note });
+            let _ = synth_tx.send(SynthEvent::NoteOff { note, mix_group });
         }
         (VoiceOutputTarget::MidiPort { port }, _) if port >= num_ports => {}
         (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOn { note, velocity }) => {
@@ -1273,6 +1293,7 @@ fn broadcast_note_off(
     // Synth fanout — channel arg ignored by the Synth target.
     dispatch_voice(
         VoiceOutputTarget::Synth,
+        contrapunk::synth::params::MIX_GROUP_ALL,
         0,
         event,
         num_ports,
@@ -1283,6 +1304,7 @@ fn broadcast_note_off(
     for port in 0..num_ports {
         dispatch_voice(
             VoiceOutputTarget::MidiPort { port },
+            MIX_INPUT,
             0,
             event,
             num_ports,
@@ -1352,10 +1374,10 @@ fn dispatch_companion_ops(
     for (lane, op) in tagged {
         // Per-lane set the note belongs to, if any. Other lane tags
         // (or AllNotesOff) leave both untouched.
-        let lane_notes: Option<&Arc<Mutex<NoteCounts>>> = match *lane {
-            "canon" => Some(canon_notes),
-            "counterpoint" => Some(counterpoint_notes),
-            _ => None,
+        let (lane_notes, mix_group): (Option<&Arc<Mutex<NoteCounts>>>, u8) = match *lane {
+            "canon" => (Some(canon_notes), MIX_CANON),
+            "counterpoint" => (Some(counterpoint_notes), MIX_COUNTERPOINT),
+            _ => (None, MIX_HARMONY),
         };
         match op {
             DispatchOp::NoteOn {
@@ -1364,11 +1386,14 @@ fn dispatch_companion_ops(
                 velocity,
                 channel,
             } => {
-                let first_owner =
-                    count_routed_note_on(output_notes, routed_note_key(*target, *channel, *note));
+                let first_owner = count_routed_note_on(
+                    output_notes,
+                    routed_note_key(*target, *channel, *note, mix_group),
+                );
                 if first_owner {
                     dispatch_voice(
                         *target,
+                        mix_group,
                         *channel,
                         VoiceDispatch::NoteOn {
                             note: *note,
@@ -1389,11 +1414,14 @@ fn dispatch_companion_ops(
                 note,
                 channel,
             } => {
-                let last_owner =
-                    count_routed_note_off(output_notes, routed_note_key(*target, *channel, *note));
+                let last_owner = count_routed_note_off(
+                    output_notes,
+                    routed_note_key(*target, *channel, *note, mix_group),
+                );
                 if last_owner {
                     dispatch_voice(
                         *target,
+                        mix_group,
                         *channel,
                         VoiceDispatch::NoteOff {
                             note: *note,
@@ -1693,9 +1721,17 @@ mod tests {
     #[test]
     fn routed_note_counts_hold_same_pitch_until_last_owner() {
         let mut notes = RoutedNoteCounts::new();
-        let first = routed_note_key(VoiceOutputTarget::Synth, 5, 64);
-        let second = routed_note_key(VoiceOutputTarget::Synth, 6, 64);
-        assert_eq!(first, second, "synth ownership is pitch-only");
+        let first = routed_note_key(VoiceOutputTarget::Synth, 5, 64, MIX_CANON);
+        let second = routed_note_key(VoiceOutputTarget::Synth, 6, 64, MIX_CANON);
+        assert_eq!(
+            first, second,
+            "synth ownership collapses channels within a role"
+        );
+        assert_ne!(
+            first,
+            routed_note_key(VoiceOutputTarget::Synth, 5, 64, MIX_COUNTERPOINT),
+            "different mixer roles keep independent synth voices"
+        );
         assert!(count_routed_note_on(&mut notes, first));
         assert!(!count_routed_note_on(&mut notes, second));
         assert!(!count_routed_note_off(&mut notes, first));

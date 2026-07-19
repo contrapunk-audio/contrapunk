@@ -3,7 +3,7 @@
 
 	Spec lives in .planning/PERFORMANCE-VIEW.md. Eight knobs:
 	  Mode  Voices  Tightness  Adventurous
-	  Key   Scale   You play   Spread
+	  Key   Scale   Your register   Spread
 
 	Composite knobs (Tightness / Adventurous / Spread) hold local state and
 	fan out to multiple engine setters on change. They do NOT round-trip
@@ -23,6 +23,8 @@
 	import { adapter } from '$lib/adapter';
 	import { knobMidiMap, type KnobIndex } from '$lib/stores/knobMidiMap.svelte';
 	import Knob from './Knob.svelte';
+
+	let { midiLearnEnabled = true }: { midiLearnEnabled?: boolean } = $props();
 
 	// === Mode (5 detents) ===
 	const MODE_LABELS = ['Off', 'Parallel 3rds', 'Parallel 4ths', 'Contrary', 'Functional'];
@@ -98,8 +100,8 @@
 		void engine.setVoiceCount(Math.round(v));
 	}
 
-	// === You play (1..voiceCount) ===
-	function onYouPlayChange(v: number) {
+	// === Your register (1..voiceCount) ===
+	function onRegisterChange(v: number) {
 		void engine.setVoicePosition(Math.round(v) - 1);
 	}
 
@@ -193,8 +195,8 @@
 			case 5: // Scale (8 categories)
 				onScaleChange(value * 7);
 				break;
-			case 6: // You play (1..voiceCount)
-				onYouPlayChange(1 + value * Math.max(0, engine.voiceCount - 1));
+			case 6: // Your register (1..voiceCount)
+				onRegisterChange(1 + value * Math.max(0, engine.voiceCount - 1));
 				break;
 			case 7: // Spread (continuous)
 				applySpread(value);
@@ -205,6 +207,7 @@
 	let unlistenKnobCc: (() => void) | undefined;
 	onMount(() => {
 		unlistenKnobCc = adapter.onKnobCcRaw((cc, value) => {
+			if (!midiLearnEnabled) return;
 			const learning = knobMidiMap.learning;
 			if (learning !== null) {
 				// Capture this CC as the bound CC for the learning knob.
@@ -373,7 +376,7 @@
 					max={Math.max(1, engine.voiceCount)}
 					step={1}
 					size={72}
-					label="You play"
+					label="Your register"
 					format={(v) => {
 						const i = Math.round(v) - 1;
 						if (engine.voiceCount <= 4) {
@@ -381,7 +384,7 @@
 						}
 						return `V${i + 1}`;
 					}}
-					onchange={onYouPlayChange}
+					onchange={onRegisterChange}
 				/>
 				{@render learnPip(6)}
 			</div>
