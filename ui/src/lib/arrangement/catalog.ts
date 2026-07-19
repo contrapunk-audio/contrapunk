@@ -181,6 +181,78 @@ export const MENSURATION_WEB_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const STRETTO_ENGINE_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '07-stretto-engine',
+	name: 'Stretto Engine',
+	family: 'classical',
+	tags: ['baroque', 'stretto', 'strict-canon', 'transport'],
+	builtIn: true,
+	result:
+		'One short subject returns at unison-, dominant-, and octave-related levels with entry gaps contracting from 2 to 1.25 to 0.75 beats.',
+	approximation:
+		'Fixed Strict Canon inspired by selected Bach stretto procedures. It repeats every note of your short live cell at three preset pitch levels and contracting entry gaps; it does not recognize a subject, generate real versus tonal answers, test invertible counterpoint, compose episodes or cadences, or reconstruct a Bach fugue.',
+	play: {
+		prompt:
+			'Play two to four clear single notes with one memorable rhythm, then stop and listen as unison-, fifth-, and octave-related answers enter progressively closer.',
+		input: 'motif',
+		articulation:
+			'Lightly detached, even attacks; gate each note to about 50–75% of its inter-onset interval.',
+		density: 'One monophonic cell only; play less as the answers crowd in.',
+		space:
+			'Stay silent through the full delayed group, then leave more than two additional transport beats.',
+		tempo: '72–100 BPM; 90 BPM is the test default.',
+		transportRequired: true
+	},
+	references: [
+		{
+			name: 'J. S. Bach',
+			context:
+				'Bounded reference to varied stretto procedures in WTC I BWV 846/2 and The Art of Fugue Contrapunctus 5.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['strict_canon'],
+	config: {
+		harmony: {
+			scaleMode: 'Ionian',
+			mode: 'PassThrough',
+			voiceCount: 1,
+			voicePosition: 0,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: true,
+			globalHoldMode: { kind: 'cancel' },
+			canon: {
+				enabled: true,
+				form: 'strict_canon',
+				holdMode: { kind: 'forever' },
+				voices: [
+					singleLineFollower(0, 1, 2),
+					singleLineFollower(4, 1, 3.25),
+					singleLineFollower(7, 1, 4)
+				]
+			},
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -238,13 +310,14 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 	(spec) => {
 		if (spec.number === 2) return MODAL_LINEWORK_PRESET;
 		if (spec.number === 4) return MENSURATION_WEB_PRESET;
+		if (spec.number === 7) return STRETTO_ENGINE_PRESET;
 		return draftPreset(spec);
 	}
 );
 
-function singleLineFollower(transposeDegrees: number, timeRatio: number) {
+function singleLineFollower(transposeDegrees: number, timeRatio: number, delayBeats = 0) {
 	return {
-		delayBeats: 0,
+		delayBeats,
 		transposeDegrees,
 		timeRatio,
 		harmonyMode: 'PassThrough' as const,

@@ -3,7 +3,8 @@ import test from 'node:test';
 import {
 	BUILT_IN_ARRANGEMENT_PRESETS,
 	MENSURATION_WEB_PRESET,
-	MODAL_LINEWORK_PRESET
+	MODAL_LINEWORK_PRESET,
+	STRETTO_ENGINE_PRESET
 } from './catalog.ts';
 import {
 	arrangementConfigCapabilities,
@@ -28,7 +29,50 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 		BUILT_IN_ARRANGEMENT_PRESETS.filter((preset) => preset.researchStatus === 'approved').map(
 			(preset) => preset.id
 		),
-		['02-modal-linework', '04-mensuration-web']
+		['02-modal-linework', '04-mensuration-web', '07-stretto-engine']
+	);
+});
+
+test('Stretto Engine contracts entry gaps with strict single-line followers', () => {
+	const voices = STRETTO_ENGINE_PRESET.config.companion.canon.voices;
+	const delays = voices.map((voice) => voice.delayBeats);
+	const entries = [0, ...delays];
+	const gaps = entries.slice(1).map((entry, index) => entry - entries[index]);
+
+	assert.deepEqual(STRETTO_ENGINE_PRESET.requirements, ['strict_canon']);
+	assert.equal(STRETTO_ENGINE_PRESET.play.transportRequired, true);
+	assert.equal(STRETTO_ENGINE_PRESET.config.companion.canon.form, 'strict_canon');
+	assert.deepEqual(delays, [2, 3.25, 4]);
+	assert.deepEqual(gaps, [2, 1.25, 0.75]);
+	assert.ok(
+		voices.every(
+			(voice) =>
+				voice.timeRatio === 1 &&
+				voice.harmonyMode === 'PassThrough' &&
+				voice.voiceCount === 1
+		)
+	);
+	assert.deepEqual(validateArrangementPreset(STRETTO_ENGINE_PRESET), []);
+
+	const chordStack = {
+		...STRETTO_ENGINE_PRESET,
+		config: {
+			...STRETTO_ENGINE_PRESET.config,
+			companion: {
+				...STRETTO_ENGINE_PRESET.config.companion,
+				canon: {
+					...STRETTO_ENGINE_PRESET.config.companion.canon,
+					voices: voices.map((voice, index) =>
+						index === 0 ? { ...voice, voiceCount: 2 } : voice
+					)
+				}
+			}
+		}
+	};
+	assert.ok(
+		validateArrangementPreset(chordStack).includes(
+			'Strict Canon followers must be single PassThrough lines at timeRatio 1'
+		)
 	);
 });
 

@@ -180,6 +180,16 @@ export function validateArrangementPreset(preset: ArrangementPresetV2): string[]
 	) {
 		errors.push('Live proportional ratios below 1 require phrase capture');
 	}
+	if (
+		preset.researchStatus === 'approved' &&
+		preset.config.companion.canon.form === 'strict_canon' &&
+		preset.config.companion.canon.voices.some(
+			(voice) =>
+				voice.timeRatio !== 1 || voice.harmonyMode !== 'PassThrough' || voice.voiceCount !== 1
+		)
+	) {
+		errors.push('Strict Canon followers must be single PassThrough lines at timeRatio 1');
+	}
 	return errors;
 }
 

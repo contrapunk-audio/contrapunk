@@ -2021,6 +2021,102 @@ mod tests {
         assert!(lane.held.is_empty());
     }
 
+    #[test]
+    fn stretto_engine_contracts_entry_gaps_and_releases_the_group() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.hold_mode = Some(HoldMode::Forever);
+
+        let follower = |delay_beats, transpose_degrees| {
+            let mut voice = CanonVoice::with_time_ratio(delay_beats, transpose_degrees, 1.0);
+            voice.harmony_mode = Some(HarmonyMode::PassThrough);
+            voice.voice_count = Some(1);
+            voice.voice_position = Some(0);
+            voice.voice_leading_enabled = Some(false);
+            voice.voice_leading_style = Some(VoiceLeadingStyle::Free);
+            voice.octave_mode = Some(OctaveMode::None);
+            voice
+        };
+        lane.set_voices(vec![follower(2.0, 0), follower(3.25, 4), follower(4.0, 7)]);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 80,
+                channel: 0,
+            },
+            &world,
+        );
+        let first_entries: Vec<f64> = lane
+            .pending_on
+            .iter()
+            .filter(|pending| pending.player_note == 60)
+            .map(|pending| pending.fire_at)
+            .collect();
+        assert_eq!(first_entries, vec![2.0, 3.25, 4.0]);
+        let entry_gaps: Vec<f64> = first_entries
+            .iter()
+            .scan(0.0, |previous, entry| {
+                let gap = *entry - *previous;
+                *previous = *entry;
+                Some(gap)
+            })
+            .collect();
+        assert_eq!(entry_gaps, vec![2.0, 1.25, 0.75]);
+
+        advance_to_beat(&transport, 0.35);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.5);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 62,
+                velocity: 80,
+                channel: 0,
+            },
+            &world,
+        );
+        let second_entries: Vec<f64> = lane
+            .pending_on
+            .iter()
+            .filter(|pending| pending.player_note == 62)
+            .map(|pending| pending.fire_at)
+            .collect();
+        assert_eq!(second_entries, vec![2.5, 3.75, 4.5]);
+
+        advance_to_beat(&transport, 0.85);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 62,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 5.0);
+        let output = lane.tick(&world);
+        let note_ons = output
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DispatchOp::NoteOn { .. }))
+            .count();
+        let note_offs = output
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DispatchOp::NoteOff { .. }))
+            .count();
+        assert_eq!(note_ons, 6);
+        assert_eq!(note_offs, 6);
+        assert!(lane.pending_on.is_empty());
+        assert!(lane.pending_off.is_empty());
+        assert!(lane.held.is_empty());
+    }
+
     /// Phrase anchor resets after silence exceeding the threshold.
     /// Without this, an augmentation voice would stretch the entire
     /// performance history into the future. Test: two inputs separated
