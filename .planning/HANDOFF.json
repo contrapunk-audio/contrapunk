@@ -6,7 +6,7 @@
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-04-mensuration-web",
+  "task": "implement-preset-04-mensuration-web",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -58,9 +58,19 @@
   ],
   "remaining_work": [
     {
-      "name": "Research and implement remaining first-12 baseline presets",
-      "status": "not_started",
-      "details": "Order: 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48. Three researchers plus parent synthesis per preset."
+      "name": "Preset 04 Mensuration Web research pack and parent synthesis",
+      "status": "done_ready_for_implementation",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/synthesis.md"
+      ]
+    },
+    {
+      "name": "Implement preset 04 and research/implement remaining first-12 baselines",
+      "status": "in_progress",
+      "details": "Current: implement 04. Then order: 7, 8, 12, 14, 23, 25, 27, 36, 43, 48. Three researchers plus parent synthesis per preset."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -106,6 +116,6 @@
     "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch the three independent research perspectives for preset 04 Mensuration Web, then parent-synthesize before changing its research-pending draft.",
-  "context_notes": "Modal Linework is operational as the sole approved built-in. The other 49 records are visible gated drafts. Wave 2 remains at 1/12 and must hard-stop after preset 48 completes the baseline set."
+  "next_action": "Implement the synthesized Mensuration Web config and deterministic proportional timing/lifecycle checks, then approve preset 04.",
+  "context_notes": "Modal Linework remains the sole operational built-in. Mensuration Web research is complete and explicitly limits the preset to scalar proportional Free Imitation; no live ratio below 1.0, double-canon reconstruction, or historical mensuration claim."
 }

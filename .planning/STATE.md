@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: executing
-stopped_at: Phase 10.2 Wave 2 preset 02 operational; next research gate is preset 04 Mensuration Web.
+stopped_at: Phase 10.2 Wave 2 preset 04 research/synthesis complete; implementing Mensuration Web.
 last_updated: "2026-07-19T12:22:14Z"
-last_activity: 2026-07-19 — Shipped the bounded Modal Linework baseline, 50-record gated catalog, V2 detail/apply/Save As UI, and deterministic zero-active-note regression.
+last_activity: 2026-07-19 — Three independent Mensuration Web reports and parent synthesis approved a bounded transport-driven scalar Free Imitation configuration.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 1/12 baseline presets operational
-Last activity: 2026-07-19 — Modal Linework is the sole approved built-in; the other 49 catalog records remain visible research-pending drafts and cannot Apply.
+Status: Executing Wave 2; 1/12 operational and preset 04 ready for implementation
+Last activity: 2026-07-19 — Mensuration Web is scoped to a transparent approximation of Ockeghem's Missa prolationum procedure; ratios below 1.0 are rejected for uncaptured live input.
 
 ### Phase 10.2 Start — 2026-07-19
 

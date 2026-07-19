@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing",
   "current_wave": 2,
-  "current_slice": "research-preset-04-mensuration-web",
+  "current_slice": "implement-preset-04-mensuration-web",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -42,6 +42,31 @@
         "status": "operational",
         "commit": "43e9363",
         "preset_id": "02-modal-linework"
+      }
+    },
+    "04-mensuration-web": {
+      "status": "ready_for_implementation",
+      "required_reports": 3,
+      "completed_reports": 3,
+      "history": {
+        "status": "complete",
+        "attempts": 2,
+        "path": ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/history.md"
+      },
+      "theory": {
+        "status": "complete",
+        "attempts": 2,
+        "path": ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/theory.md"
+      },
+      "performance": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/performance.md"
+      },
+      "synthesis": {
+        "status": "ready_for_implementation",
+        "path": ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/synthesis.md",
+        "decision": "ready_for_implementation"
       }
     }
   },
@@ -123,6 +148,6 @@
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state."
   ],
-  "last_commit": "43e9363",
-  "next_action": "Launch the three independent research perspectives for baseline preset 04 Mensuration Web (Ockeghem), then parent-synthesize before changing its draft status or config."
+  "last_commit": "f551524",
+  "next_action": "Implement the exact synthesized Mensuration Web config with three single-note PassThrough followers at 1:1, 3:2, and 2:1, validate live-ratio causality and Forever-tail cleanup, then approve preset 04."
 }
