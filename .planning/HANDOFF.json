@@ -6,7 +6,7 @@
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "implement-preset-02-modal-linework",
+  "task": "research-preset-04-mensuration-web",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -44,8 +44,10 @@
       "evidence": "2 migration tests passed; UI check zero errors."
     },
     {
-      "name": "Preset 02 Modal Linework three-report research pack and parent synthesis",
-      "status": "done_ready_for_implementation",
+      "name": "Preset 02 Modal Linework research, implementation, 50-record catalog, and V2 UI",
+      "status": "done_operational",
+      "commits": ["4ce9ffd", "9cb71a7", "43e9363"],
+      "evidence": "Harmony 267 passed; catalog/persistence 4 passed; UI check zero errors.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/history.md",
         ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md",
@@ -55,11 +57,6 @@
     }
   ],
   "remaining_work": [
-    {
-      "name": "Implement preset 02 Modal Linework",
-      "status": "in_progress",
-      "details": "Remove unsafe process-call suspension, add the synthesized immutable V2 record and focused config/lifecycle checks, then wire V2 catalog/detail/apply."
-    },
     {
       "name": "Research and implement remaining first-12 baseline presets",
       "status": "not_started",
@@ -109,6 +106,6 @@
     "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Implement the approved bounded Modal Linework synthesis, starting by removing the automatic call-count suspension from Palestrina voice leading.",
-  "context_notes": "All three independent reports and the parent synthesis are complete. The preset is a synchronous note-against-note approximation; it must not claim independent rhythms, historical modal syntax, or authentic dissonance scheduling."
+  "next_action": "Launch the three independent research perspectives for preset 04 Mensuration Web, then parent-synthesize before changing its research-pending draft.",
+  "context_notes": "Modal Linework is operational as the sole approved built-in. The other 49 records are visible gated drafts. Wave 2 remains at 1/12 and must hard-stop after preset 48 completes the baseline set."
 }

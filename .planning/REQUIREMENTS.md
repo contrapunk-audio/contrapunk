@@ -66,11 +66,11 @@
 
 ## Phase 10.2 Arrangement Preset Requirements
 
-- [ ] **ARRP-01**: A shared versioned `ArrangementPresetV2` model stores identity, family/tags, Result, structured Play guidance, composer references/context, capability requirements, availability, arrangement config, and optional suggested sound.
-- [ ] **ARRP-02**: Selecting a preset preserves tonic, BPM, time signature, input/guitar/device state, external routing, current sound, master level, mute/solo, hosted plugins, and transport running state.
+- [x] **ARRP-01**: A shared versioned `ArrangementPresetV2` model stores identity, family/tags, Result, structured Play guidance, composer references/context, capability requirements, availability, arrangement config, and optional suggested sound.
+- [x] **ARRP-02**: Selecting a preset preserves tonic, BPM, time signature, input/guitar/device state, external routing, current sound, master level, mute/solo, hosted plugins, and transport running state.
 - [ ] **ARRP-03**: Preset application issues one Panic/runtime reset, validates the full config, applies atomically, and cannot leave partial state, delayed reappearance, or orphan notes on failure.
-- [ ] **ARRP-04**: Built-ins are immutable; Duplicate/Save As captures both arrangement state and user-authored Result/Play/reference metadata with versioned migration.
-- [ ] **ARRP-05**: Exactly 50 stable unique built-in draft records exist with honest capability/surface gating; unsupported records cannot Apply and explain what is missing.
+- [x] **ARRP-04**: Built-ins are immutable; Duplicate/Save As captures both arrangement state and user-authored Result/Play/reference metadata with versioned migration.
+- [x] **ARRP-05**: Exactly 50 stable unique built-in draft records exist with honest capability/surface gating; unsupported records cannot Apply and explain what is missing.
 - [ ] **ARRP-06**: Before a preset becomes operational, three independent cited reports cover artist/style history and primary sources, music theory and temporal behavior, and performer/interaction guidance. They scope specific works/periods, trace career evolution, separate persistent from period-specific traits, distinguish shared vocabulary from characteristic choices, and model within-phrase/across-section movement. A parent synthesis defines invariants, evolution states/transitions, caricatures to avoid, approximations, configuration, and acceptance examples.
 - [ ] **ARRP-07**: The first 12 catalog IDs (2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48) are operational, audibly differentiated, and pass fixed NoteOn/NoteOff lifecycle simulation with zero active/pending notes.
 - [ ] **ARRP-08**: Execution hard-stops after the first 12 with a test report and performance checklist; later capability waves require explicit user approval.
@@ -185,11 +185,11 @@
 | GTR-REL-04 | Phase 10.1 | Complete |
 | GTR-REL-05 | Phase 10.1 | Complete |
 | GTR-REL-06 | Phase 10.1 | Complete |
-| ARRP-01 | Phase 10.2 / Wave 1 | Not started |
-| ARRP-02 | Phase 10.2 / Wave 1 | Not started |
+| ARRP-01 | Phase 10.2 / Wave 1 | Complete |
+| ARRP-02 | Phase 10.2 / Wave 1 | Complete |
 | ARRP-03 | Phase 10.2 / Wave 1 | Not started |
-| ARRP-04 | Phase 10.2 / Wave 2 | Not started |
-| ARRP-05 | Phase 10.2 / Wave 2 | Not started |
+| ARRP-04 | Phase 10.2 / Wave 2 | Complete |
+| ARRP-05 | Phase 10.2 / Wave 2 | Complete |
 | ARRP-06 | Phase 10.2 / All preset waves | Not started |
 | ARRP-07 | Phase 10.2 / Wave 2 | Not started |
 | ARRP-08 | Phase 10.2 / Wave 2 checkpoint | Not started |
