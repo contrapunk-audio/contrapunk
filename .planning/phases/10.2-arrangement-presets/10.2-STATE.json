@@ -1,7 +1,7 @@
 {
   "version": 1,
   "phase": "10.2",
-  "status": "executing",
+  "status": "paused_research_provider_blocked",
   "current_wave": 2,
   "current_slice": "research-preset-02-modal-linework",
   "user_checkpoint": {
@@ -12,7 +12,30 @@
   "baseline_order": [2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48],
   "operational_presets": [],
   "draft_presets": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
-  "research": {},
+  "research": {
+    "02-modal-linework": {
+      "status": "blocked_incomplete",
+      "required_reports": 3,
+      "completed_reports": 1,
+      "history": {
+        "status": "blocked_provider",
+        "attempts": 1,
+        "error": "ANTHROPIC_VERTEX_PROJECT_ID not set; no openai-codex API key"
+      },
+      "theory": {
+        "status": "complete_unsynthesized",
+        "path": ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md"
+      },
+      "performance": {
+        "status": "blocked_provider",
+        "attempts": 1,
+        "error": "ANTHROPIC_VERTEX_PROJECT_ID not set; no openai-codex API key"
+      },
+      "synthesis": {
+        "status": "blocked_until_all_reports_complete"
+      }
+    }
+  },
   "completed_requirements": ["ARRP-01", "ARRP-02"],
   "completed_slices": [
     {
@@ -66,6 +89,7 @@
     {"command": "npm --prefix ui run check (V2 persistence)", "result": "0 errors; 29 pre-existing warnings"}
   ],
   "blockers": [
+    "Preset 02 research gate is blocked: only theory completed; history and performance researchers could not start because ANTHROPIC_VERTEX_PROJECT_ID is unset and no openai-codex API key is available.",
     "Research subagent providers must be executable; if fewer than three independent perspectives can run, preset activation pauses.",
     "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
   ],
@@ -77,6 +101,6 @@
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state."
   ],
-  "last_commit": "a131035",
-  "next_action": "Commit V2 persistence, then launch the required three-researcher pack for baseline preset 02 Modal Linework before writing its shipping config or UI copy."
+  "last_commit": "61453d5",
+  "next_action": "Configure an executable research provider (for example run under pi-as redhat with ANTHROPIC_VERTEX_PROJECT_ID or log into openai-codex), then retry only preset 02 history and performance reports. Do not synthesize or implement Modal Linework until all three reports succeed."
 }

@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
-status: planning
-stopped_at: Phase 10.2 Wave 1 complete; Wave 2 begins with the three-researcher pack for preset 02 Modal Linework.
-last_updated: "2026-07-19T12:15:00Z"
-last_activity: 2026-07-19 — Added tested V2 user-preset persistence and legacy migration without carrying preserved performance-environment fields.
+status: paused
+stopped_at: Phase 10.2 Wave 2 preset 02 research gate — theory complete, history/performance blocked by unavailable subagent providers.
+last_updated: "2026-07-19T12:30:00Z"
+last_activity: 2026-07-19 — Preserved the completed Modal Linework theory report and paused rather than synthesizing from fewer than three independent researchers.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing; Wave 1 safety/schema/state/persistence foundation complete
-Last activity: 2026-07-19 — V2 user presets now persist and legacy custom arrangements migrate into the arrangement-only contract.
+Status: Paused at mandatory research gate; Wave 1 complete
+Last activity: 2026-07-19 — Modal Linework theory research completed; history and performer/HCI runs failed before research because required provider credentials were unavailable.
 
 ### Phase 10.2 Start — 2026-07-19
 

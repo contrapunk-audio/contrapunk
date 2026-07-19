@@ -1,218 +1,123 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-19T10:24:50.836Z",
+  "timestamp": "2026-07-19T12:30:00Z",
   "context": "phase",
-  "phase": "post-10.1",
-  "phase_name": "Native performance prototype and release validation",
-  "phase_dir": ".planning/phases/10.1-guitar-reliability",
-  "plan": 1,
-  "task": 4,
-  "total_tasks": 4,
-  "status": "paused",
-  "completed_tasks": [
+  "phase": "10.2",
+  "phase_name": "Composer-Informed Arrangement Presets",
+  "phase_dir": ".planning/phases/10.2-arrangement-presets",
+  "plan": 2,
+  "task": "research-preset-02-modal-linework",
+  "total_plans": 7,
+  "status": "blocked",
+  "loop": {
+    "id": 2,
+    "title": "Contrapunk research-backed 50 arrangement presets",
+    "status": "paused_at_research_gate",
+    "hard_stop": "After first 12 operational presets for user performance testing"
+  },
+  "completed_work": [
     {
-      "id": 1,
-      "name": "Freeze Phase 10.1 guitar corpus acceptance",
-      "status": "done",
-      "commit": "e7f51264",
-      "progress": "Development 107/108 and sealed holdout 30/30 under the frozen 40 ms profile; deterministic cleanup, blind QA, and provenance complete."
+      "name": "Document Phase 10.2 GSD waves, 50-preset catalog, research template, and loop",
+      "commit": "f2360b0",
+      "status": "done"
     },
     {
-      "id": 2,
-      "name": "Validate the 10 ms attack candidate",
+      "name": "Fix Canon Hold precedence and transport lifecycle cleanup",
+      "commit": "161368c",
       "status": "done",
-      "commit": "1d5c0432",
-      "progress": "Development-only candidate passed 108/108 exact, zero retriggers, deterministic releases, p50 16.0 ms, p95 26.7 ms. Hardware latency was accepted; sealed holdout was not rerun for this candidate."
+      "evidence": "Companion 60 passed; Tauri 36 passed; UI check zero errors."
     },
     {
-      "id": 3,
-      "name": "Unify live Ensemble behavior across surfaces",
-      "status": "done",
-      "commit": "2394ef47",
-      "progress": "Shared Ensemble workspace, Companion lanes, routing, presets, source ownership, note lifecycle, and current production adapters were unified."
+      "name": "Define ArrangementPresetV2 and capabilities",
+      "commit": "f290e80",
+      "status": "done"
     },
     {
-      "id": 4,
-      "name": "Build and refine the separate native full-app prototype",
-      "status": "in_progress",
-      "commit": "2179294b",
-      "progress": "Built a functional native-only /prototype surface using real adapters and backend. It now has a fixed 1280x800 16:10 window, no page scrolling, live expression roll, color only for musical activity, instrument view above a compact branching mixer, real per-role built-in-synth levels/mute/solo, and one large Setup dialog. Follow-up commit 1d4fa8f9 exposes Canon group Hold in Strict Canon and explains locked per-voice controls via hover text."
+      "name": "Centralize arrangement snapshot/apply, Counterpoint, and role mix",
+      "commit": "a131035",
+      "status": "done"
+    },
+    {
+      "name": "Add V2 user-preset persistence and legacy migration",
+      "commit": "61453d5",
+      "status": "done",
+      "evidence": "2 migration tests passed; UI check zero errors."
+    },
+    {
+      "name": "Preset 02 Modal Linework music-theory and temporal research",
+      "status": "done_unsynthesized",
+      "artifact": ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md"
     }
   ],
-  "remaining_tasks": [
+  "remaining_work": [
     {
-      "id": "4a",
-      "name": "Resolve reported Free Imitation release behavior",
-      "status": "in_progress",
-      "details": "The user still perceives missing NoteOff in Free Imitation. Existing CanonLane Cancel-mode and per-voice duration tests pass. Reproduce with the effective global > lane > voice Hold stack and transport state visible. Near/Future, Phrase, and Forever intentionally schedule completion after source release; Cancel should release emitted notes at the current beat. Check for a persisted per-voice override winning over group/global Hold and for a stopped transport preventing future-beat cleanup. Do not call it fixed until an observed Free Imitation NoteOn/NoteOff sequence is captured."
+      "name": "Complete preset 02 research pack",
+      "status": "blocked",
+      "details": "History/primary-source and performer/interaction reports still required."
     },
     {
-      "id": "4b",
-      "name": "Define global arrangement presets",
+      "name": "Synthesize and implement preset 02",
       "status": "not_started",
-      "details": "Design user-facing full-arrangement presets inspired by old/new classical, jazz, and video-game composers. First define exactly which existing backend fields an arrangement preset owns: harmony/key/scale defaults, Your register, voice count/spread, Canon form/voices/delays/ratios/holds, Species Counterpoint, per-role synth levels/mute/solo, and routing policy. Built-ins remain immutable; customization is Save As. Avoid exposing controls or extra groups that backend support does not exist for."
+      "details": "Forbidden until all three independent research reports exist."
     },
     {
-      "id": "release",
-      "name": "Complete v1.3.0 release-surface acceptance",
+      "name": "Research and implement remaining first-12 baseline presets",
       "status": "not_started",
-      "details": "Standalone/browser/Logic/REAPER, real external MIDI output, sample-rate/block-size/device-loss, installer, signing, notarization, Gatekeeper, tag, and GitHub Release validation remain."
+      "details": "Order: 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48. Three researchers plus parent synthesis per preset."
+    },
+    {
+      "name": "Mandatory user performance checkpoint",
+      "status": "not_started",
+      "details": "Hard-stop after 12; Wave 3 requires explicit approval."
+    },
+    {
+      "name": "Waves 3-7",
+      "status": "not_started",
+      "details": "Voicing, motif, pattern/timing, stable groups/timeline/adaptive, experimental completion; only after approval."
     }
   ],
   "blockers": [
     {
-      "description": "Free Imitation can sound as though NoteOff is missing depending on effective HoldMode and transport state; exact user configuration has not yet been captured.",
+      "description": "Two required preset 02 researcher agents could not start.",
+      "type": "environment",
+      "evidence": "ANTHROPIC_VERTEX_PROJECT_ID not set; no openai-codex API key.",
+      "workaround": "Run under pi-as redhat with the required project environment or authenticate an executable provider, then retry only the two missing reports."
+    },
+    {
+      "description": "Dirty tree contains unrelated Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents work.",
       "type": "technical",
-      "workaround": "Set Canon group Hold to Cancel, clear per-voice overrides in Free Imitation, keep transport state visible, and capture dispatch evidence before changing scheduling logic."
-    },
-    {
-      "description": "The occasional real-guitar false harmonic/random-note selection still lacks a captured failing pluck and regression fixture.",
-      "type": "human_action",
-      "workaround": "Capture expected note, detected note, pitch curve, and lifecycle from one real failure before any continuity/octave correction."
-    },
-    {
-      "description": "External MIDI acceptance still lacks a native session with at least one real output connection.",
-      "type": "human_action",
-      "workaround": "Connect a real MIDI destination; prior sessions reported Output router ready with 0 connection(s)."
-    },
-    {
-      "description": "The working tree still contains unrelated Golem, Elixir, AU, recon, docs, and .pi-subagents work.",
-      "type": "technical",
-      "workaround": "Never stage broadly. Stage explicit paths only, inspect git diff --cached, and never stage .pi-subagents/."
+      "workaround": "Stage explicit Phase 10.2 paths only; never stage .pi-subagents/."
     }
   ],
   "human_actions_pending": [
     {
-      "action": "Reproduce Free Imitation release behavior in the optimized native prototype",
-      "context": "Record Form, global Hold, Canon group Hold, selected voice Hold, transport running/stopped, source NoteOff, and emitted Canon NoteOff.",
+      "action": "Make at least three independent researcher agents executable",
+      "context": "Two of the first three research tasks failed before research due provider credentials.",
       "blocking": true
     },
     {
-      "action": "Choose the initial arrangement-preset roster and naming policy",
-      "context": "Decide whether built-ins use composer names, era/style names, or 'inspired by' labels across classical, jazz, and video-game traditions.",
+      "action": "Test the first 12 presets when the loop reaches its hard checkpoint",
+      "context": "The loop must not enter Wave 3 before explicit approval.",
       "blocking": false
-    },
-    {
-      "action": "Capture one false-harmonic guitar pluck",
-      "context": "Detector tuning remains blocked until the real failure is preserved as evidence.",
-      "blocking": true
-    },
-    {
-      "action": "Perform final standalone, browser, Logic, REAPER, external MIDI, installer, signing, and notarization checks",
-      "context": "Final release acceptance remains user-operated.",
-      "blocking": true
     }
   ],
   "decisions": [
-    {
-      "decision": "The native prototype is one fixed-ratio performance page with one centered Setup dialog.",
-      "rationale": "The user rejected tabs and scrolling. Live expression, notes, arrangement, routing state, and critical controls must stay visible together.",
-      "phase": "post-10.1"
-    },
-    {
-      "decision": "Window size is fixed at 1280x800 (16:10).",
-      "rationale": "This locks the requested ratio and lets the main page fit without scrolling.",
-      "phase": "post-10.1"
-    },
-    {
-      "decision": "Chrome remains black and white; color is reserved for guitar pitch, emitted MIDI, harmony, Canon, Counterpoint, active piano keys, and meters.",
-      "rationale": "Color should communicate sound and role rather than decorate controls.",
-      "phase": "post-10.1"
-    },
-    {
-      "decision": "Mixer levels are real built-in-synth role gains, not mocked controls.",
-      "rationale": "Per-role atomics and mix-group-aware Synth events provide immediate native audio behavior without adding fake external-MIDI gain semantics.",
-      "phase": "post-10.1"
-    },
-    {
-      "decision": "Your register replaces You play.",
-      "rationale": "Soprano/Alto/Tenor/Bass place the performed line in the arrangement without transposing the physical input note.",
-      "phase": "post-10.1"
-    },
-    {
-      "decision": "Strict Canon locks per-voice Mode but permits Canon group Hold.",
-      "rationale": "Per-voice harmony modes break strict imitation, while group release policy does not. Free Imitation unlocks per-voice Mode, Relative, Speed, Preset, and Hold.",
-      "phase": "post-10.1"
-    },
-    {
-      "decision": "Hidden Setup controls must not consume Guitar CC74 as MIDI-learn input.",
-      "rationale": "The hidden PerformanceView treated guitar brightness CC74 as a mapped hardware knob, causing native-only reharmonization on every pluck. Gating and unmounting the listener restored exact 4:1 synth dispatch per four-voice guitar event.",
-      "phase": "post-10.1"
-    },
-    {
-      "decision": "Built-in global arrangement presets remain immutable and user changes use Save As.",
-      "rationale": "This preserves reproducible named arrangements while allowing customization.",
-      "phase": "post-10.1"
-    }
+    "Technique/image preset titles; artist names are references, not imitation claims.",
+    "Research scopes works and periods, career evolution, persistent versus period traits, temporal movement, distinguishing vocabulary, and caricatures to avoid.",
+    "Exactly three independent reports plus a parent synthesis are required before activation.",
+    "Preset apply preserves tonic, tempo, devices, routing, sound, master level, mute/solo, plugins, and transport state.",
+    "Temporal behavior uses reusable Companion Lanes; stateless pitch mapping uses shared harmony strategies.",
+    "Stop after the first 12 for user testing."
   ],
-  "background_processes": [
-    {
-      "name": "contrapunk-native-prototype-fixed",
-      "status": "stopped",
-      "details": "Managed process proc_14 was stopped for pause."
-    },
-    {
-      "name": "prototype-vite-preview",
-      "status": "stopped",
-      "details": "Managed process proc_9 was stopped for pause."
-    }
-  ],
-  "validation": [
-    {
-      "command": "cargo test -p contrapunk-audio --release --lib",
-      "status": "passed",
-      "details": "226 tests passed."
-    },
-    {
-      "command": "cargo test --lib synth::voice::tests",
-      "status": "passed",
-      "details": "7 tests passed, including mix-group-specific NoteOff."
-    },
-    {
-      "command": "npm --prefix ui run check",
-      "status": "passed_with_warnings",
-      "details": "0 errors; pre-existing warnings only."
-    },
-    {
-      "command": "optimized native live dispatch audit",
-      "status": "passed",
-      "details": "Before the CC74 listener fix: 29 guitar NoteOns caused 374 synth NoteOns. After: 32 guitar NoteOns caused exactly 128 synth NoteOns and 31 guitar NoteOffs caused exactly 124 synth NoteOffs; the final four-event difference was one currently held note. Zero CC123 overflows."
-    },
-    {
-      "command": "pre-commit repository checks",
-      "status": "passed_with_warnings",
-      "details": "Commit 1d4fa8f9 ran checks successfully; warnings were pre-existing."
-    }
-  ],
+  "background_processes": [],
   "uncommitted_files": [
-    "[unrelated-golem] M apps/golem/src-tauri/src/main.rs",
-    "[unrelated-golem] M apps/golem/src-tauri/tauri.conf.json",
-    "[unrelated-golem] M apps/golem/src/App.svelte",
-    "[unrelated-golem] M apps/golem/src/Knob.svelte",
-    "[unrelated-golem] M apps/golem/vite.config.ts",
-    "[unrelated-au] M au-wrapper/CMakeLists.txt",
-    "[unrelated-elixir] M crates/elixir-core/src/fx/delay.rs",
-    "[unrelated-elixir] M crates/elixir-core/src/fx/mod.rs",
-    "[unrelated-elixir] M crates/elixir-core/src/fx/reverb.rs",
-    "[unrelated-elixir] M crates/elixir-core/src/lib.rs",
-    "[unrelated-elixir] M crates/elixir-core/src/osc.rs",
-    "[unrelated-elixir] M crates/elixir-preset/src/lib.rs",
-    "[unrelated-elixir] M crates/elixir-standalone/src/ui.rs",
-    "[unrelated-golem] M crates/golem-core/src/engine.rs",
-    "[unrelated-golem] M crates/golem-core/src/follow.rs",
-    "[unrelated-golem] M crates/golem-core/src/lib.rs",
-    "[artifact-do-not-stage] ?? .pi-subagents/",
-    "[unrelated-golem] ?? apps/golem/src-tauri/Info.plist",
-    "[unrelated-golem] ?? apps/golem/src-tauri/entitlements.plist",
-    "[unrelated-au] ?? au-wrapper/patches/disable-auv2-input-midi-echo.patch",
-    "[unrelated-golem] ?? crates/golem-core/src/dynamics.rs",
-    "[unrelated-docs] ?? docs/CONTRAPUNK_STATE_ROADMAP.md",
-    "[unrelated-docs] ?? progress.md",
-    "[unrelated-docs] ?? recon/"
+    "[focused-planning] .planning/HANDOFF.json",
+    "[focused-planning] .planning/STATE.md",
+    "[focused-planning] .planning/phases/10.2-arrangement-presets/10.2-STATE.json",
+    "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
+    "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md",
+    "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "placeholder_summary_findings": [
-    "Historical placeholder/TBD matches remain in older phase documents listed by the pause audit. No current Phase 10.1 handoff or summary is a placeholder."
-  ],
-  "next_action": "First reproduce the Free Imitation release complaint with effective global/lane/voice Hold modes and transport state recorded. If Cancel produces immediate emitted NoteOff, document the behavior and make effective Hold visible in the mixer; if it does not, add a CanonLane regression before fixing scheduling. Then define the global arrangement-preset ownership schema and propose a small composer/era roster across classical, jazz, and video-game music.",
-  "context_notes": "The native prototype is functional and visually approved enough to iterate directly. Main-page density is now compact, music colors are restored, note-key geometry stays fixed, and Setup has more breathing room. The next design task is not just naming presets: first lock what a global arrangement preset owns and ensure every field is backed by existing engine behavior. The Free Imitation complaint may be HoldMode semantics rather than a missing source NoteOff, but it remains unproven and must be reproduced rather than dismissed. Focused prototype work is committed in 2179294b and 1d4fa8f9."
+  "next_action": "Configure a working researcher provider, retry preset 02 history and performance reports, then synthesize only after all three reports succeed.",
+  "context_notes": "The completed theory report explicitly warns that current static four-note/Palestrina and suspension machinery is only a bounded approximation. Do not market generic Fux species or a Palestrina style flag as historical authenticity without reconciling the other two reports and the synthesis."
 }
