@@ -6,7 +6,7 @@
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-07-stretto-engine",
+  "task": "implement-preset-07-stretto-engine",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -70,9 +70,19 @@
       ]
     },
     {
-      "name": "Research and implement remaining first-12 baselines",
+      "name": "Preset 07 Stretto Engine research pack and parent synthesis",
+      "status": "done_ready_for_implementation",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/synthesis.md"
+      ]
+    },
+    {
+      "name": "Implement preset 07 and research/implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: research 07. Then order: 8, 12, 14, 23, 25, 27, 36, 43, 48. Three researchers plus parent synthesis per preset."
+      "details": "Current: implement 07. Then order: 8, 12, 14, 23, 25, 27, 36, 43, 48. Three researchers plus parent synthesis per preset."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -118,6 +128,6 @@
     "[focused-research] .planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch the three independent research perspectives for preset 07 Stretto Engine, then parent-synthesize before changing its draft.",
-  "context_notes": "Modal Linework and Mensuration Web are operational (2/12). Mensuration Web is explicitly a scalar proportional approximation; no live ratio below 1.0, double-canon reconstruction, or historical mensuration claim."
+  "next_action": "Implement the synthesized Stretto Engine config and deterministic shrinking-gap/lifecycle checks, then approve preset 07.",
+  "context_notes": "Modal Linework and Mensuration Web are operational (2/12). Stretto Engine research is complete and limits the preset to fixed overlapping delayed answers; no motif recognition, tonal-answer generation, automatic fugue, or universal Bach end-tightening claim."
 }
