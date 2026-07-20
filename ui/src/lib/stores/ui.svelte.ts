@@ -13,6 +13,7 @@ const SCALE_KEY = 'contrapunk-ui-scale';
 const FONT_SCALE_KEY = 'contrapunk-font-scale';
 const NOTE_LABELS_KEY = 'contrapunk-show-note-labels';
 const NOTE_LINGERING_KEY = 'contrapunk-note-lingering';
+const PIANO_KEY_COUNT_KEY = 'contrapunk-piano-key-count';
 const PANELS_KEY = 'contrapunk-panels';
 const VIEW_MODE_KEY = 'contrapunk-view-mode';
 const ACTIVE_TAB_KEY = 'contrapunk-active-tab';
@@ -74,6 +75,9 @@ export type ActiveTab = 'play' | 'io' | 'companion' | 'voices';
  *  visualization + synth/FX racks. */
 export type IoSubtab = 'input' | 'output';
 
+export const PIANO_KEY_COUNTS = [25, 32, 37, 49, 61, 76, 88] as const;
+export type PianoKeyCount = (typeof PIANO_KEY_COUNTS)[number];
+
 // === UI Store (Svelte 5 runes) ===
 
 class UiStore {
@@ -112,6 +116,8 @@ class UiStore {
 	fontScale = $state(1.0);
 	/** Whether to show "C4", "D#5" etc. labels on active piano keys + fretboard notes. */
 	showNoteLabels = $state(true);
+	/** Number of physical keys represented by the prototype piano roll. */
+	pianoKeyCount = $state<PianoKeyCount>(49);
 
 	/** Hyper Light Drifter–style afterimage: released notes leave a
 	 *  fading ghost on the Piano and Fretboard. Off → notes vanish
@@ -259,6 +265,16 @@ class UiStore {
 		this.noteLingering = on;
 		try {
 			localStorage.setItem(NOTE_LINGERING_KEY, on ? 'on' : 'off');
+		} catch {
+			/* localStorage unavailable */
+		}
+	}
+
+	setPianoKeyCount(count: number) {
+		if (!PIANO_KEY_COUNTS.includes(count as PianoKeyCount)) return;
+		this.pianoKeyCount = count as PianoKeyCount;
+		try {
+			localStorage.setItem(PIANO_KEY_COUNT_KEY, String(count));
 		} catch {
 			/* localStorage unavailable */
 		}
@@ -435,6 +451,11 @@ class UiStore {
 
 			const savedLingering = localStorage.getItem(NOTE_LINGERING_KEY);
 			if (savedLingering === 'off') this.noteLingering = false;
+
+			const savedPianoKeyCount = Number(localStorage.getItem(PIANO_KEY_COUNT_KEY));
+			if (PIANO_KEY_COUNTS.includes(savedPianoKeyCount as PianoKeyCount)) {
+				this.pianoKeyCount = savedPianoKeyCount as PianoKeyCount;
+			}
 
 			// Legacy cleanup — strip any font-mode body class applied by
 			// older builds and drop the stale localStorage key.

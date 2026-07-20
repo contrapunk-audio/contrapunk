@@ -14,7 +14,7 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
-	import { ui } from '$lib/stores/ui.svelte';
+	import { PIANO_KEY_COUNTS, ui } from '$lib/stores/ui.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
 	import CompanionPanel from '$lib/components/CompanionPanel.svelte';
 	import ControlPanel from '$lib/components/ControlPanel.svelte';
@@ -211,6 +211,7 @@
 						<div class="interface-settings" aria-label="Interface preferences">
 							<label><span>Interface scale</span><input type="range" min="0.75" max="2" step="0.05" value={ui.uiScale} oninput={(event) => ui.setUiScale(Number(event.currentTarget.value))} /><output>{Math.round(ui.uiScale * 100)}%</output></label>
 							<label><span>Text scale</span><input type="range" min="0.75" max="1.5" step="0.05" value={ui.fontScale} oninput={(event) => ui.setFontScale(Number(event.currentTarget.value))} /><output>{Math.round(ui.fontScale * 100)}%</output></label>
+							<label><span>MIDI keyboard size</span><select value={ui.pianoKeyCount} onchange={(event) => ui.setPianoKeyCount(Number(event.currentTarget.value))}>{#each PIANO_KEY_COUNTS as count}<option value={count}>{count} keys</option>{/each}</select><output>{ui.pianoKeyCount}</output></label>
 							<label class="check"><input type="checkbox" checked={ui.showNoteLabels} onchange={(event) => ui.setShowNoteLabels(event.currentTarget.checked)} /><span>Show note labels</span></label>
 							<label class="check"><input type="checkbox" checked={ui.noteLingering} onchange={(event) => ui.setNoteLingering(event.currentTarget.checked)} /><span>Released-note trail</span></label>
 							<label class="check"><input type="checkbox" checked={ui.animationsEnabled} onchange={() => ui.toggleAnimations()} /><span>Interface motion</span></label>
@@ -313,6 +314,7 @@
 	.interface-settings { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px; margin-bottom: 16px; padding: 12px; border: 1px solid var(--proto-line); }
 	.interface-settings label { display: grid; grid-template-columns: 110px 1fr 42px; align-items: center; gap: 8px; color: var(--proto-muted); font-size: 10px; }
 	.interface-settings input[type='range'] { width: 100%; accent-color: var(--proto-text); }
+	.interface-settings select { width: 100%; border: 1px solid var(--proto-line); background: var(--proto-surface); color: var(--proto-text); font: 10px var(--font-code); }
 	.interface-settings output { color: var(--proto-text); font: 9px var(--font-code); text-align: right; }
 	.interface-settings .check { display: flex; min-height: 28px; align-items: center; }
 	.interface-settings input[type='checkbox'] { accent-color: var(--proto-text); }

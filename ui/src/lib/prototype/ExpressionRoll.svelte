@@ -2,8 +2,15 @@
 	import { onMount } from 'svelte';
 	import { platformName } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
+	import { ui, type PianoKeyCount } from '$lib/stores/ui.svelte';
 	import { isBlackKey, midiToName } from '$lib/embed/music-utils';
-	import { PIANO_CANON, PIANO_COUNTERPOINT, PIANO_HARMONY, PIANO_INPUT } from '$lib/theme/colors';
+	import {
+		getPianoKeyColor,
+		PIANO_CANON,
+		PIANO_COUNTERPOINT,
+		PIANO_HARMONY,
+		PIANO_INPUT
+	} from '$lib/theme/colors';
 
 	type Role = 'player' | 'harmony' | 'canon' | 'counterpoint';
 	type PitchSample = { at: number; midi: number; rms: number; clarity: number };
@@ -19,8 +26,15 @@
 
 	const WINDOW_MS = 8_000;
 	const KEY_RAIL = 50;
-	const DEFAULT_MIN = 36;
-	const DEFAULT_MAX = 84;
+	const KEY_RANGES: Record<PianoKeyCount, readonly [number, number]> = {
+		25: [48, 72],
+		32: [41, 72],
+		37: [36, 72],
+		49: [36, 84],
+		61: [36, 96],
+		76: [28, 103],
+		88: [21, 108]
+	};
 	const MAX_PITCH_SAMPLES = 512;
 	const MAX_GATES = 512;
 	const colors: Record<Role, string> = {
@@ -53,6 +67,18 @@
 	let midiSummary = $derived(
 		engine.inputNotes.length ? engine.inputNotes.map(midiToName).join('  ') : 'Waiting for a stable pitch'
 	);
+
+	function activeKeyColor(note: number): string {
+		return getPianoKeyColor(
+			note,
+			engine.inputNotes,
+			engine.harmonyNotes,
+			[],
+			[],
+			engine.canonNotes,
+			engine.counterpointNotes
+		);
+	}
 
 	function syncRole(role: Role, notes: number[], now: number) {
 		const current = new Set(notes);
@@ -113,21 +139,7 @@
 		ctx.fillStyle = '#0b0b0d';
 		ctx.fillRect(0, 0, width, height);
 
-		const recentNotes = [
-			...gates.map((gate) => gate.note),
-			...pitchSamples.map((sample) => sample.midi)
-		];
-		let minNote = DEFAULT_MIN;
-		let maxNote = DEFAULT_MAX;
-		if (recentNotes.length) {
-			minNote = Math.max(0, Math.floor((Math.min(...recentNotes) - 4) / 12) * 12);
-			maxNote = Math.min(127, Math.ceil((Math.max(...recentNotes) + 4) / 12) * 12);
-			if (maxNote - minNote < 36) {
-				const center = (minNote + maxNote) / 2;
-				minNote = Math.max(0, Math.floor((center - 18) / 12) * 12);
-				maxNote = Math.min(127, minNote + 36);
-			}
-		}
+		const [minNote, maxNote] = KEY_RANGES[ui.pianoKeyCount];
 		const vertical = orientation === 'vertical';
 		const railSize = vertical ? 42 : KEY_RAIL;
 		const plotWidth = Math.max(1, width - (vertical ? 0 : KEY_RAIL));
@@ -172,9 +184,12 @@
 
 		for (const [index, note] of whiteNotes.entries()) {
 			const inScale = engine.inScaleNotes.includes(note);
-			ctx.fillStyle = inScale ? '#e4f1ee' : '#c9c9cd';
+			const activeColor = activeKeyColor(note);
+			ctx.fillStyle = activeColor || (inScale ? '#e4f1ee' : '#c9c9cd');
 			ctx.strokeStyle = '#57575f';
 			ctx.lineWidth = 0.75;
+			ctx.shadowColor = activeColor || 'transparent';
+			ctx.shadowBlur = activeColor ? 10 : 0;
 			if (vertical) {
 				const x = index * whiteSize;
 				ctx.fillRect(x, 0, whiteSize, railSize);
@@ -184,14 +199,18 @@
 				ctx.fillRect(0, y, railSize, whiteSize);
 				ctx.strokeRect(0, y, railSize, whiteSize);
 			}
+			ctx.shadowBlur = 0;
 		}
 
 		for (let note = minNote; note <= maxNote; note++) {
 			if (!isBlackKey(note)) continue;
 			const inScale = engine.inScaleNotes.includes(note);
-			ctx.fillStyle = inScale ? '#789e96' : '#17171b';
+			const activeColor = activeKeyColor(note);
+			ctx.fillStyle = activeColor || (inScale ? '#789e96' : '#17171b');
 			ctx.strokeStyle = '#08080a';
 			ctx.lineWidth = 1;
+			ctx.shadowColor = activeColor || 'transparent';
+			ctx.shadowBlur = activeColor ? 10 : 0;
 			const center = pianoPosition(note) * whiteSize;
 			if (vertical) {
 				const keyWidth = whiteSize * 0.6;
@@ -203,6 +222,7 @@
 				ctx.fillRect(0, y, railSize * 0.66, keyHeight);
 				ctx.strokeRect(0, y, railSize * 0.66, keyHeight);
 			}
+			ctx.shadowBlur = 0;
 		}
 
 		for (let note = minNote; note <= maxNote; note++) {
