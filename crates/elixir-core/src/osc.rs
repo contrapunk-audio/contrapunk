@@ -32,7 +32,11 @@ pub enum PhaseDistortionMode {
 }
 
 impl PhaseDistortionMode {
-    pub const ALL_A6: [Self; 9] = [
+    /// Every public non-bypass phase-distortion variant exposed by the
+    /// A6 surface. The design document groups these into nine families;
+    /// the public API splits FM/RM oscillator/sample sources into
+    /// separate variants so tests can cover each automatable mode.
+    pub const ALL_A6: [Self; 11] = [
         Self::Quantize,
         Self::Bend,
         Self::Squeeze,
@@ -42,6 +46,8 @@ impl PhaseDistortionMode {
         Self::FmOscillatorB,
         Self::FmSample,
         Self::RmOscillatorA,
+        Self::RmOscillatorB,
+        Self::RmSample,
     ];
 }
 
@@ -257,7 +263,10 @@ fn distort_phase(phase: u32, mode: PhaseDistortionMode, amount: f32) -> u32 {
         | PhaseDistortionMode::RmOscillatorB
         | PhaseDistortionMode::RmSample => x,
         PhaseDistortionMode::Quantize => {
-            let steps = 2.0 + (1.0 - a) * 62.0;
+            // Avoid landing full-depth quantization exclusively on sine
+            // zero-crossings. Three or more phase buckets keeps the mode
+            // audible while still producing the intended stepped phase.
+            let steps = 3.0 + (1.0 - a) * 61.0;
             libm::floorf(x * steps) / steps
         }
         PhaseDistortionMode::Bend => {
@@ -420,7 +429,7 @@ mod tests {
     #[test]
     fn public_oscillator_mode_arrays_are_complete() {
         assert_eq!(SpectralMorph::ALL.len(), 12);
-        assert_eq!(PhaseDistortionMode::ALL_A6.len(), 9);
+        assert_eq!(PhaseDistortionMode::ALL_A6.len(), 11);
         assert_eq!(UnisonStyle::ALL.len(), 11);
     }
 
@@ -520,17 +529,11 @@ mod tests {
                 "{mode:?} peak too high: {}",
                 peak(&samples)
             );
-            // Full-depth quantize currently collapses this simple sine-table
-            // scaffold to a zero-amplitude stepped phase. Lock boundedness,
-            // but don't require audibility until phase quantize grows a
-            // richer wave-frame implementation.
-            if mode != PhaseDistortionMode::Quantize {
-                assert!(rms(&samples) > 0.01, "{mode:?} rendered too quietly");
-                assert!(
-                    rms_diff(&clean, &samples) > 1.0e-4,
-                    "{mode:?} too close to passthrough"
-                );
-            }
+            assert!(rms(&samples) > 0.01, "{mode:?} rendered too quietly");
+            assert!(
+                rms_diff(&clean, &samples) > 1.0e-4,
+                "{mode:?} too close to passthrough"
+            );
         }
     }
 

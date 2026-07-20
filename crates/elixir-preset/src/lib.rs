@@ -154,6 +154,15 @@ pub fn import_vital_file(path: impl AsRef<Path>) -> Result<ElixirPreset, PresetI
     import_vital_str(&json, hint)
 }
 
+pub const EXTERNAL_PRESET_EXTENSION: &str = "vital";
+pub const EXTERNAL_BANK_EXTENSION: &str = "vitalbank";
+
+pub fn import_external_preset_file(
+    path: impl AsRef<Path>,
+) -> Result<ElixirPreset, PresetImportError> {
+    import_vital_file(path)
+}
+
 /// Import all `.vital` presets from a `.vitalbank` ZIP archive. Wavetables
 /// are listed but not converted until B7's wavetable editor/FFT work.
 pub fn import_vital_bank<R: Read + Seek>(reader: R) -> Result<VitalBankImport, PresetImportError> {
@@ -187,6 +196,12 @@ pub fn import_vital_bank_file(
 ) -> Result<VitalBankImport, PresetImportError> {
     let file = std::fs::File::open(path)?;
     import_vital_bank(file)
+}
+
+pub fn import_external_bank_file(
+    path: impl AsRef<Path>,
+) -> Result<VitalBankImport, PresetImportError> {
+    import_vital_bank_file(path)
 }
 
 fn map_vital_patch(settings: &Map<String, Value>) -> ElixirPatch {

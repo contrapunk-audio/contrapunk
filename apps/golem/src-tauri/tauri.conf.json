@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.contrapunk.golem",
   "build": {
-    "beforeDevCommand": "npm --prefix .. run dev -- --host 127.0.0.1",
-    "beforeBuildCommand": "npm --prefix .. run build",
-    "devUrl": "http://127.0.0.1:5174",
+    "beforeDevCommand": "npm run dev -- --host localhost",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5174",
     "frontendDist": "../dist"
   },
   "app": {
@@ -24,7 +24,19 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all"
+    "active": true,
+    "targets": ["dmg", "app", "nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "entitlements": "entitlements.plist",
+      "minimumSystemVersion": "11.0"
+    }
   }
 }

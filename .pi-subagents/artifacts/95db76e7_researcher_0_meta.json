@@ -1,0 +1,37 @@
+{
+  "runId": "95db76e7",
+  "agent": "researcher",
+  "task": "Produce the independent PERFORMER / HCI research report for Phase 10.2 preset 43 “Hollow Choir,” referenced to a bounded Christopher Larkin / Hollow Knight corpus. Follow 10.2-RESEARCH-TEMPLATE.md completely. Design an honest clean-monophonic guitar and MIDI-keyboard contract for a current shared HarmonyEngine minor-chorale mapping: singable minor phrases, held destinations, register, articulation, velocity, density, rests, repetition/variation, guitar/keyboard constraints, failure gestures, lifecycle, product copy, and one deterministic 30–60 second acceptance exercise. Explain what the player creates versus what the system cannot manufacture: choir or acoustic orchestration, distant ensemble layers, independent counterline, adaptive scenes, game-state/narrative response, ambience/reverb, and Christopher Larkin’s identity. Use rigorous web research with inline citations and kept/dropped sources. Do not inspect or reuse another researcher’s output. Do not modify repository files; return only the complete standalone Markdown report.\n\n---\n**Output:**\nWrite your findings to exactly this path: /Users/vibhavbobade/go/src/github.com/contrapunk-audio/contrapunk/.pi-subagents/artifacts/outputs/95db76e7/.planning/phases/10.2-arrangement-presets/research/43-hollow-choir/performance.md\nThis path is authoritative for this run.\nIgnore any other output filename or output path mentioned elsewhere, including output destinations in the base agent prompt, system prompt, or task instructions.",
+  "exitCode": 0,
+  "usage": {
+    "input": 54890,
+    "output": 8834,
+    "cacheRead": 158208,
+    "cacheWrite": 0,
+    "cost": 0.618574,
+    "turns": 8
+  },
+  "model": "openai-codex/gpt-5.6-sol:medium",
+  "attemptedModels": [
+    "openai-codex/gpt-5.6-sol:medium"
+  ],
+  "modelAttempts": [
+    {
+      "model": "openai-codex/gpt-5.6-sol:medium",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 54890,
+        "output": 8834,
+        "cacheRead": 158208,
+        "cacheWrite": 0,
+        "cost": 0.618574,
+        "turns": 8
+      }
+    }
+  ],
+  "durationMs": 208838,
+  "toolCount": 22,
+  "transcriptPath": "/Users/vibhavbobade/go/src/github.com/contrapunk-audio/contrapunk/.pi-subagents/artifacts/95db76e7_researcher_0_transcript.jsonl",
+  "timestamp": 1784543276742
+}

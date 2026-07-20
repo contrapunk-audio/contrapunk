@@ -2,6 +2,7 @@
 
 use std::f32::consts::TAU;
 
+use crate::dynamics::{AdaptiveDynamics, DrummerIntent};
 use crate::events::{Articulation, DrumHit, DrumPiece};
 use crate::follow::FollowInput;
 use crate::params::{EngineParams, SharedParams};
@@ -27,6 +28,7 @@ pub struct Engine {
     max_block: usize,
     voices: [Voice; MAX_VOICES],
     params: EngineParams,
+    dynamics: AdaptiveDynamics,
     age_counter: u64,
 }
 
@@ -43,6 +45,7 @@ impl Engine {
             max_block: 512,
             voices: [Voice::idle(); MAX_VOICES],
             params: EngineParams::default(),
+            dynamics: AdaptiveDynamics::new(),
             age_counter: 0,
         }
     }
@@ -100,7 +103,8 @@ impl Engine {
         let mut event_count = 0usize;
 
         if clock.playing {
-            event_count = self.schedule(clock, follow, frames, &mut events);
+            let intent = self.dynamics.update(follow, frames, self.sample_rate);
+            event_count = self.schedule(clock, intent, frames, &mut events);
             events[..event_count].sort_unstable_by_key(|hit| hit.offset_frames);
         }
 
@@ -136,17 +140,17 @@ impl Engine {
             } else {
                 output[base] += l;
                 output[base + 1] += r;
-                for ch in 2..channels {
-                    output[base + ch] += (l + r) * 0.5;
-                }
+                // Leave additional hardware outputs silent. Some interfaces
+                // expose loopback/aux channels that can sound unstable if we
+                // mirror the main mix into every output bus.
             }
         }
     }
 
     fn schedule(
-        &self,
+        &mut self,
         clock: ClockSnapshot,
-        follow: FollowInput,
+        intent: DrummerIntent,
         frames: usize,
         events: &mut [DrumHit; MAX_EVENTS_PER_BLOCK],
     ) -> usize {
@@ -185,7 +189,7 @@ impl Engine {
                 step_in_bar,
                 step_in_phrase,
                 offset,
-                follow,
+                intent,
                 events,
                 &mut count,
             );
@@ -196,51 +200,84 @@ impl Engine {
 
     #[allow(clippy::too_many_arguments)]
     fn schedule_step(
-        &self,
+        &mut self,
         absolute_step: u64,
         step: u8,
         phrase_step: u8,
         offset: u32,
-        follow: FollowInput,
+        intent: DrummerIntent,
         events: &mut [DrumHit; MAX_EVENTS_PER_BLOCK],
         count: &mut usize,
     ) {
-        let follow_energy = (follow.guitar_rms * 2.2 + follow.strum_density * 0.65).clamp(0.0, 1.0);
-        let energy = (self.params.intensity + self.params.follow_amount * follow_energy * 0.55)
+        let follow = self.params.follow_amount.clamp(0.0, 1.0);
+        let energy = (self.params.intensity
+            + follow
+                * (intent.energy * 0.42 + intent.section_lift * 0.22 + intent.accent * 0.12
+                    - intent.restraint * 0.16))
             .clamp(0.05, 1.0);
         let complexity = (self.params.complexity
-            + self.params.follow_amount * follow.strum_density * 0.35)
+            + follow
+                * (intent.density * 0.42
+                    + intent.fill_tension * 0.18
+                    + intent.section_lift * 0.16
+                    - intent.restraint * 0.22))
             .clamp(0.0, 1.0);
-        let onset_boost = follow.onset_strength * self.params.follow_amount;
+        let onset_boost = intent.accent * follow;
+        let velocity_drive = (energy * 0.72 + intent.velocity * follow * 0.28).clamp(0.0, 1.0);
 
         let fill_zone = phrase_step >= 56;
-        let fill_active = fill_zone && self.params.fill_amount > 0.12 && energy > 0.25;
+        let fill_eagerness = (self.params.fill_amount
+            * (0.45 + intent.fill_tension * 0.75 + intent.section_lift * 0.35))
+            .clamp(0.0, 1.0);
+        let fill_active = fill_zone && fill_eagerness > 0.18 && energy > 0.25;
 
-        if phrase_step == 0 && absolute_step > 0 {
+        if phrase_step == 0
+            && absolute_step > 0
+            && (intent.section_lift > 0.24 || intent.fill_tension > 0.45 || energy > 0.72)
+        {
             push_hit(
                 events,
                 count,
                 offset,
                 DrumPiece::Crash,
-                0.35 + energy * 0.45,
+                0.30 + velocity_drive * 0.50,
             );
         }
 
         if fill_active {
-            self.schedule_fill_step(step, offset, energy, complexity, events, count);
+            self.schedule_fill_step(step, offset, velocity_drive, complexity, events, count);
+            self.dynamics.consume_fill(0.45);
             return;
         }
 
         match self.params.style {
-            Style::Rock => {
-                schedule_rock(step, offset, energy, complexity, onset_boost, events, count)
-            }
-            Style::HalfTime => {
-                schedule_half_time(step, offset, energy, complexity, onset_boost, events, count)
-            }
-            Style::FourOnFloor => {
-                schedule_four_on_floor(step, offset, energy, complexity, onset_boost, events, count)
-            }
+            Style::Rock => schedule_rock(
+                step,
+                offset,
+                velocity_drive,
+                complexity,
+                onset_boost,
+                events,
+                count,
+            ),
+            Style::HalfTime => schedule_half_time(
+                step,
+                offset,
+                velocity_drive,
+                complexity,
+                onset_boost,
+                events,
+                count,
+            ),
+            Style::FourOnFloor => schedule_four_on_floor(
+                step,
+                offset,
+                velocity_drive,
+                complexity,
+                onset_boost,
+                events,
+                count,
+            ),
         }
     }
 
@@ -473,23 +510,11 @@ fn push_hit(
     *count += 1;
 }
 
-fn jitter_samples(step: u64, complexity: f32, sample_rate: u32) -> i32 {
-    let max_ms = 0.8 + complexity * 3.2;
-    let max_samples = (sample_rate as f32 * max_ms / 1000.0) as i32;
-    if max_samples <= 0 {
-        return 0;
-    }
-    let h = hash64(step ^ 0x9E37_79B9_7F4A_7C15);
-    let span = max_samples * 2 + 1;
-    (h % span as u64) as i32 - max_samples
-}
-
-fn hash64(mut x: u64) -> u64 {
-    x ^= x >> 30;
-    x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    x ^= x >> 27;
-    x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
-    x ^ (x >> 31)
+fn jitter_samples(_step: u64, _complexity: f32, _sample_rate: u32) -> i32 {
+    // Keep v0.1 sample-accurate and locked. Humanized microtiming can come
+    // back later behind an explicit feel control; random timing variance made
+    // the first playable build feel unstable.
+    0
 }
 
 fn soft_clip(x: f32) -> f32 {

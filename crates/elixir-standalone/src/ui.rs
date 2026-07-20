@@ -1,8 +1,8 @@
 //! egui window for the standalone synth (Phase 21.B6.2 — visual).
 //!
 //! No sliders. Rotary knobs, ADSR shape painter, filter frequency-
-//! response curve, and a real piano keyboard. Mod-matrix and wave-
-//! table editors land in B7+.
+//! response curve, and a real piano keyboard. The shell is arranged as a
+//! plugin-style editor canvas with explicit section bounds.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -17,7 +17,11 @@ use elixir_core::filter::FilterKind;
 use elixir_core::fx::{Delay, Drive, FxSlot, Reverb};
 use elixir_core::osc::{PhaseDistortionMode, SpectralMorph, UnisonStyle, MAX_UNISON};
 use elixir_core::{Engine, MAX_POLYPHONY};
-use elixir_preset::{import_vital_bank_file, import_vital_file, ElixirPreset};
+use elixir_preset::{
+    import_external_bank_file as import_bank_file,
+    import_external_preset_file as import_preset_file, ElixirPreset, EXTERNAL_BANK_EXTENSION,
+    EXTERNAL_PRESET_EXTENSION,
+};
 
 const ACCENT_OSC: Color32 = Color32::from_rgb(240, 200, 130);
 
@@ -43,8 +47,8 @@ const KNOB_TRACK: Color32 = Color32::from_rgb(40, 46, 60);
 pub fn run(engine: Arc<Mutex<Engine>>) -> Result<(), eframe::Error> {
     let viewport = egui::ViewportBuilder::default()
         .with_title("Elixir")
-        .with_inner_size([880.0, 640.0])
-        .with_min_inner_size([720.0, 540.0]);
+        .with_inner_size([1320.0, 760.0])
+        .with_min_inner_size([1180.0, 620.0]);
     let options = eframe::NativeOptions {
         viewport,
         ..Default::default()
@@ -187,7 +191,7 @@ fn value_to_norm(spec: &KnobSpec, v: f32) -> f32 {
 /// default; shift makes fine adjustments. Arc sweeps from ~-225° to +45°
 /// (so straight up = full).
 fn knob(ui: &mut Ui, value: &mut f32, spec: &KnobSpec, accent: Color32) -> Response {
-    let size = vec2(56.0, 78.0); // knob + label + readout
+    let size = vec2(48.0, 66.0); // knob + label + readout
     let (rect, mut response) = ui.allocate_exact_size(size, Sense::click_and_drag());
 
     if response.double_clicked() {
@@ -215,9 +219,9 @@ fn knob(ui: &mut Ui, value: &mut f32, spec: &KnobSpec, accent: Color32) -> Respo
     let painter = ui.painter();
     let knob_center = Pos2 {
         x: rect.center().x,
-        y: rect.top() + 28.0,
+        y: rect.top() + 24.0,
     };
-    let radius = 22.0;
+    let radius = 18.0;
 
     // Background ring (track)
     painter.circle_filled(knob_center, radius + 3.0, CARD);
@@ -262,21 +266,21 @@ fn knob(ui: &mut Ui, value: &mut f32, spec: &KnobSpec, accent: Color32) -> Respo
     painter.text(
         Pos2 {
             x: knob_center.x,
-            y: rect.top() + 56.0,
+            y: rect.top() + 49.0,
         },
         Align2::CENTER_CENTER,
         &value_text,
-        FontId::monospace(11.0),
+        FontId::monospace(10.0),
         TEXT_PRIMARY,
     );
     painter.text(
         Pos2 {
             x: knob_center.x,
-            y: rect.top() + 70.0,
+            y: rect.top() + 61.0,
         },
         Align2::CENTER_CENTER,
         spec.label,
-        FontId::proportional(10.0),
+        FontId::proportional(9.0),
         TEXT_DIM,
     );
 
@@ -286,7 +290,7 @@ fn knob(ui: &mut Ui, value: &mut f32, spec: &KnobSpec, accent: Color32) -> Respo
 // ─── ADSR shape painter ──────────────────────────────────────────────
 
 fn adsr_curve(ui: &mut Ui, attack: f32, decay: f32, sustain: f32, release: f32, accent: Color32) {
-    let desired = vec2(ui.available_width(), 70.0);
+    let desired = vec2(ui.available_width(), 62.0);
     let (rect, _) = ui.allocate_exact_size(desired, Sense::hover());
     let painter = ui.painter();
     painter.rect_filled(rect, Rounding::same(6.0), Color32::from_rgb(18, 20, 28));
@@ -457,7 +461,7 @@ fn piano_keyboard(ui: &mut Ui, held_notes: &HashSet<u8>, accent: Color32) -> Vec
         (12, 22),
     ];
 
-    let desired = vec2(ui.available_width(), 80.0);
+    let desired = vec2(ui.available_width(), 46.0);
     let (rect, response) = ui.allocate_exact_size(desired, Sense::click_and_drag());
     let painter = ui.painter();
     painter.rect_filled(rect, Rounding::same(6.0), Color32::from_rgb(18, 20, 28));
@@ -593,11 +597,46 @@ enum KeyEvent {
 
 // ─── app + snapshot ──────────────────────────────────────────────────
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UiPage {
+    Voice,
+    Effects,
+    Matrix,
+    Advanced,
+}
+
+impl UiPage {
+    const ALL: [Self; 4] = [Self::Voice, Self::Effects, Self::Matrix, Self::Advanced];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Voice => "VOICE",
+            Self::Effects => "EFFECTS",
+            Self::Matrix => "MATRIX",
+            Self::Advanced => "ADVANCED",
+        }
+    }
+
+    fn from_env() -> Self {
+        match std::env::var("ELIXIR_UI_PAGE")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "effects" | "fx" => Self::Effects,
+            "matrix" | "mod" => Self::Matrix,
+            "advanced" | "adv" | "settings" => Self::Advanced,
+            _ => Self::Voice,
+        }
+    }
+}
+
 struct ElixirApp {
     engine: Arc<Mutex<Engine>>,
     keys_held: HashSet<Key>,
     mouse_note: Option<u8>,
     keyboard_octave: i32,
+    active_page: UiPage,
     snapshot: EngineSnapshot,
     imported_presets: Vec<ElixirPreset>,
     selected_preset: usize,
@@ -649,10 +688,11 @@ impl ElixirApp {
             keys_held: HashSet::new(),
             mouse_note: None,
             keyboard_octave: 4,
+            active_page: UiPage::from_env(),
             snapshot,
             imported_presets: Vec::new(),
             selected_preset: 0,
-            preset_status: "No Vital presets imported yet".to_string(),
+            preset_status: "No presets imported yet".to_string(),
         }
     }
 
@@ -680,12 +720,13 @@ impl EngineSnapshot {
             FxSlot::Drive(d) => (true, d.drive, d.mix),
             _ => (false, 2.5, 0.4),
         };
+        let sr = e.sample_rate().max(1) as f32;
         let (delay_on, delay_secs, delay_feedback, delay_mix) = match &e.fx_chain[1] {
-            FxSlot::Delay(_) => (true, 0.375, 0.45, 0.30),
+            FxSlot::Delay(d) => (true, d.delay_samples() as f32 / sr, d.feedback(), d.mix()),
             _ => (false, 0.375, 0.45, 0.30),
         };
         let (reverb_on, reverb_decay, reverb_damping, reverb_mix) = match &e.fx_chain[2] {
-            FxSlot::Reverb(_) => (true, 0.85, 0.4, 0.30),
+            FxSlot::Reverb(r) => (true, r.decay(), r.damping(), r.mix()),
             _ => (false, 0.85, 0.4, 0.30),
         };
         let osc = e.osc_params();
@@ -735,12 +776,10 @@ fn card<R>(ui: &mut Ui, accent: Color32, body: impl FnOnce(&mut Ui) -> R) -> R {
         .fill(CARD)
         .stroke(Stroke::new(1.0, CARD_BORDER))
         .rounding(Rounding::same(10.0))
-        .inner_margin(egui::Margin::symmetric(14.0, 12.0))
+        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
         .show(ui, |ui| {
-            let stripe_rect = Rect::from_min_size(
-                ui.min_rect().min - vec2(14.0, 0.0),
-                vec2(3.0, ui.available_height().max(40.0)),
-            );
+            let stripe_rect =
+                Rect::from_min_size(ui.min_rect().min - vec2(12.0, 0.0), vec2(3.0, 32.0));
             ui.painter()
                 .rect_filled(stripe_rect, Rounding::same(2.0), accent);
             body(ui)
@@ -756,7 +795,50 @@ fn section_title(ui: &mut Ui, label: &str, accent: Color32) {
             .extra_letter_spacing(2.0)
             .size(11.0),
     );
-    ui.add_space(4.0);
+    ui.add_space(2.0);
+}
+
+fn section_kicker(ui: &mut Ui, label: &str) {
+    ui.label(
+        egui::RichText::new(label)
+            .monospace()
+            .size(10.0)
+            .color(TEXT_DIM),
+    );
+}
+
+fn info_pill(ui: &mut Ui, label: &str, value: impl Into<String>) {
+    Frame::none()
+        .fill(Color32::from_rgb(16, 19, 27))
+        .stroke(Stroke::new(1.0, CARD_BORDER))
+        .rounding(Rounding::same(999.0))
+        .inner_margin(egui::Margin::symmetric(8.0, 4.0))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(label)
+                        .small()
+                        .monospace()
+                        .color(TEXT_DIM),
+                );
+                ui.label(
+                    egui::RichText::new(value.into())
+                        .small()
+                        .strong()
+                        .color(TEXT_PRIMARY),
+                );
+            });
+        });
+}
+
+fn child_ui_at<R>(ui: &mut Ui, rect: Rect, body: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.allocate_ui_at_rect(rect, |ui| {
+        ui.set_clip_rect(rect);
+        ui.set_min_size(rect.size());
+        ui.set_max_width(rect.width());
+        body(ui)
+    })
+    .inner
 }
 
 // ─── update ──────────────────────────────────────────────────────────
@@ -767,276 +849,1106 @@ impl eframe::App for ElixirApp {
         self.snapshot();
 
         egui::CentralPanel::default()
-            .frame(
-                Frame::none()
-                    .fill(PANEL)
-                    .inner_margin(egui::Margin::same(16.0)),
-            )
+            .frame(Frame::none().fill(BG).inner_margin(egui::Margin::same(0.0)))
             .show(ctx, |ui| {
-                // Header
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("ELIXIR")
-                            .color(TEXT_PRIMARY)
-                            .strong()
-                            .size(22.0)
-                            .extra_letter_spacing(6.0),
-                    );
-                    ui.add_space(8.0);
-                    ui.label(
-                        egui::RichText::new("v0.0.1 · phase 21")
-                            .color(TEXT_DIM)
-                            .small(),
-                    );
+                let rect = ui.max_rect();
+                ui.painter().rect_filled(rect, Rounding::ZERO, BG);
+
+                let width = rect.width().min(1320.0);
+                let height = rect.height().min(760.0);
+                let canvas = Rect::from_center_size(rect.center(), vec2(width, height));
+                ui.painter()
+                    .rect_filled(canvas, Rounding::same(10.0), PANEL);
+                ui.painter().rect_stroke(
+                    canvas,
+                    Rounding::same(10.0),
+                    Stroke::new(1.0, CARD_BORDER),
+                );
+
+                let header_h = 88.0;
+                let keyboard_h = 92.0;
+                let body = Rect::from_min_max(
+                    Pos2 {
+                        x: canvas.left(),
+                        y: canvas.top() + header_h,
+                    },
+                    Pos2 {
+                        x: canvas.right(),
+                        y: canvas.bottom() - keyboard_h,
+                    },
+                );
+                let header = Rect::from_min_size(canvas.min, vec2(canvas.width(), header_h));
+                let keyboard = Rect::from_min_max(
+                    Pos2 {
+                        x: canvas.left(),
+                        y: canvas.bottom() - keyboard_h,
+                    },
+                    canvas.max,
+                );
+
+                child_ui_at(ui, header, |ui| self.draw_header_bar(ui));
+                child_ui_at(ui, body, |ui| match self.active_page {
+                    UiPage::Voice => self.draw_voice_page(ui),
+                    UiPage::Effects => self.draw_effects_page(ui),
+                    UiPage::Matrix => self.draw_matrix_page(ui),
+                    UiPage::Advanced => self.draw_advanced_page(ui),
                 });
-                ui.add_space(8.0);
-
-                // Master + envelope
-                ui.horizontal(|ui| {
-                    // master card
-                    Frame::none()
-                        .fill(CARD)
-                        .stroke(Stroke::new(1.0, CARD_BORDER))
-                        .rounding(Rounding::same(10.0))
-                        .inner_margin(egui::Margin::symmetric(14.0, 12.0))
-                        .show(ui, |ui| {
-                            ui.set_min_width(140.0);
-                            ui.vertical(|ui| {
-                                section_title(ui, "MASTER", ACCENT_MASTER);
-                                let mut v = self.snapshot.master_gain;
-                                if knob(
-                                    ui,
-                                    &mut v,
-                                    &KnobSpec::linear(0.0, 1.0, 0.30, "gain")
-                                        .with_fmt(KnobFmt::Percent),
-                                    ACCENT_MASTER,
-                                )
-                                .changed()
-                                {
-                                    if let Ok(mut e) = self.engine.lock() {
-                                        e.set_master_gain(v);
-                                    }
-                                }
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "{:>2}/{} voices",
-                                        self.snapshot.live_voices, MAX_POLYPHONY
-                                    ))
-                                    .monospace()
-                                    .small()
-                                    .color(TEXT_DIM),
-                                );
-                                if self.snapshot.sustain_pedal {
-                                    ui.colored_label(ACCENT_FILTER, "● sustain");
-                                }
-                            });
-                        });
-
-                    ui.add_space(10.0);
-
-                    // envelope card
-                    Frame::none()
-                        .fill(CARD)
-                        .stroke(Stroke::new(1.0, CARD_BORDER))
-                        .rounding(Rounding::same(10.0))
-                        .inner_margin(egui::Margin::symmetric(14.0, 12.0))
-                        .show(ui, |ui| {
-                            ui.vertical(|ui| {
-                                section_title(ui, "AMP ENVELOPE", ACCENT_ENV);
-                                adsr_curve(
-                                    ui,
-                                    self.snapshot.amp_attack_secs,
-                                    self.snapshot.amp_decay_secs,
-                                    self.snapshot.amp_sustain,
-                                    self.snapshot.amp_release_secs,
-                                    ACCENT_ENV,
-                                );
-                                ui.add_space(4.0);
-                                ui.horizontal(|ui| {
-                                    let mut a = self.snapshot.amp_attack_secs;
-                                    if knob(
-                                        ui,
-                                        &mut a,
-                                        &KnobSpec::log(0.001, 4.0, 0.005, "attack")
-                                            .with_fmt(KnobFmt::Seconds),
-                                        ACCENT_ENV,
-                                    )
-                                    .changed()
-                                    {
-                                        if let Ok(mut e) = self.engine.lock() {
-                                            e.set_amp_attack_secs(a);
-                                        }
-                                    }
-                                    let mut d = self.snapshot.amp_decay_secs;
-                                    if knob(
-                                        ui,
-                                        &mut d,
-                                        &KnobSpec::log(0.001, 4.0, 0.12, "decay")
-                                            .with_fmt(KnobFmt::Seconds),
-                                        ACCENT_ENV,
-                                    )
-                                    .changed()
-                                    {
-                                        if let Ok(mut e) = self.engine.lock() {
-                                            e.set_amp_decay_secs(d);
-                                        }
-                                    }
-                                    let mut s = self.snapshot.amp_sustain;
-                                    if knob(
-                                        ui,
-                                        &mut s,
-                                        &KnobSpec::linear(0.0, 1.0, 0.7, "sustain")
-                                            .with_fmt(KnobFmt::Percent),
-                                        ACCENT_ENV,
-                                    )
-                                    .changed()
-                                    {
-                                        if let Ok(mut e) = self.engine.lock() {
-                                            e.set_amp_sustain(s);
-                                        }
-                                    }
-                                    let mut r = self.snapshot.amp_release_secs;
-                                    if knob(
-                                        ui,
-                                        &mut r,
-                                        &KnobSpec::log(0.001, 8.0, 0.25, "release")
-                                            .with_fmt(KnobFmt::Seconds),
-                                        ACCENT_ENV,
-                                    )
-                                    .changed()
-                                    {
-                                        if let Ok(mut e) = self.engine.lock() {
-                                            e.set_amp_release_secs(r);
-                                        }
-                                    }
-                                });
-                            });
-                        });
-                });
-
-                ui.add_space(10.0);
-
-                // OSC card (A6)
-                card(ui, ACCENT_OSC, |ui| {
-                    self.draw_osc(ui);
-                });
-
-                ui.add_space(10.0);
-
-                // Filter card with frequency response curve
-                card(ui, ACCENT_FILTER, |ui| {
-                    section_title(ui, "FILTER", ACCENT_FILTER);
-                    filter_curve(
-                        ui,
-                        self.snapshot.filter_cutoff_hz,
-                        self.snapshot.filter_resonance,
-                        ACCENT_FILTER,
-                    );
-                    ui.add_space(4.0);
-                    self.draw_filter_controls(ui);
-                });
-
-                ui.add_space(10.0);
-
-                // FX chain card
-                card(ui, ACCENT_FX, |ui| {
-                    section_title(ui, "FX CHAIN", ACCENT_FX);
-                    ui.horizontal(|ui| {
-                        self.draw_drive(ui);
-                        ui.separator();
-                        self.draw_delay(ui);
-                        ui.separator();
-                        self.draw_reverb(ui);
-                    });
-                });
-
-                ui.add_space(10.0);
-
-                // Presets / Vital import card (B5)
-                card(ui, ACCENT_MASTER, |ui| {
-                    self.draw_presets(ui);
-                });
-
-                ui.add_space(10.0);
-
-                // Piano keyboard card
-                Frame::none()
-                    .fill(CARD)
-                    .stroke(Stroke::new(1.0, CARD_BORDER))
-                    .rounding(Rounding::same(10.0))
-                    .inner_margin(egui::Margin::symmetric(8.0, 10.0))
-                    .show(ui, |ui| {
-                        section_title(ui, "KEYBOARD (C3–D5)", ACCENT_KEYS);
-                        // release any mouse-held note when no longer being held
-                        let mouse_released = ctx.input(|i| !i.pointer.primary_down());
-                        if mouse_released {
-                            if let Some(n) = self.mouse_note.take() {
-                                if let Ok(mut e) = self.engine.lock() {
-                                    e.note_off(n);
-                                }
-                            }
-                        }
-                        let events = piano_keyboard(ui, &self.snapshot.active_notes, ACCENT_KEYS);
-                        for ev in events {
-                            match ev {
-                                KeyEvent::On(n) => {
-                                    if let Some(prev) = self.mouse_note.replace(n) {
-                                        if prev != n {
-                                            if let Ok(mut e) = self.engine.lock() {
-                                                e.note_off(prev);
-                                            }
-                                        }
-                                    }
-                                    if let Ok(mut e) = self.engine.lock() {
-                                        e.note_on(n, 100);
-                                    }
-                                }
-                                KeyEvent::AllOff => {
-                                    if let Some(n) = self.mouse_note.take() {
-                                        if let Ok(mut e) = self.engine.lock() {
-                                            e.note_off(n);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "computer kbd octave: {}",
-                                    self.keyboard_octave
-                                ))
-                                .small()
-                                .color(TEXT_DIM),
-                            );
-                            if ui.small_button("◀ z").clicked() {
-                                self.keyboard_octave = (self.keyboard_octave - 1).max(0);
-                            }
-                            if ui.small_button("x ▶").clicked() {
-                                self.keyboard_octave = (self.keyboard_octave + 1).min(9);
-                            }
-                            if ui.small_button("All notes off").clicked() {
-                                if let Ok(mut e) = self.engine.lock() {
-                                    e.all_notes_off();
-                                }
-                                self.keys_held.clear();
-                            }
-                        });
-                    });
+                child_ui_at(ui, keyboard, |ui| self.draw_keyboard_panel(ctx, ui));
             });
 
         ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
 }
 
-// ─── FX rows ─────────────────────────────────────────────────────────
-
 impl ElixirApp {
+    fn draw_header_bar(&mut self, ui: &mut Ui) {
+        let rect = ui.max_rect();
+        ui.painter().rect_filled(rect, Rounding::ZERO, BG);
+        ui.painter().line_segment(
+            [rect.left_bottom(), rect.right_bottom()],
+            Stroke::new(1.0, CARD_BORDER),
+        );
+
+        let logo_rect = Rect::from_min_size(rect.left_top() + vec2(22.0, 16.0), vec2(120.0, 44.0));
+        ui.painter().text(
+            logo_rect.left_center(),
+            Align2::LEFT_CENTER,
+            "ELIXIR",
+            FontId::proportional(24.0),
+            TEXT_PRIMARY,
+        );
+
+        let tabs = Rect::from_min_size(
+            Pos2 {
+                x: logo_rect.right() + 18.0,
+                y: rect.top() + 23.0,
+            },
+            vec2(320.0, 34.0),
+        );
+        child_ui_at(ui, tabs, |ui| self.draw_page_tabs(ui));
+
+        let preset = Rect::from_center_size(
+            Pos2 {
+                x: rect.center().x,
+                y: rect.top() + 40.0,
+            },
+            vec2(340.0, 32.0),
+        );
+        child_ui_at(ui, preset, |ui| self.draw_preset_strip(ui));
+
+        let volume = Rect::from_min_size(
+            Pos2 {
+                x: rect.right() - 230.0,
+                y: rect.top() + 12.0,
+            },
+            vec2(60.0, 68.0),
+        );
+        child_ui_at(ui, volume, |ui| {
+            let mut gain = self.snapshot.master_gain;
+            if knob(
+                ui,
+                &mut gain,
+                &KnobSpec::linear(0.0, 1.0, 0.30, "vol").with_fmt(KnobFmt::Percent),
+                ACCENT_MASTER,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_master_gain(gain);
+                }
+            }
+        });
+
+        let scope = Rect::from_min_size(
+            Pos2 {
+                x: rect.right() - 160.0,
+                y: rect.top() + 18.0,
+            },
+            vec2(138.0, 46.0),
+        );
+        child_ui_at(ui, scope, |ui| self.draw_header_scope(ui));
+    }
+
+    fn draw_preset_strip(&mut self, ui: &mut Ui) {
+        Frame::none()
+            .fill(Color32::from_rgb(13, 16, 24))
+            .stroke(Stroke::new(1.0, CARD_BORDER))
+            .rounding(Rounding::same(8.0))
+            .inner_margin(egui::Margin::symmetric(10.0, 5.0))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("PRESET").small().color(TEXT_DIM));
+                    ui.separator();
+                    if self.imported_presets.is_empty() {
+                        ui.label(
+                            egui::RichText::new("Init Elixir")
+                                .strong()
+                                .color(TEXT_PRIMARY),
+                        );
+                    } else {
+                        self.selected_preset =
+                            self.selected_preset.min(self.imported_presets.len() - 1);
+                        let selected_name =
+                            self.imported_presets[self.selected_preset].name.clone();
+                        egui::ComboBox::from_id_source("header_preset_selector")
+                            .selected_text(selected_name)
+                            .width(165.0)
+                            .show_ui(ui, |ui| {
+                                for (idx, preset) in self.imported_presets.iter().enumerate() {
+                                    ui.selectable_value(
+                                        &mut self.selected_preset,
+                                        idx,
+                                        &preset.name,
+                                    );
+                                }
+                            });
+                        if ui.small_button("Load").clicked() {
+                            self.apply_selected_preset();
+                        }
+                    }
+                    if ui.small_button("Scan").clicked() {
+                        self.scan_downloads_for_presets();
+                    }
+                });
+            });
+    }
+
+    fn draw_header_scope(&self, ui: &mut Ui) {
+        let desired = ui.available_size();
+        let (rect, _) = ui.allocate_exact_size(desired, Sense::hover());
+        let painter = ui.painter();
+        painter.rect_filled(rect, Rounding::same(8.0), Color32::from_rgb(9, 11, 17));
+        let mid = rect.center().y + 3.0;
+        let left = rect.left() + 8.0;
+        let width = rect.width() - 16.0;
+        let mut points = Vec::with_capacity(96);
+        for i in 0..96 {
+            let t = i as f32 / 95.0;
+            let env = (1.0 - (t - 0.5).abs() * 1.2).clamp(0.35, 1.0);
+            points.push(Pos2 {
+                x: left + width * t,
+                y: mid - (t * core::f32::consts::TAU * 3.0).sin() * env * 12.0,
+            });
+        }
+        painter.add(Shape::line(points, Stroke::new(1.8, ACCENT_ENV)));
+        painter.text(
+            rect.left_top() + vec2(8.0, 6.0),
+            Align2::LEFT_TOP,
+            format!("{} voices", self.snapshot.live_voices),
+            FontId::monospace(9.0),
+            TEXT_DIM,
+        );
+    }
+
+    fn draw_voice_page(&mut self, ui: &mut Ui) {
+        self.draw_plugin_workspace(ui, UiPage::Voice);
+    }
+
+    fn draw_effects_page(&mut self, ui: &mut Ui) {
+        self.draw_plugin_workspace(ui, UiPage::Effects);
+    }
+
+    fn draw_matrix_page(&mut self, ui: &mut Ui) {
+        self.draw_plugin_workspace(ui, UiPage::Matrix);
+    }
+
+    fn draw_advanced_page(&mut self, ui: &mut Ui) {
+        self.draw_plugin_workspace(ui, UiPage::Advanced);
+    }
+
+    fn draw_plugin_workspace(&mut self, ui: &mut Ui, page: UiPage) {
+        let rect = ui.max_rect();
+        ui.painter().rect_filled(rect, Rounding::ZERO, PANEL);
+
+        let pad = 10.0;
+        let gutter = 10.0;
+        let strip_width = 58.0;
+        let content = rect.shrink(pad);
+        let bottom_strip_h = 86.0;
+        let upper_h = content.height() - bottom_strip_h - gutter;
+        let main_width = 690.0_f32
+            .min(content.width() - strip_width - gutter * 2.0 - 360.0)
+            .max(610.0);
+        let mod_width = content.width() - strip_width - gutter * 2.0 - main_width;
+
+        let strip_rect = Rect::from_min_size(content.min, vec2(strip_width, content.height()));
+        let main_rect = Rect::from_min_size(
+            Pos2 {
+                x: strip_rect.right() + gutter,
+                y: content.top(),
+            },
+            vec2(main_width, upper_h),
+        );
+        let mod_rect = Rect::from_min_size(
+            Pos2 {
+                x: main_rect.right() + gutter,
+                y: content.top(),
+            },
+            vec2(mod_width, upper_h),
+        );
+        let voice_rect = Rect::from_min_max(
+            Pos2 {
+                x: main_rect.left(),
+                y: content.bottom() - bottom_strip_h,
+            },
+            content.right_bottom(),
+        );
+
+        child_ui_at(ui, strip_rect, |ui| {
+            self.draw_extra_mod_strip(ui, strip_width)
+        });
+        child_ui_at(ui, main_rect, |ui| match page {
+            UiPage::Voice => self.draw_synthesis_interface(ui),
+            UiPage::Effects => self.draw_effects_interface(ui),
+            UiPage::Matrix => self.draw_matrix_interface(ui),
+            UiPage::Advanced => self.draw_advanced_interface(ui),
+        });
+        child_ui_at(ui, mod_rect, |ui| self.draw_modulation_interface(ui));
+        child_ui_at(ui, voice_rect, |ui| self.draw_global_voice_strip(ui));
+    }
+
+    fn draw_global_voice_strip(&mut self, ui: &mut Ui) {
+        card(ui, ACCENT_KEYS, |ui| {
+            ui.horizontal_centered(|ui| {
+                section_title(ui, "VOICE", ACCENT_KEYS);
+                info_pill(
+                    ui,
+                    "polyphony",
+                    format!("{} / {}", self.snapshot.live_voices, MAX_POLYPHONY),
+                );
+                info_pill(ui, "mode", "poly");
+                info_pill(ui, "glide", "0 ms");
+                info_pill(ui, "bend", "±2 st");
+                info_pill(
+                    ui,
+                    "sustain",
+                    if self.snapshot.sustain_pedal {
+                        "on"
+                    } else {
+                        "off"
+                    },
+                );
+                ui.add_space(10.0);
+                let mut gain = self.snapshot.master_gain;
+                if knob(
+                    ui,
+                    &mut gain,
+                    &KnobSpec::linear(0.0, 1.0, 0.30, "macro 1").with_fmt(KnobFmt::Percent),
+                    ACCENT_MASTER,
+                )
+                .changed()
+                {
+                    if let Ok(mut e) = self.engine.lock() {
+                        e.set_master_gain(gain);
+                    }
+                }
+                let mut morph = self.snapshot.morph_amount;
+                if knob(
+                    ui,
+                    &mut morph,
+                    &KnobSpec::linear(0.0, 1.0, 0.0, "macro 2").with_fmt(KnobFmt::Percent),
+                    ACCENT_OSC,
+                )
+                .changed()
+                {
+                    if let Ok(mut e) = self.engine.lock() {
+                        e.set_morph_amount(morph);
+                    }
+                }
+            });
+        });
+    }
+
+    fn draw_extra_mod_strip(&mut self, ui: &mut Ui, width: f32) {
+        let rect = ui.max_rect();
+        Frame::none()
+            .fill(Color32::from_rgb(15, 18, 27))
+            .stroke(Stroke::new(1.0, CARD_BORDER))
+            .rounding(Rounding::same(8.0))
+            .inner_margin(egui::Margin::symmetric(6.0, 8.0))
+            .show(ui, |ui| {
+                ui.set_width(width);
+                ui.set_min_height(rect.height() - 2.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        egui::RichText::new("MOD")
+                            .monospace()
+                            .size(10.0)
+                            .color(TEXT_DIM),
+                    );
+                    ui.add_space(8.0);
+                    for (label, value, accent) in [
+                        ("VEL", "0", ACCENT_KEYS),
+                        ("AT", "0", ACCENT_ENV),
+                        ("M1", "VOL", ACCENT_MASTER),
+                        ("M2", "MOR", ACCENT_OSC),
+                        ("M3", "FLT", ACCENT_FILTER),
+                        ("M4", "FX", ACCENT_FX),
+                    ] {
+                        self.draw_mod_button(ui, label, value, accent);
+                        ui.add_space(7.0);
+                    }
+                    ui.add_space((ui.available_height() - 18.0).max(0.0));
+                    ui.label(
+                        egui::RichText::new("BEND")
+                            .monospace()
+                            .size(9.0)
+                            .color(TEXT_DIM),
+                    );
+                });
+            });
+    }
+
+    fn draw_mod_button(&self, ui: &mut Ui, label: &str, value: &str, accent: Color32) {
+        let desired = vec2(ui.available_width(), 39.0);
+        let (rect, response) = ui.allocate_exact_size(desired, Sense::hover());
+        let fill = if response.hovered() {
+            Color32::from_rgb(34, 39, 52)
+        } else {
+            Color32::from_rgb(22, 26, 36)
+        };
+        let painter = ui.painter();
+        painter.rect_filled(rect, Rounding::same(7.0), fill);
+        painter.rect_stroke(rect, Rounding::same(7.0), Stroke::new(1.0, CARD_BORDER));
+        painter.rect_filled(
+            Rect::from_min_size(rect.left_top(), vec2(3.0, rect.height())),
+            Rounding::same(2.0),
+            accent,
+        );
+        painter.text(
+            rect.center_top() + vec2(0.0, 7.0),
+            Align2::CENTER_TOP,
+            label,
+            FontId::monospace(10.0),
+            TEXT_PRIMARY,
+        );
+        painter.text(
+            rect.center_bottom() - vec2(0.0, 7.0),
+            Align2::CENTER_BOTTOM,
+            value,
+            FontId::monospace(8.0),
+            TEXT_DIM,
+        );
+    }
+
+    fn draw_synthesis_interface(&mut self, ui: &mut Ui) {
+        let rect = ui.max_rect();
+        let gap = 8.0;
+        let lane_h = 84.0;
+        let sample_h = 42.0;
+        let filter_h = 120.0;
+        let mut y = rect.top();
+        for idx in 1..=3 {
+            let lane = Rect::from_min_size(Pos2 { x: rect.left(), y }, vec2(rect.width(), lane_h));
+            child_ui_at(ui, lane, |ui| self.draw_oscillator_lane(ui, idx, idx == 1));
+            y += lane_h + gap;
+        }
+        let sample = Rect::from_min_size(
+            Pos2 { x: rect.left(), y },
+            vec2(rect.width() * 0.50, sample_h),
+        );
+        child_ui_at(ui, sample, |ui| self.draw_sample_lane(ui));
+        y += sample_h + gap;
+        let filter_y = y.min(rect.bottom() - filter_h);
+        let left = Rect::from_min_size(
+            Pos2 {
+                x: rect.left(),
+                y: filter_y,
+            },
+            vec2((rect.width() - gap) * 0.5, filter_h),
+        );
+        let right = Rect::from_min_size(
+            Pos2 {
+                x: left.right() + gap,
+                y: filter_y,
+            },
+            vec2((rect.width() - gap) * 0.5, filter_h),
+        );
+        child_ui_at(ui, left, |ui| self.draw_filter_one(ui));
+        child_ui_at(ui, right, |ui| self.draw_filter_two(ui));
+    }
+
+    fn draw_oscillator_lane(&mut self, ui: &mut Ui, idx: usize, active: bool) {
+        let accent = if active {
+            ACCENT_OSC
+        } else {
+            Color32::from_rgb(78, 86, 106)
+        };
+        card(ui, accent, |ui| {
+            ui.set_min_height(64.0);
+            ui.horizontal_top(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(58.0);
+                    section_title(ui, &format!("OSC {idx}"), accent);
+                    ui.label(
+                        egui::RichText::new(if active { "ON" } else { "OFF" })
+                            .monospace()
+                            .size(10.0)
+                            .color(if active { accent } else { TEXT_DIM }),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("DIRECT")
+                            .monospace()
+                            .size(8.0)
+                            .color(TEXT_DIM),
+                    );
+                    ui.label(
+                        egui::RichText::new("FILT 1")
+                            .monospace()
+                            .size(8.0)
+                            .color(if active { ACCENT_FILTER } else { TEXT_DIM }),
+                    );
+                });
+                self.draw_wavetable_scope(ui, active, accent);
+                ui.add_space(10.0);
+                ui.vertical(|ui| {
+                    ui.set_width(ui.available_width());
+                    if active {
+                        self.draw_osc_controls_compact(ui);
+                    } else {
+                        self.draw_disabled_lane_copy(ui, idx);
+                    }
+                });
+            });
+        });
+    }
+
+    fn draw_disabled_lane_copy(&self, ui: &mut Ui, _idx: usize) {
+        ui.horizontal_wrapped(|ui| {
+            info_pill(ui, "source", "wavetable");
+            info_pill(ui, "route", "filter 1");
+            info_pill(ui, "state", "off");
+        });
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            for label in ["LEVEL", "PAN", "PITCH", "PHASE", "MORPH"] {
+                ui.label(
+                    egui::RichText::new(label)
+                        .monospace()
+                        .size(9.0)
+                        .color(TEXT_DIM),
+                );
+                ui.add_space(8.0);
+            }
+        });
+    }
+
+    fn draw_osc_controls_compact(&mut self, ui: &mut Ui) {
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                ui.set_width(138.0);
+                section_kicker(ui, "wavetable modifiers");
+                let mut morph = self.snapshot.spectral_morph;
+                egui::ComboBox::from_id_source("spectral_morph_compact")
+                    .selected_text(format!("{morph:?}"))
+                    .width(128.0)
+                    .show_ui(ui, |ui| {
+                        for m in SpectralMorph::ALL {
+                            if ui
+                                .selectable_value(&mut morph, m, format!("{m:?}"))
+                                .changed()
+                            {
+                                if let Ok(mut e) = self.engine.lock() {
+                                    e.set_spectral_morph(m);
+                                }
+                            }
+                        }
+                    });
+                let mut phase = self.snapshot.phase_distortion;
+                egui::ComboBox::from_id_source("phase_distortion_compact")
+                    .selected_text(format!("{phase:?}"))
+                    .width(128.0)
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_value(&mut phase, PhaseDistortionMode::Off, "Off")
+                            .changed()
+                        {
+                            if let Ok(mut e) = self.engine.lock() {
+                                e.set_phase_distortion(PhaseDistortionMode::Off);
+                            }
+                        }
+                        for m in PhaseDistortionMode::ALL_A6 {
+                            if ui
+                                .selectable_value(&mut phase, m, format!("{m:?}"))
+                                .changed()
+                            {
+                                if let Ok(mut e) = self.engine.lock() {
+                                    e.set_phase_distortion(m);
+                                }
+                            }
+                        }
+                    });
+                let mut style = self.snapshot.unison_style;
+                egui::ComboBox::from_id_source("unison_style_compact")
+                    .selected_text(format!("{style:?}"))
+                    .width(128.0)
+                    .show_ui(ui, |ui| {
+                        for s in UnisonStyle::ALL {
+                            if ui
+                                .selectable_value(&mut style, s, format!("{s:?}"))
+                                .changed()
+                            {
+                                if let Ok(mut e) = self.engine.lock() {
+                                    e.set_unison_style(s);
+                                }
+                            }
+                        }
+                    });
+            });
+            let mut morph_amt = self.snapshot.morph_amount;
+            if knob(
+                ui,
+                &mut morph_amt,
+                &KnobSpec::linear(0.0, 1.0, 0.0, "morph").with_fmt(KnobFmt::Percent),
+                ACCENT_OSC,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_morph_amount(morph_amt);
+                }
+            }
+            let mut phase_amt = self.snapshot.phase_amount;
+            if knob(
+                ui,
+                &mut phase_amt,
+                &KnobSpec::linear(0.0, 1.0, 0.0, "phase").with_fmt(KnobFmt::Percent),
+                ACCENT_OSC,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_phase_amount(phase_amt);
+                }
+            }
+            let mut voices = self.snapshot.unison_voices as f32;
+            if knob(
+                ui,
+                &mut voices,
+                &KnobSpec::linear(1.0, MAX_UNISON as f32, 1.0, "voices"),
+                ACCENT_OSC,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_unison_voices(voices.round() as u8);
+                }
+            }
+            let mut detune = self.snapshot.unison_detune_cents;
+            if knob(
+                ui,
+                &mut detune,
+                &KnobSpec::linear(0.0, 100.0, 8.0, "detune"),
+                ACCENT_OSC,
+            )
+            .changed()
+            {
+                if let Ok(mut e) = self.engine.lock() {
+                    e.set_unison_detune_cents(detune);
+                }
+            }
+        });
+    }
+
+    fn draw_wavetable_scope(&self, ui: &mut Ui, active: bool, accent: Color32) {
+        let desired = vec2(210.0, 66.0);
+        let (rect, _) = ui.allocate_exact_size(desired, Sense::hover());
+        let painter = ui.painter();
+        painter.rect_filled(rect, Rounding::same(7.0), Color32::from_rgb(8, 10, 16));
+        painter.rect_stroke(
+            rect,
+            Rounding::same(7.0),
+            Stroke::new(1.0, Color32::from_rgb(35, 41, 55)),
+        );
+        for i in 1..4 {
+            let x = rect.left() + rect.width() * i as f32 / 4.0;
+            painter.line_segment(
+                [
+                    Pos2 {
+                        x,
+                        y: rect.top() + 8.0,
+                    },
+                    Pos2 {
+                        x,
+                        y: rect.bottom() - 8.0,
+                    },
+                ],
+                Stroke::new(1.0, Color32::from_rgb(23, 28, 38)),
+            );
+        }
+        let mid = rect.center().y;
+        let amp = rect.height() * if active { 0.30 } else { 0.10 };
+        let mut points = Vec::with_capacity(128);
+        for i in 0..128 {
+            let t = i as f32 / 127.0;
+            let wave = if active {
+                (t * core::f32::consts::TAU).sin() + 0.25 * (t * core::f32::consts::TAU * 3.0).sin()
+            } else {
+                0.15 * (t * core::f32::consts::TAU).sin()
+            };
+            points.push(Pos2 {
+                x: rect.left() + rect.width() * t,
+                y: mid - wave * amp,
+            });
+        }
+        painter.add(Shape::line(points, Stroke::new(2.0, accent)));
+        painter.text(
+            rect.left_top() + vec2(8.0, 6.0),
+            Align2::LEFT_TOP,
+            "WAVETABLE",
+            FontId::monospace(9.0),
+            TEXT_DIM,
+        );
+    }
+
+    fn draw_sample_lane(&self, ui: &mut Ui) {
+        card(ui, Color32::from_rgb(150, 164, 184), |ui| {
+            ui.horizontal_top(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(60.0);
+                    section_title(ui, "SMP", Color32::from_rgb(150, 164, 184));
+                    section_kicker(ui, "OFF");
+                });
+                ui.label(egui::RichText::new("sample input").small().color(TEXT_DIM));
+                ui.add_space(8.0);
+                info_pill(ui, "FILT", "1 · 2");
+            });
+        });
+    }
+
+    fn draw_filter_one(&mut self, ui: &mut Ui) {
+        card(ui, ACCENT_FILTER, |ui| {
+            section_title(ui, "FILTER 1", ACCENT_FILTER);
+            self.draw_filter_controls(ui);
+        });
+    }
+
+    fn draw_filter_two(&mut self, ui: &mut Ui) {
+        card(ui, Color32::from_rgb(130, 120, 230), |ui| {
+            section_title(ui, "FILTER 2", Color32::from_rgb(130, 120, 230));
+            filter_curve(ui, 12_000.0, 0.2, Color32::from_rgb(130, 120, 230));
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                info_pill(ui, "input", "osc/smp");
+                info_pill(ui, "serial", "off");
+            });
+        });
+    }
+
+    fn draw_modulation_interface(&mut self, ui: &mut Ui) {
+        let rect = ui.max_rect();
+        let gap = 8.0;
+        let env_h = 152.0;
+        let lfo_h = 134.0;
+        let bottom_h = (rect.height() - env_h - lfo_h - gap * 2.0).max(120.0);
+        let env = Rect::from_min_size(rect.min, vec2(rect.width(), env_h));
+        let lfo = Rect::from_min_size(
+            Pos2 {
+                x: rect.left(),
+                y: env.bottom() + gap,
+            },
+            vec2(rect.width(), lfo_h),
+        );
+        let random_w = rect.width() * 0.58;
+        let random = Rect::from_min_size(
+            Pos2 {
+                x: rect.left(),
+                y: lfo.bottom() + gap,
+            },
+            vec2(random_w - gap * 0.5, bottom_h),
+        );
+        let perform = Rect::from_min_size(
+            Pos2 {
+                x: random.right() + gap,
+                y: random.top(),
+            },
+            vec2(rect.width() - random.width() - gap, bottom_h),
+        );
+        child_ui_at(ui, env, |ui| self.draw_env_module(ui));
+        child_ui_at(ui, lfo, |ui| self.draw_lfo_module(ui));
+        child_ui_at(ui, random, |ui| self.draw_random_module(ui));
+        child_ui_at(ui, perform, |ui| self.draw_keyboard_mod_selectors(ui));
+    }
+
+    fn draw_env_module(&mut self, ui: &mut Ui) {
+        card(ui, ACCENT_ENV, |ui| {
+            section_title(ui, "ENVELOPE 1", ACCENT_ENV);
+            adsr_curve(
+                ui,
+                self.snapshot.amp_attack_secs,
+                self.snapshot.amp_decay_secs,
+                self.snapshot.amp_sustain,
+                self.snapshot.amp_release_secs,
+                ACCENT_ENV,
+            );
+            ui.horizontal_wrapped(|ui| {
+                let mut a = self.snapshot.amp_attack_secs;
+                if knob(
+                    ui,
+                    &mut a,
+                    &KnobSpec::log(0.001, 4.0, 0.005, "A").with_fmt(KnobFmt::Seconds),
+                    ACCENT_ENV,
+                )
+                .changed()
+                {
+                    if let Ok(mut e) = self.engine.lock() {
+                        e.set_amp_attack_secs(a);
+                    }
+                }
+                let mut d = self.snapshot.amp_decay_secs;
+                if knob(
+                    ui,
+                    &mut d,
+                    &KnobSpec::log(0.001, 4.0, 0.12, "D").with_fmt(KnobFmt::Seconds),
+                    ACCENT_ENV,
+                )
+                .changed()
+                {
+                    if let Ok(mut e) = self.engine.lock() {
+                        e.set_amp_decay_secs(d);
+                    }
+                }
+                let mut s = self.snapshot.amp_sustain;
+                if knob(
+                    ui,
+                    &mut s,
+                    &KnobSpec::linear(0.0, 1.0, 0.7, "S").with_fmt(KnobFmt::Percent),
+                    ACCENT_ENV,
+                )
+                .changed()
+                {
+                    if let Ok(mut e) = self.engine.lock() {
+                        e.set_amp_sustain(s);
+                    }
+                }
+                let mut r = self.snapshot.amp_release_secs;
+                if knob(
+                    ui,
+                    &mut r,
+                    &KnobSpec::log(0.001, 8.0, 0.25, "R").with_fmt(KnobFmt::Seconds),
+                    ACCENT_ENV,
+                )
+                .changed()
+                {
+                    if let Ok(mut e) = self.engine.lock() {
+                        e.set_amp_release_secs(r);
+                    }
+                }
+            });
+        });
+    }
+
+    fn draw_lfo_module(&self, ui: &mut Ui) {
+        card(ui, Color32::from_rgb(110, 210, 255), |ui| {
+            section_title(ui, "LFO 1", Color32::from_rgb(110, 210, 255));
+            self.draw_mini_curve(ui, "triangle / sine", Color32::from_rgb(110, 210, 255));
+            ui.horizontal_wrapped(|ui| {
+                info_pill(ui, "rate", "1/4");
+                info_pill(ui, "sync", "on");
+                info_pill(ui, "drag", "off");
+            });
+        });
+    }
+
+    fn draw_random_module(&self, ui: &mut Ui) {
+        card(ui, Color32::from_rgb(245, 160, 110), |ui| {
+            section_title(ui, "RANDOM 1", Color32::from_rgb(245, 160, 110));
+            self.draw_mini_curve(ui, "sample & hold", Color32::from_rgb(245, 160, 110));
+        });
+    }
+
+    fn draw_keyboard_mod_selectors(&self, ui: &mut Ui) {
+        card(ui, ACCENT_KEYS, |ui| {
+            section_title(ui, "PERFORM", ACCENT_KEYS);
+            for row in [
+                ["NOTE", "VEL"],
+                ["AT", "RAND"],
+                ["STEREO", "SLIDE"],
+                ["OCT", "LIFT"],
+            ] {
+                ui.horizontal(|ui| {
+                    for label in row {
+                        ui.add_sized(
+                            [52.0, 22.0],
+                            egui::Label::new(
+                                egui::RichText::new(label)
+                                    .monospace()
+                                    .size(9.0)
+                                    .color(TEXT_DIM),
+                            ),
+                        );
+                    }
+                });
+            }
+        });
+    }
+
+    fn draw_mini_curve(&self, ui: &mut Ui, label: &str, accent: Color32) {
+        let desired = vec2(ui.available_width(), 64.0);
+        let (rect, _) = ui.allocate_exact_size(desired, Sense::hover());
+        let painter = ui.painter();
+        painter.rect_filled(rect, Rounding::same(7.0), Color32::from_rgb(8, 10, 16));
+        painter.rect_stroke(
+            rect,
+            Rounding::same(7.0),
+            Stroke::new(1.0, Color32::from_rgb(35, 41, 55)),
+        );
+        let mid = rect.center().y;
+        let mut points = Vec::with_capacity(72);
+        for i in 0..72 {
+            let t = i as f32 / 71.0;
+            points.push(Pos2 {
+                x: rect.left() + rect.width() * t,
+                y: mid - (t * core::f32::consts::TAU).sin() * rect.height() * 0.30,
+            });
+        }
+        painter.add(Shape::line(points, Stroke::new(2.0, accent)));
+        painter.text(
+            rect.left_top() + vec2(8.0, 6.0),
+            Align2::LEFT_TOP,
+            label,
+            FontId::monospace(9.0),
+            TEXT_DIM,
+        );
+    }
+
+    fn draw_effects_interface(&mut self, ui: &mut Ui) {
+        ui.horizontal_top(|ui| {
+            let order_width = (ui.available_width() * 0.20).clamp(120.0, 170.0);
+            self.draw_effect_order(ui, order_width);
+            ui.add_space(8.0);
+            ui.vertical(|ui| {
+                ui.set_width(ui.available_width());
+                card(ui, ACCENT_FX, |ui| self.draw_drive(ui));
+                ui.add_space(6.0);
+                card(ui, Color32::from_rgb(250, 190, 110), |ui| self.draw_delay(ui));
+                ui.add_space(6.0);
+                card(ui, Color32::from_rgb(180, 150, 255), |ui| self.draw_reverb(ui));
+                ui.add_space(6.0);
+                self.draw_effect_placeholder(ui, "CHORUS / COMP / EQ / FILTER / FLANGER / PHASER", "Additional processor panels are shown muted until the standalone engine surface wires them.");
+            });
+        });
+    }
+
+    fn draw_effect_order(&self, ui: &mut Ui, width: f32) {
+        card(ui, ACCENT_FX, |ui| {
+            ui.set_width(width);
+            section_title(ui, "ORDER", ACCENT_FX);
+            let order = [
+                ("CHORUS", false),
+                ("COMP", false),
+                ("DELAY", self.snapshot.delay_on),
+                ("DISTORT", self.snapshot.drive_on),
+                ("EQ", false),
+                ("FILTER", false),
+                ("FLANGER", false),
+                ("PHASER", false),
+                ("REVERB", self.snapshot.reverb_on),
+            ];
+            for (name, on) in order {
+                let desired = vec2(ui.available_width(), 34.0);
+                let (rect, _) = ui.allocate_exact_size(desired, Sense::hover());
+                let fill = if on {
+                    Color32::from_rgb(44, 35, 31)
+                } else {
+                    Color32::from_rgb(22, 25, 34)
+                };
+                ui.painter().rect_filled(rect, Rounding::same(7.0), fill);
+                ui.painter()
+                    .rect_stroke(rect, Rounding::same(7.0), Stroke::new(1.0, CARD_BORDER));
+                ui.painter().circle_filled(
+                    rect.left_center() + vec2(10.0, 0.0),
+                    3.0,
+                    if on { ACCENT_FX } else { TEXT_DIM },
+                );
+                ui.painter().text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    name,
+                    FontId::monospace(10.0),
+                    if on { TEXT_PRIMARY } else { TEXT_DIM },
+                );
+                ui.add_space(4.0);
+            }
+        });
+    }
+
+    fn draw_effect_placeholder(&self, ui: &mut Ui, title: &str, subtitle: &str) {
+        card(ui, Color32::from_rgb(90, 100, 120), |ui| {
+            section_title(ui, title, Color32::from_rgb(150, 160, 185));
+            ui.label(egui::RichText::new(subtitle).small().color(TEXT_DIM));
+        });
+    }
+
+    fn draw_matrix_interface(&mut self, ui: &mut Ui) {
+        card(ui, ACCENT_ENV, |ui| {
+            section_title(ui, "MODULATION MATRIX", ACCENT_ENV);
+            section_kicker(ui, "routing table");
+            ui.add_space(6.0);
+            egui::Grid::new("mod_matrix_grid")
+                .striped(true)
+                .min_col_width(92.0)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new("SOURCE").strong());
+                    ui.label(egui::RichText::new("DESTINATION").strong());
+                    ui.label(egui::RichText::new("AMOUNT").strong());
+                    ui.label(egui::RichText::new("BIPOLAR").strong());
+                    ui.end_row();
+                    for (src, dst, amt) in [
+                        ("ENV 1", "AMP LEVEL", "100%"),
+                        ("LFO 1", "FILTER 1 CUTOFF", "+1.2 kHz"),
+                        ("MACRO 1", "MASTER VOL", "50%"),
+                        ("RANDOM 1", "OSC MORPH", "0%"),
+                        ("VELOCITY", "ENV AMOUNT", "0%"),
+                    ] {
+                        ui.label(src);
+                        ui.label(dst);
+                        ui.label(amt);
+                        ui.label(if amt == "0%" { "—" } else { "yes" });
+                        ui.end_row();
+                    }
+                });
+        });
+    }
+
+    fn draw_advanced_interface(&mut self, ui: &mut Ui) {
+        ui.vertical(|ui| {
+            card(ui, ACCENT_MASTER, |ui| self.draw_presets(ui));
+            ui.add_space(8.0);
+            card(ui, ACCENT_FILTER, |ui| {
+                section_title(ui, "MASTER CONTROLS", ACCENT_FILTER);
+                ui.horizontal_wrapped(|ui| {
+                    info_pill(
+                        ui,
+                        "sample rate",
+                        format!(
+                            "{} Hz",
+                            self.engine.lock().map(|e| e.sample_rate()).unwrap_or(0)
+                        ),
+                    );
+                    info_pill(ui, "voices", format!("{}", self.snapshot.live_voices));
+                    info_pill(ui, "filter", format!("{:?}", self.snapshot.filter_kind));
+                    info_pill(
+                        ui,
+                        "fx",
+                        format!(
+                            "D{} · T{} · R{}",
+                            self.snapshot.drive_on as u8,
+                            self.snapshot.delay_on as u8,
+                            self.snapshot.reverb_on as u8
+                        ),
+                    );
+                });
+            });
+        });
+    }
+
+    fn draw_page_tabs(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            for page in UiPage::ALL {
+                let selected = self.active_page == page;
+                if ui
+                    .selectable_label(selected, egui::RichText::new(page.label()).strong())
+                    .clicked()
+                {
+                    self.active_page = page;
+                }
+            }
+        });
+    }
+
+    fn draw_keyboard_panel(&mut self, ctx: &egui::Context, ui: &mut Ui) {
+        Frame::none()
+            .fill(CARD)
+            .stroke(Stroke::new(1.0, CARD_BORDER))
+            .rounding(Rounding::same(10.0))
+            .inner_margin(egui::Margin::symmetric(8.0, 6.0))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    section_title(ui, "KEYBOARD", ACCENT_KEYS);
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "kbd octave: {} · a/w/s/e… play · z/x octave",
+                            self.keyboard_octave
+                        ))
+                        .small()
+                        .color(TEXT_DIM),
+                    );
+                    if ui.small_button("◀ z").clicked() {
+                        self.keyboard_octave = (self.keyboard_octave - 1).max(0);
+                    }
+                    if ui.small_button("x ▶").clicked() {
+                        self.keyboard_octave = (self.keyboard_octave + 1).min(9);
+                    }
+                    if ui.small_button("All notes off").clicked() {
+                        if let Ok(mut e) = self.engine.lock() {
+                            e.all_notes_off();
+                        }
+                        self.keys_held.clear();
+                        self.mouse_note = None;
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        info_pill(
+                            ui,
+                            "voices",
+                            format!("{} / {}", self.snapshot.live_voices, MAX_POLYPHONY),
+                        );
+                        info_pill(
+                            ui,
+                            "sustain",
+                            if self.snapshot.sustain_pedal {
+                                "on"
+                            } else {
+                                "off"
+                            },
+                        );
+                        info_pill(ui, "mode", "poly");
+                    });
+                });
+
+                let mouse_released = ctx.input(|i| !i.pointer.primary_down());
+                if mouse_released {
+                    if let Some(n) = self.mouse_note.take() {
+                        if let Ok(mut e) = self.engine.lock() {
+                            e.note_off(n);
+                        }
+                    }
+                }
+
+                let events = piano_keyboard(ui, &self.snapshot.active_notes, ACCENT_KEYS);
+                for ev in events {
+                    match ev {
+                        KeyEvent::On(n) => {
+                            if let Some(prev) = self.mouse_note.replace(n) {
+                                if prev != n {
+                                    if let Ok(mut e) = self.engine.lock() {
+                                        e.note_off(prev);
+                                    }
+                                }
+                            }
+                            if let Ok(mut e) = self.engine.lock() {
+                                e.note_on(n, 100);
+                            }
+                        }
+                        KeyEvent::AllOff => {
+                            if let Some(n) = self.mouse_note.take() {
+                                if let Ok(mut e) = self.engine.lock() {
+                                    e.note_off(n);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+    }
+
     fn draw_presets(&mut self, ui: &mut Ui) {
-        section_title(ui, "PRESETS / VITAL IMPORT", ACCENT_MASTER);
+        section_title(ui, "PRESET IMPORT", ACCENT_MASTER);
         ui.horizontal(|ui| {
-            if ui.button("Scan ~/Downloads for Vital").clicked() {
-                self.import_downloads_vital_presets();
+            if ui.button("Scan ~/Downloads").clicked() {
+                self.scan_downloads_for_presets();
             }
             if !self.imported_presets.is_empty() && ui.button("Apply selected").clicked() {
                 self.apply_selected_preset();
@@ -1050,7 +1962,7 @@ impl ElixirApp {
         if !self.imported_presets.is_empty() {
             self.selected_preset = self.selected_preset.min(self.imported_presets.len() - 1);
             let selected_name = self.imported_presets[self.selected_preset].name.clone();
-            egui::ComboBox::from_id_source("imported_vital_preset")
+            egui::ComboBox::from_id_source("imported_preset")
                 .selected_text(selected_name)
                 .show_ui(ui, |ui| {
                     for (idx, preset) in self.imported_presets.iter().enumerate() {
@@ -1060,7 +1972,7 @@ impl ElixirApp {
         }
     }
 
-    fn import_downloads_vital_presets(&mut self) {
+    fn scan_downloads_for_presets(&mut self) {
         let Ok(home) = std::env::var("HOME") else {
             self.preset_status = "HOME is not set; cannot scan Downloads".to_string();
             return;
@@ -1083,11 +1995,11 @@ impl ElixirApp {
                 .and_then(|s| s.to_str())
                 .unwrap_or_default();
             match ext.to_ascii_lowercase().as_str() {
-                "vital" => match import_vital_file(&path) {
+                EXTERNAL_PRESET_EXTENSION => match import_preset_file(&path) {
                     Ok(preset) => imported.push(preset),
                     Err(err) => errors.push(format!("{}: {err}", path.display())),
                 },
-                "vitalbank" => match import_vital_bank_file(&path) {
+                EXTERNAL_BANK_EXTENSION => match import_bank_file(&path) {
                     Ok(bank) => {
                         bank_presets += bank.presets.len();
                         wavetable_paths += bank.wavetable_paths.len();
@@ -1105,14 +2017,14 @@ impl ElixirApp {
         self.imported_presets = imported;
         self.preset_status = if errors.is_empty() {
             format!(
-                "Imported {} Vital presets ({} from banks), tracked {} wavetable paths for B7",
+                "Imported {} presets ({} from banks), tracked {} wavetable paths",
                 self.imported_presets.len(),
                 bank_presets,
                 wavetable_paths
             )
         } else {
             format!(
-                "Imported {} Vital presets with {} errors; first: {}",
+                "Imported {} presets with {} errors; first: {}",
                 self.imported_presets.len(),
                 errors.len(),
                 errors[0]
@@ -1150,125 +2062,7 @@ impl ElixirApp {
                 engine.set_fx_slot(2, FxSlot::Reverb(reverb));
             }
         }
-        self.preset_status = format!("Applied Vital preset subset: {}", preset.name);
-    }
-
-    fn draw_osc(&mut self, ui: &mut Ui) {
-        section_title(ui, "OSCILLATOR (A6)", ACCENT_OSC);
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("morph").color(TEXT_DIM).small());
-            let mut morph = self.snapshot.spectral_morph;
-            egui::ComboBox::from_id_source("spectral_morph")
-                .selected_text(format!("{morph:?}"))
-                .show_ui(ui, |ui| {
-                    for m in SpectralMorph::ALL {
-                        if ui
-                            .selectable_value(&mut morph, m, format!("{m:?}"))
-                            .changed()
-                        {
-                            if let Ok(mut e) = self.engine.lock() {
-                                e.set_spectral_morph(m);
-                            }
-                        }
-                    }
-                });
-            let mut amt = self.snapshot.morph_amount;
-            if knob(
-                ui,
-                &mut amt,
-                &KnobSpec::linear(0.0, 1.0, 0.0, "amount").with_fmt(KnobFmt::Percent),
-                ACCENT_OSC,
-            )
-            .changed()
-            {
-                if let Ok(mut e) = self.engine.lock() {
-                    e.set_morph_amount(amt);
-                }
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("phase").color(TEXT_DIM).small());
-            let mut mode = self.snapshot.phase_distortion;
-            egui::ComboBox::from_id_source("phase_distortion")
-                .selected_text(format!("{mode:?}"))
-                .show_ui(ui, |ui| {
-                    if ui
-                        .selectable_value(&mut mode, PhaseDistortionMode::Off, "Off")
-                        .changed()
-                    {
-                        if let Ok(mut e) = self.engine.lock() {
-                            e.set_phase_distortion(PhaseDistortionMode::Off);
-                        }
-                    }
-                    for m in PhaseDistortionMode::ALL_A6 {
-                        if ui
-                            .selectable_value(&mut mode, m, format!("{m:?}"))
-                            .changed()
-                        {
-                            if let Ok(mut e) = self.engine.lock() {
-                                e.set_phase_distortion(m);
-                            }
-                        }
-                    }
-                });
-            let mut amt = self.snapshot.phase_amount;
-            if knob(
-                ui,
-                &mut amt,
-                &KnobSpec::linear(0.0, 1.0, 0.0, "amount").with_fmt(KnobFmt::Percent),
-                ACCENT_OSC,
-            )
-            .changed()
-            {
-                if let Ok(mut e) = self.engine.lock() {
-                    e.set_phase_amount(amt);
-                }
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("unison").color(TEXT_DIM).small());
-            let mut style = self.snapshot.unison_style;
-            egui::ComboBox::from_id_source("unison_style")
-                .selected_text(format!("{style:?}"))
-                .show_ui(ui, |ui| {
-                    for s in UnisonStyle::ALL {
-                        if ui
-                            .selectable_value(&mut style, s, format!("{s:?}"))
-                            .changed()
-                        {
-                            if let Ok(mut e) = self.engine.lock() {
-                                e.set_unison_style(s);
-                            }
-                        }
-                    }
-                });
-            let mut voices = self.snapshot.unison_voices as f32;
-            if knob(
-                ui,
-                &mut voices,
-                &KnobSpec::linear(1.0, MAX_UNISON as f32, 1.0, "voices"),
-                ACCENT_OSC,
-            )
-            .changed()
-            {
-                if let Ok(mut e) = self.engine.lock() {
-                    e.set_unison_voices(voices.round() as u8);
-                }
-            }
-            let mut det = self.snapshot.unison_detune_cents;
-            if knob(
-                ui,
-                &mut det,
-                &KnobSpec::linear(0.0, 100.0, 8.0, "detune"),
-                ACCENT_OSC,
-            )
-            .changed()
-            {
-                if let Ok(mut e) = self.engine.lock() {
-                    e.set_unison_detune_cents(det);
-                }
-            }
-        });
+        self.preset_status = format!("Applied preset subset: {}", preset.name);
     }
 
     fn draw_filter_controls(&mut self, ui: &mut Ui) {
@@ -1449,8 +2243,9 @@ impl ElixirApp {
                 if ui.checkbox(&mut on, "DELAY").changed() {
                     if let Ok(mut e) = self.engine.lock() {
                         if on {
-                            let mut d = Delay::new(48_000);
-                            d.set_delay_secs(self.snapshot.delay_secs, 48_000.0);
+                            let sr = e.sample_rate().max(1) as f32;
+                            let mut d = Delay::new(sr as usize);
+                            d.set_delay_secs(self.snapshot.delay_secs, sr);
                             d.set_feedback(self.snapshot.delay_feedback);
                             d.set_mix(self.snapshot.delay_mix);
                             e.set_fx_slot(1, FxSlot::Delay(d));
@@ -1472,8 +2267,9 @@ impl ElixirApp {
                     .changed()
                     {
                         if let Ok(mut e) = self.engine.lock() {
+                            let sr = e.sample_rate().max(1) as f32;
                             if let FxSlot::Delay(d) = &mut e.fx_chain[1] {
-                                d.set_delay_secs(t, 48_000.0);
+                                d.set_delay_secs(t, sr);
                             }
                         }
                     }
@@ -1521,7 +2317,8 @@ impl ElixirApp {
                 if ui.checkbox(&mut on, "REVERB").changed() {
                     if let Ok(mut e) = self.engine.lock() {
                         if on {
-                            let mut r = Reverb::new(48_000.0);
+                            let sr = e.sample_rate().max(1) as f32;
+                            let mut r = Reverb::new(sr);
                             r.set_decay(self.snapshot.reverb_decay);
                             r.set_damping(self.snapshot.reverb_damping);
                             r.set_mix(self.snapshot.reverb_mix);

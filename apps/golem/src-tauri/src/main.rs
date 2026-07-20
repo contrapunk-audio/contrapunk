@@ -5,16 +5,15 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use contrapunk_audio::{GuitarInput, GuitarInputConfig, MidiEvent};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
 use golem_core::params::AtomicF32;
-use golem_core::{ClockSnapshot, Engine, EngineParams, FollowInput, SharedParams, Style};
+use golem_core::{ClockSnapshot, Engine, EngineParams, FollowInput, Follower, SharedParams, Style};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -34,6 +33,7 @@ impl GolemState {
 
 struct RuntimeHandle {
     stop: Arc<AtomicBool>,
+    follow: Arc<FollowAtomics>,
     join: Option<thread::JoinHandle<()>>,
 }
 
@@ -129,6 +129,16 @@ struct MeterPayload {
     input_channel: usize,
     active_channel: usize,
     channel_levels: Vec<f32>,
+    input_blocks: u64,
+    raw_rms: f32,
+    raw_peak: f32,
+    raw_rms_db: f32,
+    raw_peak_db: f32,
+    normalized_energy: f32,
+    energy_fast: f32,
+    energy_slow: f32,
+    noise_floor_db: f32,
+    clipping: bool,
 }
 
 struct FollowAtomics {
@@ -136,11 +146,21 @@ struct FollowAtomics {
     onset: AtomicF32,
     density: AtomicF32,
     confidence: AtomicF32,
+    raw_rms: AtomicF32,
+    raw_peak: AtomicF32,
+    raw_rms_db: AtomicF32,
+    raw_peak_db: AtomicF32,
+    normalized_energy: AtomicF32,
+    energy_fast: AtomicF32,
+    energy_slow: AtomicF32,
+    noise_floor_db: AtomicF32,
+    clipping: AtomicBool,
     channel_count: AtomicUsize,
     active_channel: AtomicUsize,
     channel_levels: [AtomicF32; MAX_METER_CHANNELS],
+    input_blocks: AtomicU64,
     input_device: String,
-    input_channel: usize,
+    input_channel: AtomicUsize,
 }
 
 impl FollowAtomics {
@@ -150,27 +170,48 @@ impl FollowAtomics {
             onset: AtomicF32::new(0.0),
             density: AtomicF32::new(0.0),
             confidence: AtomicF32::new(0.0),
+            raw_rms: AtomicF32::new(0.0),
+            raw_peak: AtomicF32::new(0.0),
+            raw_rms_db: AtomicF32::new(-120.0),
+            raw_peak_db: AtomicF32::new(-120.0),
+            normalized_energy: AtomicF32::new(0.0),
+            energy_fast: AtomicF32::new(0.0),
+            energy_slow: AtomicF32::new(0.0),
+            noise_floor_db: AtomicF32::new(-80.0),
+            clipping: AtomicBool::new(false),
             channel_count: AtomicUsize::new(0),
             active_channel: AtomicUsize::new(0),
             channel_levels: std::array::from_fn(|_| AtomicF32::new(0.0)),
+            input_blocks: AtomicU64::new(0),
             input_device: String::new(),
-            input_channel: 0,
+            input_channel: AtomicUsize::new(0),
         }
     }
 
     fn with_input(input_device: String, input_channel: usize) -> Self {
         Self {
             input_device,
-            input_channel,
+            input_channel: AtomicUsize::new(input_channel),
             ..Self::new()
         }
     }
 
     fn store_frame(&self, frame: InputFeatures) {
+        self.input_blocks.fetch_add(1, Ordering::Relaxed);
         self.rms.store(frame.follow.guitar_rms);
         self.onset.store(frame.follow.onset_strength);
         self.density.store(frame.follow.strum_density);
         self.confidence.store(frame.follow.confidence);
+        self.raw_rms.store(frame.follow.raw_rms);
+        self.raw_peak.store(frame.follow.raw_peak);
+        self.raw_rms_db.store(frame.follow.raw_rms_db);
+        self.raw_peak_db.store(frame.follow.raw_peak_db);
+        self.normalized_energy.store(frame.follow.normalized_energy);
+        self.energy_fast.store(frame.follow.energy_fast);
+        self.energy_slow.store(frame.follow.energy_slow);
+        self.noise_floor_db.store(frame.follow.noise_floor_db);
+        self.clipping
+            .store(frame.follow.clipping, Ordering::Relaxed);
         self.channel_count.store(
             frame.channel_count.min(MAX_METER_CHANNELS),
             Ordering::Relaxed,
@@ -197,7 +238,49 @@ impl FollowAtomics {
             onset_strength: self.onset.load(),
             strum_density: self.density.load(),
             confidence: self.confidence.load(),
+            raw_rms: self.raw_rms.load(),
+            raw_peak: self.raw_peak.load(),
+            raw_rms_db: self.raw_rms_db.load(),
+            raw_peak_db: self.raw_peak_db.load(),
+            normalized_energy: self.normalized_energy.load(),
+            energy_fast: self.energy_fast.load(),
+            energy_slow: self.energy_slow.load(),
+            noise_floor_db: self.noise_floor_db.load(),
+            clipping: self.clipping.load(Ordering::Relaxed),
         }
+    }
+}
+
+fn meter_payload(follow: &FollowAtomics, running: bool) -> MeterPayload {
+    let snap = follow.snapshot();
+    let channel_count = follow
+        .channel_count
+        .load(Ordering::Relaxed)
+        .min(MAX_METER_CHANNELS);
+    let channel_levels = (0..channel_count)
+        .map(|idx| follow.channel_levels[idx].load())
+        .collect::<Vec<_>>();
+
+    MeterPayload {
+        rms: snap.guitar_rms,
+        onset: snap.onset_strength,
+        density: snap.strum_density,
+        confidence: snap.confidence,
+        running,
+        input_device: follow.input_device.clone(),
+        input_channel: follow.input_channel.load(Ordering::Relaxed),
+        active_channel: follow.active_channel.load(Ordering::Relaxed),
+        channel_levels,
+        input_blocks: follow.input_blocks.load(Ordering::Relaxed),
+        raw_rms: snap.raw_rms,
+        raw_peak: snap.raw_peak,
+        raw_rms_db: snap.raw_rms_db,
+        raw_peak_db: snap.raw_peak_db,
+        normalized_energy: snap.normalized_energy,
+        energy_fast: snap.energy_fast,
+        energy_slow: snap.energy_slow,
+        noise_floor_db: snap.noise_floor_db,
+        clipping: snap.clipping,
     }
 }
 
@@ -226,6 +309,17 @@ fn set_engine_params(
 ) -> Result<EngineStatePayload, String> {
     state.params.set_snapshot(params.to_engine_params());
     get_engine_state(state)
+}
+
+#[tauri::command]
+fn set_input_channel(channel: usize, state: State<GolemState>) -> Result<(), String> {
+    if let Some(handle) = state.runtime.lock().map_err(|e| e.to_string())?.as_ref() {
+        handle
+            .follow
+            .input_channel
+            .store(channel, Ordering::Relaxed);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -267,6 +361,7 @@ fn start_engine(
         Ok(Ok(())) => {
             *runtime = Some(RuntimeHandle {
                 stop,
+                follow,
                 join: Some(join),
             });
             Ok(EngineStatePayload {
@@ -378,44 +473,10 @@ fn run_audio_thread(
     let telemetry_app = app.clone();
     let telemetry = thread::spawn(move || {
         while !telemetry_stop.load(Ordering::SeqCst) {
-            let snap = telemetry_follow.snapshot();
-            let channel_count = telemetry_follow
-                .channel_count
-                .load(Ordering::Relaxed)
-                .min(MAX_METER_CHANNELS);
-            let channel_levels = (0..channel_count)
-                .map(|idx| telemetry_follow.channel_levels[idx].load())
-                .collect::<Vec<_>>();
-            let _ = telemetry_app.emit(
-                "golem-meter",
-                MeterPayload {
-                    rms: snap.guitar_rms,
-                    onset: snap.onset_strength,
-                    density: snap.strum_density,
-                    confidence: snap.confidence,
-                    running: true,
-                    input_device: telemetry_follow.input_device.clone(),
-                    input_channel: telemetry_follow.input_channel,
-                    active_channel: telemetry_follow.active_channel.load(Ordering::Relaxed),
-                    channel_levels,
-                },
-            );
-            thread::sleep(Duration::from_millis(33));
+            let _ = telemetry_app.emit("golem-meter", meter_payload(&telemetry_follow, true));
+            thread::sleep(Duration::from_millis(100));
         }
-        let _ = telemetry_app.emit(
-            "golem-meter",
-            MeterPayload {
-                rms: 0.0,
-                onset: 0.0,
-                density: 0.0,
-                confidence: 0.0,
-                running: false,
-                input_device: telemetry_follow.input_device.clone(),
-                input_channel: telemetry_follow.input_channel,
-                active_channel: telemetry_follow.active_channel.load(Ordering::Relaxed),
-                channel_levels: Vec::new(),
-            },
-        );
+        let _ = telemetry_app.emit("golem-meter", meter_payload(&telemetry_follow, false));
     });
 
     let _ = ready_tx.send(Ok(()));
@@ -611,10 +672,14 @@ fn build_input_stream(
         .input_channel
         .unwrap_or(0)
         .min(input_channels.saturating_sub(1));
-    let stream_config: cpal::StreamConfig = input_config.into();
+    let stream_config = cpal::StreamConfig {
+        channels: input_config.channels(),
+        sample_rate: input_sample_rate,
+        buffer_size: cpal::BufferSize::Fixed(128),
+    };
 
     eprintln!(
-        "[golem] input-follow using Contrapunk GuitarInput: device='{}' preferred_channel={} sample_rate={}Hz channels={} format={:?}",
+        "[golem] input-follow: device='{}' channel={} sample_rate={}Hz channels={} format={:?}",
         device_label(&input_device),
         input_channel,
         input_sample_rate,
@@ -628,8 +693,11 @@ fn build_input_stream(
             input_device.build_input_stream(
                 &stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    let features =
-                        extractor.process_interleaved_f32(data, input_channels, input_channel);
+                    let channel = follow
+                        .input_channel
+                        .load(Ordering::Relaxed)
+                        .min(input_channels.saturating_sub(1));
+                    let features = extractor.process_interleaved_f32(data, input_channels, channel);
                     follow.store_frame(features);
                 },
                 |err| eprintln!("[golem] input stream error: {err}"),
@@ -641,8 +709,11 @@ fn build_input_stream(
             input_device.build_input_stream(
                 &stream_config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    let features =
-                        extractor.process_interleaved_i16(data, input_channels, input_channel);
+                    let channel = follow
+                        .input_channel
+                        .load(Ordering::Relaxed)
+                        .min(input_channels.saturating_sub(1));
+                    let features = extractor.process_interleaved_i16(data, input_channels, channel);
                     follow.store_frame(features);
                 },
                 |err| eprintln!("[golem] input stream error: {err}"),
@@ -654,8 +725,11 @@ fn build_input_stream(
             input_device.build_input_stream(
                 &stream_config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                    let features =
-                        extractor.process_interleaved_u16(data, input_channels, input_channel);
+                    let channel = follow
+                        .input_channel
+                        .load(Ordering::Relaxed)
+                        .min(input_channels.saturating_sub(1));
+                    let features = extractor.process_interleaved_u16(data, input_channels, channel);
                     follow.store_frame(features);
                 },
                 |err| eprintln!("[golem] input stream error: {err}"),
@@ -669,11 +743,11 @@ fn build_input_stream(
     Ok(Some(stream))
 }
 
-/// Golem-specific adapter around Contrapunk's existing guitar DSP.
+/// Golem-specific realtime input feature extractor.
 ///
-/// The existing pipeline still returns MIDI events, but Golem does not
-/// forward them anywhere. We only use them as input features for the
-/// drummer brain.
+/// Keep this intentionally simple for v0.1: no pitch tracking, MIDI events,
+/// heap allocation, or locks in the cpal input callback. The drummer only
+/// needs RMS/onset/density to follow the player's energy.
 const MAX_INPUT_FRAMES: usize = 8192;
 const MAX_CONVERTED_OUTPUT_SAMPLES: usize = 16_384;
 const MAX_METER_CHANNELS: usize = 16;
@@ -697,29 +771,15 @@ impl Default for InputFeatures {
 }
 
 struct GuitarFeatureExtractor {
-    pipeline: GuitarInput,
+    follower: Follower,
     mono: [f32; MAX_INPUT_FRAMES],
-    sample_rate: u32,
-    last_rms: f32,
-    density: f32,
 }
 
 impl GuitarFeatureExtractor {
     fn new(sample_rate: u32) -> Self {
-        let mut config = GuitarInputConfig::default();
-        config.sample_rate = sample_rate as usize;
-        config.buffer_size = GuitarInputConfig::buffer_size_for_latency(12.0, sample_rate as usize);
-        config.hop_size = 256.min(config.buffer_size / 2).max(64);
-        config.onset_threshold = 0.015;
-        config.min_clarity = 0.40;
-        config.pitch_bend_range = 2;
-
         Self {
-            pipeline: GuitarInput::new(config),
+            follower: Follower::new(sample_rate),
             mono: [0.0; MAX_INPUT_FRAMES],
-            sample_rate,
-            last_rms: 0.0,
-            density: 0.0,
         }
     }
 
@@ -800,52 +860,12 @@ impl GuitarFeatureExtractor {
             return InputFeatures::default();
         }
 
-        let mono = &self.mono[..frames];
-        let raw_rms = (mono.iter().map(|s| s * s).sum::<f32>() / frames.max(1) as f32).sqrt();
-        let events = self.pipeline.process_block(mono);
-        let pipeline_rms = self.pipeline.prev_rms().clamp(0.0, 1.0);
-        let rms = raw_rms.max(pipeline_rms).clamp(0.0, 1.0);
-        let note_state = self.pipeline.note_state_name();
-        let clarity = self
-            .pipeline
-            .last_debug_pitch
-            .map(|(_, clarity)| clarity)
-            .unwrap_or(0.0)
-            .clamp(0.0, 1.0);
-
-        let note_on = events.iter().any(|event| {
-            matches!(
-                event,
-                MidiEvent::NoteOn {
-                    channel: _,
-                    note: _,
-                    velocity: _
-                }
-            )
-        });
-
-        let rms_rise = ((rms - self.last_rms * 1.08) * 18.0).max(0.0);
-        let onset = if note_on || note_state == 1 {
-            1.0f32.max(rms_rise)
-        } else {
-            rms_rise
-        }
-        .clamp(0.0, 1.0);
-
-        if onset > 0.05 {
-            self.density = (self.density + onset * 0.38).clamp(0.0, 1.0);
-        }
-        let frames = frames.max(1) as f32;
-        self.density *= (-(frames) / (self.sample_rate as f32 * 0.9)).exp();
-        self.last_rms = rms;
+        let follow = self
+            .follower
+            .process_interleaved_f32(&self.mono[..frames], 1, 0, 1.0);
 
         InputFeatures {
-            follow: FollowInput {
-                guitar_rms: rms,
-                onset_strength: onset,
-                strum_density: self.density.clamp(0.0, 1.0),
-                confidence: clarity.max(if rms > 0.0015 { 0.35 } else { 0.0 }),
-            },
+            follow,
             channel_levels,
             channel_count,
             active_channel,
@@ -876,25 +896,11 @@ where
     }
 
     let mut levels = [0.0f32; MAX_METER_CHANNELS];
-    let mut max_channel = preferred_channel.min(channel_count - 1);
-    let mut max_level = 0.0f32;
     for ch in 0..channel_count {
-        let level = (sums[ch] / frames as f32).sqrt().clamp(0.0, 1.0);
-        levels[ch] = level;
-        if level > max_level {
-            max_level = level;
-            max_channel = ch;
-        }
+        levels[ch] = (sums[ch] / frames as f32).sqrt().clamp(0.0, 1.0);
     }
 
-    let preferred = preferred_channel.min(channel_count - 1);
-    let preferred_level = levels[preferred];
-    let active_channel = if max_level > preferred_level.max(0.0005) * 1.8 {
-        max_channel
-    } else {
-        preferred
-    };
-
+    let active_channel = preferred_channel.min(channel_count - 1);
     (levels, channel_count, active_channel)
 }
 
@@ -913,6 +919,7 @@ fn main() {
             list_audio_inputs,
             get_engine_state,
             set_engine_params,
+            set_input_channel,
             start_engine,
             stop_engine,
         ])

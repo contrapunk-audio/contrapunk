@@ -55,6 +55,15 @@ impl Reverb {
     pub fn set_mix(&mut self, m: f32) {
         self.mix = m.clamp(0.0, 1.0);
     }
+    pub fn decay(&self) -> f32 {
+        self.decay
+    }
+    pub fn damping(&self) -> f32 {
+        self.damping
+    }
+    pub fn mix(&self) -> f32 {
+        self.mix
+    }
 
     /// Stereo in-place processing. Mono-from-stereo summed for the wet
     /// path (true stereo decorrelation lands in the FDN variant).
@@ -321,6 +330,17 @@ mod tests {
         let tail = &buf[24_000 * 2..24_000 * 2 + 1024];
         let rms: f32 = (tail.iter().map(|s| s * s).sum::<f32>() / tail.len() as f32).sqrt();
         assert!(rms > 1e-4, "reverb tail too quiet: {rms}");
+    }
+
+    #[test]
+    fn schroeder_setters_are_observable_for_ui_snapshots() {
+        let mut r = Reverb::new(48_000.0);
+        r.set_decay(0.72);
+        r.set_damping(0.33);
+        r.set_mix(0.44);
+        assert!((r.decay() - 0.72).abs() < 1e-6);
+        assert!((r.damping() - 0.33).abs() < 1e-6);
+        assert!((r.mix() - 0.44).abs() < 1e-6);
     }
 
     #[test]

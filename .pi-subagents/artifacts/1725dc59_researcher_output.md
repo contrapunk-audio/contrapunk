@@ -1,0 +1,1 @@
+Report written and verified at `/tmp/contrapunk-stretto-engine-performance.md`.

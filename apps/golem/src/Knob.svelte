@@ -25,6 +25,8 @@
   let startY = 0;
   let startX = 0;
   let startValue = 0;
+  let movedDuringDrag = false;
+  let suppressNextClick = false;
 
   const normalized = $derived(Math.min(1, Math.max(0, (value - min) / Math.max(0.000001, max - min))));
   const angle = $derived(-132 + normalized * 264);
@@ -48,6 +50,7 @@
     startY = event.clientY;
     startX = event.clientX;
     startValue = value;
+    movedDuringDrag = false;
     window.addEventListener('pointermove', onWindowPointerMove);
     window.addEventListener('pointerup', onWindowPointerUp, { once: true });
   }
@@ -55,17 +58,24 @@
   function onWindowPointerMove(event: PointerEvent) {
     if (!dragging) return;
     const range = max - min;
-    const delta = ((startY - event.clientY) + (event.clientX - startX) * 0.35) / 145 * range;
+    const y = startY - event.clientY;
+    const x = event.clientX - startX;
+    if (Math.hypot(x, y) > 3) movedDuringDrag = true;
+    const delta = (y + x * 0.35) / 145 * range;
     commit(startValue + delta);
   }
 
   function onWindowPointerUp() {
     dragging = false;
+    suppressNextClick = movedDuringDrag;
     window.removeEventListener('pointermove', onWindowPointerMove);
   }
 
   function onClickStep(event: MouseEvent) {
-    if (dragging) return;
+    if (dragging || suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const direction = event.clientY < rect.top + rect.height / 2 ? 1 : -1;
     commit(value + direction * step);

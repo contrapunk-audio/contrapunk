@@ -30,6 +30,16 @@
     input_channel?: number;
     active_channel?: number;
     channel_levels?: number[];
+    input_blocks: number;
+    raw_rms: number;
+    raw_peak: number;
+    raw_rms_db: number;
+    raw_peak_db: number;
+    normalized_energy: number;
+    energy_fast: number;
+    energy_slow: number;
+    noise_floor_db: number;
+    clipping: boolean;
   };
 
   let running = false;
@@ -37,7 +47,7 @@
   let error = '';
   let audioInputs: string[] = [];
   let selectedInput = '';
-  let selectedChannel = 0;
+  let selectedChannel = 1;
   let padEl: HTMLDivElement;
 
   let bpm = 110;
@@ -59,6 +69,16 @@
     input_channel: 0,
     active_channel: 0,
     channel_levels: [],
+    input_blocks: 0,
+    raw_rms: 0,
+    raw_peak: 0,
+    raw_rms_db: -120,
+    raw_peak_db: -120,
+    normalized_energy: 0,
+    energy_fast: 0,
+    energy_slow: 0,
+    noise_floor_db: -80,
+    clipping: false,
   };
 
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -82,6 +102,29 @@
     };
   }
 
+  function meterScale(value: number, boost = 64) {
+    return Math.min(1, Math.max(0, value) * boost);
+  }
+
+  function dbMeterScale(db: number, floor = -90, ceiling = -24) {
+    return Math.min(1, Math.max(0, (db - floor) / (ceiling - floor)));
+  }
+
+  function formatLevel(value: number) {
+    if (value <= 0.00001) return '-∞ dB';
+    return `${Math.round(20 * Math.log10(value))} dB`;
+  }
+
+  function inputStatusText() {
+    if (!running) return '';
+    if (meter.input_blocks <= 0) return 'Waiting for input samples…';
+    if ((meter.channel_levels?.length ?? 0) > 0 && Math.max(...(meter.channel_levels ?? [0])) <= 0.00001) {
+      return `Input callbacks live · ${meter.channel_levels?.length ?? 0} ch · all channels silent`;
+    }
+    if (meter.clipping) return 'Input clipping · turn down interface gain';
+    return `Input live · ch ${(meter.active_channel ?? 0) + 1} · ${Math.round(meter.raw_rms_db)} dB · energy ${Math.round(meter.normalized_energy * 100)}%`;
+  }
+
   function applyState(state: EngineState) {
     running = state.running;
     bpm = state.params.bpm;
@@ -92,6 +135,16 @@
     fillAmount = state.params.fill_amount;
     followAmount = state.params.follow_amount;
     masterGain = state.params.master_gain;
+  }
+
+  let paramsPushTimer: number | undefined;
+
+  function schedulePushParams() {
+    if (paramsPushTimer) window.clearTimeout(paramsPushTimer);
+    paramsPushTimer = window.setTimeout(() => {
+      paramsPushTimer = undefined;
+      void pushParams();
+    }, 50);
   }
 
   async function pushParams() {
@@ -112,7 +165,7 @@
       const state = await tauriInvoke<EngineState>('start_engine', {
         config: {
           input_device: selectedInput || null,
-          input_channel: selectedChannel,
+          input_channel: Math.max(0, selectedChannel - 1),
         },
       });
       applyState(state);
@@ -138,27 +191,27 @@
 
   function setBpm(value: number) {
     bpm = Math.round(value);
-    void pushParams();
+    schedulePushParams();
   }
 
   function setSwing(value: number) {
     swing = value;
-    void pushParams();
+    schedulePushParams();
   }
 
   function setFillAmount(value: number) {
     fillAmount = value;
-    void pushParams();
+    schedulePushParams();
   }
 
   function setFollowAmount(value: number) {
     followAmount = value;
-    void pushParams();
+    schedulePushParams();
   }
 
   function setMasterGain(value: number) {
     masterGain = value;
-    void pushParams();
+    schedulePushParams();
   }
 
   function movePad(event: PointerEvent) {
@@ -168,7 +221,7 @@
     const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
     complexity = Number(x.toFixed(3));
     intensity = Number((1 - y).toFixed(3));
-    void pushParams();
+    schedulePushParams();
   }
 
   async function refreshInputs() {
@@ -181,7 +234,18 @@
       if (!selectedInput && audioInputs.length > 0) selectedInput = audioInputs[0];
       error = '';
     } catch (e) {
-      error = `Tauri backend unavailable: ${String(e)}`;
+      error = String(e);
+    }
+  }
+
+  async function setSelectedChannel(channel: number) {
+    selectedChannel = Math.max(1, Math.min(16, Math.round(channel)));
+    if (running) {
+      try {
+        await tauriInvoke('set_input_channel', { channel: selectedChannel - 1 });
+      } catch (e) {
+        error = String(e);
+      }
     }
   }
 
@@ -207,6 +271,7 @@
 
     return () => {
       unlisten?.();
+      if (paramsPushTimer) window.clearTimeout(paramsPushTimer);
     };
   });
 </script>
@@ -313,7 +378,7 @@
           <p class="label">Input</p>
           <h2>Follower</h2>
           {#if meter.running && meter.input_device}
-            <small class="active-input">Listening: {meter.input_device} ch {meter.active_channel ?? meter.input_channel}</small>
+            <small class="active-input">Listening: {meter.input_device} ch {(meter.active_channel ?? meter.input_channel ?? 0) + 1}</small>
           {/if}
         </div>
         <button class="ghost" on:click={refreshInputs}>Refresh</button>
@@ -330,13 +395,29 @@
 
       <label class="select-control small">
         <span>Preferred Channel</span>
-        <input type="number" min="0" max="15" bind:value={selectedChannel} />
+        <input
+          type="number"
+          min="1"
+          max="16"
+          value={selectedChannel}
+          on:change={(event) => void setSelectedChannel(Number((event.currentTarget as HTMLInputElement).value))}
+        />
       </label>
+
+      {#if running}
+        <p class="meter-status" class:silent={meter.input_blocks > 0 && Math.max(...(meter.channel_levels ?? [0])) <= 0.00001}>
+          {inputStatusText()}
+        </p>
+      {/if}
 
       <div class="meters">
         <div class="meter-row">
-          <span>Level</span>
-          <div class="meter"><i style={`transform: scaleX(${Math.min(1, meter.rms * 18)})`}></i></div>
+          <span>Raw</span>
+          <div class="meter"><i style={`transform: scaleX(${dbMeterScale(meter.raw_rms_db)})`}></i></div>
+        </div>
+        <div class="meter-row">
+          <span>Energy</span>
+          <div class="meter green"><i style={`transform: scaleX(${Math.min(1, meter.normalized_energy)})`}></i></div>
         </div>
         <div class="meter-row">
           <span>Onset</span>
@@ -352,14 +433,12 @@
               <button
                 type="button"
                 class:active={i === meter.active_channel}
-                class:preferred={i === selectedChannel}
-                title={`Channel ${i}: ${Math.round(level * 1000) / 10}%`}
-                on:click={() => {
-                  selectedChannel = i;
-                }}
+                class:preferred={i + 1 === selectedChannel}
+                title={`Channel ${i + 1}: ${formatLevel(level)}`}
+                on:click={() => void setSelectedChannel(i + 1)}
               >
-                <i style={`transform: scaleY(${Math.min(1, level * 24)})`}></i>
-                <span>{i}</span>
+                <i style={`transform: scaleY(${dbMeterScale(20 * Math.log10(Math.max(level, 0.000001)))})`}></i>
+                <span>{i + 1}</span>
               </button>
             {/each}
           </div>
@@ -761,6 +840,18 @@
     width: 100px;
   }
 
+  .meter-status {
+    margin: -2px 0 0;
+    color: rgba(248, 241, 222, 0.58);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+  }
+
+  .meter-status.silent {
+    color: #f2b84b;
+  }
+
   .meters {
     display: grid;
     gap: 13px;
@@ -790,6 +881,7 @@
     border-radius: inherit;
   }
 
+  .meter.green i { background: linear-gradient(90deg, #42e2ae, #f2b84b); }
   .meter.amber i { background: linear-gradient(90deg, #ff8d54, #f2d64b); }
   .meter.blue i { background: linear-gradient(90deg, #4fb8ff, #42e2ae); }
 

@@ -5,10 +5,12 @@
 //! incrementally through phases A0..A6 without breaking the
 //! [`Engine::process`] signature locked at A0.
 //!
-//! Current phase: **A3** — modulation matrix v1. One global LFO + a
-//! sparse route table; control-rate evaluation each block; click-free
-//! smoothed amounts. Mod-of-mod proven via the `AmpEnv → LfoRate`
-//! route.
+//! Current implementation checkpoint: **A6 audit**. A0-A5 foundations
+//! are in place, and the A6 public surface is implemented for spectral
+//! morph selectors, phase-distortion modes, unison styles, expanded
+//! filter models, the 8-slot FX chain, and modulation/dynamics FX. This
+//! crate intentionally keeps the same [`Engine::process`] contract while
+//! QA hardens each completed feature.
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
@@ -40,10 +42,10 @@ pub const MAX_VOICES: usize = MAX_POLYPHONY + PARALLEL_VOICES;
 
 /// The top-level Elixir engine.
 ///
-/// One instance per audio thread. Owns the voice pool + a shared sine
-/// table. A1 was single-voice; A2 grows to a `[Voice; MAX_VOICES]`
-/// pool. A future A2 follow-up will SIMD-pack voices into
-/// `AggregateVoice` groups (two voices per `f32x8` lane).
+/// One instance per audio thread. Owns the voice pool, shared sine table,
+/// modulation matrix, oscillator controls, voice filter controls, and FX
+/// chain. The current implementation is scalar and allocation-free while
+/// processing; future SIMD packing can happen behind the same public API.
 pub struct Engine {
     sample_rate: u32,
     max_block: usize,

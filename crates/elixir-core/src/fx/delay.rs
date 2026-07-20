@@ -48,6 +48,15 @@ impl Delay {
     pub fn set_mix(&mut self, m: f32) {
         self.mix = m.clamp(0.0, 1.0);
     }
+    pub fn delay_samples(&self) -> usize {
+        self.delay_samples
+    }
+    pub fn feedback(&self) -> f32 {
+        self.feedback
+    }
+    pub fn mix(&self) -> f32 {
+        self.mix
+    }
 
     /// Process an interleaved stereo buffer in-place. Channels < 2 falls
     /// back to mono (writes left-channel only).
@@ -102,6 +111,17 @@ mod tests {
         let echo_r = buf[64 * 2 + 1];
         assert!(echo_l.abs() > 0.5, "left echo too quiet: {echo_l}");
         assert!(echo_r.abs() > 0.5, "right echo too quiet: {echo_r}");
+    }
+
+    #[test]
+    fn setters_are_observable_for_ui_snapshots() {
+        let mut d = Delay::new(2048);
+        d.set_delay_samples(100);
+        d.set_feedback(0.7);
+        d.set_mix(0.25);
+        assert_eq!(d.delay_samples(), 100);
+        assert!((d.feedback() - 0.7).abs() < 1e-6);
+        assert!((d.mix() - 0.25).abs() < 1e-6);
     }
 
     #[test]

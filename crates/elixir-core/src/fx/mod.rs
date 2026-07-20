@@ -1,10 +1,10 @@
-//! Audio FX bus (Phase 21.A5 v1).
+//! Audio FX bus (Phase 21.A5 → A6).
 //!
-//! See `ELIXIR-DESIGN.md` §5 for the design-doc target (8-slot
-//! reorderable chain, 2x oversampling around nonlinearities, 16-line
-//! FDN reverb). A5 v1 ships three FX kinds (Drive / Delay / Reverb)
-//! in a 4-slot chain; oversampling and EQ land in A5 follow-ups, the
-//! FDN-16 reverb and the rest of the FX family land in A6.
+//! A5 introduced the slot-based Drive / Delay / Reverb bus. The current
+//! A6 implementation exposes an 8-slot chain with the modulation and
+//! dynamics family needed by the public surface: FDN-16 reverb, chorus,
+//! flanger, phaser, and compressor. Effects allocate their delay/state
+//! memory at construction and process in-place during the audio callback.
 
 pub mod delay;
 pub mod drive;

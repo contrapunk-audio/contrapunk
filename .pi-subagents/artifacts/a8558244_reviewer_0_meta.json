@@ -1,0 +1,37 @@
+{
+  "runId": "a8558244",
+  "agent": "reviewer",
+  "task": "Review ONLY the current uncommitted Cloister Organum / ExplicitIntervals implementation diff in these paths: crates/contrapunk-harmony/src/{config.rs,engine.rs,lib.rs}, crates/contrapunk-companion/src/canon_lane.rs, src-tauri/src/{commands/harmony.rs,main.rs}, wasm/src/{enum_strings.rs,lib.rs}, ui/src/lib/{adapter,arrangement,components,prototype,stores} files touching ExplicitIntervals/interval map, tracked ui/src/lib/wasm-pkg generated artifacts, and research synthesis. Ignore all unrelated dirty work. Check correctness, note-on/off ownership and reconfiguration cleanup, octave/routing behavior, Tauri/WASM API symmetry, unsupported plugin capability gating, Apply/manual edit/Save As round-trip, preset requirements, and tests. Do not edit files. Report only actionable findings ranked by severity with exact paths/lines; if none, say no actionable findings and note residual risks.",
+  "exitCode": 0,
+  "usage": {
+    "input": 172283,
+    "output": 13661,
+    "cacheRead": 3332096,
+    "cacheWrite": 0,
+    "cost": 2.937293,
+    "turns": 31
+  },
+  "model": "openai-codex/gpt-5.6-sol:high",
+  "attemptedModels": [
+    "openai-codex/gpt-5.6-sol:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "openai-codex/gpt-5.6-sol:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 172283,
+        "output": 13661,
+        "cacheRead": 3332096,
+        "cacheWrite": 0,
+        "cost": 2.937293,
+        "turns": 31
+      }
+    }
+  ],
+  "durationMs": 393828,
+  "toolCount": 54,
+  "transcriptPath": "/Users/vibhavbobade/go/src/github.com/contrapunk-audio/contrapunk/.pi-subagents/artifacts/a8558244_reviewer_0_transcript.jsonl",
+  "timestamp": 1784553802806
+}

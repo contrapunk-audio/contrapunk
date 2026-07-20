@@ -1,0 +1,13 @@
+## Review
+
+- **Blocker:** Disabling Companion can strand active pattern notes. `Companion::tick_tagged` immediately returns when disabled, preventing `PatternLane::tick` from emitting its NoteOff (`crates/contrapunk-companion/src/orchestrator.rs:158-161`). Both disable paths only flip the atomic flag (`src-tauri/src/commands/companion.rs:31-34`, `wasm/src/companion.rs:69-74`). A sustained low-support/counterline note can therefore ring until panic or re-enable.
+
+- **Blocker:** Reconfiguring an active lane can panic or run stale scheduling state. `deserialize_state` replaces `events`, `cycle_beats`, and `tail_beats` without resetting `next_event`, `cycle_start`, or the active note (`crates/contrapunk-companion/src/pattern_lane.rs:292-329`). The next tick indexes `self.events[self.next_event]` (`pattern_lane.rs:235`); shrinking the event list below the current index causes an out-of-bounds panic. Even without a panic, applying new pattern data continues from the old anchor/cycle.
+
+- **Note:** WASM read plumbing is incomplete. Rust exposes both pattern states in its snapshot (`wasm/src/companion.rs:255-275`), but `WasmAdapter.patternState` always returns `null` (`ui/src/lib/adapter/wasm.ts:621-625`). Consequently `syncFromBackend` cannot capture authoritative pattern state (`ui/src/lib/stores/arrangement.svelte.ts:73-84`), weakening apply rollback and refresh synchronization.
+
+- **Note:** Capability gating uses the broad `companionLanes` flag to advertise both new capabilities (`ui/src/lib/stores/arrangement.svelte.ts:46-55`), while the plugin implementation silently no-ops pattern writes and returns no state (`ui/src/lib/adapter/plugin.ts:274-284`). Any surface advertising existing Companion lanes without PatternLane support will incorrectly unlock Pixel Trio and report a successful apply.
+
+- **Correct:** Pixel Trio’s musical roles are declarative rather than preset-specific Rust logic. The preset supplies separate low-support and counterline event lists (`ui/src/lib/arrangement/catalog.ts:670-721`), while the shared lane resolves generic scale-degree events (`crates/contrapunk-companion/src/pattern_lane.rs:96-105,232-259`). Tauri and WASM both register two distinct lane instances (`src-tauri/src/state.rs:187-194`, `wasm/src/companion.rs:53-62`).
+
+- **Correct:** Skipped expired events are advanced without emitting stale attacks, and transport stop/rewind releases active notes while Companion remains enabled (`crates/contrapunk-companion/src/pattern_lane.rs:215-259`). Older schema-v2 configs lacking `patterns` are explicitly mapped to disabled empty lanes (`ui/src/lib/stores/arrangement.svelte.ts:218-220`).

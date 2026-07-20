@@ -1,0 +1,9 @@
+# Task for researcher
+
+Produce the independent MUSIC-THEORY / TEMPORAL-BEHAVIOR research report for Phase 10.2 preset 48 “Crystal Chorale,” referenced to a bounded Nobuo Uematsu / Final Fantasy corpus. Follow 10.2-RESEARCH-TEMPLATE.md completely. Analyze harmonic-minor/modal palette, chorale/triadic/seventh vocabulary, memorable melody, cadence, voice leading, octave/call-answer texture, register, rhythm, articulation, density, silence, phrase/section/game evolution, allowed variation, and rejection behaviors without copying protected melodies. Audit current HarmonyEngine, BachChorale/other modes, Canon/Free Imitation, and ArrangementPresetV2 to determine exactly what static chorale and octave-answer claims are implementable now, whether combining them preserves a strict total-voice/lifecycle contract, and what motif/form/adaptive/orchestration claims remain unsupported. Derive exact abstract pitch/timing/lifecycle acceptance examples for any approved mapping. Use rigorous web research with inline citations and kept/dropped sources. Do not inspect or reuse another researcher’s output. Do not modify repository files; return only the complete standalone Markdown report.
+
+---
+**Output:**
+Write your findings to exactly this path: /Users/vibhavbobade/go/src/github.com/contrapunk-audio/contrapunk/.pi-subagents/artifacts/outputs/614400b8/.planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/theory.md
+This path is authoritative for this run.
+Ignore any other output filename or output path mentioned elsewhere, including output destinations in the base agent prompt, system prompt, or task instructions.
