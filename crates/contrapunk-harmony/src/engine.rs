@@ -2824,6 +2824,51 @@ mod tests {
         }
     }
 
+    #[test]
+    fn dorian_fourth_derived_blocks_keep_vectors_and_balanced_release() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicFourths, 4);
+        engine.set_scale_mode(ScaleMode::Dorian);
+        engine.set_voice_position(3);
+        engine.set_voice_leading_enabled(false);
+        engine.set_octave_mode(OctaveMode::None);
+        engine.set_interchange_enabled(false);
+
+        for (input_midi, relative) in [
+            (60, [0, 5, 10, 15]),
+            (62, [0, 5, 10, 15]),
+            (63, [0, 6, 11, 16]),
+            (65, [0, 5, 10, 16]),
+            (67, [0, 5, 10, 15]),
+            (69, [0, 5, 10, 15]),
+            (70, [0, 5, 11, 16]),
+        ] {
+            let input = Note::try_from(input_midi).unwrap();
+            let expected: Vec<Note> = relative
+                .into_iter()
+                .map(|offset| Note::try_from(input_midi + offset).unwrap())
+                .collect();
+            let on = engine.harmonize_note_on(input);
+            assert_eq!(on, expected);
+            assert_eq!(on.iter().filter(|&&note| note == input).count(), 1);
+            assert_eq!(engine.harmonize_note_off(input), expected);
+            assert!(engine.active_notes.is_empty());
+        }
+
+        // Chromatic input is processed by the existing consonant fallback,
+        // but remains outside the preset's Dorian acceptance corpus.
+        let chromatic = Note::Db4;
+        let on = engine.harmonize_note_on(chromatic);
+        assert_eq!(on.len(), 4);
+        assert_ne!(
+            on.iter()
+                .map(|note| u8::from(*note) - u8::from(chromatic))
+                .collect::<Vec<_>>(),
+            vec![0, 5, 10, 15]
+        );
+        assert_eq!(engine.harmonize_note_off(chromatic), on);
+        assert!(engine.active_notes.is_empty());
+    }
+
     /// External transport, when set, must take precedence over the
     /// internal synthetic counter. Sanity check that the synthetic
     /// fallback doesn't override an explicitly-driven phase.

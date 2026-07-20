@@ -579,6 +579,68 @@ export const BEBOP_CHASE_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const QUARTAL_COLOSSUS_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '27-quartal-colossus',
+	name: 'Quartal Colossus',
+	family: 'jazz',
+	tags: ['post-bop', 'dorian', 'fourth-derived', 'player-shaped-form'],
+	builtIn: true,
+	result:
+		'Each in-collection note becomes one four-voice Dorian fourth-derived block with the exact source at the bottom; degrees 1, 2, 5, and 6 form exact perfect-fourth stacks.',
+	approximation:
+		'A fixed harmony study inspired by one open fourth-rich feature documented in selected 1960–67 McCoy Tyner performances. It does not generate Tyner’s phrases, rhythm, touch, pedals, bass movement, dominant substitutions, chromatic resolutions, comping decisions, ensemble interaction, or formal development. Degrees flat-3, 4, and flat-7 contain one augmented fourth; you supply the cell, accents, register, dynamics, repetition, resolution, and silence.',
+	play: {
+		prompt:
+			'Punch a two-to-four-note cell from displayed degrees 1, 2, 5, and 6, repeat its rhythm with one stronger accent or octave shift, then release and leave a full bar of air.',
+		input: 'motif',
+		articulation:
+			'Firm, dry, non-legato single notes with complete releases; keyboard pedal up, guitar strings muted, and no bends, slides, double-stops, or ringing strings.',
+		density: 'Two to four source attacks per clause; exactly one physical note and one resulting block at a time.',
+		space: 'Leave at least one beat between clauses and one full bar after each phrase.',
+		tempo: '88–132 BPM; transport is optional and remains untouched.',
+		transportRequired: false
+	},
+	references: [
+		{
+			name: 'McCoy Tyner',
+			context:
+				'Bounded reference to one fourth-rich modal/open-voicing property in selected 1960–65 John Coltrane Quartet performances and Tyner’s independent consolidation through The Real McCoy (1967), not a simulation of the artist or ensemble.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['harmony'],
+	config: {
+		harmony: {
+			scaleMode: 'Dorian',
+			mode: 'DiatonicFourths',
+			voiceCount: 4,
+			voicePosition: 3,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: false,
+			globalHoldMode: { kind: 'cancel' },
+			canon: { enabled: false, form: 'free_imitation', holdMode: null, voices: [] },
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -606,7 +668,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 24, name: 'Angular Cells', family: 'jazz', result: 'Tritones, clusters, displaced responses, and negative space answer the lead.', prompt: 'Play short dry motifs with surprising accents and long rests.', references: ['Thelonious Monk'], requirements: ['bounded_clusters', 'microtiming'], input: 'motif' },
 	{ number: 25, name: 'Bebop Chase', family: 'jazz', result: BEBOP_CHASE_PRESET.result, prompt: BEBOP_CHASE_PRESET.play.prompt, references: ['Charlie Parker', 'Dizzy Gillespie'], requirements: ['free_imitation'], input: 'motif', transportRequired: true },
 	{ number: 26, name: 'Rootless Glass', family: 'jazz', result: 'Smooth rootless ninth, eleventh, and thirteenth voicings follow the lead.', prompt: 'Play ballad lines, sustained upper tones, and gentle chromatic approaches.', references: ['Bill Evans'], requirements: ['jazz_extensions'] },
-	{ number: 27, name: 'Quartal Colossus', family: 'jazz', result: 'Forceful fourth stacks occupy Dorian or pentatonic space.', prompt: 'Play assertive modal riffs with rhythmic repetition.', references: ['McCoy Tyner'], requirements: ['harmony'], input: 'motif' },
+	{ number: 27, name: 'Quartal Colossus', family: 'jazz', result: QUARTAL_COLOSSUS_PRESET.result, prompt: QUARTAL_COLOSSUS_PRESET.play.prompt, references: ['McCoy Tyner'], requirements: ['harmony'], input: 'motif' },
 	{ number: 28, name: 'Third-Cycle Labyrinth', family: 'jazz', result: 'Tonal centers rotate through major thirds.', prompt: 'Repeat a compact motif while harmony changes beneath it.', references: ['John Coltrane'], requirements: ['harmonic_timeline'], input: 'motif', transportRequired: true },
 	{ number: 29, name: 'Shout Counterpoint', family: 'jazz', result: 'Bass ostinato, gospel response, and unruly counterline combine.', prompt: 'Play forceful two-bar blues calls followed by a full response opening.', references: ['Charles Mingus'], requirements: ['pattern_lane', 'stable_lane_groups'], input: 'motif', transportRequired: true },
 	{ number: 30, name: 'Free Quartet', family: 'jazz', result: 'Independent contours occupy separate tonal centers.', prompt: 'Play exploratory lines with wide leaps and pauses to answer the ensemble.', references: ['Ornette Coleman'], requirements: ['independent_tonal_centers', 'stable_lane_groups'] },
@@ -642,6 +704,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 14) return COLOR_MODE_WINDOWS_PRESET;
 		if (spec.number === 23) return SIXTH_DIMINISHED_CONVEYOR_PRESET;
 		if (spec.number === 25) return BEBOP_CHASE_PRESET;
+		if (spec.number === 27) return QUARTAL_COLOSSUS_PRESET;
 		return draftPreset(spec);
 	}
 );

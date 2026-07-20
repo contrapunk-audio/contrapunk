@@ -7,6 +7,7 @@ import {
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
 	PLANED_CATHEDRAL_PRESET,
+	QUARTAL_COLOSSUS_PRESET,
 	SIXTH_DIMINISHED_CONVEYOR_PRESET,
 	STRETTO_ENGINE_PRESET,
 	SUSPENSION_GARLAND_PRESET
@@ -42,7 +43,8 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			'12-planed-cathedral',
 			'14-color-mode-windows',
 			'23-sixth-diminished-conveyor',
-			'25-bebop-chase'
+			'25-bebop-chase',
+			'27-quartal-colossus'
 		]
 	);
 });
@@ -342,6 +344,48 @@ test('Bebop Chase is one bounded complete delayed octave answer', () => {
 		'transport'
 	]) {
 		assert.equal(preserved in BEBOP_CHASE_PRESET.config, false);
+	}
+});
+
+test('Quartal Colossus is one bounded Dorian fourth-derived block', () => {
+	assert.deepEqual(QUARTAL_COLOSSUS_PRESET.requirements, ['harmony']);
+	assert.equal(QUARTAL_COLOSSUS_PRESET.play.transportRequired, false);
+	assert.deepEqual(QUARTAL_COLOSSUS_PRESET.config.harmony, {
+		scaleMode: 'Dorian',
+		mode: 'DiatonicFourths',
+		voiceCount: 4,
+		voicePosition: 3,
+		voiceLeadingEnabled: false,
+		voiceLeadingStyle: 'Free',
+		octaveMode: 'None',
+		octaveIntensity: 1,
+		interchangeEnabled: false,
+		interchangeRange: 3,
+		counterpointSpecies: 'Species1',
+		counterpointStrictness: 'Strict'
+	});
+	assert.equal(QUARTAL_COLOSSUS_PRESET.config.companion.enabled, false);
+	assert.match(QUARTAL_COLOSSUS_PRESET.result, /degrees 1, 2, 5, and 6/i);
+	assert.match(QUARTAL_COLOSSUS_PRESET.approximation, /contain one augmented fourth/i);
+	assert.match(QUARTAL_COLOSSUS_PRESET.approximation, /does not generate/i);
+	assert.deepEqual(validateArrangementPreset(QUARTAL_COLOSSUS_PRESET), []);
+	assert.deepEqual(arrangementConfigCapabilities(QUARTAL_COLOSSUS_PRESET.config), ['harmony']);
+
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in QUARTAL_COLOSSUS_PRESET.config, false);
 	}
 });
 
