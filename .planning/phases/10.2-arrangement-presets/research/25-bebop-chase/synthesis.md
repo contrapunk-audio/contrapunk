@@ -53,7 +53,6 @@ Use the existing shared Free Imitation lane as a one-voice, fixed-delay response
           "delayBeats": 4.0,
           "transposeDegrees": 7,
           "timeRatio": 1.0,
-          "velocityScale": 0.82,
           "holdMode": null,
           "enabled": true
         }
@@ -71,7 +70,7 @@ Exact field casing may follow the catalog serializer, but the musical contract m
 - Use transport in 4/4 at roughly 160 BPM; preserve the user's current tonic, BPM, transport, devices, routing, sound, master, mute/solo, and plugins.
 - Play four to six legato or detached eighth-note attacks within at most three beats.
 - Stop playing and leave the next four-beat window open.
-- The companion repeats every attack four beats later, one scale octave above, slightly quieter, with original inter-onset timing and gate lengths.
+- The companion repeats every attack four beats later, one scale octave above, with the original velocity, inter-onset timing, and gate lengths.
 - Begin the next call only after the answer clears if a strict call-and-response effect is desired.
 
 The performer creates rhythm, swing, rests, accents, contour, chord targeting, phrase boundaries, and any later variation. Contrapunk supplies only delayed, octave-displaced pursuit.
@@ -104,7 +103,7 @@ Use copy equivalent to:
 
 - **Name:** Bebop Chase
 - **Summary:** Four-to-six-note bursts return four beats later as a complete octave answer.
-- **Result:** A clean monophonic burst comes back slightly quieter and one scale octave higher; every source attack is retained.
+- **Result:** A clean monophonic burst comes back one scale octave higher; every source attack is retained.
 - **Play tip:** In 4/4, play four to six in-scale eighth notes within three beats, then leave space for the four-beat-delayed answer.
 - **Approximation:** A disclosed turn-taking exercise inspired by Parker/Gillespie small-group exchanges; no phrase recognition, shortening, swing, chord logic, or artist imitation.
 - **Requires:** transport and shared Free Imitation only.
@@ -130,7 +129,7 @@ Until then, every implementation and UI description must call the output a compl
 1. Catalog validation accepts the preset as approved with only `free_imitation` and `transport` requirements.
 2. Applying it preserves all non-arrangement state named above.
 3. An in-scale four-note eighth-note source produces exactly four response NoteOns four beats later and exactly four matched NoteOffs.
-4. The response pitches are one scale octave above, velocities are scaled by `0.82`, and source timing/gates are unchanged.
+4. The response pitches are one scale octave above, and source velocities, timing, and gates are unchanged.
 5. Releasing source notes before response onset does not erase the scheduled response.
 6. Stop, panic, preset change, and transport loss leave zero orphan notes.
 7. UI copy contains no claim of shortening, phrase recognition, swing generation, trading fours, or artist simulation.

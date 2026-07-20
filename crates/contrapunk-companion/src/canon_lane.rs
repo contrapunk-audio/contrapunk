@@ -2109,6 +2109,68 @@ mod tests {
         assert!(lane.held.is_empty());
     }
 
+    #[test]
+    fn bebop_chase_repeats_every_short_burst_attack_and_releases_cleanly() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.hold_mode = Some(HoldMode::NearFuture { tail_beats: 4.0 });
+
+        let mut follower = CanonVoice::with_time_ratio(4.0, 7, 1.0);
+        follower.harmony_mode = Some(HarmonyMode::PassThrough);
+        follower.voice_count = Some(1);
+        follower.voice_position = Some(0);
+        follower.voice_leading_enabled = Some(false);
+        follower.voice_leading_style = Some(VoiceLeadingStyle::Free);
+        follower.octave_mode = Some(OctaveMode::None);
+        lane.set_voices(vec![follower]);
+
+        for (note, beat) in [(60, 0.0), (62, 0.5), (64, 1.0), (65, 1.5)] {
+            advance_to_beat(&transport, beat);
+            lane.on_input(
+                InputEvent::NoteOn {
+                    note,
+                    velocity: 96,
+                    channel: 0,
+                },
+                &world,
+            );
+            advance_to_beat(&transport, beat + 0.25);
+            lane.on_input(InputEvent::NoteOff { note, channel: 0 }, &world);
+        }
+
+        assert_eq!(lane.pending_on.len(), 4);
+        assert_eq!(lane.pending_off.len(), 4);
+        assert!(lane.held.is_empty());
+
+        let mut active = std::collections::HashSet::new();
+        let mut note_ons = Vec::new();
+        let mut note_offs = Vec::new();
+        for beat in [4.01, 4.26, 4.51, 4.76, 5.01, 5.26, 5.51, 5.76] {
+            advance_to_beat(&transport, beat);
+            for op in lane.tick(&world).ops {
+                match op {
+                    DispatchOp::NoteOn { note, velocity, .. } => {
+                        assert_eq!(velocity, 96);
+                        assert!(active.insert(note), "duplicate active NoteOn for {note}");
+                        note_ons.push(note);
+                    }
+                    DispatchOp::NoteOff { note, .. } => {
+                        assert!(active.remove(&note), "orphan NoteOff for {note}");
+                        note_offs.push(note);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        assert_eq!(note_ons, vec![72, 74, 76, 77]);
+        assert_eq!(note_offs, note_ons);
+        assert!(active.is_empty());
+        assert!(lane.pending_on.is_empty());
+        assert!(lane.pending_off.is_empty());
+        assert!(lane.held.is_empty());
+    }
+
     /// Phrase anchor resets after silence exceeding the threshold.
     /// Without this, an augmentation voice would stretch the entire
     /// performance history into the future. Test: two inputs separated

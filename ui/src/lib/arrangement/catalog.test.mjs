@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+	BEBOP_CHASE_PRESET,
 	BUILT_IN_ARRANGEMENT_PRESETS,
 	COLOR_MODE_WINDOWS_PRESET,
 	MENSURATION_WEB_PRESET,
@@ -40,7 +41,8 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			'08-suspension-garland',
 			'12-planed-cathedral',
 			'14-color-mode-windows',
-			'23-sixth-diminished-conveyor'
+			'23-sixth-diminished-conveyor',
+			'25-bebop-chase'
 		]
 	);
 });
@@ -285,6 +287,61 @@ test('Sixth-Diminished Conveyor is one bounded four-voice scale-of-chords study'
 		'transport'
 	]) {
 		assert.equal(preserved in SIXTH_DIMINISHED_CONVEYOR_PRESET.config, false);
+	}
+});
+
+test('Bebop Chase is one bounded complete delayed octave answer', () => {
+	assert.deepEqual(BEBOP_CHASE_PRESET.requirements, ['free_imitation']);
+	assert.equal(BEBOP_CHASE_PRESET.play.transportRequired, true);
+	assert.equal(BEBOP_CHASE_PRESET.config.harmony.mode, 'PassThrough');
+	assert.equal(BEBOP_CHASE_PRESET.config.harmony.voiceCount, 1);
+	assert.equal(BEBOP_CHASE_PRESET.config.companion.enabled, true);
+	assert.deepEqual(BEBOP_CHASE_PRESET.config.companion.canon, {
+		enabled: true,
+		form: 'free_imitation',
+		holdMode: { kind: 'near_future', tail_beats: 4 },
+		voices: [
+			{
+				delayBeats: 4,
+				transposeDegrees: 7,
+				timeRatio: 1,
+				harmonyMode: 'PassThrough',
+				referenceVoice: null,
+				voiceCount: 1,
+				voicePosition: 0,
+				voiceLeadingEnabled: false,
+				voiceLeadingStyle: 'Free',
+				octaveMode: 'None',
+				counterpointSpecies: 'Species1',
+				counterpointStrictness: 'Strict',
+				holdMode: null
+			}
+		]
+	});
+	assert.match(BEBOP_CHASE_PRESET.result, /every source attack is retained/i);
+	assert.match(BEBOP_CHASE_PRESET.approximation, /does not recognize or shorten phrases/i);
+	assert.match(BEBOP_CHASE_PRESET.approximation, /does not.*trade fours/i);
+	assert.deepEqual(validateArrangementPreset(BEBOP_CHASE_PRESET), []);
+	assert.deepEqual(arrangementConfigCapabilities(BEBOP_CHASE_PRESET.config), [
+		'harmony',
+		'free_imitation'
+	]);
+
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in BEBOP_CHASE_PRESET.config, false);
 	}
 });
 

@@ -506,6 +506,79 @@ export const SIXTH_DIMINISHED_CONVEYOR_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const BEBOP_CHASE_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '25-bebop-chase',
+	name: 'Bebop Chase',
+	family: 'jazz',
+	tags: ['bebop', 'call-and-response', 'free-imitation', 'transport'],
+	builtIn: true,
+	result:
+		'A clean monophonic burst returns four beats later as a complete octave answer; every source attack is retained.',
+	approximation:
+		'A disclosed turn-taking exercise inspired by Parker and Gillespie small-group exchanges from 1945–46 and their four-bar exchanges on “Leap Frog” (1950). It repeats your complete live burst at one fixed delay and scale-octave displacement. It does not recognize or shorten phrases, generate swing or accents, follow chord changes, trade fours, model either artist, or reproduce their individual vocabulary; you supply the phrase, rhythmic feel, harmonic direction, development, and ending.',
+	play: {
+		prompt:
+			'In 4/4, play four to six clean in-scale eighth notes within three beats, then stop and leave the next four-beat window open for the complete octave answer.',
+		input: 'motif',
+		articulation:
+			'Clean monophonic attacks with distinct releases; pedal up, unused strings muted, and no overlapping physical notes.',
+		density: 'Four to six source attacks within at most three transport beats.',
+		space:
+			'Leave at least four beats after each burst and wait for the answer to release before beginning the next call.',
+		tempo: '140–200 BPM in 4/4; 160 BPM is the test default.',
+		transportRequired: true
+	},
+	references: [
+		{
+			name: 'Charlie Parker',
+			context:
+				'Bounded reference to turn-taking within Parker and Gillespie’s shared 1945–46 small-group bebop language, not a simulation of Parker’s playing.'
+		},
+		{
+			name: 'Dizzy Gillespie',
+			context:
+				'Bounded reference to documented Parker/Gillespie exchanges through “Leap Frog” (1950), not a simulation of Gillespie’s playing.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['free_imitation'],
+	config: {
+		harmony: {
+			scaleMode: 'Ionian',
+			mode: 'PassThrough',
+			voiceCount: 1,
+			voicePosition: 0,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: true,
+			globalHoldMode: { kind: 'cancel' },
+			canon: {
+				enabled: true,
+				form: 'free_imitation',
+				holdMode: { kind: 'near_future', tail_beats: 4 },
+				voices: [singleLineFollower(7, 1, 4)]
+			},
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -531,7 +604,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 22, name: 'Stride Engine', family: 'jazz', result: 'Bass and chord punches alternate.', prompt: 'Play a clear swinging melody or chord tones; leave the bass open.', references: ['James P. Johnson', 'Fats Waller'], requirements: ['pattern_lane'], input: 'chords', transportRequired: true },
 	{ number: 23, name: 'Sixth-Diminished Conveyor', family: 'jazz', result: 'Sixth chords alternate with diminished passing harmony.', prompt: 'Play connected bebop eighths, chromatic approaches, and clear resolutions.', references: ['Barry Harris'], requirements: ['harmony'] },
 	{ number: 24, name: 'Angular Cells', family: 'jazz', result: 'Tritones, clusters, displaced responses, and negative space answer the lead.', prompt: 'Play short dry motifs with surprising accents and long rests.', references: ['Thelonious Monk'], requirements: ['bounded_clusters', 'microtiming'], input: 'motif' },
-	{ number: 25, name: 'Bebop Chase', family: 'jazz', result: 'Fast phrases are pursued by shortened delayed answers.', prompt: 'Play clean four-to-eight-note bursts with gaps.', references: ['Charlie Parker', 'Dizzy Gillespie'], requirements: ['free_imitation'], input: 'motif', transportRequired: true },
+	{ number: 25, name: 'Bebop Chase', family: 'jazz', result: BEBOP_CHASE_PRESET.result, prompt: BEBOP_CHASE_PRESET.play.prompt, references: ['Charlie Parker', 'Dizzy Gillespie'], requirements: ['free_imitation'], input: 'motif', transportRequired: true },
 	{ number: 26, name: 'Rootless Glass', family: 'jazz', result: 'Smooth rootless ninth, eleventh, and thirteenth voicings follow the lead.', prompt: 'Play ballad lines, sustained upper tones, and gentle chromatic approaches.', references: ['Bill Evans'], requirements: ['jazz_extensions'] },
 	{ number: 27, name: 'Quartal Colossus', family: 'jazz', result: 'Forceful fourth stacks occupy Dorian or pentatonic space.', prompt: 'Play assertive modal riffs with rhythmic repetition.', references: ['McCoy Tyner'], requirements: ['harmony'], input: 'motif' },
 	{ number: 28, name: 'Third-Cycle Labyrinth', family: 'jazz', result: 'Tonal centers rotate through major thirds.', prompt: 'Repeat a compact motif while harmony changes beneath it.', references: ['John Coltrane'], requirements: ['harmonic_timeline'], input: 'motif', transportRequired: true },
@@ -568,6 +641,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 12) return PLANED_CATHEDRAL_PRESET;
 		if (spec.number === 14) return COLOR_MODE_WINDOWS_PRESET;
 		if (spec.number === 23) return SIXTH_DIMINISHED_CONVEYOR_PRESET;
+		if (spec.number === 25) return BEBOP_CHASE_PRESET;
 		return draftPreset(spec);
 	}
 );
