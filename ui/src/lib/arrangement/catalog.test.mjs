@@ -4,6 +4,7 @@ import {
 	BEBOP_CHASE_PRESET,
 	BUILT_IN_ARRANGEMENT_PRESETS,
 	COLOR_MODE_WINDOWS_PRESET,
+	CRYSTAL_CHORALE_PRESET,
 	HOLLOW_CHOIR_PRESET,
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
@@ -48,7 +49,8 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			'23-sixth-diminished-conveyor',
 			'25-bebop-chase',
 			'27-quartal-colossus',
-			'43-hollow-choir'
+			'43-hollow-choir',
+			'48-crystal-chorale'
 		]
 	);
 });
@@ -433,6 +435,72 @@ test('Hollow Choir is one bounded Aeolian SATB-style harmonic shadow', () => {
 		'transport'
 	]) {
 		assert.equal(preserved in HOLLOW_CHOIR_PRESET.config, false);
+	}
+});
+
+test('Crystal Chorale combines a four-part harmonic-minor shadow with one delayed octave', () => {
+	assert.deepEqual(CRYSTAL_CHORALE_PRESET.requirements, ['harmony', 'free_imitation']);
+	assert.equal(CRYSTAL_CHORALE_PRESET.play.transportRequired, true);
+	assert.deepEqual(CRYSTAL_CHORALE_PRESET.config.harmony, {
+		scaleMode: 'HarmonicMinor',
+		mode: 'BachChorale',
+		voiceCount: 4,
+		voicePosition: 0,
+		voiceLeadingEnabled: false,
+		voiceLeadingStyle: 'Free',
+		octaveMode: 'None',
+		octaveIntensity: 1,
+		interchangeEnabled: false,
+		interchangeRange: 3,
+		counterpointSpecies: 'Species1',
+		counterpointStrictness: 'Strict'
+	});
+	assert.deepEqual(CRYSTAL_CHORALE_PRESET.config.companion.canon, {
+		enabled: true,
+		form: 'free_imitation',
+		holdMode: { kind: 'forever' },
+		voices: [
+			{
+				delayBeats: 2,
+				transposeDegrees: 7,
+				timeRatio: 1,
+				harmonyMode: 'PassThrough',
+				referenceVoice: null,
+				voiceCount: 1,
+				voicePosition: 0,
+				voiceLeadingEnabled: false,
+				voiceLeadingStyle: 'Free',
+				octaveMode: 'None',
+				counterpointSpecies: 'Species1',
+				counterpointStrictness: 'Strict',
+				holdMode: null
+			}
+		]
+	});
+	assert.match(CRYSTAL_CHORALE_PRESET.result, /one complete octave echo two beats later/i);
+	assert.match(CRYSTAL_CHORALE_PRESET.approximation, /per-note octave echo/i);
+	assert.match(CRYSTAL_CHORALE_PRESET.approximation, /does not compose or recognize themes/i);
+	assert.deepEqual(validateArrangementPreset(CRYSTAL_CHORALE_PRESET), []);
+	assert.deepEqual(arrangementConfigCapabilities(CRYSTAL_CHORALE_PRESET.config), [
+		'harmony',
+		'free_imitation'
+	]);
+
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in CRYSTAL_CHORALE_PRESET.config, false);
 	}
 });
 

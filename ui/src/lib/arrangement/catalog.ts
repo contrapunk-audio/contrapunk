@@ -737,6 +737,73 @@ export const HOLLOW_CHOIR_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const CRYSTAL_CHORALE_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '48-crystal-chorale',
+	name: 'Crystal Chorale',
+	family: 'game',
+	tags: ['fantasy-rpg', 'harmonic-minor', 'satb-shadow', 'octave-echo'],
+	builtIn: true,
+	result:
+		'Each clean harmonic-minor melody note receives a four-part SATB-style chord and one complete octave echo two beats later.',
+	approximation:
+		'A bounded melody-first fantasy-RPG arrangement study informed by selected 1987–94 console practice. Harmonic minor and the per-note octave echo are product choices, not Nobuo Uematsu signatures. It does not compose or recognize themes, replay phrases, reproduce the Prelude or any score, orchestrate a choir, follow game or narrative state, develop form, or simulate Uematsu.',
+	play: {
+		prompt:
+			'Perform an original four-bar single-note phrase, repeat its opening with one small change, hold the cadence for two to four beats, then release and leave a full bar for the echo tail.',
+		input: 'motif',
+		articulation:
+			'Clean, lightly connected non-overlapping notes; keyboard pedal up, guitar strings muted, and no bends, slides, harmonics, ringing strings, or effects before detection.',
+		density: 'Three to six source attacks per bar; exactly one physical source note at a time.',
+		space: 'Hold the cadence for two to four beats, release, and leave at least one full bar for the delayed tail and silence.',
+		tempo: '72–88 BPM in 4/4; 80 BPM is the test default.',
+		transportRequired: true
+	},
+	references: [
+		{
+			name: 'Nobuo Uematsu',
+			context:
+				'Bounded reference to melody-first, limited-voice, thematically recurring arrangement practice in selected 1987–94 Final Fantasy console scores, not a franchise-theme reconstruction, endorsement, or artist simulation.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['harmony', 'free_imitation'],
+	config: {
+		harmony: {
+			scaleMode: 'HarmonicMinor',
+			mode: 'BachChorale',
+			voiceCount: 4,
+			voicePosition: 0,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: true,
+			globalHoldMode: { kind: 'cancel' },
+			canon: {
+				enabled: true,
+				form: 'free_imitation',
+				holdMode: { kind: 'forever' },
+				voices: [singleLineFollower(7, 1, 2)]
+			},
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -785,7 +852,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 45, name: 'Neon Noir', family: 'game', result: 'Minor jazz-funk harmony gains chromatic passing motion and rhythmic responses.', prompt: 'Play tight syncopated riffs, repeated notes, and short chromatic runs.', references: ['Shoji Meguro'], requirements: ['pattern_lane', 'jazz_extensions'], input: 'motif', transportRequired: true },
 	{ number: 46, name: 'Forest Layer Unfold', family: 'game', result: 'Quiet modal material gains naturalistic layers as density rises.', prompt: 'Begin sparse and pentatonic, then add repeats and higher notes gradually.', references: ['David Wise'], requirements: ['adaptive_scenes'] },
 	{ number: 47, name: 'Time-Cross Rhythm', family: 'game', result: 'Compound-meter melody meets duple counter-rhythms.', prompt: 'Repeat a six- or twelve-beat cell with strong internal accents.', references: ['Yasunori Mitsuda'], requirements: ['polymeter', 'pattern_lane'], input: 'motif', transportRequired: true },
-	{ number: 48, name: 'Crystal Chorale', family: 'game', result: 'A memorable melody grows into harmonic-minor chorale and octave answers.', prompt: 'Play clear four- or eight-bar phrases with held cadence notes.', references: ['Nobuo Uematsu'], requirements: ['harmony', 'voice_leading'] },
+	{ number: 48, name: 'Crystal Chorale', family: 'game', result: CRYSTAL_CHORALE_PRESET.result, prompt: CRYSTAL_CHORALE_PRESET.play.prompt, references: ['Nobuo Uematsu'], requirements: ['harmony', 'free_imitation'], input: 'motif', transportRequired: true },
 	{ number: 49, name: 'Kingdom Counterline', family: 'game', result: 'A lyrical lead gains urgent inner lines and dramatic harmonic turns.', prompt: 'Play a memorable theme with expressive leaps, dynamics, and phrase-end rests.', references: ['Yoko Shimomura'], requirements: ['motif_memory', 'harmonic_timeline'], input: 'motif' },
 	{ number: 50, name: 'Rust and Static', family: 'game', result: 'Fragile fragments meet unstable clusters, shadows, and empty space.', prompt: 'Play isolated notes, slides, tritones, muted attacks, and unpredictable pauses.', references: ['Akira Yamaoka'], requirements: ['bounded_clusters', 'probability_density'] }
 ];
@@ -803,6 +870,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 27) return QUARTAL_COLOSSUS_PRESET;
 		if (spec.number === 36) return PIXEL_TRIO_PRESET;
 		if (spec.number === 43) return HOLLOW_CHOIR_PRESET;
+		if (spec.number === 48) return CRYSTAL_CHORALE_PRESET;
 		return draftPreset(spec);
 	}
 );

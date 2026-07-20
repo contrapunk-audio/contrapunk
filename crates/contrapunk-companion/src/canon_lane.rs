@@ -2171,6 +2171,66 @@ mod tests {
         assert!(lane.held.is_empty());
     }
 
+    #[test]
+    fn crystal_chorale_emits_one_delayed_octave_with_balanced_release() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.hold_mode = Some(HoldMode::Forever);
+
+        let mut echo = CanonVoice::with_time_ratio(2.0, 7, 1.0);
+        echo.harmony_mode = Some(HarmonyMode::PassThrough);
+        echo.voice_count = Some(1);
+        echo.voice_position = Some(0);
+        echo.voice_leading_enabled = Some(false);
+        echo.voice_leading_style = Some(VoiceLeadingStyle::Free);
+        echo.octave_mode = Some(OctaveMode::None);
+        lane.set_voices(vec![echo]);
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 88,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.5);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        assert_eq!(lane.pending_on.len(), 1);
+        assert_eq!(lane.pending_off.len(), 1);
+        assert!(lane.held.is_empty());
+
+        advance_to_beat(&transport, 2.01);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOn {
+                target: lane.target,
+                note: 72,
+                velocity: 88,
+                channel: 0,
+            }]
+        );
+        advance_to_beat(&transport, 2.51);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOff {
+                target: lane.target,
+                note: 72,
+                channel: 0,
+            }]
+        );
+        assert!(lane.pending_on.is_empty());
+        assert!(lane.pending_off.is_empty());
+        assert!(lane.held.is_empty());
+    }
+
     /// Phrase anchor resets after silence exceeding the threshold.
     /// Without this, an augmentation voice would stretch the entire
     /// performance history into the future. Test: two inputs separated

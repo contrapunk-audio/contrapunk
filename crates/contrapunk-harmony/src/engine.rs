@@ -2895,6 +2895,24 @@ mod tests {
         assert!(engine.active_notes.is_empty());
     }
 
+    #[test]
+    fn harmonic_minor_chorale_keeps_soprano_and_balanced_release() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BachChorale, 4);
+        engine.set_scale_mode(ScaleMode::HarmonicMinor);
+        engine.set_voice_position(0);
+        engine.set_voice_leading_enabled(false);
+        engine.set_octave_mode(OctaveMode::None);
+        engine.set_interchange_enabled(false);
+
+        let expected = vec![Note::C5, Note::Eb4, Note::G3, Note::B2];
+        let on = engine.harmonize_note_on(Note::C5);
+        assert_eq!(on, expected);
+        assert_eq!(on.iter().filter(|&&note| note == Note::C5).count(), 1);
+        assert!(on[1..].iter().all(|&note| note < Note::C5));
+        assert_eq!(engine.harmonize_note_off(Note::C5), expected);
+        assert!(engine.active_notes.is_empty());
+    }
+
     /// External transport, when set, must take precedence over the
     /// internal synthetic counter. Sanity check that the synthetic
     /// fallback doesn't override an explicitly-driven phase.
