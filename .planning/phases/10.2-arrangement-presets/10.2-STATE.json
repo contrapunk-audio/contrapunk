@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "wave_3_in_progress",
   "current_wave": 3,
-  "current_slice": "preset-01-cloister-organum-research",
+  "current_slice": "preset-13-axis-mirror-research",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": true,
@@ -35,7 +35,8 @@
     27,
     36,
     43,
-    48
+    48,
+    1
   ],
   "draft_presets": [
     1,
@@ -90,6 +91,33 @@
     50
   ],
   "research": {
+    "01-cloister-organum": {
+      "status": "operational",
+      "required_reports": 3,
+      "completed_reports": 3,
+      "history": {
+        "status": "complete",
+        "path": ".planning/phases/10.2-arrangement-presets/research/01-cloister-organum/history.md"
+      },
+      "theory": {
+        "status": "complete",
+        "path": ".planning/phases/10.2-arrangement-presets/research/01-cloister-organum/theory.md"
+      },
+      "performance": {
+        "status": "complete",
+        "path": ".planning/phases/10.2-arrangement-presets/research/01-cloister-organum/performance.md"
+      },
+      "synthesis": {
+        "status": "implemented",
+        "path": ".planning/phases/10.2-arrangement-presets/research/01-cloister-organum/synthesis.md",
+        "decision": "ready_for_implementation"
+      },
+      "implementation": {
+        "status": "operational",
+        "commit": "337d3c97",
+        "preset_id": "01-cloister-organum"
+      }
+    },
     "02-modal-linework": {
       "status": "operational",
       "required_reports": 3,
@@ -894,6 +922,30 @@
     {
       "command": "npm --prefix ui run check (Pixel Trio)",
       "result": "0 errors; 29 pre-existing warnings"
+    },
+    {
+      "command": "cargo test -p contrapunk-harmony --lib",
+      "result": "275 passed"
+    },
+    {
+      "command": "cargo test -p contrapunk-companion --lib && cargo test -p contrapunk-tauri",
+      "result": "76 passed; 36 passed"
+    },
+    {
+      "command": "npm --prefix ui run build:wasm && cargo check --workspace --message-format=short",
+      "result": "passed with pre-existing warnings"
+    },
+    {
+      "command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs",
+      "result": "17 passed"
+    },
+    {
+      "command": "npm --prefix ui run check (Cloister Organum)",
+      "result": "0 errors; 29 pre-existing warnings"
+    },
+    {
+      "command": "cargo test -p contrapunk-audio --profile dev --lib",
+      "result": "226 passed in 0.27s; sustained synthetic processed faster than realtime after 7aca7ca"
     }
   ],
   "blockers": [
@@ -915,8 +967,10 @@
     "Preset 43 is a static Aeolian BachChorale harmonic shadow with the source as soprano; choir timbre, distance, independent counterline, ambience, adaptive scenes, soundtrack reconstruction, and artist identity remain out of scope.",
     "Preset 48 combines four immediate HarmonicMinor BachChorale notes with one fixed two-beat delayed +12 PassThrough echo; the honest peak is five notes, and no phrase-answer, Prelude, motif, form, orchestration, game-state, or artist claim is made.",
     "The user explicitly approved continuing Loop 1 after the 12-preset performance checkpoint; Wave 3 began with preset 01 Cloister Organum research.",
-    "Pattern role controls are exposed in Setup for low support and counterline; preset Apply updates the controls and Save As captures them."
+    "Pattern role controls are exposed in Setup for low support and counterline; preset Apply updates the controls and Save As captures them.",
+    "Cloister Organum is exactly two voices in Dorian: source-lowest plus one direct degree-mapped P4/P5/P8, with +7 chromatic fallback; it does not claim authentic organum reconstruction.",
+    "Guitar sustain fragmentation in Tauri dev was queue overflow from opt-level 0 detector throughput after the July 19 worker move, not a harmony/preset regression; only contrapunk-audio is optimized in dev builds."
   ],
-  "last_commit": "36ff6cf8",
-  "next_action": "Complete three independent cited reports and parent synthesis for preset 01 Cloister Organum, then implement only the smallest reusable Wave 3 voicing strategy justified by the research."
+  "last_commit": "337d3c97",
+  "next_action": "Have the user verify one long sustained guitar note no longer triggers CC123 overflow resets, then begin three-source research for preset 13 Axis Mirror as the next Wave 3 voicing strategy."
 }

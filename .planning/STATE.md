@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 3 preset 01 Cloister Organum research.
-last_updated: "2026-07-20T12:25:42Z"
-last_activity: 2026-07-20 — User approved continuing Loop 1; Wave 3 began with three-source Cloister Organum research after Pattern Role UI feedback was shipped.
+stopped_at: Phase 10.2 Wave 3 preset 13 Axis Mirror research.
+last_updated: "2026-07-20T13:56:20Z"
+last_activity: 2026-07-20 — Cloister Organum became operational through reusable explicit interval maps; Tauri dev guitar overflow resets were fixed by optimizing the audio DSP crate.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 ## Current Position
 
 Phase: 10.2 Composer-Informed Arrangement Presets
-Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Wave 3 in progress; preset 01 Cloister Organum research fanout active
-Last activity: 2026-07-20 — The user explicitly approved continuing after the 12-preset checkpoint. Setup now exposes editable Pattern Roles, and Wave 3 started with the smallest voicing-dependent catalog entry.
+Plan: Wave 3 — reusable voicing strategies
+Status: Wave 3 in progress; preset 01 Cloister Organum operational, preset 13 Axis Mirror next
+Last activity: 2026-07-20 — Cloister Organum shipped as a bounded two-voice Dorian explicit-interval map with full Tauri/WASM controls and persistence. The reported fragmented guitar sustain was traced to dev-only queue overflow after the July 19 worker move; `contrapunk-audio` now builds optimized in dev and its two-second synthetic sustain processes in 0.26 seconds.
 
 ### Phase 10.2 Start — 2026-07-19
 
