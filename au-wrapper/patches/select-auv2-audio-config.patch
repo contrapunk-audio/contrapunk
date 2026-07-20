@@ -28,3 +28,21 @@
        if (_plugin)
        {
          _plugin->initialize();
+@@ -1463,5 +1484,8 @@ void WrapAsAUV2::PostConstructor()
+       auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
+       Inputs().GetElement(i)->SetName(b);
++      auto format = Input(i).GetStreamFormat();
++      format.mChannelsPerFrame = inf.channel_count;
++      Input(i).SetStreamFormat(format);
+ 
+       /*
+       AudioChannelLayout layout;
+@@ -1481,5 +1505,8 @@ void WrapAsAUV2::PostConstructor()
+       auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
+       Outputs().GetElement(i)->SetName(b);
++      auto format = Output(i).GetStreamFormat();
++      format.mChannelsPerFrame = inf.channel_count;
++      Output(i).SetStreamFormat(format);
+ 
+       /*
+       AudioChannelLayout layout;
