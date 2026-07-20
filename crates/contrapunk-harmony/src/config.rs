@@ -818,6 +818,24 @@ impl std::fmt::Display for ScaleMode {
 ///     println!("Mode {}: {}", mode.number(), mode.description());
 /// }
 /// ```
+/// Anchor-relative semitone stacks selected by the source note's scale degree.
+/// Each inner vector contains generated offsets; the played source is implicit
+/// and is never duplicated. Chromatic input uses `fallback_offsets`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExplicitIntervalMap {
+    pub degree_offsets: [Vec<i8>; 7],
+    pub fallback_offsets: Vec<i8>,
+}
+
+impl Default for ExplicitIntervalMap {
+    fn default() -> Self {
+        Self {
+            degree_offsets: std::array::from_fn(|_| vec![7]),
+            fallback_offsets: vec![7],
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HarmonyMode {
@@ -846,6 +864,8 @@ pub enum HarmonyMode {
     FunctionalHarmony,
     /// Mode 10: Bach Chorale.
     BachChorale,
+    /// Mode 11: explicit source-degree-to-semitone interval map.
+    ExplicitIntervals,
 }
 
 impl HarmonyMode {
@@ -871,6 +891,7 @@ impl HarmonyMode {
             HarmonyMode::BarryHarris => 8,
             HarmonyMode::FunctionalHarmony => 9,
             HarmonyMode::BachChorale => 10,
+            HarmonyMode::ExplicitIntervals => 11,
         }
     }
 
@@ -887,6 +908,7 @@ impl HarmonyMode {
             HarmonyMode::BarryHarris,
             HarmonyMode::FunctionalHarmony,
             HarmonyMode::BachChorale,
+            HarmonyMode::ExplicitIntervals,
         ]
     }
 
@@ -903,6 +925,7 @@ impl HarmonyMode {
             HarmonyMode::BarryHarris => "Barry Harris (drop-2 voicings)",
             HarmonyMode::FunctionalHarmony => "Functional Harmony",
             HarmonyMode::BachChorale => "Bach Chorale",
+            HarmonyMode::ExplicitIntervals => "Explicit interval map",
         }
     }
 
@@ -934,6 +957,9 @@ impl HarmonyMode {
             }
             HarmonyMode::FunctionalHarmony => { "Reactive chord selection." }
             HarmonyMode::BachChorale => { "4-voice SATB." }
+            HarmonyMode::ExplicitIntervals => {
+                "Generates direct semitone offsets selected by the source note's scale degree"
+            }
         }
     }
 }

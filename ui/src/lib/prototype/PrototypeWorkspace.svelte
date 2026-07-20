@@ -24,6 +24,7 @@
 	import PerformanceView from '$lib/components/PerformanceView.svelte';
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
+	import ExplicitIntervalMapPanel from '$lib/components/ExplicitIntervalMapPanel.svelte';
 	import ArrangementMixer from './ArrangementMixer.svelte';
 	import ExpressionRoll from './ExpressionRoll.svelte';
 	import PatternLanePanel from './PatternLanePanel.svelte';
@@ -203,7 +204,7 @@
 				</nav>
 				<div class="setup-scroll">
 					<section id="setup-input" tabindex="-1"><div class="section-heading"><span>01</span><h2>Input</h2></div>{#if adapter.capabilities.inputSourcePicker}<InputPanel />{:else}<div class="notice">The host owns input selection.</div>{/if}</section>
-					<section id="setup-harmony" tabindex="-1"><div class="section-heading"><span>02</span><h2>Harmony</h2></div><div id="harmony-controls">{#if setupOpen}<PerformanceView midiLearnEnabled={setupSection === 'harmony' && midi.selectedInput !== VIRTUAL_GUITAR_AUDIO} />{/if}</div></section>
+					<section id="setup-harmony" tabindex="-1"><div class="section-heading"><span>02</span><h2>Harmony</h2></div><div id="harmony-controls">{#if setupOpen}<PerformanceView midiLearnEnabled={setupSection === 'harmony' && midi.selectedInput !== VIRTUAL_GUITAR_AUDIO} />{/if}</div>{#if adapter.capabilities.intervalMaps && engine.mode === 'ExplicitIntervals'}<ExplicitIntervalMapPanel />{/if}</section>
 					<section id="setup-canon" tabindex="-1"><div class="section-heading"><span>03</span><h2>Canon + Counterpoint</h2></div>{#if adapter.capabilities.companionLanes}<div id="canon-controls"><CompanionPanel focusGroup={companionFocus} focusVersion={companionFocusVersion} /></div>{#if adapter.capabilities.patternLanes}<PatternLanePanel />{/if}{:else}<div class="notice">Companion lanes are unavailable on this surface.</div>{/if}</section>
 					<section id="setup-output" tabindex="-1"><div class="section-heading"><span>04</span><h2>Output + Sound</h2></div><div id="output-routing"><OutputPanel /></div></section>
 					<section id="setup-presets" tabindex="-1"><div class="section-heading"><span>05</span><h2>Presets + Voices</h2></div><EnsemblePresetBar /><div class="preset-grid"><PresetManager /><VoicesPanel /></div></section>

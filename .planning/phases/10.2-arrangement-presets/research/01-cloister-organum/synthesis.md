@@ -92,7 +92,7 @@ scale-degree map:
   7 -> [+5]
 fallback -> [+7]
 Companion: disabled
-mix: input 1.0, harmony 0.78, canon 1.0, counterpoint 1.0
+mix: input 1.0, harmony 1.0, canon 1.0, counterpoint 1.0
 transportRequired: false
 ```
 
@@ -110,7 +110,7 @@ B♭ -> E♭  (+5)
 
 Every generated pitch remains in the modern Dorian approximation while the interval class remains perfect. The map key is the source's scale degree, but each stored value is an exact **semitone** offset; it must not be reinterpreted as a recursive or diatonic `+3/+4` transposition, which would create tritones on some degrees.
 
-Capabilities: `harmony`, `interval_stacks`, `role_mix`.
+Capabilities: `harmony`, `interval_stacks`.
 
 ## 7. Approximation statement
 

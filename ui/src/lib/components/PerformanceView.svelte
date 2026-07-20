@@ -27,13 +27,21 @@
 	let { midiLearnEnabled = true }: { midiLearnEnabled?: boolean } = $props();
 
 	// === Mode (5 detents) ===
-	const MODE_LABELS = ['Off', 'Parallel 3rds', 'Parallel 4ths', 'Contrary', 'Functional'];
+	const MODE_LABELS = [
+		'Off',
+		'Parallel 3rds',
+		'Parallel 4ths',
+		'Contrary',
+		'Functional',
+		...(adapter.capabilities.intervalMaps ? ['Interval Map'] : [])
+	];
 	const MODE_TO_ENGINE: HarmonyModeName[] = [
 		'PassThrough',
 		'DiatonicThirds',
 		'DiatonicFourths',
 		'ContraryMotion',
-		'FunctionalHarmony'
+		'FunctionalHarmony',
+		...(adapter.capabilities.intervalMaps ? (['ExplicitIntervals'] as HarmonyModeName[]) : [])
 	];
 	function engineModeToIndex(m: HarmonyModeName): number {
 		const i = MODE_TO_ENGINE.indexOf(m);
@@ -177,8 +185,8 @@
 	// state, the next CC observed binds to that knob instead.
 	function dispatchKnobValue(idx: KnobIndex, value: number) {
 		switch (idx) {
-			case 0: // Mode (5 detents)
-				onModeChange(value * 4);
+			case 0: // Mode detents
+				onModeChange(value * (MODE_TO_ENGINE.length - 1));
 				break;
 			case 1: // Voices (1-8)
 				onVoicesChange(1 + value * 7);
@@ -269,7 +277,7 @@
 				<Knob
 					value={modeIndex}
 					min={0}
-					max={4}
+					max={MODE_TO_ENGINE.length - 1}
 					step={1}
 					size={72}
 					label="Mode"

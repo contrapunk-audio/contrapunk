@@ -49,7 +49,18 @@ export type HarmonyModeName =
 	| 'StrictCounterpoint'
 	| 'BarryHarris'
 	| 'FunctionalHarmony'
-	| 'BachChorale';
+	| 'BachChorale'
+	| 'ExplicitIntervals';
+
+export interface ExplicitIntervalMapConfig {
+	degreeOffsets: number[][];
+	fallbackOffsets: number[];
+}
+
+export const DEFAULT_EXPLICIT_INTERVAL_MAP: ExplicitIntervalMapConfig = {
+	degreeOffsets: Array.from({ length: 7 }, () => [7]),
+	fallbackOffsets: [7]
+};
 
 export type ScaleFamilyName =
 	| 'Diatonic'
@@ -286,6 +297,12 @@ export const ALL_MODES: {
 		shortLabel: 'Cpt',
 		tooltip:
 			'Note-against-note voice leading with scoring. No parallel 5ths/octaves, prefers contrary/stepwise motion.'
+	},
+	{
+		name: 'ExplicitIntervals',
+		label: 'Explicit Interval Map',
+		shortLabel: 'Map',
+		tooltip: 'Direct anchor-relative semitone stacks selected by the played note’s scale degree.'
 	}
 ];
 
@@ -535,6 +552,7 @@ interface PersistedSettings {
 	detuneCents: number;
 	counterpointSpecies: CounterpointSpeciesName;
 	counterpointStrictness: CounterpointStrictnessName;
+	explicitIntervalMap: ExplicitIntervalMapConfig;
 	// Companion + Canon (#3) — persisted in version 3+.
 	companionEnabled: boolean;
 	canonEnabled: boolean;
@@ -614,6 +632,10 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	detuneCents: 0,
 	counterpointSpecies: 'Species1',
 	counterpointStrictness: 'Strict',
+	explicitIntervalMap: {
+		degreeOffsets: Array.from({ length: 7 }, () => [7]),
+		fallbackOffsets: [7]
+	},
 	// Fresh-install defaults: Companion + Canon ON with the Pure
 	// Counterpoint form — 4 voices, every voice in StrictCounterpoint
 	// mode, cascading in 3rds above the player's bass line. The user
@@ -673,6 +695,47 @@ const VALID_CP_SPECIES = new Set<CounterpointSpeciesName>(
 const VALID_CP_STRICTNESS = new Set<CounterpointStrictnessName>(
 	COUNTERPOINT_STRICTNESS.map((s) => s.name)
 );
+
+function cloneExplicitIntervalMap(config: ExplicitIntervalMapConfig): ExplicitIntervalMapConfig {
+	return {
+		degreeOffsets: config.degreeOffsets.map((offsets) => [...offsets]),
+		fallbackOffsets: [...config.fallbackOffsets]
+	};
+}
+
+function parseExplicitIntervalMap(value: unknown): ExplicitIntervalMapConfig {
+	if (typeof value !== 'object' || value === null) {
+		return cloneExplicitIntervalMap(DEFAULT_EXPLICIT_INTERVAL_MAP);
+	}
+	const candidate = value as { degreeOffsets?: unknown; fallbackOffsets?: unknown };
+	const parseOffsets = (offsets: unknown): number[] | null => {
+		if (!Array.isArray(offsets) || offsets.length > 7) return null;
+		const parsed = offsets.map(Number);
+		if (
+			parsed.some(
+				(offset, index) =>
+					!Number.isInteger(offset) ||
+					offset === 0 ||
+					offset < -48 ||
+					offset > 48 ||
+					parsed.indexOf(offset) !== index
+			)
+		) return null;
+		return parsed;
+	};
+	if (!Array.isArray(candidate.degreeOffsets) || candidate.degreeOffsets.length !== 7) {
+		return cloneExplicitIntervalMap(DEFAULT_EXPLICIT_INTERVAL_MAP);
+	}
+	const degreeOffsets = candidate.degreeOffsets.map(parseOffsets);
+	const fallbackOffsets = parseOffsets(candidate.fallbackOffsets);
+	if (degreeOffsets.some((offsets) => offsets === null) || fallbackOffsets === null) {
+		return cloneExplicitIntervalMap(DEFAULT_EXPLICIT_INTERVAL_MAP);
+	}
+	return {
+		degreeOffsets: degreeOffsets as number[][],
+		fallbackOffsets
+	};
+}
 
 function loadSettings(): PersistedSettings | null {
 	try {
@@ -736,6 +799,7 @@ function loadSettings(): PersistedSettings | null {
 			counterpointStrictness: VALID_CP_STRICTNESS.has(parsed.counterpointStrictness)
 				? parsed.counterpointStrictness
 				: SETTINGS_DEFAULTS.counterpointStrictness,
+			explicitIntervalMap: parseExplicitIntervalMap(parsed.explicitIntervalMap),
 			companionEnabled:
 				typeof parsed.companionEnabled === 'boolean'
 					? parsed.companionEnabled
@@ -881,6 +945,9 @@ class EngineStore {
 	// -- Counterpoint species / strictness (active when mode === 'StrictCounterpoint') --
 	counterpointSpecies = $state<CounterpointSpeciesName>('Species1');
 	counterpointStrictness = $state<CounterpointStrictnessName>('Strict');
+	explicitIntervalMap = $state<ExplicitIntervalMapConfig>(
+		cloneExplicitIntervalMap(DEFAULT_EXPLICIT_INTERVAL_MAP)
+	);
 
 	// -- Detune --
 	detuneCents = $state(0);
@@ -1002,6 +1069,7 @@ class EngineStore {
 			detuneCents: this.detuneCents,
 			counterpointSpecies: this.counterpointSpecies,
 			counterpointStrictness: this.counterpointStrictness,
+			explicitIntervalMap: cloneExplicitIntervalMap(this.explicitIntervalMap),
 			companionEnabled: this.companionEnabled,
 			canonEnabled: this.canonEnabled,
 			imitativeForm: this.imitativeForm,
@@ -1071,6 +1139,15 @@ class EngineStore {
 		// Apply each setting independently so one failure doesn't block the rest
 		const ops: [string, () => Promise<void>][] = [
 			['key', () => adapter.setKey(saved.key)],
+			[
+				'explicitIntervalMap',
+				() => adapter.capabilities.intervalMaps
+					? adapter.setExplicitIntervalMap(
+						saved.explicitIntervalMap.degreeOffsets,
+						saved.explicitIntervalMap.fallbackOffsets
+					)
+					: Promise.resolve()
+			],
 			['mode', () => adapter.setMode(saved.mode)],
 			['scaleMode', () => adapter.setScaleMode(saved.scaleMode)],
 			['octaveMode', () => adapter.setOctaveMode(saved.octaveMode)],
@@ -1150,6 +1227,7 @@ class EngineStore {
 		this.detuneCents = saved.detuneCents;
 		this.counterpointSpecies = saved.counterpointSpecies;
 		this.counterpointStrictness = saved.counterpointStrictness;
+		this.explicitIntervalMap = cloneExplicitIntervalMap(saved.explicitIntervalMap);
 		this.companionEnabled = saved.companionEnabled;
 		this.canonEnabled = saved.canonEnabled;
 		this.imitativeForm = saved.imitativeForm;
@@ -1186,6 +1264,19 @@ class EngineStore {
 		} catch (e) {
 			this.mode = prev;
 			throw e;
+		}
+	}
+
+	async setExplicitIntervalMap(config: ExplicitIntervalMapConfig) {
+		const next = parseExplicitIntervalMap(config);
+		const previous = this.explicitIntervalMap;
+		this.explicitIntervalMap = cloneExplicitIntervalMap(next);
+		try {
+			await adapter.setExplicitIntervalMap(next.degreeOffsets, next.fallbackOffsets);
+			this.persist();
+		} catch (error) {
+			this.explicitIntervalMap = previous;
+			throw error;
 		}
 	}
 
@@ -1715,6 +1806,9 @@ class EngineStore {
 		) {
 			this.counterpointStrictness =
 				state.counterpointStrictness as CounterpointStrictnessName;
+		}
+		if (state.explicitIntervalMap) {
+			this.explicitIntervalMap = parseExplicitIntervalMap(state.explicitIntervalMap);
 		}
 	}
 

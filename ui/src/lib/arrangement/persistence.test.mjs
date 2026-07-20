@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { migrateLegacyPreset } from './persistence.ts';
+import { CLOISTER_ORGANUM_PRESET } from './catalog.ts';
+import {
+	loadUserArrangementPresets,
+	migrateLegacyPreset,
+	saveUserArrangementPresets
+} from './persistence.ts';
 
 test('migrates legacy user preset without carrying key or performance environment', () => {
 	const migrated = migrateLegacyPreset({
@@ -33,6 +38,30 @@ test('migrates legacy user preset without carrying key or performance environmen
 	assert.deepEqual(migrated.config.mix, { input: 1, harmony: 1, canon: 1, counterpoint: 1 });
 	assert.ok(migrated.requirements.includes('free_imitation'));
 	assert.ok(migrated.requirements.includes('species_counterpoint'));
+});
+
+test('round-trips an edited explicit interval map', () => {
+	const values = new Map();
+	const previous = globalThis.localStorage;
+	globalThis.localStorage = {
+		getItem: (key) => values.get(key) ?? null,
+		setItem: (key, value) => values.set(key, value),
+		removeItem: (key) => values.delete(key)
+	};
+	try {
+		const custom = structuredClone(CLOISTER_ORGANUM_PRESET);
+		custom.id = 'user-interval-map';
+		custom.name = 'My interval map';
+		custom.family = 'custom';
+		custom.builtIn = false;
+		custom.researchStatus = 'not_required';
+		custom.config.harmony.explicitIntervalMap.degreeOffsets[0] = [12, 19];
+		saveUserArrangementPresets([custom]);
+		const [loaded] = loadUserArrangementPresets();
+		assert.deepEqual(loaded.config.harmony.explicitIntervalMap.degreeOffsets[0], [12, 19]);
+	} finally {
+		globalThis.localStorage = previous;
+	}
 });
 
 test('rejects built-ins and malformed legacy values', () => {

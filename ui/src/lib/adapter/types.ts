@@ -81,6 +81,10 @@ export interface EngineState {
 	isRunning: boolean;
 	counterpointSpecies: string;
 	counterpointStrictness: string;
+	explicitIntervalMap?: {
+		degreeOffsets: number[][];
+		fallbackOffsets: number[];
+	};
 }
 
 /** Real-time note state emitted during MIDI routing. */
@@ -232,6 +236,8 @@ export interface AdapterCapabilities {
 	 *  doesn't wire Companion yet (deferred to v1.4). The
 	 *  CompanionPanel and master HoldMode toggle hide when false. */
 	companionLanes: boolean;
+	/** Whether source-degree explicit interval maps and their live editor work. */
+	intervalMaps: boolean;
 	/** Whether the reusable declarative PatternLane roles are wired on
 	 *  this surface. Kept separate from legacy Canon/Counterpoint support. */
 	patternLanes: boolean;
@@ -327,6 +333,9 @@ export interface ContrapunkAdapter {
 	 * to the counterpoint scoring weights.
 	 */
 	setCounterpointStrictness(strictness: string): Promise<void>;
+
+	/** Replace the seven-degree anchor-relative semitone map and chromatic fallback. */
+	setExplicitIntervalMap(degreeOffsets: number[][], fallbackOffsets: number[]): Promise<void>;
 
 	// -- Companion / CanonLane (#3) --
 

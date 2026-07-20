@@ -60,6 +60,27 @@ export class CompanionWasm {
         }
     }
     /**
+     * @param {string} lane_id
+     * @param {string} json
+     */
+    configure_pattern(lane_id, json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(lane_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len1 = WASM_VECTOR_LEN;
+            wasm.companionwasm_configure_pattern(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * Debug snapshot — JSON dump of the global engine snapshot + each
      * canon-lane voice's mini-engine state (mode, key, scale_mode,
      * voice_count, voice_position) and the voice config (transpose,
@@ -162,6 +183,44 @@ export class CompanionWasm {
         }
     }
     /**
+     * Set the Companion's global HoldMode default. JSON shape:
+     *   {"kind":"cancel"}
+     *   {"kind":"near_future","tail_beats":1.0}
+     *   {"kind":"phrase_end"}
+     *   {"kind":"forever"}
+     * Lanes / voices can still override via the existing
+     * `configure_canon` / `configure_counterpoint` JSON paths (they
+     * each accept a `hold_mode` field with the same shape).
+     * @param {string} lane_id
+     * @returns {string}
+     */
+    pattern_state(lane_id) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(lane_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.companionwasm_pattern_state(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            var ptr2 = r0;
+            var len2 = r1;
+            if (r3) {
+                ptr2 = 0; len2 = 0;
+                throw takeObject(r2);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
      * Clear delayed/held lane state without changing configuration.
      */
     reset_runtime() {
@@ -174,14 +233,6 @@ export class CompanionWasm {
         wasm.companionwasm_set_enabled(this.__wbg_ptr, enabled);
     }
     /**
-     * Set the Companion's global HoldMode default. JSON shape:
-     *   {"kind":"cancel"}
-     *   {"kind":"near_future","tail_beats":1.0}
-     *   {"kind":"phrase_end"}
-     *   {"kind":"forever"}
-     * Lanes / voices can still override via the existing
-     * `configure_canon` / `configure_counterpoint` JSON paths (they
-     * each accept a `hold_mode` field with the same shape).
      * @param {string} json
      */
     set_global_hold_mode(json) {
@@ -190,6 +241,25 @@ export class CompanionWasm {
             const ptr0 = passStringToWasm0(json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
             const len0 = WASM_VECTOR_LEN;
             wasm.companionwasm_set_global_hold_mode(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Mirror the explicit interval map used by canon mini-engines.
+     * @param {string} json
+     */
+    set_global_interval_map(json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.companionwasm_set_global_interval_map(retptr, this.__wbg_ptr, ptr0, len0);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             if (r1) {
@@ -570,6 +640,25 @@ export class Engine {
             const ptr0 = passStringToWasm0(strictness, wasm.__wbindgen_export, wasm.__wbindgen_export2);
             const len0 = WASM_VECTOR_LEN;
             wasm.engine_set_counterpoint_strictness(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Replace the source-degree-to-semitone explicit interval map.
+     * @param {string} json
+     */
+    set_explicit_interval_map(json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.engine_set_explicit_interval_map(retptr, this.__wbg_ptr, ptr0, len0);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             if (r1) {

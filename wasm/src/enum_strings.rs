@@ -49,6 +49,7 @@ pub(crate) fn parse_mode(s: &str) -> Result<HarmonyMode, JsValue> {
         "BarryHarris" => Ok(HarmonyMode::BarryHarris),
         "FunctionalHarmony" => Ok(HarmonyMode::FunctionalHarmony),
         "BachChorale" => Ok(HarmonyMode::BachChorale),
+        "ExplicitIntervals" => Ok(HarmonyMode::ExplicitIntervals),
         _ => Err(JsValue::from_str(&format!("Unknown mode: {}", s))),
     }
 }
@@ -220,6 +221,7 @@ pub(crate) fn mode_to_string(mode: HarmonyMode) -> &'static str {
         HarmonyMode::BarryHarris => "BarryHarris",
         HarmonyMode::FunctionalHarmony => "FunctionalHarmony",
         HarmonyMode::BachChorale => "BachChorale",
+        HarmonyMode::ExplicitIntervals => "ExplicitIntervals",
     }
 }
 

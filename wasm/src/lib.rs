@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 use std::collections::HashSet;
 
 use contrapunk::chord::chord_display_with_analysis;
-use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key};
+use contrapunk::harmony::{ExplicitIntervalMap, HarmonyEngine, HarmonyMode, Key};
 use contrapunk::preset::PresetManager;
 
 mod companion;
@@ -66,6 +66,7 @@ struct EngineStateJs {
     voice_count: usize,
     counterpoint_species: &'static str,
     counterpoint_strictness: &'static str,
+    explicit_interval_map: ExplicitIntervalMap,
 }
 
 #[derive(serde::Serialize)]
@@ -186,6 +187,18 @@ impl Engine {
     /// Enable or disable auto-key detection.
     pub fn set_auto_key(&mut self, enabled: bool) -> Result<(), JsValue> {
         self.inner.set_auto_key(enabled);
+        Ok(())
+    }
+
+    /// Replace the source-degree-to-semitone explicit interval map.
+    pub fn set_explicit_interval_map(&mut self, json: &str) -> Result<(), JsValue> {
+        let map: ExplicitIntervalMap = serde_json::from_str(json).map_err(|error| {
+            JsValue::from_str(&format!("Invalid explicit interval map: {error}"))
+        })?;
+        self.inner
+            .set_explicit_interval_map(map)
+            .map_err(|error| JsValue::from_str(&error))?;
+        self.clear_notes();
         Ok(())
     }
 
@@ -311,6 +324,7 @@ impl Engine {
             counterpoint_strictness: counterpoint_strictness_to_string(
                 self.inner.counterpoint_strictness(),
             ),
+            explicit_interval_map: self.inner.explicit_interval_map().clone(),
         };
 
         serde_wasm_bindgen::to_value(&state)

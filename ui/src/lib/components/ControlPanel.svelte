@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { adapter } from '$lib/adapter';
 	import {
 		engine,
 		ALL_KEYS,
@@ -13,6 +14,7 @@
 		type CounterpointSpeciesName,
 		type KeyName
 	} from '$lib/stores/engine.svelte';
+	import ExplicitIntervalMapPanel from './ExplicitIntervalMapPanel.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 	import { formatMusicalString } from '$lib/embed/music-utils';
 	import { compositeModeOptions, encodeMode, decodeMode } from '$lib/harmony/modeComposite';
@@ -122,6 +124,10 @@
 		</div>
 	</div>
 </div>
+
+{#if adapter.capabilities.intervalMaps && engine.mode === 'ExplicitIntervals'}
+	<ExplicitIntervalMapPanel />
+{/if}
 
 <!-- Scale Family + Scale Mode — single card, two cells. -->
 <div class="card">

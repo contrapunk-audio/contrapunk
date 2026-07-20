@@ -129,6 +129,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		audioFx: true,
 		// WASM has Companion lanes via the WasmCompanion bridge.
 		companionLanes: true,
+		intervalMaps: true,
 		patternLanes: true,
 		// WASM exposes MIDI + guitar-audio via Web MIDI + WebAudio
 		// (guitarCapture.ts). Voice option is disabled like everywhere.
@@ -355,6 +356,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			const raw = engine.get_state();
+			const explicitMap = raw.explicit_interval_map ?? {};
 			return {
 				key: raw.key ?? 'C',
 				mode: raw.mode ?? 'PassThrough',
@@ -370,7 +372,15 @@ export class WasmAdapter implements ContrapunkAdapter {
 				autoKey: raw.auto_key ?? false,
 				isRunning: this._isRunning,
 				counterpointSpecies: raw.counterpoint_species ?? 'Species1',
-				counterpointStrictness: raw.counterpoint_strictness ?? 'Strict'
+				counterpointStrictness: raw.counterpoint_strictness ?? 'Strict',
+				explicitIntervalMap: {
+					degreeOffsets: Array.isArray(explicitMap.degree_offsets)
+						? explicitMap.degree_offsets
+						: Array.from({ length: 7 }, () => [7]),
+					fallbackOffsets: Array.isArray(explicitMap.fallback_offsets)
+						? explicitMap.fallback_offsets
+						: [7]
+				}
 			};
 		} catch (e) {
 			throw new Error(`Failed to get engine state: ${e}`);
@@ -393,6 +403,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 				raw.voice_count ?? 2,
 				raw.voice_position ?? 0
 			);
+			companion.set_global_interval_map(JSON.stringify(
+				raw.explicit_interval_map ?? {
+					degree_offsets: Array.from({ length: 7 }, () => [7]),
+					fallback_offsets: [7]
+				}
+			));
 		} catch {
 			/* best-effort */
 		}
@@ -508,6 +524,20 @@ export class WasmAdapter implements ContrapunkAdapter {
 			engine.set_counterpoint_strictness(strictness);
 		} catch (e) {
 			throw new Error(`Failed to set counterpoint strictness: ${e}`);
+		}
+	}
+
+	async setExplicitIntervalMap(degreeOffsets: number[][], fallbackOffsets: number[]): Promise<void> {
+		this.ensureInit();
+		try {
+			await this.panicAllNotesOff();
+			engine.set_explicit_interval_map(JSON.stringify({
+				degree_offsets: degreeOffsets,
+				fallback_offsets: fallbackOffsets
+			}));
+			this.syncCompanionGlobal();
+		} catch (e) {
+			throw new Error(`Failed to set explicit interval map: ${e}`);
 		}
 	}
 

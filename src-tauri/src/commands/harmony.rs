@@ -9,8 +9,8 @@ use serde::Serialize;
 use tauri::State;
 
 use contrapunk::harmony::{
-    CounterpointSpecies, CounterpointStrictness, HarmonyMode, Key, OctaveMode, ScaleMode,
-    VoiceLeadingStyle,
+    CounterpointSpecies, CounterpointStrictness, ExplicitIntervalMap, HarmonyMode, Key, OctaveMode,
+    ScaleMode, VoiceLeadingStyle,
 };
 
 use crate::state::AppState;
@@ -41,6 +41,7 @@ pub struct EngineStateResponse {
     pub routing_mode: String,
     pub counterpoint_species: String,
     pub counterpoint_strictness: String,
+    pub explicit_interval_map: ExplicitIntervalMap,
 }
 
 /// Returns a snapshot of the current engine configuration.
@@ -66,6 +67,7 @@ pub fn get_engine_state(state: State<AppState>) -> Result<EngineStateResponse, S
         ),
         counterpoint_species: format!("{:?}", engine.counterpoint_species()),
         counterpoint_strictness: format!("{:?}", engine.counterpoint_strictness()),
+        explicit_interval_map: engine.explicit_interval_map().clone(),
     })
 }
 
@@ -188,6 +190,24 @@ pub fn set_auto_key(enabled: bool, state: State<AppState>) -> Result<(), String>
     {
         let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
         engine.set_auto_key(enabled);
+    }
+    raise_panic(&state);
+    Ok(())
+}
+
+/// Replaces the source-degree-to-semitone explicit interval map.
+#[tauri::command]
+pub fn set_explicit_interval_map(
+    degree_offsets: [Vec<i8>; 7],
+    fallback_offsets: Vec<i8>,
+    state: State<AppState>,
+) -> Result<(), String> {
+    {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        engine.set_explicit_interval_map(ExplicitIntervalMap {
+            degree_offsets,
+            fallback_offsets,
+        })?;
     }
     raise_panic(&state);
     Ok(())
@@ -329,6 +349,7 @@ fn parse_harmony_mode(s: &str) -> Result<HarmonyMode, String> {
         "BarryHarris" | "barry_harris" | "8" => Ok(HarmonyMode::BarryHarris),
         "FunctionalHarmony" | "functional_harmony" | "9" => Ok(HarmonyMode::FunctionalHarmony),
         "BachChorale" | "bach_chorale" | "10" => Ok(HarmonyMode::BachChorale),
+        "ExplicitIntervals" | "explicit_intervals" | "11" => Ok(HarmonyMode::ExplicitIntervals),
         other => Err(format!("Unknown harmony mode: {}", other)),
     }
 }

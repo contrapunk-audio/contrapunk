@@ -32,8 +32,8 @@ use std::collections::{HashMap, VecDeque};
 use wmidi::Note;
 
 use contrapunk_harmony::{
-    CounterpointSpecies, CounterpointStrictness, HarmonyEngine, HarmonyMode, Key, OctaveMode,
-    ScaleMode, VoiceLeadingStyle,
+    CounterpointSpecies, CounterpointStrictness, ExplicitIntervalMap, HarmonyEngine, HarmonyMode,
+    Key, OctaveMode, ScaleMode, VoiceLeadingStyle,
 };
 
 use super::lane::{
@@ -178,6 +178,7 @@ struct EngineSnapshot {
     key: Key,
     mode: HarmonyMode,
     scale_mode: ScaleMode,
+    explicit_interval_map: ExplicitIntervalMap,
     octave_mode: OctaveMode,
     voice_count: usize,
     voice_position: usize,
@@ -198,6 +199,7 @@ impl Default for EngineSnapshot {
             key: Key::C,
             mode: HarmonyMode::PassThrough,
             scale_mode: ScaleMode::Ionian,
+            explicit_interval_map: ExplicitIntervalMap::default(),
             octave_mode: OctaveMode::None,
             voice_count: 2,
             voice_position: 0,
@@ -303,6 +305,7 @@ fn harmony_mode_to_str(m: HarmonyMode) -> &'static str {
         HarmonyMode::BarryHarris => "BarryHarris",
         HarmonyMode::FunctionalHarmony => "FunctionalHarmony",
         HarmonyMode::BachChorale => "BachChorale",
+        HarmonyMode::ExplicitIntervals => "ExplicitIntervals",
     }
 }
 
@@ -321,6 +324,7 @@ fn harmony_mode_from_str(s: &str) -> Option<HarmonyMode> {
         "BarryHarris" => HarmonyMode::BarryHarris,
         "FunctionalHarmony" => HarmonyMode::FunctionalHarmony,
         "BachChorale" => HarmonyMode::BachChorale,
+        "ExplicitIntervals" => HarmonyMode::ExplicitIntervals,
         _ => return None,
     })
 }
@@ -501,6 +505,7 @@ impl CanonLane {
                 key: g.key(),
                 mode: g.mode(),
                 scale_mode: g.scale_mode(),
+                explicit_interval_map: g.explicit_interval_map().clone(),
                 octave_mode: g.octave_mode(),
                 voice_count: g.voice_count(),
                 voice_position: g.voice_position(),
@@ -537,6 +542,9 @@ impl CanonLane {
             }
             if ve.scale_mode() != snapshot.scale_mode {
                 ve.set_scale_mode(snapshot.scale_mode);
+            }
+            if ve.explicit_interval_map() != &snapshot.explicit_interval_map {
+                let _ = ve.set_explicit_interval_map(snapshot.explicit_interval_map.clone());
             }
             let target_mode = voice.harmony_mode.unwrap_or(snapshot.mode);
             if ve.mode() != target_mode {

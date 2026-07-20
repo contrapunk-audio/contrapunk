@@ -48,6 +48,7 @@ function mapCalibrationStatus(raw: Record<string, unknown>): CalibrationStatus {
  * Maps the Tauri backend's snake_case response to our camelCase EngineState.
  */
 function mapEngineState(raw: Record<string, unknown>, isRunning: boolean): EngineState {
+	const explicitMap = (raw.explicit_interval_map ?? {}) as Record<string, unknown>;
 	return {
 		key: normalizeKey(raw.key as string),
 		mode: raw.mode as string,
@@ -63,7 +64,15 @@ function mapEngineState(raw: Record<string, unknown>, isRunning: boolean): Engin
 		autoKey: raw.auto_key as boolean,
 		isRunning,
 		counterpointSpecies: (raw.counterpoint_species as string) ?? 'Species1',
-		counterpointStrictness: (raw.counterpoint_strictness as string) ?? 'Strict'
+		counterpointStrictness: (raw.counterpoint_strictness as string) ?? 'Strict',
+		explicitIntervalMap: {
+			degreeOffsets: Array.isArray(explicitMap.degree_offsets)
+				? (explicitMap.degree_offsets as number[][])
+				: Array.from({ length: 7 }, () => [7]),
+			fallbackOffsets: Array.isArray(explicitMap.fallback_offsets)
+				? (explicitMap.fallback_offsets as number[])
+				: [7]
+		}
 	};
 }
 
@@ -109,6 +118,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		midiDevicePicker: true,
 		audioFx: true,
 		companionLanes: true,
+		intervalMaps: true,
 		patternLanes: true,
 		// Tauri renders the full I/O Input subtab source radio —
 		// MIDI / Guitar Audio (cpal backend) / Voice (disabled).
@@ -266,6 +276,17 @@ export class TauriAdapter implements ContrapunkAdapter {
 			await invoke('set_counterpoint_strictness', { strictness });
 		} catch (e) {
 			throw new Error(`Failed to set counterpoint strictness: ${e}`);
+		}
+	}
+
+	async setExplicitIntervalMap(degreeOffsets: number[][], fallbackOffsets: number[]): Promise<void> {
+		try {
+			await invoke('set_explicit_interval_map', {
+				degreeOffsets,
+				fallbackOffsets
+			});
+		} catch (e) {
+			throw new Error(`Failed to set explicit interval map: ${e}`);
 		}
 	}
 

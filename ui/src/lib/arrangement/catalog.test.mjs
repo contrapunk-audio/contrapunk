@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
 	BEBOP_CHASE_PRESET,
 	BUILT_IN_ARRANGEMENT_PRESETS,
+	CLOISTER_ORGANUM_PRESET,
 	COLOR_MODE_WINDOWS_PRESET,
 	CRYSTAL_CHORALE_PRESET,
 	HOLLOW_CHOIR_PRESET,
@@ -40,6 +41,7 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			(preset) => preset.id
 		),
 		[
+			'01-cloister-organum',
 			'02-modal-linework',
 			'04-mensuration-web',
 			'07-stretto-engine',
@@ -54,6 +56,26 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			'48-crystal-chorale'
 		]
 	);
+});
+
+test('Cloister Organum uses one direct degree-mapped perfect interval', () => {
+	const harmony = CLOISTER_ORGANUM_PRESET.config.harmony;
+	assert.deepEqual(CLOISTER_ORGANUM_PRESET.requirements, ['harmony', 'interval_stacks']);
+	assert.equal(CLOISTER_ORGANUM_PRESET.play.transportRequired, false);
+	assert.equal(harmony.mode, 'ExplicitIntervals');
+	assert.equal(harmony.scaleMode, 'Dorian');
+	assert.equal(harmony.voiceCount, 2);
+	assert.equal(harmony.voicePosition, 1);
+	assert.deepEqual(harmony.explicitIntervalMap, {
+		degreeOffsets: [[12], [7], [7], [5], [7], [5], [5]],
+		fallbackOffsets: [7]
+	});
+	assert.deepEqual(validateArrangementPreset(CLOISTER_ORGANUM_PRESET), []);
+	assert.ok(arrangementConfigCapabilities(CLOISTER_ORGANUM_PRESET.config).includes('interval_stacks'));
+
+	const invalid = structuredClone(CLOISTER_ORGANUM_PRESET.config);
+	invalid.harmony.explicitIntervalMap.degreeOffsets[0] = [7, 7];
+	assert.ok(validateArrangementConfig(invalid).some((error) => error.includes('unique')));
 });
 
 test('Stretto Engine contracts entry gaps with strict single-line followers', () => {

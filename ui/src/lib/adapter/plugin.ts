@@ -72,6 +72,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// IPC handlers in editor.rs route HoldMode / canon_configure /
 		// counterpoint_configure into the running plugin instance.
 		companionLanes: true,
+		intervalMaps: false,
 		patternLanes: false,
 		// DAW owns audio + MIDI routing into the plugin. The source
 		// radio (MIDI / Guitar / Voice) doesn't apply — the host bus
@@ -217,6 +218,10 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// nih-plug parameters are fixed at compile time; pass through so the
 		// host can route to a parameter if it eventually exposes one.
 		this.send('setCounterpointStrictness', strictness);
+	}
+
+	async setExplicitIntervalMap(_degreeOffsets: number[][], _fallbackOffsets: number[]): Promise<void> {
+		throw new Error('Explicit interval maps are unavailable in the plugin');
 	}
 
 	async companionSetEnabled(enabled: boolean): Promise<void> {

@@ -15,6 +15,7 @@
  * truth for that wire format — callers should NEVER duplicate the
  * split/join logic.
  */
+import { adapter } from '$lib/adapter';
 import {
 	ALL_MODES,
 	type CounterpointSpeciesName,
@@ -34,7 +35,9 @@ export interface CompositeModeOption {
 export function compositeModeOptions(
 	labelFormatter: (s: string) => string = formatMusicalString
 ): CompositeModeOption[] {
-	return ALL_MODES.flatMap((m) => {
+	return ALL_MODES
+		.filter((mode) => adapter.capabilities.intervalMaps || mode.name !== 'ExplicitIntervals')
+		.flatMap((m) => {
 		const display = labelFormatter(m.label);
 		if (m.name === 'StrictCounterpoint') {
 			return [
@@ -44,8 +47,8 @@ export function compositeModeOptions(
 				{ value: 'StrictCounterpoint:Species4', label: `${display} (syncopated rules)` }
 			];
 		}
-		return [{ value: m.name, label: display }];
-	});
+			return [{ value: m.name, label: display }];
+		});
 }
 
 /** Encode (harmony_mode, counterpoint_species) → composite dropdown

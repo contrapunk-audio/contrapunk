@@ -22,7 +22,7 @@ use wmidi::Note;
 use contrapunk_companion::lane::InputEvent;
 use contrapunk_companion::{CanonLane, CounterpointLane, PatternLane};
 use contrapunk_companion::{Companion, DispatchOp, WorldState};
-use contrapunk_harmony::{HarmonyEngine, HarmonyMode, Key};
+use contrapunk_harmony::{ExplicitIntervalMap, HarmonyEngine, HarmonyMode, Key};
 use contrapunk_transport::Transport;
 
 use crate::enum_strings::{parse_key, parse_mode, parse_scale_mode};
@@ -122,6 +122,19 @@ impl CompanionWasm {
             eng.set_voice_position(voice_position);
         }
         Ok(())
+    }
+
+    /// Mirror the explicit interval map used by canon mini-engines.
+    #[wasm_bindgen]
+    pub fn set_global_interval_map(&self, json: &str) -> Result<(), JsValue> {
+        let map: ExplicitIntervalMap =
+            serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.world
+            .engine_snapshot
+            .lock()
+            .map_err(|e| JsValue::from_str(&format!("snapshot lock: {}", e)))?
+            .set_explicit_interval_map(map)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     /// Apply a partial JSON state blob to the canon lane (same shape

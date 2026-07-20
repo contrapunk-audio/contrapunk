@@ -48,6 +48,77 @@ const SAFE_DRAFT_CONFIG: ArrangementConfig = {
 	mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
 };
 
+export const CLOISTER_ORGANUM_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '01-cloister-organum',
+	name: 'Cloister Organum',
+	family: 'classical',
+	tags: ['notre-dame', 'open-intervals', 'two-voice', 'modal'],
+	builtIn: true,
+	result:
+		'One upper voice answers a slow monophonic line with a degree-mapped perfect fourth, fifth, or octave.',
+	approximation:
+		'A bounded modern open-interval arrangement inspired by selected Notre-Dame organum repertory associated with Léonin and Pérotin. Your line supplies the chant-like contour and phrase shape. It does not generate chant or reproduce organum purum’s florid duplum, discant rhythm, Pérotin’s independent upper voices, medieval tuning, liturgy, notation, or historical performance.',
+	play: {
+		prompt:
+			'Play one slow, chant-like note at a time. Hold arrivals, move mostly by step, return to the tonic, and leave a complete breath between phrases.',
+		input: 'single_notes',
+		articulation:
+			'Rounded clean attacks; hold foundation and arrival notes for 2–6 seconds and make connecting notes shorter.',
+		density: 'Two to five monophonic attacks per gesture; no chords, tremolo, or rapid runs.',
+		space: 'Release completely between phrases and confirm every generated note has stopped.',
+		tempo: '48–66 BPM for pacing only; transport is optional.',
+		transportRequired: false
+	},
+	references: [
+		{
+			name: 'Léonin-associated Notre-Dame organum duplum',
+			context:
+				'Bounded reference to the late-twelfth-century chant-supported layer described retrospectively by Anonymous IV.'
+		},
+		{
+			name: 'Pérotin-associated Magnus liber revisions',
+			context:
+				'Repertorial context only; this preset does not claim the measured independent parts of the tripla or quadrupla.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['harmony', 'interval_stacks'],
+	config: {
+		harmony: {
+			scaleMode: 'Dorian',
+			mode: 'ExplicitIntervals',
+			voiceCount: 2,
+			voicePosition: 1,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict',
+			explicitIntervalMap: {
+				degreeOffsets: [[12], [7], [7], [5], [7], [5], [5]],
+				fallbackOffsets: [7]
+			}
+		},
+		companion: {
+			enabled: false,
+			globalHoldMode: { kind: 'cancel' },
+			canon: { enabled: false, form: 'free_imitation', holdMode: null, voices: [] },
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 export const MODAL_LINEWORK_PRESET: ArrangementPresetV2 = {
 	schemaVersion: 2,
 	id: '02-modal-linework',
@@ -853,7 +924,7 @@ export const CRYSTAL_CHORALE_PRESET: ArrangementPresetV2 = {
 };
 
 const DRAFT_SPECS: DraftSpec[] = [
-	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
+	{ number: 1, name: 'Cloister Organum', family: 'classical', result: CLOISTER_ORGANUM_PRESET.result, prompt: CLOISTER_ORGANUM_PRESET.play.prompt, references: ['Léonin', 'Pérotin'], requirements: ['harmony', 'interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
 	{ number: 3, name: 'Venetian Galleries', family: 'classical', result: 'Separated choirs answer and combine.', prompt: 'Play short declarations followed by one or two bars of silence.', references: ['Andrea Gabrieli', 'Giovanni Gabrieli'], requirements: ['stable_lane_groups'] },
 	{ number: 4, name: 'Mensuration Web', family: 'classical', result: 'One motif moves at simultaneous proportional speeds.', prompt: 'Play an exact three-to-six-note motif, then leave space.', references: ['Johannes Ockeghem'], requirements: ['free_imitation'], input: 'motif', transportRequired: true },
@@ -907,6 +978,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 
 export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAFT_SPECS.map(
 	(spec) => {
+		if (spec.number === 1) return CLOISTER_ORGANUM_PRESET;
 		if (spec.number === 2) return MODAL_LINEWORK_PRESET;
 		if (spec.number === 4) return MENSURATION_WEB_PRESET;
 		if (spec.number === 7) return STRETTO_ENGINE_PRESET;

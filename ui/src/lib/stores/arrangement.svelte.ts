@@ -1,6 +1,6 @@
 import { adapter } from '$lib/adapter';
 import type { CounterpointSpeciesName } from './engine.svelte';
-import { engine } from './engine.svelte';
+import { DEFAULT_EXPLICIT_INTERVAL_MAP, engine } from './engine.svelte';
 import {
 	validateArrangementConfig,
 	type ArrangementCapability,
@@ -52,6 +52,7 @@ class ArrangementStore {
 			capabilities.add('free_imitation');
 			capabilities.add('species_counterpoint');
 		}
+		if (adapter.capabilities.intervalMaps) capabilities.add('interval_stacks');
 		if (adapter.capabilities.patternLanes) {
 			capabilities.add('pattern_lane');
 			capabilities.add('stable_lane_groups');
@@ -181,6 +182,11 @@ class ArrangementStore {
 	private async applyUnchecked(config: ArrangementConfig) {
 		const harmony = config.harmony;
 		await engine.setScaleMode(harmony.scaleMode);
+		if (adapter.capabilities.intervalMaps) {
+			await engine.setExplicitIntervalMap(
+				harmony.explicitIntervalMap ?? DEFAULT_EXPLICIT_INTERVAL_MAP
+			);
+		}
 		await engine.setMode(harmony.mode);
 		await engine.setVoiceCount(harmony.voiceCount);
 		await engine.setVoicePosition(harmony.voicePosition);
@@ -247,7 +253,11 @@ class ArrangementStore {
 				interchangeEnabled: engine.interchangeEnabled,
 				interchangeRange: engine.interchangeRange,
 				counterpointSpecies: engine.counterpointSpecies,
-				counterpointStrictness: engine.counterpointStrictness
+				counterpointStrictness: engine.counterpointStrictness,
+				explicitIntervalMap: {
+					degreeOffsets: engine.explicitIntervalMap.degreeOffsets.map((offsets) => [...offsets]),
+					fallbackOffsets: [...engine.explicitIntervalMap.fallbackOffsets]
+				}
 			},
 			companion: {
 				enabled: engine.companionEnabled,

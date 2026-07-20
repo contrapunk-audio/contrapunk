@@ -2,6 +2,7 @@ import type { HoldMode } from '$lib/adapter';
 import type {
 	CounterpointSpeciesName,
 	CounterpointStrictnessName,
+	ExplicitIntervalMapConfig,
 	HarmonyModeName,
 	ImitativeFormName,
 	OctaveModeName,
@@ -78,6 +79,8 @@ export interface ArrangementHarmonyConfig {
 	interchangeRange: number;
 	counterpointSpecies: CounterpointSpeciesName;
 	counterpointStrictness: CounterpointStrictnessName;
+	/** Required when mode is ExplicitIntervals; optional for schema-v2 compatibility. */
+	explicitIntervalMap?: ExplicitIntervalMapConfig;
 }
 
 export interface ArrangementCanonVoiceConfig {
@@ -184,6 +187,7 @@ export function missingArrangementCapabilities(
 export function arrangementConfigCapabilities(config: ArrangementConfig): ArrangementCapability[] {
 	const capabilities = new Set<ArrangementCapability>(['harmony']);
 	if (config.harmony.voiceLeadingEnabled) capabilities.add('voice_leading');
+	if (config.harmony.mode === 'ExplicitIntervals') capabilities.add('interval_stacks');
 	if (config.companion.enabled && config.companion.canon.enabled) {
 		capabilities.add(config.companion.canon.form);
 	}
@@ -234,6 +238,25 @@ export function validateArrangementConfig(config: ArrangementConfig): string[] {
 		config.harmony.voicePosition >= config.harmony.voiceCount
 	) {
 		errors.push('voicePosition must address an active voice');
+	}
+	if (config.harmony.mode === 'ExplicitIntervals') {
+		const map = config.harmony.explicitIntervalMap;
+		if (!map) {
+			errors.push('ExplicitIntervals mode requires explicitIntervalMap');
+		} else {
+			if (map.degreeOffsets.length !== 7) {
+				errors.push('explicitIntervalMap requires exactly seven degree entries');
+			}
+			for (const [label, offsets] of [
+				...map.degreeOffsets.map((offsets, index) => [`degree ${index + 1}`, offsets] as const),
+				['fallback', map.fallbackOffsets] as const
+			]) {
+				if (offsets.length > 7) errors.push(`${label} supports at most seven interval offsets`);
+				if (offsets.some((offset, index) => !Number.isInteger(offset) || offset === 0 || offset < -48 || offset > 48 || offsets.indexOf(offset) !== index)) {
+					errors.push(`${label} interval offsets must be unique nonzero integers between -48 and 48`);
+				}
+			}
+		}
 	}
 	if (config.companion.canon.voices.length > 8) {
 		errors.push('Canon supports at most 8 voices');

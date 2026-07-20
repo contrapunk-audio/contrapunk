@@ -30,7 +30,7 @@
 use std::collections::HashMap;
 use wmidi::Note;
 
-use crate::config::{BeatPhase, HarmonyMode, Key, OctaveMode, ScaleMode};
+use crate::config::{BeatPhase, ExplicitIntervalMap, HarmonyMode, Key, OctaveMode, ScaleMode};
 use crate::functional;
 use crate::functional::context::HarmonicContext;
 use crate::modes;
@@ -231,6 +231,7 @@ pub struct HarmonyEngine {
     octave_intensity: f32,
     scale_mode: ScaleMode,
     scale: Scale,
+    explicit_interval_map: ExplicitIntervalMap,
     interchange_enabled: bool,
     borrowing_range: u8,
     last_borrowed_from: Option<ScaleMode>,
@@ -327,6 +328,7 @@ impl HarmonyEngine {
             octave_intensity: 1.0,
             scale_mode: ScaleMode::Ionian,
             scale,
+            explicit_interval_map: ExplicitIntervalMap::default(),
             interchange_enabled: false,
             borrowing_range: 3,
             last_borrowed_from: None,
@@ -390,6 +392,44 @@ impl HarmonyEngine {
     /// against the live key.
     pub fn scale_mut(&mut self) -> &mut Scale {
         &mut self.scale
+    }
+
+    /// Returns the current explicit source-degree interval map.
+    pub fn explicit_interval_map(&self) -> &ExplicitIntervalMap {
+        &self.explicit_interval_map
+    }
+
+    /// Replaces the explicit interval map after bounded validation.
+    pub fn set_explicit_interval_map(&mut self, map: ExplicitIntervalMap) -> Result<(), String> {
+        for (label, offsets) in map
+            .degree_offsets
+            .iter()
+            .enumerate()
+            .map(|(index, offsets)| (format!("degree {}", index + 1), offsets))
+            .chain(std::iter::once((
+                "fallback".to_string(),
+                &map.fallback_offsets,
+            )))
+        {
+            if offsets.len() > 7 {
+                return Err(format!(
+                    "explicit interval {label} supports at most 7 offsets"
+                ));
+            }
+            for (index, &offset) in offsets.iter().enumerate() {
+                if offset == 0 || !(-48..=48).contains(&offset) {
+                    return Err(format!(
+                        "explicit interval {label} offset must be nonzero and between -48 and 48"
+                    ));
+                }
+                if offsets[..index].contains(&offset) {
+                    return Err(format!("explicit interval {label} offsets must be unique"));
+                }
+            }
+        }
+        self.explicit_interval_map = map;
+        self.clear_active_for_reharm();
+        Ok(())
     }
 
     /// Returns the current octave mode.
@@ -799,6 +839,10 @@ impl HarmonyEngine {
             return self.harmonize_block_chord(note);
         }
 
+        if self.mode == HarmonyMode::ExplicitIntervals {
+            return self.harmonize_explicit_intervals(note);
+        }
+
         if self.mode == HarmonyMode::FunctionalHarmony || self.mode == HarmonyMode::BachChorale {
             return self.harmonize_functional(note);
         }
@@ -1146,6 +1190,46 @@ impl HarmonyEngine {
         self.last_arrangement_indices = arr;
     }
 
+    fn harmonize_explicit_intervals(&mut self, note: Note) -> Vec<Note> {
+        let offsets = self
+            .scale
+            .degree_of(note)
+            .and_then(|degree| self.explicit_interval_map.degree_offsets.get(degree))
+            .unwrap_or(&self.explicit_interval_map.fallback_offsets);
+        let mut result = Vec::with_capacity(self.voice_count.min(offsets.len() + 1));
+        result.push(note);
+        let anchor = u8::from(note) as i16;
+        for &offset in offsets.iter().take(self.voice_count.saturating_sub(1)) {
+            let midi = anchor + offset as i16;
+            if let Ok(midi) = u8::try_from(midi) {
+                if let Ok(generated) = Note::try_from(midi) {
+                    result.push(generated);
+                }
+            }
+        }
+
+        // Route highest pitch to the lowest arrangement index, regardless
+        // of result order (`result[0]` must remain the exact player source).
+        let mut order: Vec<usize> = (0..result.len()).collect();
+        order.sort_by_key(|&index| std::cmp::Reverse(u8::from(result[index])));
+        self.last_arrangement_indices = vec![0; result.len()];
+        for (slot, &result_index) in order.iter().enumerate() {
+            self.last_arrangement_indices[result_index] = slot;
+        }
+        self.apply_octave_mode(&mut result);
+
+        // Octave transforms can change pitch order (and Mirror can add
+        // voices), so routing must describe the notes we actually return.
+        let mut final_order: Vec<usize> = (0..result.len()).collect();
+        final_order.sort_by_key(|&index| std::cmp::Reverse(u8::from(result[index])));
+        self.last_arrangement_indices = vec![0; result.len()];
+        for (slot, &result_index) in final_order.iter().enumerate() {
+            self.last_arrangement_indices[result_index] = slot;
+        }
+        self.last_port_map = self.last_arrangement_indices.clone();
+        result
+    }
+
     fn harmonize_block_chord(&mut self, note: Note) -> Vec<Note> {
         match super::barry_harris::build_voicing(note, &self.scale, self.beat_phase) {
             Some(voicing) => {
@@ -1271,6 +1355,7 @@ impl HarmonyEngine {
             HarmonyMode::FunctionalHarmony | HarmonyMode::BachChorale => {
                 modes::diatonic_thirds_directed(note, &mut self.scale, above)
             }
+            HarmonyMode::ExplicitIntervals => vec![note],
         }
     }
 
@@ -1306,6 +1391,7 @@ impl HarmonyEngine {
             HarmonyMode::FunctionalHarmony | HarmonyMode::BachChorale => {
                 modes::diatonic_thirds(note, &mut self.scale)
             }
+            HarmonyMode::ExplicitIntervals => vec![note],
         }
     }
 
@@ -2866,6 +2952,95 @@ mod tests {
             vec![0, 5, 10, 15]
         );
         assert_eq!(engine.harmonize_note_off(chromatic), on);
+        assert!(engine.active_notes.is_empty());
+    }
+
+    #[test]
+    fn explicit_interval_map_uses_anchor_relative_degree_offsets_and_balanced_release() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::ExplicitIntervals, 2);
+        engine.set_scale_mode(ScaleMode::Dorian);
+        engine.set_voice_position(1);
+        engine.set_voice_leading_enabled(false);
+        engine.set_octave_mode(OctaveMode::None);
+        engine.set_interchange_enabled(false);
+        engine
+            .set_explicit_interval_map(ExplicitIntervalMap {
+                degree_offsets: [
+                    vec![12],
+                    vec![7],
+                    vec![7],
+                    vec![5],
+                    vec![7],
+                    vec![5],
+                    vec![5],
+                ],
+                fallback_offsets: vec![7],
+            })
+            .unwrap();
+
+        for (input_midi, harmony_midi) in [
+            (60, 72),
+            (62, 69),
+            (63, 70),
+            (65, 70),
+            (67, 74),
+            (69, 74),
+            (70, 75),
+        ] {
+            let input = Note::try_from(input_midi).unwrap();
+            let expected = vec![input, Note::try_from(harmony_midi).unwrap()];
+            assert_eq!(engine.harmonize_note_on(input), expected);
+            assert_eq!(engine.last_port_map(), &[1, 0]);
+            assert_eq!(engine.harmonize_note_off(input), expected);
+            assert!(engine.active_notes.is_empty());
+        }
+
+        let chromatic = Note::Db4;
+        let expected = vec![chromatic, Note::Ab4];
+        assert_eq!(engine.harmonize_note_on(chromatic), expected);
+        assert_eq!(engine.harmonize_note_off(chromatic), expected);
+        assert!(engine.active_notes.is_empty());
+    }
+
+    #[test]
+    fn explicit_interval_map_routes_final_pitch_order_after_octave_spread() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::ExplicitIntervals, 3);
+        engine.set_voice_position(2);
+        engine.set_octave_mode(OctaveMode::Spread);
+        engine
+            .set_explicit_interval_map(ExplicitIntervalMap {
+                degree_offsets: std::array::from_fn(|_| vec![12, 7]),
+                fallback_offsets: vec![12, 7],
+            })
+            .unwrap();
+
+        assert_eq!(
+            engine.harmonize(Note::C4),
+            vec![Note::C4, Note::C6, Note::G6]
+        );
+        assert_eq!(engine.last_port_map(), &[2, 1, 0]);
+    }
+
+    #[test]
+    fn explicit_interval_map_is_bounded_and_skips_out_of_range_offsets() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::ExplicitIntervals, 8);
+        let mut invalid = ExplicitIntervalMap::default();
+        invalid.degree_offsets[0] = vec![7, 7];
+        assert!(engine.set_explicit_interval_map(invalid).is_err());
+        let mut invalid = ExplicitIntervalMap::default();
+        invalid.fallback_offsets = vec![0];
+        assert!(engine.set_explicit_interval_map(invalid).is_err());
+
+        engine
+            .set_explicit_interval_map(ExplicitIntervalMap {
+                degree_offsets: std::array::from_fn(|_| vec![12, 7, -5]),
+                fallback_offsets: vec![12],
+            })
+            .unwrap();
+        let high = Note::try_from(124).unwrap();
+        let on = engine.harmonize_note_on(high);
+        assert_eq!(on, vec![high, Note::try_from(119).unwrap()]);
+        assert_eq!(engine.harmonize_note_off(high), on);
         assert!(engine.active_notes.is_empty());
     }
 

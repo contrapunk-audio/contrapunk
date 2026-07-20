@@ -97,6 +97,7 @@ fn main() {
             commands::harmony::set_voice_position,
             commands::harmony::set_auto_key,
             commands::harmony::set_routing_mode,
+            commands::harmony::set_explicit_interval_map,
             commands::harmony::set_counterpoint_species,
             commands::harmony::set_voice_count,
             commands::harmony::set_counterpoint_strictness,

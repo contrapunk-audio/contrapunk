@@ -17,6 +17,7 @@ export class CompanionWasm {
      */
     configure_canon(json: string): void;
     configure_counterpoint(json: string): void;
+    configure_pattern(lane_id: string, json: string): void;
     /**
      * Debug snapshot — JSON dump of the global engine snapshot + each
      * canon-lane voice's mini-engine state (mode, key, scale_mode,
@@ -38,11 +39,6 @@ export class CompanionWasm {
      */
     on_note_on(note: number, velocity: number, channel: number): string;
     /**
-     * Clear delayed/held lane state without changing configuration.
-     */
-    reset_runtime(): void;
-    set_enabled(enabled: boolean): void;
-    /**
      * Set the Companion's global HoldMode default. JSON shape:
      *   {"kind":"cancel"}
      *   {"kind":"near_future","tail_beats":1.0}
@@ -52,7 +48,17 @@ export class CompanionWasm {
      * `configure_canon` / `configure_counterpoint` JSON paths (they
      * each accept a `hold_mode` field with the same shape).
      */
+    pattern_state(lane_id: string): string;
+    /**
+     * Clear delayed/held lane state without changing configuration.
+     */
+    reset_runtime(): void;
+    set_enabled(enabled: boolean): void;
     set_global_hold_mode(json: string): void;
+    /**
+     * Mirror the explicit interval map used by canon mini-engines.
+     */
+    set_global_interval_map(json: string): void;
     /**
      * Mirror the global engine's key/scale/mode/voice_count etc.
      * into the snapshot the Companion's mini-engines read. Called by
@@ -154,6 +160,10 @@ export class Engine {
      * Set the counterpoint strictness (`"Relaxed"` or `"Strict"`).
      */
     set_counterpoint_strictness(strictness: string): void;
+    /**
+     * Replace the source-degree-to-semitone explicit interval map.
+     */
+    set_explicit_interval_map(json: string): void;
     /**
      * Configure modal interchange (enabled flag + borrowing range 1-5).
      */
@@ -281,6 +291,7 @@ export interface InitOutput {
     readonly engine_set_counterpoint_beat_phase: (a: number, b: number, c: number) => void;
     readonly engine_set_counterpoint_species: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_counterpoint_strictness: (a: number, b: number, c: number, d: number) => void;
+    readonly engine_set_explicit_interval_map: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_interchange: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_key: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_mode: (a: number, b: number, c: number, d: number) => void;
@@ -308,14 +319,17 @@ export interface InitOutput {
     readonly companionwasm_advance: (a: number, b: number) => void;
     readonly companionwasm_configure_canon: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_configure_counterpoint: (a: number, b: number, c: number, d: number) => void;
+    readonly companionwasm_configure_pattern: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly companionwasm_debug_snapshot: (a: number, b: number) => void;
     readonly companionwasm_is_enabled: (a: number) => number;
     readonly companionwasm_new: () => number;
     readonly companionwasm_on_note_off: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_on_note_on: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly companionwasm_pattern_state: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_reset_runtime: (a: number) => void;
     readonly companionwasm_set_enabled: (a: number, b: number) => void;
     readonly companionwasm_set_global_hold_mode: (a: number, b: number, c: number, d: number) => void;
+    readonly companionwasm_set_global_interval_map: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_set_global_state: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
     readonly companionwasm_tick: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;

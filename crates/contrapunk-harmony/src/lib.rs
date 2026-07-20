@@ -204,7 +204,10 @@ mod stateful;
 pub mod voice_leading;
 
 pub use barry_harris::{BhScaleGuard, Parity};
-pub use config::{BeatPhase, HarmonyMode, Key, OctaveMode, RoutingMode, ScaleFamily, ScaleMode};
+pub use config::{
+    BeatPhase, ExplicitIntervalMap, HarmonyMode, Key, OctaveMode, RoutingMode, ScaleFamily,
+    ScaleMode,
+};
 pub use engine::HarmonyEngine;
 pub use key_detect::KeyDetector;
 pub use scale::Scale;
