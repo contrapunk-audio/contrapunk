@@ -108,6 +108,12 @@ version = "0.2"
 features = ["js"]
 optional = true
 
+# Guitar pitch analysis is intentionally off the audio callback, but the
+# detector is too CPU-heavy at opt-level 0 to keep up with real-time input.
+# Keep Tauri dev builds debuggable while compiling only the DSP crate optimized.
+[profile.dev.package.contrapunk-audio]
+opt-level = 3
+
 [profile.release]
 opt-level = "s"
 lto = false
