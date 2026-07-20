@@ -1,13 +1,13 @@
 {
   "version": 1,
   "phase": "10.2",
-  "status": "awaiting_user_checkpoint_at_12_operational",
-  "current_wave": 2,
-  "current_slice": "mandatory-user-performance-checkpoint",
+  "status": "wave_3_in_progress",
+  "current_wave": 3,
+  "current_slice": "preset-01-cloister-organum-research",
   "user_checkpoint": {
     "required_after_operational_count": 12,
-    "approved_to_begin_wave_3": false,
-    "status": "awaiting_performance_test"
+    "approved_to_begin_wave_3": true,
+    "status": "approved_2026-07-20"
   },
   "baseline_order": [
     2,
@@ -897,8 +897,7 @@
     }
   ],
   "blockers": [
-    "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged.",
-    "Wave 3 is prohibited until the user performance-tests all 12 operational presets and explicitly approves continuation."
+    "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
   ],
   "decisions": [
     "Strict Canon Hold is group-owned: strict voices inherit the lane instead of forcing per-voice Forever.",
@@ -914,8 +913,10 @@
     "Preset 27 is a static Dorian DiatonicFourths study with four total voices and source-lowest; exact perfect-fourth stacks occur only on degrees 1, 2, 5, and 6, and all temporal development remains performer-authored.",
     "Preset 36 uses two reusable declarative PatternLane roles with independent transport timing, rests, register offsets, stable lane ownership, and exact lifecycle cleanup; synchronous three-pitch harmony remains rejected.",
     "Preset 43 is a static Aeolian BachChorale harmonic shadow with the source as soprano; choir timbre, distance, independent counterline, ambience, adaptive scenes, soundtrack reconstruction, and artist identity remain out of scope.",
-    "Preset 48 combines four immediate HarmonicMinor BachChorale notes with one fixed two-beat delayed +12 PassThrough echo; the honest peak is five notes, and no phrase-answer, Prelude, motif, form, orchestration, game-state, or artist claim is made."
+    "Preset 48 combines four immediate HarmonicMinor BachChorale notes with one fixed two-beat delayed +12 PassThrough echo; the honest peak is five notes, and no phrase-answer, Prelude, motif, form, orchestration, game-state, or artist claim is made.",
+    "The user explicitly approved continuing Loop 1 after the 12-preset performance checkpoint; Wave 3 began with preset 01 Cloister Organum research.",
+    "Pattern role controls are exposed in Setup for low support and counterline; preset Apply updates the controls and Save As captures them."
   ],
-  "last_commit": "b1b80eb",
-  "next_action": "Hard-stop at 12/12. Ask the user to performance-test the twelve operational presets. Do not enter Wave 3 without explicit approval."
+  "last_commit": "36ff6cf8",
+  "next_action": "Complete three independent cited reports and parent synthesis for preset 01 Cloister Organum, then implement only the smallest reusable Wave 3 voicing strategy justified by the research."
 }
