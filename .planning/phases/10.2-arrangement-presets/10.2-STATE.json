@@ -1,13 +1,13 @@
 {
   "version": 1,
   "phase": "10.2",
-  "status": "executing_wave_2",
+  "status": "wave_2_blocked_at_11_operational",
   "current_wave": 2,
-  "current_slice": "implement-preset-48-crystal-chorale",
+  "current_slice": "blocked-preset-36-prevents-12-checkpoint",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
-    "status": "not_reached"
+    "status": "blocked_before_required_count"
   },
   "baseline_order": [
     2,
@@ -33,7 +33,8 @@
     23,
     25,
     27,
-    43
+    43,
+    48
   ],
   "draft_presets": [
     1,
@@ -434,7 +435,7 @@
       }
     },
     "48-crystal-chorale": {
-      "status": "approved",
+      "status": "operational",
       "required_reports": 3,
       "completed_reports": 3,
       "history": {
@@ -453,13 +454,14 @@
         "path": ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/performance.md"
       },
       "synthesis": {
-        "status": "approved",
+        "status": "implemented",
         "path": ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/synthesis.md",
         "decision": "ready_for_implementation",
         "note": "Approved only as HarmonicMinor BachChorale plus one fixed two-beat per-note octave echo; no phrase answer, Prelude, theme, form, orchestration, game state, or artist claim."
       },
       "implementation": {
-        "status": "ready",
+        "status": "operational",
+        "commit": "57a4979",
         "preset_id": "48-crystal-chorale"
       }
     }
@@ -632,6 +634,17 @@
         "Fresh C Aeolian C5 produces [72,63,55,46] with source once as soprano; the corrected D5 harmonic-inertia oracle is [74,72,63,43].",
         "The regression verifies matching NoteOff ownership and empty active state.",
         "Public guidance rejects literal choir, orchestration, distance, counterline, ambience, adaptive scenes, narrative response, protected cue material, and soundtrack reconstruction."
+      ]
+    },
+    {
+      "id": "preset-48-crystal-chorale",
+      "status": "verified",
+      "evidence": [
+        "Three independent openai-codex/gpt-5.6-sol reports and a parent synthesis are committed.",
+        "The bounded scope is HarmonicMinor BachChorale plus one fixed two-beat delayed per-note octave echo, not a phrase answer, Prelude mechanism, or artist signature.",
+        "Fresh C harmonic-minor C5 produces [72,63,55,47] with source once as soprano and balanced release.",
+        "The Canon regression proves one short released note still emits exactly one +12 NoteOn and matching NoteOff under Forever, then empties held and pending state.",
+        "Public copy rejects learned themes, phrase replay, score reproduction, choir/orchestration, form, game/narrative state, and artist simulation."
       ]
     }
   ],
@@ -835,10 +848,35 @@
     {
       "command": "preset 48 research-pack validation",
       "result": "3 nonempty independently cited reports plus template-complete parent synthesis; narrowed decision ready_for_implementation"
+    },
+    {
+      "command": "cargo test -p contrapunk-harmony harmonic_minor_chorale_keeps_soprano_and_balanced_release --lib",
+      "result": "1 passed"
+    },
+    {
+      "command": "cargo test -p contrapunk-companion crystal_chorale_emits_one_delayed_octave_with_balanced_release --lib",
+      "result": "1 passed"
+    },
+    {
+      "command": "cargo test -p contrapunk-harmony --lib",
+      "result": "272 passed"
+    },
+    {
+      "command": "cargo test -p contrapunk-companion --lib",
+      "result": "70 passed"
+    },
+    {
+      "command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs",
+      "result": "15 passed"
+    },
+    {
+      "command": "npm --prefix ui run check (Crystal Chorale)",
+      "result": "0 errors; 29 pre-existing warnings"
     }
   ],
   "blockers": [
-    "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
+    "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged.",
+    "Preset 36 Pixel Trio is research-complete but cannot become operational without reusable pattern_lane and stable_lane_groups; baseline order is exhausted at 11/12 operational, so the mandatory user checkpoint cannot be reached honestly."
   ],
   "decisions": [
     "Strict Canon Hold is group-owned: strict voices inherit the lane instead of forcing per-voice Forever.",
@@ -856,6 +894,6 @@
     "Preset 43 is a static Aeolian BachChorale harmonic shadow with the source as soprano; choir timbre, distance, independent counterline, ambience, adaptive scenes, soundtrack reconstruction, and artist identity remain out of scope.",
     "Preset 48 combines four immediate HarmonicMinor BachChorale notes with one fixed two-beat delayed +12 PassThrough echo; the honest peak is five notes, and no phrase-answer, Prelude, motif, form, orchestration, game-state, or artist claim is made."
   ],
-  "last_commit": "b34395e",
-  "next_action": "Implement preset 48 exactly as synthesized; add HarmonicMinor BachChorale and one-voice delayed-octave lifecycle regressions, then report 11/12 operational with preset 36 blocked and hard-stop without Wave 3."
+  "last_commit": "57a4979",
+  "next_action": "Hard-stop. Ask the user to choose: build the reusable role scheduler required by preset 36, or explicitly revise the first-12 baseline order. Do not substitute silently and do not enter Wave 3."
 }

@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 2 preset 48 research approved; bounded chorale-plus-octave-echo implementation is next.
-last_updated: "2026-07-20T12:45:00Z"
-last_activity: 2026-07-20 — Approved Crystal Chorale only as HarmonicMinor SATB harmony plus one fixed two-beat per-note octave echo.
+stopped_at: Phase 10.2 Wave 2 hard-stop at 11/12 operational; preset 36 requires a reusable role scheduler or an explicit baseline-order revision.
+last_updated: "2026-07-20T13:02:00Z"
+last_activity: 2026-07-20 — Shipped Crystal Chorale, completed all first-12 research, and stopped honestly at the Pixel Trio capability blocker.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 10/12 baseline presets operational; preset 36 blocked; preset 48 research approved
-Last activity: 2026-07-20 — Crystal Chorale research narrows the octave layer to a fixed per-note echo, not a phrase answer or theme mechanism. Implementation is next; Wave 3 remains prohibited.
+Status: Wave 2 blocked at 11/12 operational; all cataloged baseline research complete; Wave 3 prohibited
+Last activity: 2026-07-20 — Crystal Chorale is operational as HarmonicMinor SATB harmony plus one fixed two-beat per-note octave echo. Pixel Trio remains blocked on pattern_lane + stable_lane_groups, so the mandatory 12-preset checkpoint has not been reached.
 
 ### Phase 10.2 Start — 2026-07-19
 

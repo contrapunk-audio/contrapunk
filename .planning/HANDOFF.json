@@ -1,18 +1,18 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T12:45:00Z",
+  "timestamp": "2026-07-20T13:02:00Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "implement-preset-48-crystal-chorale",
+  "task": "user-decision-preset-36-blocker",
   "total_plans": 7,
-  "status": "active",
+  "status": "blocked",
   "loop": {
     "id": 1,
     "title": "Complete Contrapunk\u2019s research-backed arrangement preset catalog",
-    "status": "executing_wave_2",
+    "status": "blocked_wave_2_at_11_operational",
     "hard_stop": "After first 12 operational presets for user performance testing"
   },
   "completed_work": [
@@ -157,6 +157,12 @@
         ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/performance.md",
         ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/synthesis.md"
       ]
+    },
+    {
+      "name": "Preset 48 Crystal Chorale bounded implementation",
+      "commit": "57a4979",
+      "status": "done_operational",
+      "evidence": "HarmonicMinor SATB shadow plus one two-beat delayed per-note octave echo; Harmony 272, Companion 70, catalog/persistence 15, UI zero errors and 29 pre-existing warnings."
     }
   ],
   "remaining_work": [
@@ -237,13 +243,13 @@
     },
     {
       "name": "Research and implement remaining first-12 baselines",
-      "status": "in_progress",
-      "details": "Current: implement approved bounded preset 48. Expected result is 11/12 operational because preset 36 remains blocked; do not substitute or enter Wave 3."
+      "status": "blocked",
+      "details": "IDs 43 and 48 are operational. Preset 36 is research-complete but blocked on reusable pattern_lane + stable_lane_groups, leaving 11/12 operational."
     },
     {
       "name": "Mandatory user performance checkpoint",
       "status": "not_started",
-      "details": "Hard-stop after 12; Wave 3 requires explicit approval."
+      "details": "Not reached: 11/12 operational because preset 36 is honestly blocked. Wave 3 remains prohibited."
     },
     {
       "name": "Waves 3-7",
@@ -256,6 +262,11 @@
       "description": "Dirty tree contains unrelated Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents work.",
       "type": "technical",
       "workaround": "Stage explicit Phase 10.2 paths only; never stage .pi-subagents/."
+    },
+    {
+      "description": "Pixel Trio requires reusable independent low-support/counterline scheduling and stable role ownership; synchronous HarmonyEngine outputs are insufficient. Baseline order is exhausted at 11/12.",
+      "type": "capability",
+      "workaround": "User must explicitly choose shared scheduler implementation or revise the baseline order; never silently substitute or weaken the claim."
     }
   ],
   "human_actions_pending": [
@@ -263,6 +274,11 @@
       "action": "Test the first 12 presets when the loop reaches its hard checkpoint",
       "context": "The loop must not enter Wave 3 before explicit approval.",
       "blocking": false
+    },
+    {
+      "action": "Choose how to resolve the 11/12 baseline blocker",
+      "context": "Option A: build reusable pattern_lane + stable_lane_groups for Pixel Trio. Option B: explicitly revise baseline order and name a replacement. Wave 3 remains blocked either way until 12 operational presets are tested and approved.",
+      "blocking": true
     }
   ],
   "decisions": [
@@ -282,6 +298,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Implement preset 48 exactly as synthesized: HarmonicMinor + BachChorale four voices source-soprano, plus one PassThrough Canon voice at +7 scale degrees, delay 2, unity time, Forever lane hold. Add main and Canon lifecycle/catalog tests, verify, then hard-stop with preset 36 blocker report.",
-  "context_notes": "Ten baselines are operational and preset 36 is blocked. Preset 48 research is committed in b34395e; its octave layer is a fixed per-note delayed echo, never a phrase answer or Uematsu/Final Fantasy theme mechanism."
+  "next_action": "Hard-stop and ask the user to choose between implementing the reusable Pixel Trio role scheduler or explicitly revising the first-12 baseline order. Do not enter Wave 3.",
+  "context_notes": "Eleven baselines are operational: 2, 4, 7, 8, 12, 14, 23, 25, 27, 43, 48. Preset 36 is visible and blocked on pattern_lane + stable_lane_groups. All cataloged first-12 research is complete. Wave 3 is prohibited."
 }
