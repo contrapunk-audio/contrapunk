@@ -1,10 +1,64 @@
+diff --git a/src/detail/auv2/build-helper/build-helper.cpp b/src/detail/auv2/build-helper/build-helper.cpp
+index d1a48b2..f13f7e6 100644
+--- a/src/detail/auv2/build-helper/build-helper.cpp
++++ b/src/detail/auv2/build-helper/build-helper.cpp
+@@ -29,6 +29,7 @@ struct auInfo
+       auto p = uv.find('.');
+       if (p == std::string::npos)
+       {
++        rev[i] = std::atoi(uv.c_str());
+         return sum();
+       }
+       auto sub = uv.substr(0, p);
 diff --git a/src/wrapasauv2.cpp b/src/wrapasauv2.cpp
-index 927a7c8..7548b08 100644
+index 927a7c8..b330090 100644
 --- a/src/wrapasauv2.cpp
 +++ b/src/wrapasauv2.cpp
-@@ -136,6 +136,27 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::s
+@@ -3,6 +3,7 @@
+ #include <set>
+ #include <limits>
+ #include <cassert>
++#include <dlfcn.h>
+ 
+ extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo *viewInfo, std::shared_ptr<Clap::Plugin>);
+ 
+@@ -55,6 +56,25 @@ bool WrapAsAUV2::initializeClapDesc()
+ {
+   LOGINFO("[clap-wrapper] auv2: id={} index: {}", _clapid, _idx);
+ 
++  if (!_library.hasEntryPoint() && _autype == AUV2_Type::aufx_effect)
++  {
++    Dl_info info{};
++    if (dladdr(reinterpret_cast<const void *>(&pffffrzz), &info) != 0 && info.dli_fname)
++    {
++      auto components = fs::path(info.dli_fname)
++                            .parent_path()
++                            .parent_path()
++                            .parent_path()
++                            .parent_path();
++      auto canonical = components / "Contrapunk.component" / "Contents" / "PlugIns" /
++                       "Contrapunk.clap";
++      if (fs::is_directory(canonical) && _library.load(canonical))
++      {
++        std::cout << "[clap-wrapper] auv2 sharing clap from " << canonical.u8string() << std::endl;
++      }
++    }
++  }
++
+   if (!_library.hasEntryPoint())
+   {
+     if (_clapname.empty())
+@@ -135,7 +155,35 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::s
+        */
  
        // pffffrzz();  // <- enable this to have a hook to attach a debugger
++      if (auto bundle = _library.getBundleRef())
++      {
++        using component_kind_setter = void (*)(uint32_t);
++        auto setter = reinterpret_cast<component_kind_setter>(CFBundleGetFunctionPointerForName(
++            bundle, CFSTR("contrapunk_set_au_component_kind")));
++        if (setter) setter(_autype == AUV2_Type::aufx_effect ? 1 : 0);
++      }
        _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
 +      if (_plugin && _autype == AUV2_Type::aufx_effect)
 +      {
@@ -30,7 +84,7 @@ index 927a7c8..7548b08 100644
        if (_plugin)
        {
          _plugin->initialize();
-@@ -1344,6 +1365,26 @@ bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
+@@ -1344,6 +1392,26 @@ bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
    auto ap = _plugin->_ext._audioports;
    auto pl = _plugin->_plugin;
  
@@ -57,7 +111,7 @@ index 927a7c8..7548b08 100644
    if (inScope == kAudioUnitScope_Input)
    {
      auto numAudioInputs = ap->count(pl, true);
-@@ -1388,13 +1429,53 @@ OSStatus WrapAsAUV2::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement
+@@ -1388,13 +1456,53 @@ OSStatus WrapAsAUV2::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement
                                          const AudioStreamBasicDescription &inNewFormat)
  {
    // LOGINFO("ChangedStreamFormat called {} {}", inScope, inNewFormat.mChannelsPerFrame);
@@ -113,7 +167,7 @@ index 927a7c8..7548b08 100644
    if (cinfo.empty() && _plugin->_ext._audioports)
    {
      auto ap = _plugin->_ext._audioports;
-@@ -1463,6 +1544,9 @@ void WrapAsAUV2::PostConstructor()
+@@ -1463,6 +1571,9 @@ void WrapAsAUV2::PostConstructor()
        ap->get(pl, i, true, &inf);
        auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
        Inputs().GetElement(i)->SetName(b);
@@ -123,7 +177,7 @@ index 927a7c8..7548b08 100644
  
        /*
        AudioChannelLayout layout;
-@@ -1481,6 +1565,9 @@ void WrapAsAUV2::PostConstructor()
+@@ -1481,6 +1592,9 @@ void WrapAsAUV2::PostConstructor()
        ap->get(pl, i, false, &inf);
        auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
        Outputs().GetElement(i)->SetName(b);
@@ -133,15 +187,3 @@ index 927a7c8..7548b08 100644
  
        /*
        AudioChannelLayout layout;
-diff --git a/src/detail/auv2/build-helper/build-helper.cpp b/src/detail/auv2/build-helper/build-helper.cpp
-index d1a48b2..f13f7e6 100644
---- a/src/detail/auv2/build-helper/build-helper.cpp
-+++ b/src/detail/auv2/build-helper/build-helper.cpp
-@@ -29,6 +29,7 @@ struct auInfo
-       auto p = uv.find('.');
-       if (p == std::string::npos)
-       {
-+        rev[i] = std::atoi(uv.c_str());
-         return sum();
-       }
-       auto sub = uv.substr(0, p);

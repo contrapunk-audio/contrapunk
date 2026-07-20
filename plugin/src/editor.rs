@@ -16,7 +16,7 @@ use std::sync::{
 
 use contrapunk_companion::Companion;
 
-use crate::{ContrapunkParams, PluginNoteState};
+use crate::{ContrapunkParams, PluginGuitarSignal, PluginNoteState};
 
 /// Width and height of the plugin editor window.
 const EDITOR_WIDTH: f64 = 1200.0;
@@ -41,6 +41,8 @@ pub struct ContrapunkEditorHandler {
     panic_requested: Arc<AtomicBool>,
     /// The dedicated Logic Audio FX always consumes its audio bus.
     guitar_component: bool,
+    guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
+    guitar_was_live: bool,
 }
 
 impl ContrapunkEditorHandler {
@@ -67,6 +69,33 @@ impl ContrapunkEditorHandler {
             "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
         })
         .to_string()
+    }
+
+    fn guitar_signal_json(&mut self) -> Option<String> {
+        if !self.guitar_component {
+            return None;
+        }
+        let signal = *self
+            .guitar_signal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let live = signal.frequency.is_some();
+        if !live && !self.guitar_was_live {
+            return None;
+        }
+        self.guitar_was_live = live;
+        Some(
+            serde_json::json!({
+                "type": "guitarSignal",
+                "rms": signal.rms,
+                "frequency": signal.frequency,
+                "clarity": signal.clarity,
+                "note_state": signal.note_state,
+                "note_name": "",
+                "midi_note": signal.midi_note,
+            })
+            .to_string(),
+        )
     }
 
     /// Snapshot the shared note state and build a noteUpdate JSON
@@ -106,6 +135,9 @@ impl ContrapunkEditorHandler {
 impl EditorHandler for ContrapunkEditorHandler {
     fn on_frame(&mut self, cx: &mut Context) {
         if let Some(json) = self.note_update_json() {
+            cx.send_message(json);
+        }
+        if let Some(json) = self.guitar_signal_json() {
             cx.send_message(json);
         }
     }
@@ -259,6 +291,7 @@ impl EditorHandler for ContrapunkEditorHandler {
 pub fn create_editor(
     params: Arc<ContrapunkParams>,
     note_state: Arc<Mutex<PluginNoteState>>,
+    guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
     companion: Arc<Mutex<Companion>>,
     panic_requested: Arc<AtomicBool>,
     guitar_component: bool,
@@ -284,6 +317,8 @@ pub fn create_editor(
         last_note_json: String::new(),
         panic_requested,
         guitar_component,
+        guitar_signal,
+        guitar_was_live: false,
     };
 
     WebViewEditor::new_with_webview(handler, state, config, move |w| {

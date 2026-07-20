@@ -6,7 +6,7 @@ use midir::os::unix::VirtualOutput;
 use midir::MidiOutput;
 use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::{HeapProd, HeapRb};
-use std::ffi::{c_void, CStr};
+use std::cell::Cell;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
@@ -16,6 +16,15 @@ use std::time::Duration;
 
 const QUEUE_CAPACITY: usize = 8192;
 static NEXT_PORT: AtomicUsize = AtomicUsize::new(1);
+
+thread_local! {
+    static GUITAR_COMPONENT: Cell<bool> = const { Cell::new(false) };
+}
+
+#[no_mangle]
+pub extern "C" fn contrapunk_set_au_component_kind(guitar: u32) {
+    GUITAR_COMPONENT.with(|value| value.set(guitar != 0));
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MidiPacket {
@@ -197,26 +206,7 @@ fn is_logic_audio_unit_host() -> bool {
 }
 
 pub(crate) fn loaded_from_guitar_component() -> bool {
-    let mut info = std::mem::MaybeUninit::<libc::Dl_info>::zeroed();
-    // SAFETY: dladdr only inspects the image containing this function pointer
-    // and initializes `info` when it succeeds.
-    let found = unsafe {
-        libc::dladdr(
-            loaded_from_guitar_component as *const () as *const c_void,
-            info.as_mut_ptr(),
-        )
-    };
-    if found == 0 {
-        return false;
-    }
-    let info = unsafe { info.assume_init() };
-    if info.dli_fname.is_null() {
-        return false;
-    }
-    // SAFETY: successful dladdr returns a NUL-terminated image path.
-    let path = unsafe { CStr::from_ptr(info.dli_fname) };
-    path.to_string_lossy()
-        .contains("Contrapunk Guitar.component")
+    GUITAR_COMPONENT.with(Cell::get)
 }
 
 #[cfg(test)]

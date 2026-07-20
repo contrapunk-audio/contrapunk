@@ -131,6 +131,15 @@ pub struct PluginNoteState {
     pub(crate) counterpoint_notes: NoteCounts,
 }
 
+#[derive(Clone, Copy, Default, PartialEq)]
+pub(crate) struct PluginGuitarSignal {
+    pub(crate) rms: f32,
+    pub(crate) frequency: Option<f32>,
+    pub(crate) clarity: f32,
+    pub(crate) note_state: u8,
+    pub(crate) midi_note: u8,
+}
+
 impl PluginNoteState {
     #[cfg(test)]
     fn lane_note_on(&mut self, lane: &str, note: u8) {
@@ -505,7 +514,11 @@ struct MusicWorker {
 }
 
 impl MusicWorker {
-    fn new(engine: Arc<Mutex<HarmonyEngine>>, companion: Arc<Mutex<Companion>>) -> Self {
+    fn new(
+        engine: Arc<Mutex<HarmonyEngine>>,
+        companion: Arc<Mutex<Companion>>,
+        guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
+    ) -> Self {
         let input_rb = HeapRb::new(WORKER_INPUT_CAPACITY);
         let (input, input_rx) = input_rb.split();
         let output_rb = HeapRb::new(WORKER_OUTPUT_CAPACITY);
@@ -523,6 +536,7 @@ impl MusicWorker {
                     input_rx,
                     output_tx,
                     audio_rx,
+                    guitar_signal,
                     worker_stop,
                 )
             })
@@ -771,6 +785,7 @@ fn run_music_worker(
     mut input: HeapCons<WorkerInput>,
     mut output: HeapProd<WorkerOutput>,
     mut audio: HeapCons<f32>,
+    guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
     stop: Arc<AtomicBool>,
 ) {
     let mut generation = 0;
@@ -855,7 +870,24 @@ fn run_music_worker(
                     if read != samples {
                         continue;
                     }
-                    for event in guitar.process_block(&audio_block) {
+                    let events = guitar.process_block(&audio_block);
+                    let (frequency, clarity) = guitar
+                        .last_debug_pitch
+                        .map(|(frequency, clarity)| (Some(frequency), clarity))
+                        .unwrap_or((None, 0.0));
+                    *guitar_signal
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = PluginGuitarSignal {
+                        rms: guitar.prev_rms(),
+                        frequency,
+                        clarity,
+                        note_state: guitar.note_state_name(),
+                        midi_note: guitar
+                            .current_note()
+                            .map(|note| note.midi_note)
+                            .unwrap_or(0),
+                    };
+                    for event in events {
                         match event {
                             CpMidiEvent::NoteOn { note, velocity, .. } if harmonize => {
                                 process_worker_note(
@@ -988,6 +1020,8 @@ struct ContrapunkPlugin {
     /// Shared with the editor for noteUpdate emission. The audio thread
     /// updates it while draining worker output; the editor reads each tick.
     note_state: Arc<Mutex<PluginNoteState>>,
+    /// Latest detector frame, written by the music worker and read by the editor.
+    guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
 
     /// UI-triggered panic. The editor sets this atomically; the audio thread
     /// emits actual MIDI note-offs/CCs from process(), where host MIDI output is legal.
@@ -1054,7 +1088,12 @@ impl Default for ContrapunkPlugin {
             c.lanes.push(Box::new(CanonLane::new()));
             c.lanes.push(Box::new(CounterpointLane::new()));
         }
-        let worker = MusicWorker::new(Arc::clone(&engine), Arc::clone(&companion));
+        let guitar_signal = Arc::new(Mutex::new(PluginGuitarSignal::default()));
+        let worker = MusicWorker::new(
+            Arc::clone(&engine),
+            Arc::clone(&companion),
+            Arc::clone(&guitar_signal),
+        );
         Self {
             params: Arc::new(ContrapunkParams::with_input_mode(default_input_mode)),
             transport,
@@ -1072,6 +1111,7 @@ impl Default for ContrapunkPlugin {
             synth_params,
             synth_scratch: Vec::new(),
             note_state: Arc::new(Mutex::new(PluginNoteState::default())),
+            guitar_signal,
             panic_requested: Arc::new(AtomicBool::new(false)),
             active_output_notes: [0; TRACKED_OUTPUT_NOTES],
             active_synth_notes: [0; 128],
@@ -1599,6 +1639,7 @@ impl Plugin for ContrapunkPlugin {
             Some(Box::new(editor::create_editor(
                 self.params.clone(),
                 Arc::clone(&self.note_state),
+                Arc::clone(&self.guitar_signal),
                 Arc::clone(&self.companion),
                 Arc::clone(&self.panic_requested),
                 self.guitar_component,
@@ -1837,6 +1878,51 @@ mod tests {
     }
 
     #[test]
+    fn music_worker_publishes_guitar_signal() {
+        let engine = Arc::new(Mutex::new(HarmonyEngine::new(
+            Key::C,
+            HarmonyMode::DiatonicThirds,
+        )));
+        let transport = Transport::new(48_000);
+        let companion = Arc::new(Mutex::new(Companion::new(WorldState::new(
+            transport,
+            Arc::clone(&engine),
+        ))));
+        let signal = Arc::new(Mutex::new(PluginGuitarSignal::default()));
+        let mut worker = MusicWorker::new(engine, companion, Arc::clone(&signal));
+        assert!(worker.try_push(WorkerInput::Configure {
+            generation: 9,
+            params: WorkerParams::default(),
+        }));
+        let samples: Vec<f32> = (0..4096)
+            .map(|sample| (sample as f32 * 440.0 * std::f32::consts::TAU / 48_000.0).sin() * 0.2)
+            .collect();
+        assert!(worker.try_push_audio(
+            &samples,
+            WorkerInput::AudioBlock {
+                generation: 9,
+                block: 1,
+                samples: samples.len(),
+                harmonize: true,
+            },
+        ));
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if signal
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .rms
+                > 0.0
+            {
+                return;
+            }
+            thread::yield_now();
+        }
+        panic!("music worker did not publish guitar RMS");
+    }
+
+    #[test]
     fn music_worker_returns_harmony_without_audio_thread_engine_access() {
         let engine = Arc::new(Mutex::new(HarmonyEngine::new(
             Key::C,
@@ -1847,7 +1933,11 @@ mod tests {
             transport,
             Arc::clone(&engine),
         ))));
-        let mut worker = MusicWorker::new(engine, companion);
+        let mut worker = MusicWorker::new(
+            engine,
+            companion,
+            Arc::new(Mutex::new(PluginGuitarSignal::default())),
+        );
         assert!(worker.try_push(WorkerInput::Configure {
             generation: 7,
             params: WorkerParams::default(),

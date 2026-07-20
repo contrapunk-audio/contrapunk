@@ -115,6 +115,19 @@
 		return fractional;
 	}
 
+	function recordGuitarSignal(payload: GuitarSignalPayload) {
+		if (payload.frequency === null || !Number.isFinite(payload.frequency) || payload.frequency <= 20) return;
+		const now = Date.now();
+		const fractionalMidi = readPitch(payload.frequency);
+		dynamics = Math.max(0, Math.min(1, payload.rms * 8));
+		clarity = Math.max(0, Math.min(1, payload.clarity));
+		lastSignalAt = now;
+		pitchSamples.push({ at: now, midi: fractionalMidi, rms: Math.max(0, payload.rms), clarity });
+		if (pitchSamples.length > MAX_PITCH_SAMPLES) {
+			pitchSamples.splice(0, pitchSamples.length - MAX_PITCH_SAMPLES);
+		}
+	}
+
 	function draw() {
 		if (!canvas) return;
 		const ctx = canvas.getContext('2d');
@@ -344,17 +357,17 @@
 			void import('@tauri-apps/api/event').then(async ({ listen }) => {
 				if (disposed) return;
 				unlisten = await listen<GuitarSignalPayload>('guitar-signal', ({ payload }) => {
-					if (payload.frequency === null || !Number.isFinite(payload.frequency) || payload.frequency <= 20) return;
-					const now = Date.now();
-					const fractionalMidi = readPitch(payload.frequency);
-					dynamics = Math.max(0, Math.min(1, payload.rms * 8));
-					clarity = Math.max(0, Math.min(1, payload.clarity));
-					lastSignalAt = now;
-					pitchSamples.push({ at: now, midi: fractionalMidi, rms: Math.max(0, payload.rms), clarity });
-					if (pitchSamples.length > MAX_PITCH_SAMPLES) {
-						pitchSamples.splice(0, pitchSamples.length - MAX_PITCH_SAMPLES);
-					}
+					recordGuitarSignal(payload);
 				});
+			});
+		} else if (platformName === 'plugin') {
+			unlisten = window.plugin.listen((message) => {
+				try {
+					const payload = JSON.parse(message) as GuitarSignalPayload & { type?: string };
+					if (payload.type === 'guitarSignal') recordGuitarSignal(payload);
+				} catch {
+					/* Ignore unrelated host messages. */
+				}
 			});
 		}
 
