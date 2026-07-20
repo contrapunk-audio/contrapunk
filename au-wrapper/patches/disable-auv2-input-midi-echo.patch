@@ -1,0 +1,30 @@
+diff --git a/src/detail/auv2/process.cpp b/src/detail/auv2/process.cpp
+index e242164..9d48a7b 100644
+--- a/src/detail/auv2/process.cpp
++++ b/src/detail/auv2/process.cpp
+@@ -472,6 +472,8 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
+   // n.header.size is set further down
+   n.header.space_id = 0;
+ 
++  // Incoming notes belong only on the CLAP input queue. The plugin decides
++  // whether to emit pass-through or generated notes through its output queue.
+   switch (strippedStatus)
+   {
+     case 0:
+@@ -511,7 +513,6 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
+       this->_eventindices.emplace_back((this->_events.size()));
+       this->_events.emplace_back(n);
+       removeFromActiveNotes(&n.note);
+-      this->output_events_try_push(&this->_out_events, &n.header);
+       break;
+     case 9:  // note on
+ 
+@@ -541,8 +542,6 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
+       this->_events.emplace_back(n);
+       addToActiveNotes(&n.note);
+ 
+-      this->output_events_try_push(&this->_out_events, &n.header);
+-
+       break;
+     case 0xA:  // any other MIDI message with 1 or 2 data bytes
+     case 0xB:

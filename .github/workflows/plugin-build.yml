@@ -164,6 +164,7 @@ jobs:
           ditto target/bundled/Contrapunk.vst3 "$PKGROOT/Library/Audio/Plug-Ins/VST3/Contrapunk.vst3"
           ditto target/bundled/Contrapunk.clap "$PKGROOT/Library/Audio/Plug-Ins/CLAP/Contrapunk.clap"
           ditto au-wrapper/build/Contrapunk.component "$PKGROOT/Library/Audio/Plug-Ins/Components/Contrapunk.component"
+          ditto "au-wrapper/build/Contrapunk Guitar.component" "$PKGROOT/Library/Audio/Plug-Ins/Components/Contrapunk Guitar.component"
           chmod -R a+rX "$PKGROOT"
 
           cat > "$SCRIPTS/postinstall" <<'SH'
@@ -196,6 +197,7 @@ jobs:
           ditto target/bundled/Contrapunk.vst3 dist/macos-plugin-bundles/Contrapunk.vst3
           ditto target/bundled/Contrapunk.clap dist/macos-plugin-bundles/Contrapunk.clap
           ditto au-wrapper/build/Contrapunk.component dist/macos-plugin-bundles/Contrapunk.component
+          ditto "au-wrapper/build/Contrapunk Guitar.component" "dist/macos-plugin-bundles/Contrapunk Guitar.component"
           (cd dist/macos-plugin-bundles && zip -qry "../$(basename "$ZIP")" .)
 
       - name: Notarize + staple macOS plugin installer

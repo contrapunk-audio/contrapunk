@@ -58,7 +58,7 @@
 	<button type="button" class:enabled={synthEnabled} onclick={toggleSynth}>
 		INTERNAL MONITOR {synthEnabled ? 'ON' : 'OFF'}
 	</button>
-	<p>Use <strong>Guitar audio</strong> when the host supplies plugin audio input (VST3/CLAP), or <strong>Host MIDI</strong> for a controller. Logic MIDI FX cannot supply guitar audio; route the standalone app through IAC instead.</p>
+	<p>For Logic guitar input, insert <strong>Contrapunk Guitar</strong> as an Audio FX, choose <strong>Guitar audio</strong>, then select <strong>Contrapunk Guitar MIDI Out</strong> on the Analog Lab instrument track.</p>
 </div>
 
 <style>

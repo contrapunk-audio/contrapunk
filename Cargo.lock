@@ -1005,6 +1005,8 @@ dependencies = [
  "contrapunk",
  "contrapunk-companion",
  "contrapunk-transport",
+ "libc",
+ "midir",
  "nih_plug",
  "nih_plug_webview",
  "ringbuf",

@@ -18,6 +18,8 @@ use std::thread;
 use std::time::Duration;
 
 mod editor;
+#[cfg(target_os = "macos")]
+mod logic_midi;
 
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
 use contrapunk::chain::{AudioBlock, MidiBlockEvent};
@@ -953,6 +955,8 @@ struct ContrapunkPlugin {
     /// is ever taken by the audio callback.
     companion: Arc<Mutex<Companion>>,
     worker: MusicWorker,
+    #[cfg(target_os = "macos")]
+    logic_midi: logic_midi::LogicMidiOutput,
     worker_params: WorkerParams,
     worker_generation: u64,
     worker_block: u64,
@@ -1021,6 +1025,8 @@ impl Default for ContrapunkPlugin {
             transport,
             companion,
             worker,
+            #[cfg(target_os = "macos")]
+            logic_midi: logic_midi::LogicMidiOutput::new(),
             worker_params: WorkerParams::default(),
             worker_generation: 1,
             worker_block: 0,
@@ -1145,6 +1151,10 @@ impl ContrapunkPlugin {
                 note,
                 velocity,
             });
+            #[cfg(target_os = "macos")]
+            if self.params.input_mode.value() == PluginInputMode::Audio {
+                self.logic_midi.note_on(channel, note, velocity);
+            }
         }
         if track_note_on(&mut self.active_synth_notes, note as usize) {
             self.synth_note_on(note, velocity);
@@ -1171,6 +1181,10 @@ impl ContrapunkPlugin {
                 note,
                 velocity,
             });
+            #[cfg(target_os = "macos")]
+            if self.params.input_mode.value() == PluginInputMode::Audio {
+                self.logic_midi.note_off(channel, note, velocity);
+            }
         }
         if track_note_off(&mut self.active_synth_notes, note as usize) {
             self.synth_note_off(note);
@@ -1205,6 +1219,10 @@ impl ContrapunkPlugin {
                 cc: 123, // All Notes Off
                 value: 0.0,
             });
+        }
+        #[cfg(target_os = "macos")]
+        if self.params.input_mode.value() == PluginInputMode::Audio {
+            self.logic_midi.all_notes_off();
         }
         self.invalidate_worker();
         self.clear_note_state();
@@ -1359,26 +1377,42 @@ impl ContrapunkPlugin {
                         timing: 0,
                         channel,
                         value,
-                    })
+                    });
+                    #[cfg(target_os = "macos")]
+                    if self.params.input_mode.value() == PluginInputMode::Audio {
+                        self.logic_midi.pitch_bend(channel, value);
+                    }
                 }
                 WorkerOutput::ControlChange {
                     channel,
                     controller,
                     value,
                     ..
-                } => context.send_event(NoteEvent::MidiCC {
-                    timing: 0,
-                    channel,
-                    cc: controller,
-                    value,
-                }),
+                } => {
+                    context.send_event(NoteEvent::MidiCC {
+                        timing: 0,
+                        channel,
+                        cc: controller,
+                        value,
+                    });
+                    #[cfg(target_os = "macos")]
+                    if self.params.input_mode.value() == PluginInputMode::Audio {
+                        self.logic_midi.control_change(channel, controller, value);
+                    }
+                }
                 WorkerOutput::ChannelPressure {
                     channel, pressure, ..
-                } => context.send_event(NoteEvent::MidiChannelPressure {
-                    timing: 0,
-                    channel,
-                    pressure,
-                }),
+                } => {
+                    context.send_event(NoteEvent::MidiChannelPressure {
+                        timing: 0,
+                        channel,
+                        pressure,
+                    });
+                    #[cfg(target_os = "macos")]
+                    if self.params.input_mode.value() == PluginInputMode::Audio {
+                        self.logic_midi.channel_pressure(channel, pressure);
+                    }
+                }
                 WorkerOutput::AllNotesOff { .. } => self.hard_all_notes_off(0, context),
             }
         }
@@ -1555,6 +1589,8 @@ impl Plugin for ContrapunkPlugin {
 
     fn reset(&mut self) {
         self.synth.reset();
+        #[cfg(target_os = "macos")]
+        self.logic_midi.all_notes_off();
         self.active_output_notes.fill(0);
         self.active_synth_notes.fill(0);
         self.invalidate_worker();

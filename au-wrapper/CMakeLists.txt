@@ -99,6 +99,31 @@ else()
     endif()
 endif()
 
+# clap-wrapper currently echoes every AUv2 MIDI input note directly to the
+# host before the CLAP plugin processes it. Contrapunk owns pass-through via
+# its MIDI Output parameter, so the wrapper must only enqueue input events.
+set(_disable_input_midi_echo_patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/disable-auv2-input-midi-echo.patch")
+execute_process(
+    COMMAND git apply --check "${_disable_input_midi_echo_patch}"
+    WORKING_DIRECTORY "${CLAP_WRAPPER_SOURCE_DIR}"
+    RESULT_VARIABLE _disable_input_midi_echo_patch_check
+    OUTPUT_QUIET
+    ERROR_QUIET
+)
+if (_disable_input_midi_echo_patch_check EQUAL 0)
+    execute_process(
+        COMMAND git apply "${_disable_input_midi_echo_patch}"
+        WORKING_DIRECTORY "${CLAP_WRAPPER_SOURCE_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+else()
+    file(READ "${CLAP_WRAPPER_SOURCE_DIR}/src/detail/auv2/process.cpp" _auv2_process_src)
+    string(FIND "${_auv2_process_src}" "Incoming notes belong only on the CLAP input queue" _disable_input_midi_echo_already_applied)
+    if (_disable_input_midi_echo_already_applied EQUAL -1)
+        message(FATAL_ERROR "Failed to apply clap-wrapper AUv2 MIDI input echo patch")
+    endif()
+endif()
+
 # ── Path to pre-built CLAP bundle ────────────────────────────────────
 set(CLAP_BUNDLE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../target/bundled/Contrapunk.clap"
     CACHE PATH "Path to pre-built .clap bundle")
@@ -135,5 +160,23 @@ target_add_auv2_wrapper(
     MANUFACTURER_NAME "${CONTRAPUNK_AUV2_MANUFACTURER_NAME}"
 
     # Embed the pre-built CLAP inside the .component bundle
+    MACOS_EMBEDDED_CLAP_LOCATION "${CLAP_BUNDLE_PATH}"
+)
+
+# Logic does not feed audio to MIDI FX. This companion AU is a music effect
+# for dry guitar tracks; generated MIDI leaves through Contrapunk's virtual
+# CoreMIDI source and can drive a separate software-instrument track.
+add_library(contrapunk_guitar_auv2 MODULE)
+
+target_add_auv2_wrapper(
+    TARGET contrapunk_guitar_auv2
+    OUTPUT_NAME "Contrapunk Guitar"
+    BUNDLE_IDENTIFIER "com.contrapunk.harmony.guitar.auv2"
+    BUNDLE_VERSION "${PROJECT_VERSION}"
+    PREFER_CMAKE_AUV2_CONFIGURATION TRUE
+    INSTRUMENT_TYPE "aumf"
+    SUBTYPE_CODE "CpGt"
+    MANUFACTURER_CODE "${CONTRAPUNK_AUV2_MANUFACTURER_CODE}"
+    MANUFACTURER_NAME "${CONTRAPUNK_AUV2_MANUFACTURER_NAME}"
     MACOS_EMBEDDED_CLAP_LOCATION "${CLAP_BUNDLE_PATH}"
 )
