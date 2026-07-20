@@ -641,6 +641,40 @@ export const QUARTAL_COLOSSUS_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '36-pixel-trio',
+	name: 'Pixel Trio',
+	family: 'game',
+	tags: ['famicom-nes', 'three-pitched-roles', 'research-complete', 'capability-locked'],
+	builtIn: true,
+	result:
+		'A compact live hook stays foreground while independent low support and one answering tonal line alternate under a three-pitched-role ceiling.',
+	approximation:
+		'A future modern MIDI arrangement inspired by three-pitched-role economy in selected 1985–87 Famicom/NES practice. Current HarmonyEngine outputs share every source onset and release, so they cannot supply independent low-support and counterline timing. The target will not emulate NES hardware, reproduce game music, simulate Koji Kondo or Manami Matsumae, or add unclaimed noise, DMC, percussion, chip timbre, sound effects, or game-state logic.',
+	play: {
+		prompt:
+			'Play a catchy two-bar single-note hook, repeat it exactly, change one ending, then leave a full bar for role separation and cleanup.',
+		input: 'motif',
+		articulation:
+			'Clean, separated single notes; keyboard sustain and chord mode off, guitar strings muted with no bends, slides, double-stops, or ringing releases.',
+		density: 'Four to eight source attacks per two-bar hook; exactly one physical source note at a time.',
+		space: 'Include at least one beat of rest in the hook and one full bar after each variation.',
+		tempo: '100–150 BPM once the required role scheduler exists.',
+		transportRequired: true
+	},
+	references: [
+		{
+			name: 'Selected early Famicom/NES practice',
+			context:
+				'Bounded reference to pitched-role economy in Koji Kondo’s Super Mario Bros. (1985) and Manami Matsumae’s original Mega Man (1987), not either composer’s complete output or an artist/hardware simulation.'
+		}
+	],
+	researchStatus: 'blocked',
+	requirements: ['pattern_lane', 'stable_lane_groups'],
+	config: SAFE_DRAFT_CONFIG
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -677,7 +711,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 33, name: 'Metric Labyrinth', family: 'jazz', result: 'Percussive counterpoint crosses uneven groupings.', prompt: 'Repeat an exact accented figure in 5, 7, or grouped 4/4.', references: ['Tigran Hamasyan', 'Vijay Iyer'], requirements: ['odd_meter', 'pattern_lane'], input: 'motif', transportRequired: true },
 	{ number: 34, name: 'Chamber Sky', family: 'jazz', result: 'Lyrical voices expand into airy ensemble harmony.', prompt: 'Play breath-shaped arcs with wide expressive intervals and long releases.', references: ['Maria Schneider', 'Kenny Wheeler'], requirements: ['stable_lane_groups'] },
 	{ number: 35, name: 'Elastic Counter-Groove', family: 'jazz', result: 'Syncopated harmony alternates with contrapuntal answers.', prompt: 'Play concise one- or two-bar riffs with deliberate holes.', references: ['Esperanza Spalding', 'Brad Mehldau', 'Robert Glasper'], requirements: ['pattern_lane'], input: 'motif', transportRequired: true },
-	{ number: 36, name: 'Pixel Trio', family: 'game', result: 'Melody, bass, and one counterline obey three-channel economy.', prompt: 'Play compact memorable single-note hooks with a clear repeated rhythm.', references: ['Early console writing', 'Koji Kondo', 'Manami Matsumae'], requirements: ['harmony', 'voice_leading'], input: 'motif' },
+	{ number: 36, name: 'Pixel Trio', family: 'game', result: PIXEL_TRIO_PRESET.result, prompt: PIXEL_TRIO_PRESET.play.prompt, references: ['Selected early Famicom/NES practice'], requirements: ['pattern_lane', 'stable_lane_groups'], input: 'motif', transportRequired: true },
 	{ number: 37, name: 'Fractured Crystal', family: 'game', result: 'A tiny motif fractures into limited-voice ostinatos and modal echoes.', prompt: 'Repeat a three-to-five-note motif slowly, alter one note, and leave substantial air.', references: ['Disasterpeace — FEZ'], requirements: ['motif_memory', 'pattern_lane', 'probability_density'], input: 'motif', transportRequired: true },
 	{ number: 38, name: 'Summit Pulse', family: 'game', result: 'An intimate line grows into rhythmic upper layers.', prompt: 'Begin softly with hesitant fragments, then increase register, velocity, and repetition.', references: ['Lena Raine'], requirements: ['adaptive_scenes'], input: 'motif' },
 	{ number: 39, name: 'Adaptive Pilgrim', family: 'game', result: 'The arrangement follows an emotional intensity arc.', prompt: 'Play isolated sustained notes, then longer and louder phrases, then withdraw.', references: ['Austin Wintory', 'Jessica Curry', 'Gareth Coker'], requirements: ['adaptive_scenes'] },
@@ -705,6 +739,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 23) return SIXTH_DIMINISHED_CONVEYOR_PRESET;
 		if (spec.number === 25) return BEBOP_CHASE_PRESET;
 		if (spec.number === 27) return QUARTAL_COLOSSUS_PRESET;
+		if (spec.number === 36) return PIXEL_TRIO_PRESET;
 		return draftPreset(spec);
 	}
 );

@@ -6,6 +6,7 @@ import {
 	COLOR_MODE_WINDOWS_PRESET,
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
+	PIXEL_TRIO_PRESET,
 	PLANED_CATHEDRAL_PRESET,
 	QUARTAL_COLOSSUS_PRESET,
 	SIXTH_DIMINISHED_CONVEYOR_PRESET,
@@ -14,6 +15,7 @@ import {
 } from './catalog.ts';
 import {
 	arrangementConfigCapabilities,
+	missingArrangementCapabilities,
 	validateArrangementConfig,
 	validateArrangementPreset
 } from './presets.ts';
@@ -386,6 +388,41 @@ test('Quartal Colossus is one bounded Dorian fourth-derived block', () => {
 		'transport'
 	]) {
 		assert.equal(preserved in QUARTAL_COLOSSUS_PRESET.config, false);
+	}
+});
+
+test('Pixel Trio remains visible and honestly capability-locked', () => {
+	assert.equal(PIXEL_TRIO_PRESET.researchStatus, 'blocked');
+	assert.equal(PIXEL_TRIO_PRESET.play.transportRequired, true);
+	assert.deepEqual(PIXEL_TRIO_PRESET.requirements, ['pattern_lane', 'stable_lane_groups']);
+	assert.deepEqual(
+		missingArrangementCapabilities(
+			PIXEL_TRIO_PRESET,
+			new Set(['harmony', 'voice_leading', 'strict_canon', 'free_imitation'])
+		),
+		['pattern_lane', 'stable_lane_groups']
+	);
+	assert.match(PIXEL_TRIO_PRESET.result, /independent low support/i);
+	assert.match(PIXEL_TRIO_PRESET.approximation, /share every source onset and release/i);
+	assert.match(PIXEL_TRIO_PRESET.approximation, /cannot supply independent/i);
+	assert.match(PIXEL_TRIO_PRESET.approximation, /will not emulate NES hardware/i);
+	assert.deepEqual(validateArrangementPreset(PIXEL_TRIO_PRESET), []);
+
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in PIXEL_TRIO_PRESET.config, false);
 	}
 });
 
