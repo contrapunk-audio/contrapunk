@@ -964,16 +964,18 @@ Realistic calendar window with concurrent tracks: **24-28 weeks**.
 **Plans**: TBD
 
 #### Phase 21.C3: VST3 Hosting
-**Goal**: User loads FabFilter Pro-Q4 VST3 in Contrapunk, routes harmony through it, GUI embeds, state saves
+**Goal**: Contrapunk hosts generic VST3 instruments directly, beginning with Analog Lab V, then extends the same host boundary to effects
 **Depends on**: Phase 21.C2
 **Requirements**: REQ-elixir-c3-vst3-hosting
+**Status note (2026-07-20)**: Parked by user decision. The immediate workflow is Contrapunk compiled as a MIDI-output VST3/CLAP and placed before Analog Lab V in the DAW. Resume direct hosting only when Track C is active.
 **Success Criteria** (what must be TRUE):
   1. New `src/plugin_host/vst3/` module exists
-  2. Rust VST3 host crate integrated (license-reviewed before this phase)
-  3. VST3 module mirrors CLAP module API surface (`discovery`, `host`, `block`, `controller`, `window`)
-  4. FabFilter Pro-Q4 VST3 loads, routes harmony through it
-  5. VST3 GUI embeds in Contrapunk window
-  6. VST3 state saves and reloads in Contrapunk session
+  2. Rust VST3 host crate integrated after license review
+  3. VST3 module mirrors the CLAP module API surface (`discovery`, `host`, `block`, `controller`, `window`)
+  4. Instrument-first slice discovers and loads the installed `Analog Lab V.vst3`, sends Contrapunk MIDI events, and receives stereo audio without allocating or locking on the audio callback
+  5. Analog Lab V's floating editor opens and resizes safely; embedded GUI remains optional
+  6. VST3 component/controller state saves and reloads in Contrapunk sessions
+  7. A later effect slice validates audio-input bus negotiation with FabFilter Pro-Q or equivalent; sidechains remain out of the instrument-first slice
 **Effort**: 3 weeks
 **Plans**: TBD
 **UI hint**: yes

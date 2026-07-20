@@ -22,6 +22,7 @@
 	import InputPanel from '$lib/components/InputPanel.svelte';
 	import OutputPanel from '$lib/components/OutputPanel.svelte';
 	import PerformanceView from '$lib/components/PerformanceView.svelte';
+	import PluginRoutingPanel from '$lib/components/PluginRoutingPanel.svelte';
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
 	import ExplicitIntervalMapPanel from '$lib/components/ExplicitIntervalMapPanel.svelte';
@@ -48,12 +49,14 @@
 	let ensembleLive = $derived(engine.harmonyNotes.length > 0 || engine.canonNotes.length > 0 || engine.counterpointNotes.length > 0);
 	let outputLive = $derived(inputLive || ensembleLive);
 	let sourceName = $derived.by(() => {
+		if (adapter.capabilities.pluginMidiOutputMode) return 'Host MIDI';
 		if (midi.selectedInput === VIRTUAL_GUITAR_AUDIO) return 'Guitar Audio';
 		if (midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD) return 'Computer Keys';
 		if (midi.selectedInput === null) return 'No input';
 		return midi.inputs.find((device) => device.index === midi.selectedInput)?.name ?? 'MIDI Controller';
 	});
 	let spread = $derived(engine.octaveMode === 'None' ? 0 : engine.octaveIntensity);
+	let maxVoiceCount = $derived(adapter.capabilities.pluginMidiOutputMode ? 4 : 8);
 	let registerOptions = $derived(
 		Array.from({ length: engine.voiceCount }, (_, index) => ({
 			value: index,
@@ -61,8 +64,11 @@
 		}))
 	);
 	let quickModes = $derived.by(() => {
-		if (ALL_MODES.some((mode) => mode.name === engine.mode)) return ALL_MODES;
-		return [{ name: engine.mode, label: engine.mode, shortLabel: engine.mode, tooltip: '' }, ...ALL_MODES];
+		const supported = ALL_MODES.filter(
+			(mode) => adapter.capabilities.intervalMaps || mode.name !== 'ExplicitIntervals'
+		);
+		if (supported.some((mode) => mode.name === engine.mode)) return supported;
+		return [{ name: engine.mode, label: engine.mode, shortLabel: engine.mode, tooltip: '' }, ...supported];
 	});
 
 	onMount(() => {
@@ -81,11 +87,13 @@
 				} catch {
 					/* Surface has no transport. */
 				}
-				if (midi.selectedInput === null) {
-					midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
-				}
-				if (!engine.isRunning && midi.selectedInput !== null) {
-					await engine.start(midi.selectedInput, midi.selectedOutputs);
+				if (!adapter.capabilities.pluginMidiOutputMode) {
+					if (midi.selectedInput === null) {
+						midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD);
+					}
+					if (!engine.isRunning && midi.selectedInput !== null) {
+						await engine.start(midi.selectedInput, midi.selectedOutputs);
+					}
 				}
 				if (!cancelled) initialized = true;
 			} catch (error) {
@@ -159,7 +167,7 @@
 				<button class="transport-button" aria-label={transport.running ? 'Stop transport' : 'Play transport'} onclick={() => transport.running ? transport.stop() : transport.play()}>{transport.running ? '■' : '▶'}</button>
 				<label class="tempo"><span>BPM</span><input type="number" min="20" max="400" value={transport.bpm} onchange={(event) => transport.setBpm(Number(event.currentTarget.value))} /></label>
 			{/if}
-			<button class:running={engine.isRunning} disabled={!engine.isRunning && midi.selectedInput === null} onclick={toggleRouting}>{engine.isRunning ? 'Routing on' : 'Start routing'}</button>
+			{#if !adapter.capabilities.pluginMidiOutputMode}<button class:running={engine.isRunning} disabled={!engine.isRunning && midi.selectedInput === null} onclick={toggleRouting}>{engine.isRunning ? 'Routing on' : 'Start routing'}</button>{:else}<span class="host-owned">DAW HOST</span>{/if}
 			<button class:confirmed={panicSent} onclick={panic}>{panicSent ? 'Cleared' : 'Panic'}</button>
 			<button class="setup-button" onclick={() => openSetup('input')}>Setup</button>
 		</div>
@@ -175,7 +183,7 @@
 				<label><span>KEY</span><select value={engine.key} onchange={(event) => engine.setKey(event.currentTarget.value as KeyName)}>{#each ALL_KEYS as key}<option value={key}>{KEY_DISPLAY[key]}</option>{/each}</select></label>
 				<label><span>SCALE</span><select value={engine.scaleMode} onchange={(event) => engine.setScaleMode(event.currentTarget.value as ScaleModeName)}>{#each scaleOptions as option}<option value={option.name}>{option.label}</option>{/each}</select></label>
 				<label><span>HARMONY</span><select value={engine.mode} onchange={(event) => engine.setMode(event.currentTarget.value as HarmonyModeName)}>{#each quickModes as mode}<option value={mode.name}>{mode.label}</option>{/each}</select></label>
-				<label><span>VOICES</span><select value={engine.voiceCount} onchange={(event) => engine.setVoiceCount(Number(event.currentTarget.value))}>{#each Array.from({ length: 8 }, (_, index) => index + 1) as count}<option value={count}>{count}</option>{/each}</select></label>
+				<label><span>VOICES</span><select value={engine.voiceCount} onchange={(event) => engine.setVoiceCount(Number(event.currentTarget.value))}>{#each Array.from({ length: maxVoiceCount }, (_, index) => index + 1) as count}<option value={count}>{count}</option>{/each}</select></label>
 				<label><span>YOUR REGISTER</span><select value={engine.voicePosition} onchange={(event) => engine.setVoicePosition(Number(event.currentTarget.value))}>{#each registerOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
 				<label class="spread"><span>SPREAD <output>{Math.round(spread * 100)}</output></span><input type="range" min="0" max="1" step="0.01" value={spread} oninput={(event) => setSpread(Number(event.currentTarget.value))} /></label>
 			</section>
@@ -206,7 +214,7 @@
 					<section id="setup-input" tabindex="-1"><div class="section-heading"><span>01</span><h2>Input</h2></div>{#if adapter.capabilities.inputSourcePicker}<InputPanel />{:else}<div class="notice">The host owns input selection.</div>{/if}</section>
 					<section id="setup-harmony" tabindex="-1"><div class="section-heading"><span>02</span><h2>Harmony</h2></div><div id="harmony-controls">{#if setupOpen}<PerformanceView midiLearnEnabled={setupSection === 'harmony' && midi.selectedInput !== VIRTUAL_GUITAR_AUDIO} />{/if}</div>{#if adapter.capabilities.intervalMaps && engine.mode === 'ExplicitIntervals'}<ExplicitIntervalMapPanel />{/if}</section>
 					<section id="setup-canon" tabindex="-1"><div class="section-heading"><span>03</span><h2>Canon + Counterpoint</h2></div>{#if adapter.capabilities.companionLanes}<div id="canon-controls"><CompanionPanel focusGroup={companionFocus} focusVersion={companionFocusVersion} /></div>{#if adapter.capabilities.patternLanes}<PatternLanePanel />{/if}{:else}<div class="notice">Companion lanes are unavailable on this surface.</div>{/if}</section>
-					<section id="setup-output" tabindex="-1"><div class="section-heading"><span>04</span><h2>Output + Sound</h2></div><div id="output-routing"><OutputPanel /></div></section>
+					<section id="setup-output" tabindex="-1"><div class="section-heading"><span>04</span><h2>Output + Sound</h2></div>{#if adapter.capabilities.pluginMidiOutputMode}<PluginRoutingPanel />{/if}<div id="output-routing"><OutputPanel /></div></section>
 					<section id="setup-presets" tabindex="-1"><div class="section-heading"><span>05</span><h2>Presets + Voices</h2></div><EnsemblePresetBar /><div class="preset-grid"><PresetManager /><VoicesPanel /></div></section>
 					<section id="setup-advanced" tabindex="-1">
 						<div class="section-heading"><span>06</span><h2>Advanced</h2></div>
@@ -280,6 +288,7 @@
 	.header-actions button:hover, .dialog-header button:hover { border-color: var(--proto-text); background: var(--proto-hover); }
 	.header-actions button.running, .header-actions button.confirmed, .header-actions .setup-button { background: var(--proto-text); color: var(--proto-bg); }
 	.header-actions button:disabled { opacity: .35; }
+	.host-owned { padding: 7px 9px; border: 1px solid var(--proto-line-strong); color: var(--proto-muted); font: 700 9px var(--font-code); letter-spacing: .1em; }
 	.transport-button { width: 31px; padding: 0 !important; font-family: var(--font-code) !important; }
 	.tempo { display: flex; height: 30px; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid var(--proto-line); color: var(--proto-muted); font: 8px var(--font-code); }
 	.tempo input { width: 39px; border: 0; background: transparent; color: var(--proto-text); font: 10px var(--font-code); }

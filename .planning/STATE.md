@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 3 preset 13 Axis Mirror research.
-last_updated: "2026-07-20T13:56:20Z"
-last_activity: 2026-07-20 — Cloister Organum became operational through reusable explicit interval maps; Tauri dev guitar overflow resets were fixed by optimizing the audio DSP crate.
+stopped_at: Phase 16 prototype UI promotion and plugin build.
+last_updated: "2026-07-20T14:28:50Z"
+last_activity: 2026-07-20 — Direct VST3 hosting was parked in Phase 21.C3; the approved workflow is Contrapunk as a MIDI-output plugin before Analog Lab V, with the prototype workspace promoted to the production UI.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -20,17 +20,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisions subsection)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Phase 10.2 composer-informed arrangement preset foundation and the first 12 research-backed presets.
+**Current focus:** Promote the prototype workspace to the production desktop/plugin UI and bundle Contrapunk as a MIDI-output plugin for Analog Lab V.
 **Mandatory checkpoint:** Stop after the first 12 operational presets for user performance testing before Wave 3.
 **Parked validation:** User-operated hardware, DAW, installer, signing, and notarization validation for v1.3.0 remains unfinished.
 **Queued work:** Elixir remains preserved in the working tree and roadmap, but is not active.
 
 ## Current Position
 
-Phase: 10.2 Composer-Informed Arrangement Presets
-Plan: Wave 3 — reusable voicing strategies
-Status: Wave 3 in progress; preset 01 Cloister Organum operational, preset 13 Axis Mirror next
-Last activity: 2026-07-20 — Cloister Organum shipped as a bounded two-voice Dorian explicit-interval map with full Tauri/WASM controls and persistence. The reported fragmented guitar sustain was traced to dev-only queue overflow after the July 19 worker move; `contrapunk-audio` now builds optimized in dev, and the user confirmed a sustained hardware note produces one continuous MIDI note.
+Phase: 16 VST3/CLAP/AU Plugin
+Plan: Promote the prototype workspace and bundle the existing nih-plug MIDI-output plugin
+Status: In progress; direct hosting is parked under Phase 21.C3
+Last activity: 2026-07-20 — The production root now uses the prototype workspace. Plugin mode will expose host MIDI, Full Contrapunk output, and internal-monitor controls so a DAW can place Analog Lab V after Contrapunk. Phase 10.2 is paused with preset 13 Axis Mirror next.
 
 ### Phase 10.2 Start — 2026-07-19
 
