@@ -22,7 +22,7 @@
    self = [super initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
  
    idleTimer = nil;
-@@ -140,23 +140,40 @@
+@@ -140,23 +140,48 @@
    gui->set_parent(ui._plugin->_plugin, &m);
    gui->set_scale(ui._plugin->_plugin, 1.0);
  
@@ -60,6 +60,14 @@
 +{
 +  NSWindow *window = [self window];
 +  if (!window) return;
++
++  NSView *container = [self superview];
++  if (container)
++  {
++    [container setAutoresizesSubviews:YES];
++    [self setFrame:[container bounds]];
++    [self setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
++  }
 +
 +  [window setContentMinSize:NSMakeSize(1200, 800)];
 +  [window setStyleMask:([window styleMask] | NSWindowStyleMaskResizable)];

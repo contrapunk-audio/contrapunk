@@ -79,7 +79,7 @@ if [ "$INSTALL" = true ]; then
         echo "Installed to: $dest"
     done
     echo "Validate: auval -v aumi CpHm CpAu"
-    echo "Validate: auval -v aumf CpGt CpAu"
+    echo "Validate: auval -v aufx CpGt CpAu"
 else
     echo ""
     echo "To install both components, re-run with: ./build.sh --install"

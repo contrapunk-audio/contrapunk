@@ -319,7 +319,9 @@ struct ContrapunkParams {
     #[id = "midi_output"]
     pub midi_output_mode: EnumParam<PluginMidiOutputMode>,
 
-    #[persist = "webview_state"]
+    // v2 drops the legacy 900×700 editor state now that the production
+    // workspace requires 1200×800.
+    #[persist = "webview_state_v2"]
     pub webview_state: Arc<nih_plug_webview::WebViewState>,
 }
 
