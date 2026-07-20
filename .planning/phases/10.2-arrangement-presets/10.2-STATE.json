@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "implement-preset-25-bebop-chase",
+  "current_slice": "research-preset-27-quartal-colossus",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -30,7 +30,8 @@
     8,
     12,
     14,
-    23
+    23,
+    25
   ],
   "draft_presets": [
     1,
@@ -303,7 +304,7 @@
       }
     },
     "25-bebop-chase": {
-      "status": "approved",
+      "status": "operational",
       "required_reports": 3,
       "completed_reports": 3,
       "history": {
@@ -319,13 +320,14 @@
         "path": ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/performance.md"
       },
       "synthesis": {
-        "status": "approved",
+        "status": "implemented",
         "path": ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/synthesis.md",
         "decision": "ready_for_implementation",
         "note": "Approved only as a complete four-beat-delayed octave answer to a performer-bounded short burst; the original shortened-answer claim is rejected."
       },
       "implementation": {
-        "status": "ready",
+        "status": "operational",
+        "commit": "f72aafb",
         "preset_id": "25-bebop-chase"
       }
     }
@@ -454,6 +456,17 @@
         "Public copy rejects claims of borrowing, family movement, chromatic extra-note rules, swing, phrase inference, or authentic Harris imitation.",
         "The shared BarryHarris fix removes the doubled melody pitch class and returns exactly four total voices with the exact source once as soprano.",
         "All eight collection degrees plus unsupported chromatic input return matching NoteOn/NoteOff sets and empty active state."
+      ]
+    },
+    {
+      "id": "preset-25-bebop-chase",
+      "status": "verified",
+      "evidence": [
+        "Three independent openai-codex/gpt-5.6-sol reports and a parent synthesis are committed.",
+        "The original shortened-answer claim is rejected; the operational scope is one complete four-beat-delayed octave answer to a performer-bounded short burst.",
+        "One PassThrough Free Imitation follower uses delay 4, transpose +7 scale degrees, timeRatio 1, and a bounded four-beat NearFuture tail.",
+        "A four-note lifecycle regression retains every pending response after source release, emits exactly four matched NoteOns/NoteOffs, and ends with empty pending, held, and active state.",
+        "Public copy rejects phrase recognition, shortening, generated swing, chord following, trading fours, and Parker/Gillespie simulation."
       ]
     }
   ],
@@ -585,6 +598,22 @@
     {
       "command": "preset 25 research-pack validation",
       "result": "3 nonempty independently cited reports plus template-complete parent synthesis; narrowed decision ready_for_implementation"
+    },
+    {
+      "command": "cargo test -p contrapunk-companion bebop_chase_repeats_every_short_burst_attack_and_releases_cleanly --lib",
+      "result": "1 passed"
+    },
+    {
+      "command": "cargo test -p contrapunk-companion --lib",
+      "result": "69 passed"
+    },
+    {
+      "command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs",
+      "result": "11 passed"
+    },
+    {
+      "command": "npm --prefix ui run check (Bebop Chase)",
+      "result": "0 errors; 29 pre-existing warnings"
     }
   ],
   "blockers": [
@@ -602,6 +631,6 @@
     "Preset 23 cannot activate until BarryHarris returns exactly four total voices with the exact player source once in the soprano role.",
     "Preset 25 is a performer-bounded four-to-six-note burst answered four beats later by a complete unity-time octave echo; no shortening, phrase recognition, swing, chord logic, trading fours, or artist imitation is claimed."
   ],
-  "last_commit": "86b3973",
-  "next_action": "Implement the approved bounded preset 25 config and catalog copy with one Free Imitation voice at delay 4, transpose 7, timeRatio 1, velocityScale 0.82, and near-future 4-beat hold; add balanced lifecycle/catalog regressions and verify before preset 27."
+  "last_commit": "f72aafb",
+  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 27 Quartal Colossus (McCoy Tyner), then parent-synthesize before changing its research-pending draft."
 }
