@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "research-preset-23-sixth-diminished-conveyor",
+  "current_slice": "implement-preset-23-sixth-diminished-conveyor",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -196,6 +196,39 @@
         "commit": "462041c2",
         "preset_id": "14-color-mode-windows"
       }
+    },
+    "23-sixth-diminished-conveyor": {
+      "status": "researched",
+      "required_reports": 3,
+      "completed_reports": 3,
+      "history": {
+        "status": "complete",
+        "attempts": 3,
+        "path": ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/history.md",
+        "note": "Initial parallel launch failed on provider transport and the first concurrent resume lacked a Codex credential; a sequential resume using openai-codex/gpt-5.6-sol completed the report."
+      },
+      "theory": {
+        "status": "complete",
+        "attempts": 2,
+        "path": ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/theory.md",
+        "note": "Initial launch failed on provider transport; the resumed openai-codex/gpt-5.6-sol session completed the report and local engine audit."
+      },
+      "performance": {
+        "status": "complete",
+        "attempts": 3,
+        "path": ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/performance.md",
+        "note": "Initial parallel launch failed on provider transport and the first concurrent resume lacked a Codex credential; a sequential resume using openai-codex/gpt-5.6-sol completed the report."
+      },
+      "synthesis": {
+        "status": "approved",
+        "path": ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/synthesis.md",
+        "decision": "ready_for_implementation"
+      },
+      "implementation": {
+        "status": "blocked_on_voice_contract_fix",
+        "preset_id": "23-sixth-diminished-conveyor",
+        "note": "Fix shared BarryHarris block voicing to four total voices with the exact source once in the soprano role before activation."
+      }
     }
   },
   "completed_requirements": ["ARRP-01", "ARRP-02", "ARRP-04", "ARRP-05"],
@@ -305,6 +338,17 @@
         "Public copy rejects automatic collection rotation and correctly states that six-note AugmentedHex is not Messiaen's nine-note Mode 3.",
         "Performer guidance assigns repeated cells, register, velocity, articulation, density, and silence contrast to the player."
       ]
+    },
+    {
+      "id": "preset-23-research",
+      "status": "verified",
+      "evidence": [
+        "Three independent openai-codex/gpt-5.6-sol reports and a parent synthesis are committed.",
+        "The bounded scope is Harris's mature sixth-diminished teaching, not his whole career or all bebop.",
+        "The current parity kernel is research-supported, but the mode incorrectly emits five notes for a documented four-voice drop-2 contract.",
+        "Activation requires exactly four total voices with the exact source once as soprano, plus all-degree and lifecycle regressions.",
+        "Public copy must reject claims of borrowing, family movement, chromatic extra-note rules, swing, phrase inference, or authentic Harris imitation."
+      ]
     }
   ],
   "commands": [
@@ -334,7 +378,8 @@
     {"command": "npm --prefix ui run check (Planed Cathedral)", "result": "0 errors; 29 pre-existing warnings"},
     {"command": "cargo test -p contrapunk-harmony --lib", "result": "269 passed"},
     {"command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs", "result": "9 passed"},
-    {"command": "npm --prefix ui run check (Color-Mode Windows)", "result": "0 errors; 29 pre-existing warnings"}
+    {"command": "npm --prefix ui run check (Color-Mode Windows)", "result": "0 errors; 29 pre-existing warnings"},
+    {"command": "preset 23 research-pack validation", "result": "3 nonempty independently cited reports plus template-complete parent synthesis; decision ready_for_implementation"}
   ],
   "blockers": [
     "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
@@ -346,8 +391,10 @@
     "Research must explain scoped artist/style evolution within phrases, across sections, and across relevant career periods.",
     "Execution hard-stops after the first twelve operational presets for user testing.",
     "Preset application preserves tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, and transport state.",
-    "Use only openai-codex/gpt-5.6-sol for research and all other subagent work."
+    "Use only openai-codex/gpt-5.6-sol for research and all other subagent work.",
+    "Preset 23 is a fixed major sixth-diminished scale-of-chords study; no borrowing, family movement, chromatic-line rules, swing, or phrase inference is claimed.",
+    "Preset 23 cannot activate until BarryHarris returns exactly four total voices with the exact player source once in the soprano role."
   ],
-  "last_commit": "462041c2",
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 23 Sixth-Diminished Conveyor (Barry Harris), then parent-synthesize before changing its research-pending draft."
+  "last_commit": "7c55ff23",
+  "next_action": "Fix the shared BarryHarris four-total-voice/source-top contract with deterministic all-degree and lifecycle regressions, then activate the bounded preset 23 record and run harmony/catalog/UI checks."
 }

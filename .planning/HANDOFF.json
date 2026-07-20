@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-19T18:19:12Z",
+  "timestamp": "2026-07-20T08:24:53Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-23-sixth-diminished-conveyor",
+  "task": "implement-preset-23-sixth-diminished-conveyor",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -46,7 +46,11 @@
     {
       "name": "Preset 02 Modal Linework research, implementation, 50-record catalog, and V2 UI",
       "status": "done_operational",
-      "commits": ["4ce9ffd", "9cb71a7", "43e9363"],
+      "commits": [
+        "4ce9ffd",
+        "9cb71a7",
+        "43e9363"
+      ],
       "evidence": "Harmony 267 passed; catalog/persistence 4 passed; UI check zero errors.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/history.md",
@@ -54,13 +58,28 @@
         ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/performance.md",
         ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md"
       ]
+    },
+    {
+      "name": "Preset 23 Sixth-Diminished Conveyor research pack and synthesis",
+      "commit": "7c55ff23",
+      "status": "done_researched",
+      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis; activation waits on the shared four-total-voice BarryHarris fix.",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/synthesis.md"
+      ]
     }
   ],
   "remaining_work": [
     {
       "name": "Preset 04 Mensuration Web research and implementation",
       "status": "done_operational",
-      "commits": ["eef1094", "3b96b4e"],
+      "commits": [
+        "eef1094",
+        "3b96b4e"
+      ],
       "evidence": "Companion 61 passed; catalog/persistence 5 passed; UI check zero errors.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/history.md",
@@ -72,7 +91,10 @@
     {
       "name": "Preset 07 Stretto Engine research and implementation",
       "status": "done_operational",
-      "commits": ["d1ab796", "ff74c6d"],
+      "commits": [
+        "d1ab796",
+        "ff74c6d"
+      ],
       "evidence": "Companion 62 passed; catalog/persistence 6 passed; UI check zero errors.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/history.md",
@@ -84,7 +106,10 @@
     {
       "name": "Preset 08 Suspension Garland research, Species IV lifecycle, and operational preset",
       "status": "done_operational",
-      "commits": ["ef5fd3a", "135042c"],
+      "commits": [
+        "ef5fd3a",
+        "135042c"
+      ],
       "evidence": "Companion 68 passed; catalog/persistence 7 passed; UI check zero errors. Normal trace proves weak preparation, retained strong suspension, downward-step resolution, and balanced cleanup.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/history.md",
@@ -96,7 +121,10 @@
     {
       "name": "Preset 12 Planed Cathedral research and implementation",
       "status": "done_operational",
-      "commits": ["a2768ab", "8ccf269"],
+      "commits": [
+        "a2768ab",
+        "8ccf269"
+      ],
       "evidence": "Harmony 268 passed; catalog/persistence 8 passed; UI check zero errors.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/12-planed-cathedral/history.md",
@@ -108,7 +136,10 @@
     {
       "name": "Preset 14 Color-Mode Windows research and implementation",
       "status": "done_operational",
-      "commits": ["ac25c498", "462041c2"],
+      "commits": [
+        "ac25c498",
+        "462041c2"
+      ],
       "evidence": "Harmony 269 passed; catalog/persistence 9 passed; UI check zero errors.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/14-color-mode-windows/history.md",
@@ -120,7 +151,7 @@
     {
       "name": "Research and implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: research preset 23 Sixth-Diminished Conveyor. Then order: 25, 27, 36, 43, 48."
+      "details": "Current: implement researched preset 23 Sixth-Diminished Conveyor after fixing the shared four-total-voice BarryHarris contract. Then order: 25, 27, 36, 43, 48."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -164,6 +195,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol research perspectives for preset 23 Sixth-Diminished Conveyor, then parent-synthesize before changing its draft.",
-  "context_notes": "Six baselines are operational. Color-Mode Windows is a static exact [0,3,6,9] Mode-2 diminished-seventh plane with player-framed cells; it does not rotate collections or claim the six-note AugmentedHex is Messiaen's nine-note Mode 3."
+  "next_action": "Fix the shared BarryHarris block voicing to four total voices with the exact source once as soprano; add all-degree, unsupported-input, repeated-note, and NoteOn/NoteOff lifecycle regressions; then activate the bounded preset 23 record.",
+  "context_notes": "Six baselines remain operational. Preset 23 research is complete and committed at 7c55ff23. The honest scope is a fixed major sixth-diminished scale-of-chords study. Current BarryHarris code emits five notes for a documented four-voice mode, so activation is blocked on that shared contract fix."
 }
