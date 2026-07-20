@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "lock-preset-36-pixel-trio-catalog",
+  "current_slice": "research-preset-43-hollow-choir",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -392,8 +392,13 @@
         "note": "Synchronous three-pitch harmony is not independent lead, low-support, and counterline economy; requires reusable pattern_lane plus stable_lane_groups."
       },
       "implementation": {
-        "status": "ready_to_mark_blocked",
-        "preset_id": "36-pixel-trio"
+        "status": "blocked_visible",
+        "commit": "32d90ef",
+        "preset_id": "36-pixel-trio",
+        "requirements": [
+          "pattern_lane",
+          "stable_lane_groups"
+        ]
       }
     }
   },
@@ -543,6 +548,17 @@
         "Dorian plus DiatonicFourths, four voices, and source-lowest yields exact [0,5,10,15] stacks on degrees 1, 2, 5, and 6 and disclosed augmented-fourth variants on the other degrees.",
         "The all-degree regression verifies exact source ownership, matching NoteOff sets, chromatic fallback outside corpus, and empty active state.",
         "Public guidance assigns rhythm, accents, register, dynamics, repetition, resolution, form, and silence to the performer."
+      ]
+    },
+    {
+      "id": "preset-36-pixel-trio",
+      "status": "blocked",
+      "evidence": [
+        "Three independent openai-codex/gpt-5.6-sol reports and a parent synthesis are committed.",
+        "The stock NES APU has five unequal sources; the target is a bounded three-pitched-role abstraction, not hardware emulation.",
+        "Current HarmonyEngine outputs share every source onset/release and cannot honestly supply independent lead, low-support, and counterline roles.",
+        "The preset remains visible with researchStatus blocked and explicit pattern_lane plus stable_lane_groups requirements.",
+        "Public copy rejects chip synthesis, percussion, looping, game-state adaptation, copyrighted game material, and Kondo/Matsumae imitation."
       ]
     }
   ],
@@ -714,6 +730,14 @@
     {
       "command": "preset 36 research-pack validation",
       "result": "3 nonempty independently cited reports plus template-complete parent synthesis; decision keep_locked"
+    },
+    {
+      "command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs",
+      "result": "13 passed"
+    },
+    {
+      "command": "npm --prefix ui run check (Pixel Trio locked record)",
+      "result": "0 errors; 29 pre-existing warnings"
     }
   ],
   "blockers": [
@@ -733,6 +757,6 @@
     "Preset 27 is a static Dorian DiatonicFourths study with four total voices and source-lowest; exact perfect-fourth stacks occur only on degrees 1, 2, 5, and 6, and all temporal development remains performer-authored.",
     "Preset 36 remains locked: current HarmonyEngine three-pitch outputs share every source onset/release and cannot honestly represent independent lead, low-support, and counterline roles; unlocking requires reusable pattern_lane and stable_lane_groups capabilities."
   ],
-  "last_commit": "d31d84d",
-  "next_action": "Mark preset 36 research-complete but blocked in the catalog with pattern_lane and stable_lane_groups requirements and the synthesized capability explanation; test visibility/gating, then begin preset 43 research."
+  "last_commit": "32d90ef",
+  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 43 Hollow Choir (Christopher Larkin / Hollow Knight bounded corpus), then parent-synthesize before implementation."
 }

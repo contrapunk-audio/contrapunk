@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T10:48:00Z",
+  "timestamp": "2026-07-20T10:54:00Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "lock-preset-36-pixel-trio-catalog",
+  "task": "research-preset-43-hollow-choir",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -121,6 +121,12 @@
         ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/performance.md",
         ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/synthesis.md"
       ]
+    },
+    {
+      "name": "Preset 36 Pixel Trio visible capability lock",
+      "commit": "32d90ef",
+      "status": "done_blocked_visible",
+      "evidence": "Catalog record is research-complete and blocked on pattern_lane + stable_lane_groups; catalog/persistence 13 passed, UI check zero errors."
     }
   ],
   "remaining_work": [
@@ -202,7 +208,7 @@
     {
       "name": "Research and implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: mark preset 36 visibly blocked, then research 43 and 48. Operational count remains 9/12 until a reusable role scheduler exists or the baseline order is explicitly revised."
+      "details": "Current: research preset 43 Hollow Choir, then 48. Operational count is 9/12 because preset 36 is honestly blocked on a reusable role scheduler."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -246,6 +252,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Update preset 36 catalog metadata to researchStatus blocked, requirements pattern_lane + stable_lane_groups, and an honest target/locked explanation. Verify it remains visible but non-applicable; then checkpoint and begin preset 43 research.",
-  "context_notes": "Nine baselines are operational. Preset 36 research is committed in d31d84d with keep_locked decision: a synchronous three-pitch mapping is not independent three-role economy. Unlocking requires shared pattern_lane and stable_lane_groups; no preset-specific scheduler."
+  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 43 Hollow Choir: scoped Hollow Knight/Christopher Larkin history, minor chorale/voice-leading theory mapped to current engine, and performer/HCI guidance. Parent-synthesize before implementation.",
+  "context_notes": "Nine baselines are operational. Preset 36 is visible but blocked in 32d90ef on pattern_lane + stable_lane_groups. Remaining research order: 43, 48; do not count 36 operational or weaken its claim."
 }
