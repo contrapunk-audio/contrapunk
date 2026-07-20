@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 2 hard-stop at 11/12 operational; preset 36 requires a reusable role scheduler or an explicit baseline-order revision.
-last_updated: "2026-07-20T13:02:00Z"
-last_activity: 2026-07-20 — Shipped Crystal Chorale, completed all first-12 research, and stopped honestly at the Pixel Trio capability blocker.
+stopped_at: Phase 10.2 mandatory user performance checkpoint at 12/12 operational; Wave 3 requires explicit approval.
+last_updated: "2026-07-20T11:42:17Z"
+last_activity: 2026-07-20 — Shipped reusable PatternLane roles and unlocked Pixel Trio as the twelfth operational baseline.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Wave 2 blocked at 11/12 operational; all cataloged baseline research complete; Wave 3 prohibited
-Last activity: 2026-07-20 — Crystal Chorale is operational as HarmonicMinor SATB harmony plus one fixed two-beat per-note octave echo. Pixel Trio remains blocked on pattern_lane + stable_lane_groups, so the mandatory 12-preset checkpoint has not been reached.
+Status: Wave 2 complete at 12/12 operational; mandatory user performance checkpoint active; Wave 3 prohibited
+Last activity: 2026-07-20 — Pixel Trio is operational through two reusable declarative PatternLane roles with independent low-support/counterline timing and stable ownership. The loop is hard-stopped for user testing.
 
 ### Phase 10.2 Start — 2026-07-19
 

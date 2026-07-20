@@ -1,19 +1,19 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T13:02:00Z",
+  "timestamp": "2026-07-20T11:42:17Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "user-decision-preset-36-blocker",
+  "task": "mandatory-user-performance-checkpoint",
   "total_plans": 7,
-  "status": "blocked",
+  "status": "awaiting_user",
   "loop": {
     "id": 1,
     "title": "Complete Contrapunk\u2019s research-backed arrangement preset catalog",
-    "status": "blocked_wave_2_at_11_operational",
-    "hard_stop": "After first 12 operational presets for user performance testing"
+    "status": "hard_stopped_at_12_operational",
+    "hard_stop": "Await user performance testing and explicit approval before Wave 3"
   },
   "completed_work": [
     {
@@ -126,7 +126,13 @@
       "name": "Preset 36 Pixel Trio visible capability lock",
       "commit": "32d90ef",
       "status": "done_blocked_visible",
-      "evidence": "Catalog record is research-complete and blocked on pattern_lane + stable_lane_groups; catalog/persistence 13 passed, UI check zero errors."
+      "evidence": "Catalog record was honestly blocked until shared pattern_lane + stable_lane_groups support existed."
+    },
+    {
+      "name": "Reusable PatternLane scheduler and operational Pixel Trio",
+      "commit": "b1b80eb",
+      "status": "done_operational",
+      "evidence": "Two generic declarative lanes provide independent low-support/counterline timing, rests, register offsets, stable role IDs, bounded tails, and exact cleanup across Tauri/WASM. Companion 76, Tauri 36, catalog/persistence 15, UI zero errors; WASM check passed."
     },
     {
       "name": "Preset 43 Hollow Choir research and parent synthesis",
@@ -243,13 +249,13 @@
     },
     {
       "name": "Research and implement remaining first-12 baselines",
-      "status": "blocked",
-      "details": "IDs 43 and 48 are operational. Preset 36 is research-complete but blocked on reusable pattern_lane + stable_lane_groups, leaving 11/12 operational."
+      "status": "done_operational",
+      "details": "All 12 baselines are operational; Pixel Trio uses reusable pattern_lane + stable_lane_groups support."
     },
     {
       "name": "Mandatory user performance checkpoint",
-      "status": "not_started",
-      "details": "Not reached: 11/12 operational because preset 36 is honestly blocked. Wave 3 remains prohibited."
+      "status": "awaiting_user",
+      "details": "Reached at 12/12 operational. Wave 3 remains prohibited until explicit user approval."
     },
     {
       "name": "Waves 3-7",
@@ -264,20 +270,15 @@
       "workaround": "Stage explicit Phase 10.2 paths only; never stage .pi-subagents/."
     },
     {
-      "description": "Pixel Trio requires reusable independent low-support/counterline scheduling and stable role ownership; synchronous HarmonyEngine outputs are insufficient. Baseline order is exhausted at 11/12.",
-      "type": "capability",
-      "workaround": "User must explicitly choose shared scheduler implementation or revise the baseline order; never silently substitute or weaken the claim."
+      "description": "Wave 3 requires user performance testing and explicit approval after the 12-preset checkpoint.",
+      "type": "human_checkpoint",
+      "workaround": "None; keep the loop hard-stopped until the user approves continuation."
     }
   ],
   "human_actions_pending": [
     {
-      "action": "Test the first 12 presets when the loop reaches its hard checkpoint",
+      "action": "Performance-test all 12 operational presets and explicitly approve or report issues",
       "context": "The loop must not enter Wave 3 before explicit approval.",
-      "blocking": false
-    },
-    {
-      "action": "Choose how to resolve the 11/12 baseline blocker",
-      "context": "Option A: build reusable pattern_lane + stable_lane_groups for Pixel Trio. Option B: explicitly revise baseline order and name a replacement. Wave 3 remains blocked either way until 12 operational presets are tested and approved.",
       "blocking": true
     }
   ],
@@ -287,6 +288,7 @@
     "Exactly three independent reports plus a parent synthesis are required before activation.",
     "Preset apply preserves tonic, tempo, devices, routing, sound, master level, mute/solo, plugins, and transport state.",
     "Temporal behavior uses reusable Companion Lanes; stateless pitch mapping uses shared harmony strategies.",
+    "Pixel Trio uses two generic declarative PatternLane roles; no preset-specific Rust scheduling branch is allowed.",
     "Stop after the first 12 for user testing.",
     "Use only openai-codex/gpt-5.6-sol for research and all other subagent work."
   ],
@@ -298,6 +300,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Hard-stop and ask the user to choose between implementing the reusable Pixel Trio role scheduler or explicitly revising the first-12 baseline order. Do not enter Wave 3.",
-  "context_notes": "Eleven baselines are operational: 2, 4, 7, 8, 12, 14, 23, 25, 27, 43, 48. Preset 36 is visible and blocked on pattern_lane + stable_lane_groups. All cataloged first-12 research is complete. Wave 3 is prohibited."
+  "next_action": "Hard-stop and ask the user to performance-test the twelve operational baselines. Do not enter Wave 3 without explicit approval.",
+  "context_notes": "Twelve baselines are operational: 2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48. Pixel Trio uses shared pattern_lane + stable_lane_groups support. Wave 3 is prohibited pending user testing and approval."
 }
