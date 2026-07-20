@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "implement-preset-43-hollow-choir",
+  "current_slice": "research-preset-48-crystal-chorale",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -32,7 +32,8 @@
     14,
     23,
     25,
-    27
+    27,
+    43
   ],
   "draft_presets": [
     1,
@@ -402,7 +403,7 @@
       }
     },
     "43-hollow-choir": {
-      "status": "approved",
+      "status": "operational",
       "required_reports": 3,
       "completed_reports": 3,
       "history": {
@@ -421,13 +422,14 @@
         "path": ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/performance.md"
       },
       "synthesis": {
-        "status": "approved",
+        "status": "implemented",
         "path": ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/synthesis.md",
         "decision": "ready_for_implementation",
         "note": "Approved only as a static Aeolian four-part SATB-style harmonic shadow; no literal choir, distance, counterline, ambience, adaptive scene, or soundtrack claim."
       },
       "implementation": {
-        "status": "ready",
+        "status": "operational",
+        "commit": "f37acf4",
         "preset_id": "43-hollow-choir"
       }
     }
@@ -589,6 +591,17 @@
         "Current HarmonyEngine outputs share every source onset/release and cannot honestly supply independent lead, low-support, and counterline roles.",
         "The preset remains visible with researchStatus blocked and explicit pattern_lane plus stable_lane_groups requirements.",
         "Public copy rejects chip synthesis, percussion, looping, game-state adaptation, copyrighted game material, and Kondo/Matsumae imitation."
+      ]
+    },
+    {
+      "id": "preset-43-hollow-choir",
+      "status": "verified",
+      "evidence": [
+        "Three independent openai-codex/gpt-5.6-sol reports and a parent synthesis are committed.",
+        "The bounded scope is one static Aeolian SATB-style harmonic shadow from selected sparse-to-climactic 2014\u201318 project scoring, not a choir or artist/style simulation.",
+        "Fresh C Aeolian C5 produces [72,63,55,46] with source once as soprano; the corrected D5 harmonic-inertia oracle is [74,72,63,43].",
+        "The regression verifies matching NoteOff ownership and empty active state.",
+        "Public guidance rejects literal choir, orchestration, distance, counterline, ambience, adaptive scenes, narrative response, protected cue material, and soundtrack reconstruction."
       ]
     }
   ],
@@ -772,6 +785,22 @@
     {
       "command": "preset 43 research-pack validation",
       "result": "3 nonempty independently cited reports plus template-complete parent synthesis; narrowed decision ready_for_implementation"
+    },
+    {
+      "command": "cargo test -p contrapunk-harmony aeolian_chorale_shadow_keeps_soprano_and_balanced_release --lib",
+      "result": "1 passed"
+    },
+    {
+      "command": "cargo test -p contrapunk-harmony --lib",
+      "result": "271 passed"
+    },
+    {
+      "command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs",
+      "result": "14 passed"
+    },
+    {
+      "command": "npm --prefix ui run check (Hollow Choir)",
+      "result": "0 errors; 29 pre-existing warnings"
     }
   ],
   "blockers": [
@@ -792,6 +821,6 @@
     "Preset 36 remains locked: current HarmonyEngine three-pitch outputs share every source onset/release and cannot honestly represent independent lead, low-support, and counterline roles; unlocking requires reusable pattern_lane and stable_lane_groups capabilities.",
     "Preset 43 is a static Aeolian BachChorale harmonic shadow with the source as soprano; choir timbre, distance, independent counterline, ambience, adaptive scenes, soundtrack reconstruction, and artist identity remain out of scope."
   ],
-  "last_commit": "c2920de",
-  "next_action": "Implement preset 43 exactly as synthesized with Aeolian, BachChorale, four voices, voicePosition 0, no external voice leading/octave mode/Companion; add exact pitch/lifecycle and catalog regressions before preset 48."
+  "last_commit": "f37acf4",
+  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 48 Crystal Chorale (bounded Nobuo Uematsu / Final Fantasy corpus), then parent-synthesize before implementation."
 }

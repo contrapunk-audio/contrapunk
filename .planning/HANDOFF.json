@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T11:42:00Z",
+  "timestamp": "2026-07-20T11:51:00Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "implement-preset-43-hollow-choir",
+  "task": "research-preset-48-crystal-chorale",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -139,6 +139,12 @@
         ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/performance.md",
         ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/synthesis.md"
       ]
+    },
+    {
+      "name": "Preset 43 Hollow Choir bounded implementation",
+      "commit": "f37acf4",
+      "status": "done_operational",
+      "evidence": "Static Aeolian four-part SATB-style harmonic shadow; Harmony 271 passed, catalog/persistence 14 passed, UI check zero errors and 29 pre-existing warnings."
     }
   ],
   "remaining_work": [
@@ -220,7 +226,7 @@
     {
       "name": "Research and implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: implement approved bounded preset 43 Hollow Choir, then research 48. Operational count remains 9/12; preset 36 stays blocked."
+      "details": "Current: research preset 48 Crystal Chorale. Operational count is 10/12; preset 36 remains blocked on a reusable role scheduler."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -264,6 +270,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Implement preset 43 exactly as synthesized: Aeolian + BachChorale, voiceCount 4, voicePosition 0, no external voice leading/octave mode/Companion. Add exact C5 and D5 pitch/lifecycle tests plus catalog assertions, then verify.",
-  "context_notes": "Nine baselines are operational and preset 36 remains blocked. Preset 43 research is committed in c2920de and approves only a static SATB-style harmonic shadow, never a literal choir, distant ensemble, counterline, adaptive scene, or soundtrack/artist simulation."
+  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 48 Crystal Chorale: bounded Nobuo Uematsu/Final Fantasy history, harmonic-minor chorale/octave-answer theory mapped to current engine, and performer/HCI guidance. Parent-synthesize before implementation.",
+  "context_notes": "Ten baselines are operational. Preset 36 remains visible and blocked. Preset 43 shipped in f37acf4 as a static Aeolian SATB-style shadow with no literal choir, counterline, distance, ambience, adaptive scene, soundtrack, or artist claim. Preset 48 is the final cataloged baseline research gate."
 }
