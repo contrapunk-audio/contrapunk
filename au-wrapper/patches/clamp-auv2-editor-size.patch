@@ -65,13 +65,13 @@ index 3c362f6..a9e3071 100644
 +  if (!NSEqualRects([self frame], target))
 +  {
 +    [super setFrame:target];
-+    [self resizeEmbeddedViews];
 +    if (uiCreated && canary)
 +    {
 +      auto gui = ui._plugin->_ext._gui;
 +      gui->set_size(ui._plugin->_plugin, target.size.width, target.size.height);
 +    }
 +  }
++  [self resizeEmbeddedViews];
  }
  
  - (void)attachCLAPGui
