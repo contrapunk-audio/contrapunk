@@ -26,9 +26,9 @@
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
 	import ExplicitIntervalMapPanel from '$lib/components/ExplicitIntervalMapPanel.svelte';
-	import ArrangementMixer from './ArrangementMixer.svelte';
-	import ExpressionRoll from './ExpressionRoll.svelte';
-	import PatternLanePanel from './PatternLanePanel.svelte';
+	import ArrangementMixer from '$lib/prototype/ArrangementMixer.svelte';
+	import ExpressionRoll from '$lib/prototype/ExpressionRoll.svelte';
+	import PatternLanePanel from '$lib/prototype/PatternLanePanel.svelte';
 
 	type SetupSection = 'input' | 'harmony' | 'canon' | 'counterpoint' | 'output' | 'presets' | 'advanced';
 
