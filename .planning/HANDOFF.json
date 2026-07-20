@@ -1,17 +1,17 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T08:37:51Z",
+  "timestamp": "2026-07-20T09:01:19Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-25-bebop-chase",
+  "task": "implement-preset-25-bebop-chase",
   "total_plans": 7,
   "status": "active",
   "loop": {
     "id": 1,
-    "title": "Complete Contrapunk’s research-backed arrangement preset catalog",
+    "title": "Complete Contrapunk\u2019s research-backed arrangement preset catalog",
     "status": "executing_wave_2",
     "hard_stop": "After first 12 operational presets for user performance testing"
   },
@@ -72,6 +72,18 @@
         ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/theory.md",
         ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/performance.md",
         ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/synthesis.md"
+      ]
+    },
+    {
+      "name": "Preset 25 Bebop Chase research and parent synthesis",
+      "commit": "86b3973",
+      "status": "done_research_approved",
+      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Approved only as a complete four-beat-delayed octave answer; the original shortened-answer claim is rejected.",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/synthesis.md"
       ]
     }
   ],
@@ -154,7 +166,7 @@
     {
       "name": "Research and implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: research preset 25 Bebop Chase. Then order: 27, 36, 43, 48."
+      "details": "Current: implement approved bounded preset 25 Bebop Chase. Then order: 27, 36, 43, 48."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -198,6 +210,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol research reports for preset 25 Bebop Chase: scoped Parker/Gillespie history, theory/temporal behavior, and performer/HCI; then parent-synthesize before implementation.",
-  "context_notes": "Seven baselines are operational. Preset 23 shipped in 0460ec7 as a fixed major sixth-diminished scale-of-chords study with exactly four total voices and the source once as soprano. It does not claim borrowing, family movement, chromatic extra-note rules, swing generation, phrase inference, or authentic Harris imitation."
+  "next_action": "Implement preset 25 exactly as synthesized: PassThrough player plus one Free Imitation voice at delay 4, transpose 7 scale degrees, unity time, 0.82 velocity, and bounded 4-beat NearFuture tail. Add exact response/lifecycle and catalog regressions; then verify and checkpoint before preset 27.",
+  "context_notes": "Seven baselines are operational. Preset 25 research is committed in 86b3973 and rejects the original shortened-answer claim. The approved scope is a complete four-beat-delayed octave echo of a performer-bounded four-to-six-note burst, with no phrase recognition, swing, chord logic, trading fours, or artist imitation."
 }

@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 2 preset 23 operational; next research gate is preset 25 Bebop Chase.
-last_updated: "2026-07-20T08:37:51Z"
-last_activity: 2026-07-20 — Shipped Sixth-Diminished Conveyor as a bounded four-voice major sixth-diminished scale-of-chords study.
+stopped_at: Phase 10.2 Wave 2 preset 25 research approved; bounded delayed-answer implementation is next.
+last_updated: "2026-07-20T09:01:19Z"
+last_activity: 2026-07-20 — Approved Bebop Chase only as a complete four-beat-delayed octave answer; rejected the unsupported shortened-answer claim.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 7/12 baseline presets operational
-Last activity: 2026-07-20 — Sixth-Diminished Conveyor is approved and operational. The shared BarryHarris path now emits exactly four total voices with the source once as soprano; the next three-report gate is preset 25 Bebop Chase.
+Status: Executing Wave 2; 7/12 baseline presets operational, preset 25 research approved
+Last activity: 2026-07-20 — Three independent reports and parent synthesis approved Bebop Chase only as a complete four-beat-delayed octave answer to a performer-bounded short burst. The original shortened-answer claim is rejected; implementation is next.
 
 ### Phase 10.2 Start — 2026-07-19
 
