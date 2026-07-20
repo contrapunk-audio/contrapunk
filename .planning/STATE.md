@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 2 preset 36 visibly locked; next research gate is preset 43 Hollow Choir.
-last_updated: "2026-07-20T10:54:00Z"
-last_activity: 2026-07-20 — Marked Pixel Trio research-complete and blocked on reusable pattern and stable-role capabilities.
+stopped_at: Phase 10.2 Wave 2 preset 43 research approved; bounded SATB-style minor shadow implementation is next.
+last_updated: "2026-07-20T11:42:00Z"
+last_activity: 2026-07-20 — Approved Hollow Choir only as a static Aeolian four-part SATB-style harmonic shadow.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 9/12 baseline presets operational; preset 36 visible and blocked
-Last activity: 2026-07-20 — Pixel Trio now has an honest blocked catalog record requiring pattern_lane and stable_lane_groups. The next three-report gate is preset 43 Hollow Choir.
+Status: Executing Wave 2; 9/12 baseline presets operational; preset 36 blocked; preset 43 research approved
+Last activity: 2026-07-20 — Three reports and synthesis approved Hollow Choir only as a reactive Aeolian SATB-style harmonic shadow. Literal choir, distance, counterline, ambience, adaptive scenes, and soundtrack imitation are excluded.
 
 ### Phase 10.2 Start — 2026-07-19
 

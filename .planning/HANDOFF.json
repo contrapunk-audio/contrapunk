@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T10:54:00Z",
+  "timestamp": "2026-07-20T11:42:00Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-43-hollow-choir",
+  "task": "implement-preset-43-hollow-choir",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -127,6 +127,18 @@
       "commit": "32d90ef",
       "status": "done_blocked_visible",
       "evidence": "Catalog record is research-complete and blocked on pattern_lane + stable_lane_groups; catalog/persistence 13 passed, UI check zero errors."
+    },
+    {
+      "name": "Preset 43 Hollow Choir research and parent synthesis",
+      "commit": "c2920de",
+      "status": "done_research_approved",
+      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Approved only as static Aeolian four-part SATB-style harmonic shadow.",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/synthesis.md"
+      ]
     }
   ],
   "remaining_work": [
@@ -208,7 +220,7 @@
     {
       "name": "Research and implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: research preset 43 Hollow Choir, then 48. Operational count is 9/12 because preset 36 is honestly blocked on a reusable role scheduler."
+      "details": "Current: implement approved bounded preset 43 Hollow Choir, then research 48. Operational count remains 9/12; preset 36 stays blocked."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -252,6 +264,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 43 Hollow Choir: scoped Hollow Knight/Christopher Larkin history, minor chorale/voice-leading theory mapped to current engine, and performer/HCI guidance. Parent-synthesize before implementation.",
-  "context_notes": "Nine baselines are operational. Preset 36 is visible but blocked in 32d90ef on pattern_lane + stable_lane_groups. Remaining research order: 43, 48; do not count 36 operational or weaken its claim."
+  "next_action": "Implement preset 43 exactly as synthesized: Aeolian + BachChorale, voiceCount 4, voicePosition 0, no external voice leading/octave mode/Companion. Add exact C5 and D5 pitch/lifecycle tests plus catalog assertions, then verify.",
+  "context_notes": "Nine baselines are operational and preset 36 remains blocked. Preset 43 research is committed in c2920de and approves only a static SATB-style harmonic shadow, never a literal choir, distant ensemble, counterline, adaptive scene, or soundtrack/artist simulation."
 }

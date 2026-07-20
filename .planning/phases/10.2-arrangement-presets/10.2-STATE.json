@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "research-preset-43-hollow-choir",
+  "current_slice": "implement-preset-43-hollow-choir",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -400,6 +400,36 @@
           "stable_lane_groups"
         ]
       }
+    },
+    "43-hollow-choir": {
+      "status": "approved",
+      "required_reports": 3,
+      "completed_reports": 3,
+      "history": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/history.md"
+      },
+      "theory": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/theory.md"
+      },
+      "performance": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/performance.md"
+      },
+      "synthesis": {
+        "status": "approved",
+        "path": ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/synthesis.md",
+        "decision": "ready_for_implementation",
+        "note": "Approved only as a static Aeolian four-part SATB-style harmonic shadow; no literal choir, distance, counterline, ambience, adaptive scene, or soundtrack claim."
+      },
+      "implementation": {
+        "status": "ready",
+        "preset_id": "43-hollow-choir"
+      }
     }
   },
   "completed_requirements": [
@@ -738,6 +768,10 @@
     {
       "command": "npm --prefix ui run check (Pixel Trio locked record)",
       "result": "0 errors; 29 pre-existing warnings"
+    },
+    {
+      "command": "preset 43 research-pack validation",
+      "result": "3 nonempty independently cited reports plus template-complete parent synthesis; narrowed decision ready_for_implementation"
     }
   ],
   "blockers": [
@@ -755,8 +789,9 @@
     "Preset 23 cannot activate until BarryHarris returns exactly four total voices with the exact player source once in the soprano role.",
     "Preset 25 is a performer-bounded four-to-six-note burst answered four beats later by a complete unity-time octave echo; no shortening, phrase recognition, swing, chord logic, trading fours, or artist imitation is claimed.",
     "Preset 27 is a static Dorian DiatonicFourths study with four total voices and source-lowest; exact perfect-fourth stacks occur only on degrees 1, 2, 5, and 6, and all temporal development remains performer-authored.",
-    "Preset 36 remains locked: current HarmonyEngine three-pitch outputs share every source onset/release and cannot honestly represent independent lead, low-support, and counterline roles; unlocking requires reusable pattern_lane and stable_lane_groups capabilities."
+    "Preset 36 remains locked: current HarmonyEngine three-pitch outputs share every source onset/release and cannot honestly represent independent lead, low-support, and counterline roles; unlocking requires reusable pattern_lane and stable_lane_groups capabilities.",
+    "Preset 43 is a static Aeolian BachChorale harmonic shadow with the source as soprano; choir timbre, distance, independent counterline, ambience, adaptive scenes, soundtrack reconstruction, and artist identity remain out of scope."
   ],
-  "last_commit": "32d90ef",
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 43 Hollow Choir (Christopher Larkin / Hollow Knight bounded corpus), then parent-synthesize before implementation."
+  "last_commit": "c2920de",
+  "next_action": "Implement preset 43 exactly as synthesized with Aeolian, BachChorale, four voices, voicePosition 0, no external voice leading/octave mode/Companion; add exact pitch/lifecycle and catalog regressions before preset 48."
 }
