@@ -6,6 +6,7 @@ import {
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
 	PLANED_CATHEDRAL_PRESET,
+	SIXTH_DIMINISHED_CONVEYOR_PRESET,
 	STRETTO_ENGINE_PRESET,
 	SUSPENSION_GARLAND_PRESET
 } from './catalog.ts';
@@ -38,7 +39,8 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			'07-stretto-engine',
 			'08-suspension-garland',
 			'12-planed-cathedral',
-			'14-color-mode-windows'
+			'14-color-mode-windows',
+			'23-sixth-diminished-conveyor'
 		]
 	);
 });
@@ -239,6 +241,50 @@ test('Color-Mode Windows fixes one exact Mode-2 diminished-seventh plane', () =>
 		'transport'
 	]) {
 		assert.equal(preserved in COLOR_MODE_WINDOWS_PRESET.config, false);
+	}
+});
+
+test('Sixth-Diminished Conveyor is one bounded four-voice scale-of-chords study', () => {
+	assert.deepEqual(SIXTH_DIMINISHED_CONVEYOR_PRESET.requirements, ['harmony']);
+	assert.equal(SIXTH_DIMINISHED_CONVEYOR_PRESET.play.transportRequired, false);
+	assert.deepEqual(SIXTH_DIMINISHED_CONVEYOR_PRESET.config.harmony, {
+		scaleMode: 'BHMajor6thDim',
+		mode: 'BarryHarris',
+		voiceCount: 4,
+		voicePosition: 0,
+		voiceLeadingEnabled: false,
+		voiceLeadingStyle: 'Free',
+		octaveMode: 'None',
+		octaveIntensity: 1,
+		interchangeEnabled: false,
+		interchangeRange: 3,
+		counterpointSpecies: 'Species1',
+		counterpointStrictness: 'Strict'
+	});
+	assert.equal(SIXTH_DIMINISHED_CONVEYOR_PRESET.config.companion.enabled, false);
+	assert.match(SIXTH_DIMINISHED_CONVEYOR_PRESET.approximation, /does not infer a song/);
+	assert.match(SIXTH_DIMINISHED_CONVEYOR_PRESET.approximation, /borrowed-note movement/);
+	assert.match(SIXTH_DIMINISHED_CONVEYOR_PRESET.approximation, /chromatic extra-note rules/);
+	assert.deepEqual(validateArrangementPreset(SIXTH_DIMINISHED_CONVEYOR_PRESET), []);
+	assert.deepEqual(arrangementConfigCapabilities(SIXTH_DIMINISHED_CONVEYOR_PRESET.config), [
+		'harmony'
+	]);
+
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in SIXTH_DIMINISHED_CONVEYOR_PRESET.config, false);
 	}
 });
 

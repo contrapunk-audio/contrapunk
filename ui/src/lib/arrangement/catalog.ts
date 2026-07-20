@@ -444,6 +444,68 @@ export const COLOR_MODE_WINDOWS_PRESET: ArrangementPresetV2 = {
 	}
 };
 
+export const SIXTH_DIMINISHED_CONVEYOR_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '23-sixth-diminished-conveyor',
+	name: 'Sixth-Diminished Conveyor',
+	family: 'jazz',
+	tags: ['bebop-pedagogy', 'sixth-diminished', 'drop-2', 'player-shaped-form'],
+	builtIn: true,
+	result:
+		'Each eligible note selects either the tonic major-sixth family or its related diminished seventh as one four-voice drop-2 block.',
+	approximation:
+		"A fixed live drop-2 study of one major sixth-diminished collection from Barry Harris's mature teaching. It does not infer a song, chord progression, bass, harmonic region, borrowed-note movement, related dominant family, chromatic extra-note rules, swing, cadence, phrase form, or Harris's touch and improvisational judgment. Notes outside the displayed collection pass through without guaranteed generated harmony; you supply the movement, target, timing, accents, dynamics, register, resolution, and silence.",
+	play: {
+		prompt:
+			'Play one clean note at a time through the shown eight-note collection. Move through a diminished passing tone into a clear sixth-chord arrival, hold it briefly, release, and leave a full-bar rest.',
+		input: 'single_notes',
+		articulation:
+			'Connected, lightly swung or even eighth notes with distinct attacks and clean releases; pedal up, unused strings muted, and no physical overlap.',
+		density: 'Four to eight source attacks per phrase; exactly one physical source note at a time.',
+		space: 'Rest one to two beats after a clause and one full bar after each phrase; wait for every generated note to release.',
+		tempo: '88–160 BPM; 108 BPM is the test default. Straighten the eighths as tempo rises.',
+		transportRequired: false
+	},
+	references: [
+		{
+			name: 'Barry Harris',
+			context:
+				'Bounded reference to the mature sixth-diminished scale-of-chords pedagogy documented from the Harris/Howard Rees workshop corpus through Harris’s final teaching years.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['harmony'],
+	config: {
+		harmony: {
+			scaleMode: 'BHMajor6thDim',
+			mode: 'BarryHarris',
+			voiceCount: 4,
+			voicePosition: 0,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: false,
+			globalHoldMode: { kind: 'cancel' },
+			canon: { enabled: false, form: 'free_imitation', holdMode: null, voices: [] },
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -505,6 +567,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 8) return SUSPENSION_GARLAND_PRESET;
 		if (spec.number === 12) return PLANED_CATHEDRAL_PRESET;
 		if (spec.number === 14) return COLOR_MODE_WINDOWS_PRESET;
+		if (spec.number === 23) return SIXTH_DIMINISHED_CONVEYOR_PRESET;
 		return draftPreset(spec);
 	}
 );

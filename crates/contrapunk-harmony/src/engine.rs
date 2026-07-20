@@ -1149,11 +1149,14 @@ impl HarmonyEngine {
     fn harmonize_block_chord(&mut self, note: Note) -> Vec<Note> {
         match super::barry_harris::build_voicing(note, &self.scale, self.beat_phase) {
             Some(voicing) => {
-                let mut result = Vec::with_capacity(5);
+                let mut result = Vec::with_capacity(4);
                 result.push(note);
-                // Filter out any voicing note that equals the melody to avoid doubling
+                // The block already contains the melody's scale degree,
+                // often in another octave. Keep the played note as that
+                // chord voice instead of adding a fifth, doubled pitch class.
+                let melody_pc = u8::from(note) % 12;
                 for &v in &voicing {
-                    if v != note {
+                    if u8::from(v) % 12 != melody_pc {
                         result.push(v);
                     }
                 }
@@ -2253,10 +2256,40 @@ mod tests {
     }
 
     #[test]
-    fn test_barry_harris_produces_5_notes() {
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 5);
+    fn test_barry_harris_produces_four_voice_melody_top_blocks() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 4);
         engine.set_scale_mode(ScaleMode::BHMajor6thDim);
-        assert_eq!(engine.harmonize(Note::C4).len(), 5);
+        engine.set_voice_position(0);
+        let scale = Scale::new(0, ScaleMode::BHMajor6thDim);
+        for input in [
+            Note::C4,
+            Note::D4,
+            Note::E4,
+            Note::F4,
+            Note::G4,
+            Note::Ab4,
+            Note::A4,
+            Note::B4,
+        ] {
+            let result = engine.harmonize(input);
+            assert_eq!(result.len(), 4, "four total voices for {input:?}");
+            assert_eq!(result[0], input, "played note remains the source voice");
+            assert_eq!(
+                result.iter().filter(|&&voice| voice == input).count(),
+                1,
+                "played note appears exactly once for {input:?}: {result:?}"
+            );
+            assert!(
+                result.iter().skip(1).all(|&voice| voice < input),
+                "soprano source must stay above its harmony for {input:?}: {result:?}"
+            );
+            let input_parity = scale.degree_of(input).unwrap() % 2;
+            assert!(result.iter().all(|&voice| {
+                scale
+                    .degree_of(voice)
+                    .is_some_and(|degree| degree % 2 == input_parity)
+            }));
+        }
     }
     #[test]
     fn test_barry_harris_scale_guard_auto_switch() {
@@ -2282,12 +2315,28 @@ mod tests {
     }
     #[test]
     fn test_barry_harris_note_tracking() {
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 5);
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BarryHarris, 4);
         engine.set_scale_mode(ScaleMode::BHMajor6thDim);
-        let on = engine.harmonize_note_on(Note::C4);
-        let off = engine.harmonize_note_off(Note::C4);
-        assert_eq!(on.len(), 5);
-        assert_eq!(&off[1..], &on[1..]);
+        engine.set_voice_position(0);
+        for input in [
+            Note::C4,
+            Note::D4,
+            Note::E4,
+            Note::F4,
+            Note::G4,
+            Note::Ab4,
+            Note::A4,
+            Note::B4,
+            Note::Db4,
+        ] {
+            let on = engine.harmonize_note_on(input);
+            let off = engine.harmonize_note_off(input);
+            assert_eq!(
+                off, on,
+                "NoteOff must release the exact block for {input:?}"
+            );
+            assert!(engine.active_notes.is_empty());
+        }
     }
     #[test]
     fn test_barry_harris_chromatic() {
