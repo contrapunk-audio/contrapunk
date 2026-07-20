@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "research-preset-36-pixel-trio",
+  "current_slice": "lock-preset-36-pixel-trio-catalog",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -365,6 +365,36 @@
         "commit": "2509e0c",
         "preset_id": "27-quartal-colossus"
       }
+    },
+    "36-pixel-trio": {
+      "status": "blocked",
+      "required_reports": 3,
+      "completed_reports": 3,
+      "history": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/history.md"
+      },
+      "theory": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/theory.md"
+      },
+      "performance": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/performance.md"
+      },
+      "synthesis": {
+        "status": "approved",
+        "path": ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/synthesis.md",
+        "decision": "keep_locked",
+        "note": "Synchronous three-pitch harmony is not independent lead, low-support, and counterline economy; requires reusable pattern_lane plus stable_lane_groups."
+      },
+      "implementation": {
+        "status": "ready_to_mark_blocked",
+        "preset_id": "36-pixel-trio"
+      }
     }
   },
   "completed_requirements": [
@@ -680,6 +710,10 @@
     {
       "command": "npm --prefix ui run check (Quartal Colossus)",
       "result": "0 errors; 29 pre-existing warnings"
+    },
+    {
+      "command": "preset 36 research-pack validation",
+      "result": "3 nonempty independently cited reports plus template-complete parent synthesis; decision keep_locked"
     }
   ],
   "blockers": [
@@ -696,8 +730,9 @@
     "Preset 23 is a fixed major sixth-diminished scale-of-chords study; no borrowing, family movement, chromatic-line rules, swing, or phrase inference is claimed.",
     "Preset 23 cannot activate until BarryHarris returns exactly four total voices with the exact player source once in the soprano role.",
     "Preset 25 is a performer-bounded four-to-six-note burst answered four beats later by a complete unity-time octave echo; no shortening, phrase recognition, swing, chord logic, trading fours, or artist imitation is claimed.",
-    "Preset 27 is a static Dorian DiatonicFourths study with four total voices and source-lowest; exact perfect-fourth stacks occur only on degrees 1, 2, 5, and 6, and all temporal development remains performer-authored."
+    "Preset 27 is a static Dorian DiatonicFourths study with four total voices and source-lowest; exact perfect-fourth stacks occur only on degrees 1, 2, 5, and 6, and all temporal development remains performer-authored.",
+    "Preset 36 remains locked: current HarmonyEngine three-pitch outputs share every source onset/release and cannot honestly represent independent lead, low-support, and counterline roles; unlocking requires reusable pattern_lane and stable_lane_groups capabilities."
   ],
-  "last_commit": "2509e0c",
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 36 Pixel Trio (early console three-channel economy, Koji Kondo, Manami Matsumae), then parent-synthesize before implementation."
+  "last_commit": "d31d84d",
+  "next_action": "Mark preset 36 research-complete but blocked in the catalog with pattern_lane and stable_lane_groups requirements and the synthesized capability explanation; test visibility/gating, then begin preset 43 research."
 }

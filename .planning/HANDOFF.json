@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T09:55:00Z",
+  "timestamp": "2026-07-20T10:48:00Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-36-pixel-trio",
+  "task": "lock-preset-36-pixel-trio-catalog",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -109,6 +109,18 @@
       "commit": "2509e0c",
       "status": "done_operational",
       "evidence": "Static four-voice Dorian fourth-derived mapping; Harmony 270 passed, catalog/persistence 12 passed, UI check zero errors and 29 pre-existing warnings."
+    },
+    {
+      "name": "Preset 36 Pixel Trio research and parent synthesis",
+      "commit": "d31d84d",
+      "status": "done_research_blocked",
+      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Current synchronous HarmonyEngine outputs cannot represent independent lead, low-support, and counterline roles; requires reusable pattern_lane and stable_lane_groups.",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/synthesis.md"
+      ]
     }
   ],
   "remaining_work": [
@@ -190,7 +202,7 @@
     {
       "name": "Research and implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: research preset 36 Pixel Trio. Then order: 43, 48."
+      "details": "Current: mark preset 36 visibly blocked, then research 43 and 48. Operational count remains 9/12 until a reusable role scheduler exists or the baseline order is explicitly revised."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -234,6 +246,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 36 Pixel Trio: early-console history/hardware and Kondo/Matsumae corpus, limited-channel harmony/voice-leading theory mapped to the current engine, and performer/HCI guidance. Parent-synthesize before implementation.",
-  "context_notes": "Nine baselines are operational. Preset 27 shipped in 2509e0c as a static four-voice Dorian fourth-derived block. Exact all-P4 output is limited to degrees 1, 2, 5, and 6; every temporal and formal behavior remains performer-authored. Remaining order: 36, 43, 48."
+  "next_action": "Update preset 36 catalog metadata to researchStatus blocked, requirements pattern_lane + stable_lane_groups, and an honest target/locked explanation. Verify it remains visible but non-applicable; then checkpoint and begin preset 43 research.",
+  "context_notes": "Nine baselines are operational. Preset 36 research is committed in d31d84d with keep_locked decision: a synchronous three-pitch mapping is not independent three-role economy. Unlocking requires shared pattern_lane and stable_lane_groups; no preset-specific scheduler."
 }
