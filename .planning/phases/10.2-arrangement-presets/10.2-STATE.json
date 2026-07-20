@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "implement-preset-27-quartal-colossus",
+  "current_slice": "research-preset-36-pixel-trio",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -31,7 +31,8 @@
     12,
     14,
     23,
-    25
+    25,
+    27
   ],
   "draft_presets": [
     1,
@@ -332,7 +333,7 @@
       }
     },
     "27-quartal-colossus": {
-      "status": "approved",
+      "status": "operational",
       "required_reports": 3,
       "completed_reports": 3,
       "history": {
@@ -354,13 +355,14 @@
         "note": "Initial concurrent Codex startup lacked a credential; a sequential fresh openai-codex/gpt-5.6-sol run completed the report."
       },
       "synthesis": {
-        "status": "approved",
+        "status": "implemented",
         "path": ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/synthesis.md",
         "decision": "ready_for_implementation",
         "note": "Approved only as a static four-voice Dorian fourth-derived block; the performer supplies all rhythm, phrase, dynamics, form, and silence."
       },
       "implementation": {
-        "status": "ready",
+        "status": "operational",
+        "commit": "2509e0c",
         "preset_id": "27-quartal-colossus"
       }
     }
@@ -500,6 +502,17 @@
         "One PassThrough Free Imitation follower uses delay 4, transpose +7 scale degrees, timeRatio 1, and a bounded four-beat NearFuture tail.",
         "A four-note lifecycle regression retains every pending response after source release, emits exactly four matched NoteOns/NoteOffs, and ends with empty pending, held, and active state.",
         "Public copy rejects phrase recognition, shortening, generated swing, chord following, trading fours, and Parker/Gillespie simulation."
+      ]
+    },
+    {
+      "id": "preset-27-quartal-colossus",
+      "status": "verified",
+      "evidence": [
+        "Three independent openai-codex/gpt-5.6-sol reports and a parent synthesis are committed.",
+        "The bounded scope is one static Dorian fourth-derived block from selected 1960\u201367 Tyner practice, not a whole-career style or comping claim.",
+        "Dorian plus DiatonicFourths, four voices, and source-lowest yields exact [0,5,10,15] stacks on degrees 1, 2, 5, and 6 and disclosed augmented-fourth variants on the other degrees.",
+        "The all-degree regression verifies exact source ownership, matching NoteOff sets, chromatic fallback outside corpus, and empty active state.",
+        "Public guidance assigns rhythm, accents, register, dynamics, repetition, resolution, form, and silence to the performer."
       ]
     }
   ],
@@ -651,6 +664,22 @@
     {
       "command": "preset 27 research-pack validation",
       "result": "3 nonempty independently cited reports plus template-complete parent synthesis; bounded decision ready_for_implementation"
+    },
+    {
+      "command": "cargo test -p contrapunk-harmony dorian_fourth_derived_blocks_keep_vectors_and_balanced_release --lib",
+      "result": "1 passed"
+    },
+    {
+      "command": "cargo test -p contrapunk-harmony --lib",
+      "result": "270 passed"
+    },
+    {
+      "command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs",
+      "result": "12 passed"
+    },
+    {
+      "command": "npm --prefix ui run check (Quartal Colossus)",
+      "result": "0 errors; 29 pre-existing warnings"
     }
   ],
   "blockers": [
@@ -669,6 +698,6 @@
     "Preset 25 is a performer-bounded four-to-six-note burst answered four beats later by a complete unity-time octave echo; no shortening, phrase recognition, swing, chord logic, trading fours, or artist imitation is claimed.",
     "Preset 27 is a static Dorian DiatonicFourths study with four total voices and source-lowest; exact perfect-fourth stacks occur only on degrees 1, 2, 5, and 6, and all temporal development remains performer-authored."
   ],
-  "last_commit": "0425296",
-  "next_action": "Implement preset 27 exactly as synthesized with Dorian, DiatonicFourths, four voices, source position 3, no voice leading/octave mode/Companion; add all-degree vector and balanced lifecycle regressions before preset 36."
+  "last_commit": "2509e0c",
+  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 36 Pixel Trio (early console three-channel economy, Koji Kondo, Manami Matsumae), then parent-synthesize before implementation."
 }

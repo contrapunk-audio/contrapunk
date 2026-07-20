@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 2 preset 27 research approved; bounded Dorian fourth-stack implementation is next.
-last_updated: "2026-07-20T09:46:00Z"
-last_activity: 2026-07-20 — Approved Quartal Colossus only as a static four-voice Dorian fourth-derived block with performer-authored form.
+stopped_at: Phase 10.2 Wave 2 preset 27 operational; next research gate is preset 36 Pixel Trio.
+last_updated: "2026-07-20T09:55:00Z"
+last_activity: 2026-07-20 — Shipped Quartal Colossus as a bounded four-voice Dorian fourth-derived study.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 8/12 baseline presets operational, preset 27 research approved
-Last activity: 2026-07-20 — Three independent reports and parent synthesis approved Quartal Colossus only as a static Dorian fourth-derived mapping. Exact perfect-fourth stacks occur on degrees 1, 2, 5, and 6; implementation is next.
+Status: Executing Wave 2; 9/12 baseline presets operational
+Last activity: 2026-07-20 — Quartal Colossus is operational as a static Dorian fourth-derived mapping. Exact perfect-fourth stacks occur on degrees 1, 2, 5, and 6; the next three-report gate is preset 36 Pixel Trio.
 
 ### Phase 10.2 Start — 2026-07-19
 
