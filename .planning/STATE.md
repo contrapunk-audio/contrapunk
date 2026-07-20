@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 3 — reusable voicing strategies
 Status: Wave 3 in progress; preset 01 Cloister Organum operational, preset 13 Axis Mirror next
-Last activity: 2026-07-20 — Cloister Organum shipped as a bounded two-voice Dorian explicit-interval map with full Tauri/WASM controls and persistence. The reported fragmented guitar sustain was traced to dev-only queue overflow after the July 19 worker move; `contrapunk-audio` now builds optimized in dev and its two-second synthetic sustain processes in 0.26 seconds.
+Last activity: 2026-07-20 — Cloister Organum shipped as a bounded two-voice Dorian explicit-interval map with full Tauri/WASM controls and persistence. The reported fragmented guitar sustain was traced to dev-only queue overflow after the July 19 worker move; `contrapunk-audio` now builds optimized in dev, and the user confirmed a sustained hardware note produces one continuous MIDI note.
 
 ### Phase 10.2 Start — 2026-07-19
 

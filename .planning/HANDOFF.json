@@ -185,8 +185,8 @@
     {
       "name": "Restore realtime Tauri dev guitar analysis",
       "commit": "7aca7ca",
-      "status": "done_awaiting_hardware_confirmation",
-      "evidence": "July 19 worker queue overflows emitted sixteen CC123 resets and fragmented sustained notes. Optimizing only contrapunk-audio in dev reduced the two-second synthetic sustain from 6.09s to 0.26s; all 226 audio library tests pass in 0.27s."
+      "status": "done_hardware_confirmed",
+      "evidence": "July 19 worker queue overflows emitted sixteen CC123 resets and fragmented sustained notes. Optimizing only contrapunk-audio in dev reduced the two-second synthetic sustain from 6.09s to 0.26s; all 226 audio library tests pass in 0.27s; the user confirmed one sustained hardware note now produces one continuous MIDI note."
     }
   ],
   "remaining_work": [
@@ -293,12 +293,7 @@
       "workaround": "Stage explicit Phase 10.2 paths only; never stage .pi-subagents/."
     }
   ],
-  "human_actions_pending": [
-    {
-      "description": "Play one long sustained guitar note in the running prototype and confirm it remains one continuous MIDI note without repeated CC123 panic bursts.",
-      "reason": "The dev-only detector overflow fix is automated and benchmarked, but hardware articulation remains user-operated acceptance."
-    }
-  ],
+  "human_actions_pending": [],
   "decisions": [
     "Technique/image preset titles; artist names are references, not imitation claims.",
     "Research scopes works and periods, career evolution, persistent versus period traits, temporal movement, distinguishing vocabulary, and caricatures to avoid.",
@@ -320,6 +315,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Verify one sustained hardware guitar note without overflow resets, then run three independent openai-codex/gpt-5.6-sol reports for preset 13 Axis Mirror before parent synthesis.",
+  "next_action": "Run three independent openai-codex/gpt-5.6-sol reports for preset 13 Axis Mirror before parent synthesis.",
   "context_notes": "Thirteen presets are operational: 2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48, 1. Cloister Organum shipped in 337d3c97; the Tauri dev guitar throughput fix is 7aca7ca."
 }

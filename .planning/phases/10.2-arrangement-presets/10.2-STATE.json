@@ -969,8 +969,9 @@
     "The user explicitly approved continuing Loop 1 after the 12-preset performance checkpoint; Wave 3 began with preset 01 Cloister Organum research.",
     "Pattern role controls are exposed in Setup for low support and counterline; preset Apply updates the controls and Save As captures them.",
     "Cloister Organum is exactly two voices in Dorian: source-lowest plus one direct degree-mapped P4/P5/P8, with +7 chromatic fallback; it does not claim authentic organum reconstruction.",
-    "Guitar sustain fragmentation in Tauri dev was queue overflow from opt-level 0 detector throughput after the July 19 worker move, not a harmony/preset regression; only contrapunk-audio is optimized in dev builds."
+    "Guitar sustain fragmentation in Tauri dev was queue overflow from opt-level 0 detector throughput after the July 19 worker move, not a harmony/preset regression; only contrapunk-audio is optimized in dev builds.",
+    "The user confirmed the rebuilt prototype now produces one continuous MIDI note from a sustained hardware guitar note."
   ],
   "last_commit": "337d3c97",
-  "next_action": "Have the user verify one long sustained guitar note no longer triggers CC123 overflow resets, then begin three-source research for preset 13 Axis Mirror as the next Wave 3 voicing strategy."
+  "next_action": "Begin three independent openai-codex/gpt-5.6-sol research reports for preset 13 Axis Mirror, then write parent synthesis before implementing an inversion strategy."
 }
