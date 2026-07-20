@@ -1,0 +1,30 @@
+--- a/src/wrapasauv2.cpp
++++ b/src/wrapasauv2.cpp
+@@ -136,6 +136,27 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::s
+ 
+       // pffffrzz();  // <- enable this to have a hook to attach a debugger
+       _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
++      if (_plugin && _autype == AUV2_Type::aufx_effect)
++      {
++        auto configs = static_cast<const clap_plugin_audio_ports_config_t *>(
++            _plugin->_plugin->get_extension(_plugin->_plugin, CLAP_EXT_AUDIO_PORTS_CONFIG));
++        if (configs)
++        {
++          clap_id selected = CLAP_INVALID_ID;
++          const auto count = configs->count(_plugin->_plugin);
++          for (uint32_t i = 0; i < count; ++i)
++          {
++            clap_audio_ports_config_t config{};
++            if (!configs->get(_plugin->_plugin, i, &config) || !config.has_main_input ||
++                !config.has_main_output)
++              continue;
++            selected = config.id;
++            if (config.main_input_channel_count == 2 && config.main_output_channel_count == 2)
++              break;
++          }
++          if (selected != CLAP_INVALID_ID) configs->select(_plugin->_plugin, selected);
++        }
++      }
+       if (_plugin)
+       {
+         _plugin->initialize();

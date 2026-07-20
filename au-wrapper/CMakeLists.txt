@@ -50,6 +50,30 @@ FetchContent_MakeAvailable(clap-wrapper)
 
 FetchContent_GetProperties(clap-wrapper SOURCE_DIR CLAP_WRAPPER_SOURCE_DIR)
 
+# An AU audio effect must activate a CLAP configuration with an input before
+# Logic queries its buses. nih-plug's default configuration is instrument-only.
+set(_select_audio_config_patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/select-auv2-audio-config.patch")
+execute_process(
+    COMMAND git apply --check "${_select_audio_config_patch}"
+    WORKING_DIRECTORY "${CLAP_WRAPPER_SOURCE_DIR}"
+    RESULT_VARIABLE _select_audio_config_patch_check
+    OUTPUT_QUIET
+    ERROR_QUIET
+)
+if (_select_audio_config_patch_check EQUAL 0)
+    execute_process(
+        COMMAND git apply "${_select_audio_config_patch}"
+        WORKING_DIRECTORY "${CLAP_WRAPPER_SOURCE_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+else()
+    file(READ "${CLAP_WRAPPER_SOURCE_DIR}/src/wrapasauv2.cpp" _wrapasauv2_src)
+    string(FIND "${_wrapasauv2_src}" "CLAP_EXT_AUDIO_PORTS_CONFIG" _select_audio_config_already_applied)
+    if (_select_audio_config_already_applied EQUAL -1)
+        message(FATAL_ERROR "Failed to apply clap-wrapper AUv2 audio configuration patch")
+    endif()
+endif()
+
 # Logic may request the AU Cocoa view before the returned NSView has an
 # NSWindow. nih-plug-webview/wry needs that window during CLAP set_parent(),
 # so defer CLAP GUI creation/parenting until viewDidMoveToWindow.
