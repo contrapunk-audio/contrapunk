@@ -132,8 +132,8 @@ export class PluginAdapter implements ContrapunkAdapter {
 			}
 		});
 
-		// Keep REAPER's embedded FX panel at the editor's intended size.
-		window.plugin.resize?.(900, 700);
+		// Keep embedded host panels at the editor's intended size.
+		window.plugin.resize?.(1200, 800);
 
 		// Signal ready — the Rust side will respond with initial params
 		window.plugin.send(JSON.stringify({ type: 'ready' }));

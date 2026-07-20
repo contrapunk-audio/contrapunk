@@ -196,7 +196,7 @@ fn is_logic_audio_unit_host() -> bool {
     host_is_logic && loaded_from_guitar_component()
 }
 
-fn loaded_from_guitar_component() -> bool {
+pub(crate) fn loaded_from_guitar_component() -> bool {
     let mut info = std::mem::MaybeUninit::<libc::Dl_info>::zeroed();
     // SAFETY: dladdr only inspects the image containing this function pointer
     // and initializes `info` when it succeeds.

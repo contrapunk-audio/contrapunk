@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { adapter } from '$lib/adapter';
+	import type { PluginInputMode } from '$lib/adapter/types';
 	import EnsemblePresetBar from '$lib/components/EnsemblePresetBar.svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { arrangement } from '$lib/stores/arrangement.svelte';
@@ -21,6 +23,7 @@
 
 	let muted = $state([false, false, false, false]);
 	let solo = $state<number | null>(null);
+	let pluginInputMode = $state<PluginInputMode>('midi');
 
 	function routeName(target: VoiceOutputTarget | undefined): string {
 		if (!target || target.kind === 'synth') return 'Synth';
@@ -40,6 +43,9 @@
 		return names.size === 1 ? [...names][0] : names.size ? 'Mixed routes' : '—';
 	});
 	let sourceName = $derived.by(() => {
+		if (adapter.capabilities.pluginMidiOutputMode) {
+			return pluginInputMode === 'audio' ? 'Guitar Audio' : 'Host MIDI';
+		}
 		if (midi.selectedInput === 999_997) return 'Guitar Audio';
 		if (midi.selectedInput === 999_998) return 'Computer Keys';
 		return midi.inputs.find((device) => device.index === midi.selectedInput)?.name ?? 'Choose source';
@@ -115,6 +121,13 @@
 
 	onMount(() => {
 		void arrangement.syncFromBackend();
+		if (!adapter.capabilities.pluginMidiOutputMode) return;
+
+		const refreshInputMode = () => {
+			void adapter.getPluginInputMode().then((mode) => (pluginInputMode = mode));
+		};
+		refreshInputMode();
+		return adapter.onPluginParamsUpdate(refreshInputMode);
 	});
 </script>
 

@@ -272,6 +272,14 @@ enum PluginInputMode {
     Audio,
 }
 
+fn effective_input_mode(configured: PluginInputMode, guitar_component: bool) -> PluginInputMode {
+    if guitar_component {
+        PluginInputMode::Audio
+    } else {
+        configured
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 enum PluginMidiOutputMode {
     /// Normal Contrapunk behavior: melody + generated harmony/canon/counterpoint.
@@ -347,6 +355,14 @@ impl Default for ContrapunkParams {
             midi_output_mode: EnumParam::new("MIDI Output", PluginMidiOutputMode::Full),
             webview_state: editor::default_webview_state(),
         }
+    }
+}
+
+impl ContrapunkParams {
+    fn with_input_mode(input_mode: PluginInputMode) -> Self {
+        let mut params = Self::default();
+        params.input_mode = EnumParam::new("Input", input_mode);
+        params
     }
 }
 
@@ -959,6 +975,7 @@ struct ContrapunkPlugin {
     worker: MusicWorker,
     #[cfg(target_os = "macos")]
     logic_midi: logic_midi::LogicMidiOutput,
+    guitar_component: bool,
     worker_params: WorkerParams,
     worker_generation: u64,
     worker_block: u64,
@@ -1002,6 +1019,22 @@ struct ContrapunkPlugin {
 
 impl Default for ContrapunkPlugin {
     fn default() -> Self {
+        let guitar_component = {
+            #[cfg(target_os = "macos")]
+            {
+                logic_midi::loaded_from_guitar_component()
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                false
+            }
+        };
+        let default_input_mode = if guitar_component {
+            PluginInputMode::Audio
+        } else {
+            PluginInputMode::Midi
+        };
+
         // Build engine, transport, and Companion in the same order as
         // Tauri. The music worker owns all allocating engine mutation.
         let engine = Arc::new(Mutex::new(HarmonyEngine::new(
@@ -1023,12 +1056,13 @@ impl Default for ContrapunkPlugin {
         }
         let worker = MusicWorker::new(Arc::clone(&engine), Arc::clone(&companion));
         Self {
-            params: Arc::new(ContrapunkParams::default()),
+            params: Arc::new(ContrapunkParams::with_input_mode(default_input_mode)),
             transport,
             companion,
             worker,
             #[cfg(target_os = "macos")]
             logic_midi: logic_midi::LogicMidiOutput::new(),
+            guitar_component,
             worker_params: WorkerParams::default(),
             worker_generation: 1,
             worker_block: 0,
@@ -1050,13 +1084,17 @@ impl Default for ContrapunkPlugin {
             last_voice_pos: 0,
             last_auto_key: false,
             last_voice_leading: false,
-            last_input_mode: PluginInputMode::Midi,
+            last_input_mode: default_input_mode,
             last_midi_output_mode: PluginMidiOutputMode::Full,
         }
     }
 }
 
 impl ContrapunkPlugin {
+    fn effective_input_mode(&self) -> PluginInputMode {
+        effective_input_mode(self.params.input_mode.value(), self.guitar_component)
+    }
+
     /// Snapshot DAW parameters for the non-real-time music worker.
     /// The audio callback only copies scalars and writes a bounded queue.
     fn sync_params(&mut self) -> bool {
@@ -1154,7 +1192,7 @@ impl ContrapunkPlugin {
                 velocity,
             });
             #[cfg(target_os = "macos")]
-            if self.params.input_mode.value() == PluginInputMode::Audio {
+            if self.effective_input_mode() == PluginInputMode::Audio {
                 self.logic_midi.note_on(channel, note, velocity);
             }
         }
@@ -1184,7 +1222,7 @@ impl ContrapunkPlugin {
                 velocity,
             });
             #[cfg(target_os = "macos")]
-            if self.params.input_mode.value() == PluginInputMode::Audio {
+            if self.effective_input_mode() == PluginInputMode::Audio {
                 self.logic_midi.note_off(channel, note, velocity);
             }
         }
@@ -1223,7 +1261,7 @@ impl ContrapunkPlugin {
             });
         }
         #[cfg(target_os = "macos")]
-        if self.params.input_mode.value() == PluginInputMode::Audio {
+        if self.effective_input_mode() == PluginInputMode::Audio {
             self.logic_midi.all_notes_off();
         }
         self.invalidate_worker();
@@ -1381,7 +1419,7 @@ impl ContrapunkPlugin {
                         value,
                     });
                     #[cfg(target_os = "macos")]
-                    if self.params.input_mode.value() == PluginInputMode::Audio {
+                    if self.effective_input_mode() == PluginInputMode::Audio {
                         self.logic_midi.pitch_bend(channel, value);
                     }
                 }
@@ -1398,7 +1436,7 @@ impl ContrapunkPlugin {
                         value,
                     });
                     #[cfg(target_os = "macos")]
-                    if self.params.input_mode.value() == PluginInputMode::Audio {
+                    if self.effective_input_mode() == PluginInputMode::Audio {
                         self.logic_midi.control_change(channel, controller, value);
                     }
                 }
@@ -1411,7 +1449,7 @@ impl ContrapunkPlugin {
                         pressure,
                     });
                     #[cfg(target_os = "macos")]
-                    if self.params.input_mode.value() == PluginInputMode::Audio {
+                    if self.effective_input_mode() == PluginInputMode::Audio {
                         self.logic_midi.channel_pressure(channel, pressure);
                     }
                 }
@@ -1563,6 +1601,7 @@ impl Plugin for ContrapunkPlugin {
                 Arc::clone(&self.note_state),
                 Arc::clone(&self.companion),
                 Arc::clone(&self.panic_requested),
+                self.guitar_component,
                 &self.params.webview_state,
             )))
         }
@@ -1628,7 +1667,7 @@ impl Plugin for ContrapunkPlugin {
             self.last_midi_output_mode = output_mode;
         }
 
-        let input_mode = self.params.input_mode.value();
+        let input_mode = self.effective_input_mode();
         if input_mode != self.last_input_mode {
             self.hard_all_notes_off(0, context);
             self.last_input_mode = input_mode;
@@ -1742,6 +1781,18 @@ nih_export_vst3!(ContrapunkPlugin);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guitar_component_always_uses_audio_input() {
+        assert_eq!(
+            effective_input_mode(PluginInputMode::Midi, true),
+            PluginInputMode::Audio
+        );
+        assert_eq!(
+            effective_input_mode(PluginInputMode::Midi, false),
+            PluginInputMode::Midi
+        );
+    }
 
     #[test]
     fn plugin_channel_map_is_stable() {

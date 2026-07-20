@@ -39,6 +39,8 @@ pub struct ContrapunkEditorHandler {
     last_note_json: String,
     /// Set by UI panic button; drained by plugin process() on audio thread.
     panic_requested: Arc<AtomicBool>,
+    /// The dedicated Logic Audio FX always consumes its audio bus.
+    guitar_component: bool,
 }
 
 impl ContrapunkEditorHandler {
@@ -54,7 +56,13 @@ impl ContrapunkEditorHandler {
             "voicePosition": self.params.voice_position.value(),
             "voiceCount": self.params.voice_count.value(),
             "autoKey": self.params.auto_key.value(),
-            "inputMode": format!("{:?}", self.params.input_mode.value()),
+            "inputMode": format!(
+                "{:?}",
+                crate::effective_input_mode(
+                    self.params.input_mode.value(),
+                    self.guitar_component,
+                )
+            ),
             "synthEnabled": self.params.synth_enabled.value(),
             "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
         })
@@ -173,7 +181,10 @@ impl EditorHandler for ContrapunkEditorHandler {
                 if let Some(mode_str) = msg.get("value").and_then(|v| v.as_str()) {
                     if let Some(input_variant) = parse_input_mode(mode_str) {
                         let setter = cx.get_param_setter();
-                        setter.set_parameter(&self.params.input_mode, input_variant);
+                        setter.set_parameter(
+                            &self.params.input_mode,
+                            crate::effective_input_mode(input_variant, self.guitar_component),
+                        );
                     }
                 }
             }
@@ -250,6 +261,7 @@ pub fn create_editor(
     note_state: Arc<Mutex<PluginNoteState>>,
     companion: Arc<Mutex<Companion>>,
     panic_requested: Arc<AtomicBool>,
+    guitar_component: bool,
     state: &Arc<WebViewState>,
 ) -> WebViewEditor {
     let protocol = "contrapunk".to_string();
@@ -271,6 +283,7 @@ pub fn create_editor(
         companion,
         last_note_json: String::new(),
         panic_requested,
+        guitar_component,
     };
 
     WebViewEditor::new_with_webview(handler, state, config, move |w| {
