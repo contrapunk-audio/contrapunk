@@ -3,14 +3,14 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "implement-preset-23-sixth-diminished-conveyor",
+  "current_slice": "research-preset-25-bebop-chase",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
     "status": "not_reached"
   },
   "baseline_order": [2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48],
-  "operational_presets": [2, 4, 7, 8, 12, 14],
+  "operational_presets": [2, 4, 7, 8, 12, 14, 23],
   "draft_presets": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
   "research": {
     "02-modal-linework": {
@@ -198,7 +198,7 @@
       }
     },
     "23-sixth-diminished-conveyor": {
-      "status": "researched",
+      "status": "operational",
       "required_reports": 3,
       "completed_reports": 3,
       "history": {
@@ -225,9 +225,9 @@
         "decision": "ready_for_implementation"
       },
       "implementation": {
-        "status": "blocked_on_voice_contract_fix",
-        "preset_id": "23-sixth-diminished-conveyor",
-        "note": "Fix shared BarryHarris block voicing to four total voices with the exact source once in the soprano role before activation."
+        "status": "operational",
+        "commit": "0460ec7",
+        "preset_id": "23-sixth-diminished-conveyor"
       }
     }
   },
@@ -340,14 +340,16 @@
       ]
     },
     {
-      "id": "preset-23-research",
+      "id": "preset-23-sixth-diminished-conveyor",
       "status": "verified",
       "evidence": [
         "Three independent openai-codex/gpt-5.6-sol reports and a parent synthesis are committed.",
         "The bounded scope is Harris's mature sixth-diminished teaching, not his whole career or all bebop.",
         "The current parity kernel is research-supported, but the mode incorrectly emits five notes for a documented four-voice drop-2 contract.",
         "Activation requires exactly four total voices with the exact source once as soprano, plus all-degree and lifecycle regressions.",
-        "Public copy must reject claims of borrowing, family movement, chromatic extra-note rules, swing, phrase inference, or authentic Harris imitation."
+        "Public copy rejects claims of borrowing, family movement, chromatic extra-note rules, swing, phrase inference, or authentic Harris imitation.",
+        "The shared BarryHarris fix removes the doubled melody pitch class and returns exactly four total voices with the exact source once as soprano.",
+        "All eight collection degrees plus unsupported chromatic input return matching NoteOn/NoteOff sets and empty active state."
       ]
     }
   ],
@@ -379,7 +381,10 @@
     {"command": "cargo test -p contrapunk-harmony --lib", "result": "269 passed"},
     {"command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs", "result": "9 passed"},
     {"command": "npm --prefix ui run check (Color-Mode Windows)", "result": "0 errors; 29 pre-existing warnings"},
-    {"command": "preset 23 research-pack validation", "result": "3 nonempty independently cited reports plus template-complete parent synthesis; decision ready_for_implementation"}
+    {"command": "preset 23 research-pack validation", "result": "3 nonempty independently cited reports plus template-complete parent synthesis; decision ready_for_implementation"},
+    {"command": "cargo test -p contrapunk-harmony --lib", "result": "269 passed"},
+    {"command": "node --experimental-strip-types --test ui/src/lib/arrangement/catalog.test.mjs ui/src/lib/arrangement/persistence.test.mjs", "result": "10 passed"},
+    {"command": "npm --prefix ui run check (Sixth-Diminished Conveyor)", "result": "0 errors; 29 pre-existing warnings"}
   ],
   "blockers": [
     "Unrelated Golem, Elixir, AU, recon, and .pi-subagents work remains in the dirty tree and must not be staged."
@@ -395,6 +400,6 @@
     "Preset 23 is a fixed major sixth-diminished scale-of-chords study; no borrowing, family movement, chromatic-line rules, swing, or phrase inference is claimed.",
     "Preset 23 cannot activate until BarryHarris returns exactly four total voices with the exact player source once in the soprano role."
   ],
-  "last_commit": "7c55ff23",
-  "next_action": "Fix the shared BarryHarris four-total-voice/source-top contract with deterministic all-degree and lifecycle regressions, then activate the bounded preset 23 record and run harmony/catalog/UI checks."
+  "last_commit": "0460ec7",
+  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 25 Bebop Chase (Charlie Parker and Dizzy Gillespie), then parent-synthesize before changing its research-pending draft."
 }

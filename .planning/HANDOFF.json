@@ -1,17 +1,17 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T08:24:53Z",
+  "timestamp": "2026-07-20T08:37:51Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "implement-preset-23-sixth-diminished-conveyor",
+  "task": "research-preset-25-bebop-chase",
   "total_plans": 7,
   "status": "active",
   "loop": {
-    "id": 2,
-    "title": "Contrapunk research-backed 50 arrangement presets",
+    "id": 1,
+    "title": "Complete Contrapunk’s research-backed arrangement preset catalog",
     "status": "executing_wave_2",
     "hard_stop": "After first 12 operational presets for user performance testing"
   },
@@ -60,10 +60,13 @@
       ]
     },
     {
-      "name": "Preset 23 Sixth-Diminished Conveyor research pack and synthesis",
-      "commit": "7c55ff23",
-      "status": "done_researched",
-      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis; activation waits on the shared four-total-voice BarryHarris fix.",
+      "name": "Preset 23 Sixth-Diminished Conveyor research and implementation",
+      "commits": [
+        "7c55ff23",
+        "0460ec7"
+      ],
+      "status": "done_operational",
+      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis; shared BarryHarris path now emits exactly four total voices with source once as soprano; Harmony 269, catalog/persistence 10, UI zero errors.",
       "artifacts": [
         ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/history.md",
         ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/theory.md",
@@ -151,7 +154,7 @@
     {
       "name": "Research and implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: implement researched preset 23 Sixth-Diminished Conveyor after fixing the shared four-total-voice BarryHarris contract. Then order: 25, 27, 36, 43, 48."
+      "details": "Current: research preset 25 Bebop Chase. Then order: 27, 36, 43, 48."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -195,6 +198,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Fix the shared BarryHarris block voicing to four total voices with the exact source once as soprano; add all-degree, unsupported-input, repeated-note, and NoteOn/NoteOff lifecycle regressions; then activate the bounded preset 23 record.",
-  "context_notes": "Six baselines remain operational. Preset 23 research is complete and committed at 7c55ff23. The honest scope is a fixed major sixth-diminished scale-of-chords study. Current BarryHarris code emits five notes for a documented four-voice mode, so activation is blocked on that shared contract fix."
+  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol research reports for preset 25 Bebop Chase: scoped Parker/Gillespie history, theory/temporal behavior, and performer/HCI; then parent-synthesize before implementation.",
+  "context_notes": "Seven baselines are operational. Preset 23 shipped in 0460ec7 as a fixed major sixth-diminished scale-of-chords study with exactly four total voices and the source once as soprano. It does not claim borrowing, family movement, chromatic extra-note rules, swing generation, phrase inference, or authentic Harris imitation."
 }
