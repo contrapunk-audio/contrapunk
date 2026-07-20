@@ -4,8 +4,8 @@ milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
 stopped_at: Phase 16 prototype UI promotion and plugin build.
-last_updated: "2026-07-20T14:28:50Z"
-last_activity: 2026-07-20 — Direct VST3 hosting was parked in Phase 21.C3; the approved workflow is Contrapunk as a MIDI-output plugin before Analog Lab V, with the prototype workspace promoted to the production UI.
+last_updated: "2026-07-20T14:40:00Z"
+last_activity: 2026-07-20 — Direct VST3 hosting was parked in Phase 21.C3. The prototype route and legacy workspace were retired, and universal VST3/CLAP bundles with the production UI were built and installed for the Analog Lab V DAW workflow.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 16 VST3/CLAP/AU Plugin
 Plan: Promote the prototype workspace and bundle the existing nih-plug MIDI-output plugin
-Status: In progress; direct hosting is parked under Phase 21.C3
-Last activity: 2026-07-20 — The production root now uses the prototype workspace. Plugin mode will expose host MIDI, Full Contrapunk output, and internal-monitor controls so a DAW can place Analog Lab V after Contrapunk. Phase 10.2 is paused with preset 13 Axis Mirror next.
+Status: Production UI promoted; universal VST3/CLAP bundles built and installed; direct hosting parked under Phase 21.C3
+Last activity: 2026-07-20 — Plugin mode exposes guitar audio or host MIDI input, Full Contrapunk output, and internal-monitor controls so a DAW can place Analog Lab V after Contrapunk. The installed bundles contain arm64 and x86_64 slices. Phase 10.2 is paused with preset 13 Axis Mirror next.
 
 ### Phase 10.2 Start — 2026-07-19
 
