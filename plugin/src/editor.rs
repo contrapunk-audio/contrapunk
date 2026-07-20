@@ -19,8 +19,8 @@ use contrapunk_companion::Companion;
 use crate::{ContrapunkParams, PluginNoteState};
 
 /// Width and height of the plugin editor window.
-const EDITOR_WIDTH: f64 = 900.0;
-const EDITOR_HEIGHT: f64 = 700.0;
+const EDITOR_WIDTH: f64 = 1200.0;
+const EDITOR_HEIGHT: f64 = 800.0;
 
 /// Editor handler that bridges the Svelte UI to nih-plug parameters.
 pub struct ContrapunkEditorHandler {

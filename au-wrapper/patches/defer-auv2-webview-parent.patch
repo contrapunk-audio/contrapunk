@@ -44,7 +44,7 @@
 +  // CLAP GUI creation/parenting to viewDidMoveToWindow.
 +  if (size.width <= 0 || size.height <= 0)
 +  {
-+    size = NSMakeSize(900, 700);
++    size = NSMakeSize(1200, 800);
    }
    self = [super initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
 -

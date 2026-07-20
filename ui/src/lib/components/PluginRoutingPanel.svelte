@@ -58,7 +58,7 @@
 	<button type="button" class:enabled={synthEnabled} onclick={toggleSynth}>
 		INTERNAL MONITOR {synthEnabled ? 'ON' : 'OFF'}
 	</button>
-	<p>To drive Analog Lab V, choose <strong>Guitar audio</strong> for live guitar or <strong>Host MIDI</strong> for a controller, select <strong>Input + Contrapunk</strong>, turn the internal monitor off, and place Analog Lab V after Contrapunk in the DAW chain.</p>
+	<p>Use <strong>Guitar audio</strong> when the host supplies plugin audio input (VST3/CLAP), or <strong>Host MIDI</strong> for a controller. Logic MIDI FX cannot supply guitar audio; route the standalone app through IAC instead.</p>
 </div>
 
 <style>

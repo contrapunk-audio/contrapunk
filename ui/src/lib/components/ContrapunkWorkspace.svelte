@@ -292,7 +292,7 @@
 	.transport-button { width: 31px; padding: 0 !important; font-family: var(--font-code) !important; }
 	.tempo { display: flex; height: 30px; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid var(--proto-line); color: var(--proto-muted); font: 8px var(--font-code); }
 	.tempo input { width: 39px; border: 0; background: transparent; color: var(--proto-text); font: 10px var(--font-code); }
-	.performance-body { box-sizing: border-box; display: grid; width: min(1480px, calc(100% - 20px)); height: calc(100vh - 52px); grid-template-rows: 46px minmax(0, 1fr) 220px; margin: 0 auto; gap: 8px; overflow: hidden; padding: 8px 0; }
+	.performance-body { box-sizing: border-box; display: grid; width: min(1480px, calc(100% - 20px)); height: calc(100vh - 52px); grid-template-rows: auto minmax(0, 1fr) 220px; margin: 0 auto; gap: 8px; overflow: hidden; padding: 8px 0; }
 	.quick-controls { display: grid; grid-template-columns: .7fr 1.2fr 1.3fr .55fr .9fr 1fr; border: 1px solid var(--proto-line); background: var(--proto-panel); }
 	.quick-controls label { display: grid; min-width: 0; gap: 3px; padding: 6px 10px; border-right: 1px solid var(--proto-line); }
 	.quick-controls label:last-child { border-right: 0; }
