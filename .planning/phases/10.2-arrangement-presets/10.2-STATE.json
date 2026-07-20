@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "research-preset-27-quartal-colossus",
+  "current_slice": "implement-preset-27-quartal-colossus",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -330,6 +330,39 @@
         "commit": "f72aafb",
         "preset_id": "25-bebop-chase"
       }
+    },
+    "27-quartal-colossus": {
+      "status": "approved",
+      "required_reports": 3,
+      "completed_reports": 3,
+      "history": {
+        "status": "complete",
+        "attempts": 2,
+        "path": ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/history.md",
+        "note": "Initial concurrent Codex startup lacked a credential; a sequential fresh openai-codex/gpt-5.6-sol run completed the report."
+      },
+      "theory": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/theory.md",
+        "note": "The report artifact was complete; only the generic acceptance wrapper rejected the research-only task."
+      },
+      "performance": {
+        "status": "complete",
+        "attempts": 2,
+        "path": ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/performance.md",
+        "note": "Initial concurrent Codex startup lacked a credential; a sequential fresh openai-codex/gpt-5.6-sol run completed the report."
+      },
+      "synthesis": {
+        "status": "approved",
+        "path": ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/synthesis.md",
+        "decision": "ready_for_implementation",
+        "note": "Approved only as a static four-voice Dorian fourth-derived block; the performer supplies all rhythm, phrase, dynamics, form, and silence."
+      },
+      "implementation": {
+        "status": "ready",
+        "preset_id": "27-quartal-colossus"
+      }
     }
   },
   "completed_requirements": [
@@ -614,6 +647,10 @@
     {
       "command": "npm --prefix ui run check (Bebop Chase)",
       "result": "0 errors; 29 pre-existing warnings"
+    },
+    {
+      "command": "preset 27 research-pack validation",
+      "result": "3 nonempty independently cited reports plus template-complete parent synthesis; bounded decision ready_for_implementation"
     }
   ],
   "blockers": [
@@ -629,8 +666,9 @@
     "Use only openai-codex/gpt-5.6-sol for research and all other subagent work.",
     "Preset 23 is a fixed major sixth-diminished scale-of-chords study; no borrowing, family movement, chromatic-line rules, swing, or phrase inference is claimed.",
     "Preset 23 cannot activate until BarryHarris returns exactly four total voices with the exact player source once in the soprano role.",
-    "Preset 25 is a performer-bounded four-to-six-note burst answered four beats later by a complete unity-time octave echo; no shortening, phrase recognition, swing, chord logic, trading fours, or artist imitation is claimed."
+    "Preset 25 is a performer-bounded four-to-six-note burst answered four beats later by a complete unity-time octave echo; no shortening, phrase recognition, swing, chord logic, trading fours, or artist imitation is claimed.",
+    "Preset 27 is a static Dorian DiatonicFourths study with four total voices and source-lowest; exact perfect-fourth stacks occur only on degrees 1, 2, 5, and 6, and all temporal development remains performer-authored."
   ],
-  "last_commit": "f72aafb",
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 27 Quartal Colossus (McCoy Tyner), then parent-synthesize before changing its research-pending draft."
+  "last_commit": "0425296",
+  "next_action": "Implement preset 27 exactly as synthesized with Dorian, DiatonicFourths, four voices, source position 3, no voice leading/octave mode/Companion; add all-degree vector and balanced lifecycle regressions before preset 36."
 }

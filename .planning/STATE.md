@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 2 preset 25 operational; next research gate is preset 27 Quartal Colossus.
-last_updated: "2026-07-20T09:10:00Z"
-last_activity: 2026-07-20 — Shipped Bebop Chase as one complete four-beat-delayed octave answer with balanced lifecycle cleanup.
+stopped_at: Phase 10.2 Wave 2 preset 27 research approved; bounded Dorian fourth-stack implementation is next.
+last_updated: "2026-07-20T09:46:00Z"
+last_activity: 2026-07-20 — Approved Quartal Colossus only as a static four-voice Dorian fourth-derived block with performer-authored form.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 8/12 baseline presets operational
-Last activity: 2026-07-20 — Bebop Chase is operational as one complete four-beat-delayed octave answer to a performer-bounded short burst. The original shortened-answer claim remains rejected; the next three-report gate is preset 27 Quartal Colossus.
+Status: Executing Wave 2; 8/12 baseline presets operational, preset 27 research approved
+Last activity: 2026-07-20 — Three independent reports and parent synthesis approved Quartal Colossus only as a static Dorian fourth-derived mapping. Exact perfect-fourth stacks occur on degrees 1, 2, 5, and 6; implementation is next.
 
 ### Phase 10.2 Start — 2026-07-19
 

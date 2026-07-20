@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T09:10:00Z",
+  "timestamp": "2026-07-20T09:46:00Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
   "plan": 2,
-  "task": "research-preset-27-quartal-colossus",
+  "task": "implement-preset-27-quartal-colossus",
   "total_plans": 7,
   "status": "active",
   "loop": {
@@ -91,6 +91,18 @@
       "commit": "f72aafb",
       "status": "done_operational",
       "evidence": "Complete four-beat-delayed octave answer only; Companion 69 passed, catalog/persistence 11 passed, UI check zero errors and 29 pre-existing warnings."
+    },
+    {
+      "name": "Preset 27 Quartal Colossus research and parent synthesis",
+      "commit": "0425296",
+      "status": "done_research_approved",
+      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Approved only as a static four-voice Dorian fourth-derived block with exact P4 subset degrees 1, 2, 5, and 6.",
+      "artifacts": [
+        ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/history.md",
+        ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/theory.md",
+        ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/performance.md",
+        ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/synthesis.md"
+      ]
     }
   ],
   "remaining_work": [
@@ -172,7 +184,7 @@
     {
       "name": "Research and implement remaining first-12 baselines",
       "status": "in_progress",
-      "details": "Current: research preset 27 Quartal Colossus. Then order: 36, 43, 48."
+      "details": "Current: implement approved bounded preset 27 Quartal Colossus. Then order: 36, 43, 48."
     },
     {
       "name": "Mandatory user performance checkpoint",
@@ -216,6 +228,6 @@
     "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
     "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
   ],
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 27 Quartal Colossus: scoped McCoy Tyner history/corpus, quartal/modal theory and exact current-engine mapping, and performer/HCI guidance. Parent-synthesize before implementation.",
-  "context_notes": "Eight baselines are operational. Preset 25 shipped in f72aafb as one complete four-beat-delayed octave answer. It does not shorten or recognize phrases, generate swing, follow chords, trade fours, or simulate Parker/Gillespie. Remaining order: 27, 36, 43, 48."
+  "next_action": "Implement preset 27 exactly as synthesized: Dorian + DiatonicFourths, voiceCount 4, voicePosition 3, no voice leading/octave mode/Companion. Add exact seven-degree vector and matching NoteOff tests plus catalog assertions, then verify and checkpoint.",
+  "context_notes": "Eight baselines are operational. Preset 27 research is committed in 0425296. It approves only a static Dorian fourth-derived block; exact all-P4 output occurs on degrees 1, 2, 5, and 6. The player supplies every rhythmic and formal behavior."
 }
