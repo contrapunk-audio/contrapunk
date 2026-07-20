@@ -65,7 +65,7 @@ Use the shared HarmonyEngine only:
 
 `BachChorale` supplies its existing four-voice SATB allocator with common-tone, stepwise-motion, spacing, leading-tone, and parallel-perfect constraints plus its documented relaxation cascade. It remains reactive per source onset; harmonic inertia is note-count-based, not transport- or phrase-aware.
 
-With fresh C Aeolian state and C5 input, the current exact oracle is `[C5, E♭4, G3, B♭2]` / MIDI `[72,63,55,46]`. The exact source occurs once as soprano. NoteOff must return that same set and empty active state. A following D5 nonchord color before the harmonic governor allows change currently yields `[74,60,51,43]`; this pins harmonic inertia without claiming that either array reproduces the reference score.
+With fresh C Aeolian state and C5 input, the current exact oracle is `[C5, E♭4, G3, B♭2]` / MIDI `[72,63,55,46]`. The exact source occurs once as soprano. NoteOff must return that same set and empty active state. A focused executable check corrected the read-only derivation in `theory.md`: a following D5 nonchord color before the harmonic governor allows change yields `[74,72,63,43]`; this pins harmonic inertia without claiming that either array reproduces the reference score.
 
 ## 4. Performer contract
 

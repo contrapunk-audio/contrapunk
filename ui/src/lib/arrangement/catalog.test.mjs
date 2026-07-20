@@ -4,6 +4,7 @@ import {
 	BEBOP_CHASE_PRESET,
 	BUILT_IN_ARRANGEMENT_PRESETS,
 	COLOR_MODE_WINDOWS_PRESET,
+	HOLLOW_CHOIR_PRESET,
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
 	PIXEL_TRIO_PRESET,
@@ -46,7 +47,8 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			'14-color-mode-windows',
 			'23-sixth-diminished-conveyor',
 			'25-bebop-chase',
-			'27-quartal-colossus'
+			'27-quartal-colossus',
+			'43-hollow-choir'
 		]
 	);
 });
@@ -388,6 +390,49 @@ test('Quartal Colossus is one bounded Dorian fourth-derived block', () => {
 		'transport'
 	]) {
 		assert.equal(preserved in QUARTAL_COLOSSUS_PRESET.config, false);
+	}
+});
+
+test('Hollow Choir is one bounded Aeolian SATB-style harmonic shadow', () => {
+	assert.deepEqual(HOLLOW_CHOIR_PRESET.requirements, ['harmony']);
+	assert.equal(HOLLOW_CHOIR_PRESET.play.transportRequired, false);
+	assert.deepEqual(HOLLOW_CHOIR_PRESET.config.harmony, {
+		scaleMode: 'Aeolian',
+		mode: 'BachChorale',
+		voiceCount: 4,
+		voicePosition: 0,
+		voiceLeadingEnabled: false,
+		voiceLeadingStyle: 'Free',
+		octaveMode: 'None',
+		octaveIntensity: 1,
+		interchangeEnabled: false,
+		interchangeRange: 3,
+		counterpointSpecies: 'Species1',
+		counterpointStrictness: 'Strict'
+	});
+	assert.equal(HOLLOW_CHOIR_PRESET.config.companion.enabled, false);
+	assert.match(HOLLOW_CHOIR_PRESET.result, /SATB-style minor harmonic shadow/i);
+	assert.match(HOLLOW_CHOIR_PRESET.approximation, /does not generate a literal choir/i);
+	assert.match(HOLLOW_CHOIR_PRESET.approximation, /independent counterline/i);
+	assert.match(HOLLOW_CHOIR_PRESET.approximation, /adaptive game scenes/i);
+	assert.deepEqual(validateArrangementPreset(HOLLOW_CHOIR_PRESET), []);
+	assert.deepEqual(arrangementConfigCapabilities(HOLLOW_CHOIR_PRESET.config), ['harmony']);
+
+	for (const preserved of [
+		'key',
+		'tonic',
+		'bpm',
+		'timeSignature',
+		'device',
+		'routing',
+		'sound',
+		'masterLevel',
+		'mute',
+		'solo',
+		'plugins',
+		'transport'
+	]) {
+		assert.equal(preserved in HOLLOW_CHOIR_PRESET.config, false);
 	}
 });
 

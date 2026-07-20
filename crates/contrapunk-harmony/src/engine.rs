@@ -2869,6 +2869,32 @@ mod tests {
         assert!(engine.active_notes.is_empty());
     }
 
+    #[test]
+    fn aeolian_chorale_shadow_keeps_soprano_and_balanced_release() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::BachChorale, 4);
+        engine.set_scale_mode(ScaleMode::Aeolian);
+        engine.set_voice_position(0);
+        engine.set_voice_leading_enabled(false);
+        engine.set_octave_mode(OctaveMode::None);
+        engine.set_interchange_enabled(false);
+
+        let tonic = vec![Note::C5, Note::Eb4, Note::G3, Note::Bb2];
+        let tonic_on = engine.harmonize_note_on(Note::C5);
+        assert_eq!(tonic_on, tonic);
+        assert_eq!(tonic_on.iter().filter(|&&note| note == Note::C5).count(), 1);
+        assert!(tonic_on[1..].iter().all(|&note| note < Note::C5));
+        assert_eq!(engine.harmonize_note_off(Note::C5), tonic);
+        assert!(engine.active_notes.is_empty());
+
+        // The note-count harmonic governor retains the tonic field for
+        // this following nonchord color instead of changing harmony on
+        // every melodic event.
+        let continuation = vec![Note::D5, Note::C5, Note::Eb4, Note::G2];
+        assert_eq!(engine.harmonize_note_on(Note::D5), continuation);
+        assert_eq!(engine.harmonize_note_off(Note::D5), continuation);
+        assert!(engine.active_notes.is_empty());
+    }
+
     /// External transport, when set, must take precedence over the
     /// internal synthetic counter. Sanity check that the synthetic
     /// fallback doesn't override an explicitly-driven phase.

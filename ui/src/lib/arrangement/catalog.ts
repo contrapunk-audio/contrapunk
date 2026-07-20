@@ -675,6 +675,68 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 	config: SAFE_DRAFT_CONFIG
 };
 
+export const HOLLOW_CHOIR_PRESET: ArrangementPresetV2 = {
+	schemaVersion: 2,
+	id: '43-hollow-choir',
+	name: 'Hollow Choir',
+	family: 'game',
+	tags: ['dark-fantasy', 'aeolian', 'satb-shadow', 'player-shaped-form'],
+	builtIn: true,
+	result:
+		'A singable Aeolian line receives a restrained four-part, SATB-style minor harmonic shadow.',
+	approximation:
+		'A static harmony study informed by sparse, melancholic vocal/orchestral atmosphere in a bounded 2014–18 Hollow Knight project corpus. It does not generate a literal choir, acoustic orchestration, distant layers, independent counterline, adaptive game scenes, ambience, reverb, narrative response, protected cue material, or Christopher Larkin’s identity. Sound choice and performance create the color.',
+	play: {
+		prompt:
+			'Play one soft two-to-five-note minor phrase, hold the destination, release completely, then leave a full bar of silence before one small variation.',
+		input: 'single_notes',
+		articulation:
+			'Soft, rounded, non-overlapping notes with clean releases; keyboard pedal up, guitar strings muted, and no bends, slides, harmonics, wide vibrato, or ringing strings.',
+		density: 'Two to five source attacks per phrase; exactly one physical source note at a time.',
+		space: 'Hold the destination for three to four beats, then leave at least one full bar silent.',
+		tempo: '56–76 BPM; transport is optional and remains untouched.',
+		transportRequired: false
+	},
+	references: [
+		{
+			name: 'Christopher Larkin',
+			context:
+				'Bounded reference to selected sparse-to-climactic area and narrative scoring from the 2014–18 Hollow Knight project, not a cue reconstruction, endorsement, or artist simulation.'
+		}
+	],
+	researchStatus: 'approved',
+	requirements: ['harmony'],
+	config: {
+		harmony: {
+			scaleMode: 'Aeolian',
+			mode: 'BachChorale',
+			voiceCount: 4,
+			voicePosition: 0,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: false,
+			globalHoldMode: { kind: 'cancel' },
+			canon: { enabled: false, form: 'free_imitation', holdMode: null, voices: [] },
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
+};
+
 const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 1, name: 'Cloister Organum', family: 'classical', result: 'Open fourths, fifths, and octaves surround a chant line.', prompt: 'Play slow held stepwise notes with clear phrase rests.', references: ['Léonin', 'Pérotin'], requirements: ['interval_stacks'] },
 	{ number: 2, name: 'Modal Linework', family: 'classical', result: MODAL_LINEWORK_PRESET.result, prompt: MODAL_LINEWORK_PRESET.play.prompt, references: ['Giovanni Pierluigi da Palestrina'], requirements: ['harmony', 'voice_leading'] },
@@ -718,7 +780,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 40, name: 'Ash and Ember', family: 'game', result: 'Rough modal riffs receive acoustic, metallic, and vocal-like answers.', prompt: 'Play gritty short riffs, strong downbeats, slides, and dramatic pauses.', references: ['Darren Korb', 'Ashley Barrett'], requirements: ['pattern_lane'], input: 'motif', transportRequired: true },
 	{ number: 41, name: 'Blocks at Dusk', family: 'game', result: 'Sparse figures accumulate soft extended harmony.', prompt: 'Repeat two or three gentle notes with small variations and long decay space.', references: ['C418'], requirements: ['pattern_lane', 'probability_density'], input: 'motif', transportRequired: true },
 	{ number: 42, name: 'Clockwork Stars', family: 'game', result: 'Recurring motifs return across registers and counter-rhythms.', prompt: 'Repeat a clean four-to-eight-note motif while preserving its rhythm.', references: ['Ben Prunty'], requirements: ['motif_memory', 'motif_transform'], input: 'motif' },
-	{ number: 43, name: 'Hollow Choir', family: 'game', result: 'A dark minor melody expands into distant chorale and counterline.', prompt: 'Play singable minor phrases with held destinations and long pauses.', references: ['Christopher Larkin'], requirements: ['harmony', 'voice_leading'] },
+	{ number: 43, name: 'Hollow Choir', family: 'game', result: HOLLOW_CHOIR_PRESET.result, prompt: HOLLOW_CHOIR_PRESET.play.prompt, references: ['Christopher Larkin'], requirements: ['harmony'] },
 	{ number: 44, name: 'Memory Weave', family: 'game', result: 'Two learned themes return transformed and combined.', prompt: 'Teach two distinct motifs, repeating each twice with a pause.', references: ['Toby Fox'], requirements: ['motif_memory', 'motif_transform'], input: 'motif' },
 	{ number: 45, name: 'Neon Noir', family: 'game', result: 'Minor jazz-funk harmony gains chromatic passing motion and rhythmic responses.', prompt: 'Play tight syncopated riffs, repeated notes, and short chromatic runs.', references: ['Shoji Meguro'], requirements: ['pattern_lane', 'jazz_extensions'], input: 'motif', transportRequired: true },
 	{ number: 46, name: 'Forest Layer Unfold', family: 'game', result: 'Quiet modal material gains naturalistic layers as density rises.', prompt: 'Begin sparse and pentatonic, then add repeats and higher notes gradually.', references: ['David Wise'], requirements: ['adaptive_scenes'] },
@@ -740,6 +802,7 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 		if (spec.number === 25) return BEBOP_CHASE_PRESET;
 		if (spec.number === 27) return QUARTAL_COLOSSUS_PRESET;
 		if (spec.number === 36) return PIXEL_TRIO_PRESET;
+		if (spec.number === 43) return HOLLOW_CHOIR_PRESET;
 		return draftPreset(spec);
 	}
 );
