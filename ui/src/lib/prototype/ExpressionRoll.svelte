@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { platformName } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
-	import { midiToName } from '$lib/embed/music-utils';
+	import { isBlackKey, midiToName } from '$lib/embed/music-utils';
 	import { PIANO_CANON, PIANO_COUNTERPOINT, PIANO_HARMONY, PIANO_INPUT } from '$lib/theme/colors';
 
 	type Role = 'player' | 'harmony' | 'canon' | 'counterpoint';
@@ -19,8 +19,8 @@
 
 	const WINDOW_MS = 8_000;
 	const KEY_RAIL = 50;
-	const DEFAULT_MIN = 40;
-	const DEFAULT_MAX = 76;
+	const DEFAULT_MIN = 36;
+	const DEFAULT_MAX = 84;
 	const MAX_PITCH_SAMPLES = 512;
 	const MAX_GATES = 512;
 	const colors: Record<Role, string> = {
@@ -129,25 +129,84 @@
 			}
 		}
 		const vertical = orientation === 'vertical';
-		const railSize = vertical ? 28 : KEY_RAIL;
+		const railSize = vertical ? 42 : KEY_RAIL;
 		const plotWidth = Math.max(1, width - (vertical ? 0 : KEY_RAIL));
-		const plotHeight = Math.max(1, height - (vertical ? railSize : 16));
+		const plotHeight = Math.max(1, height - (vertical ? railSize : 0));
 		const timeFor = (at: number) => vertical
 			? railSize + ((at - cutoff) / WINDOW_MS) * plotHeight
 			: KEY_RAIL + ((at - cutoff) / WINDOW_MS) * plotWidth;
-		const pitchFor = (note: number) => vertical
-			? ((note - minNote) / (maxNote - minNote)) * width
-			: 8 + (1 - (note - minNote) / (maxNote - minNote)) * plotHeight;
+
+		// Use real piano geometry: white keys occupy the rail and black keys
+		// overlay their boundaries. The old fixed 5px bars were the reason
+		// the keyboard looked like a barcode on a wide roll.
+		const whiteNotes = Array.from(
+			{ length: maxNote - minNote + 1 },
+			(_, index) => minNote + index
+		).filter((note) => !isBlackKey(note));
+		const whiteIndex = new Map(whiteNotes.map((note, index) => [note, index]));
+		const whiteCount = whiteNotes.length;
+		const keyPosition = (note: number) => {
+			const index = whiteIndex.get(note);
+			if (index !== undefined) return index + 0.5;
+			return (whiteIndex.get(note - 1) ?? -1) + 1;
+		};
+		const pianoPosition = (note: number) => {
+			const bounded = Math.max(minNote, Math.min(maxNote, note));
+			const low = Math.floor(bounded);
+			const fraction = bounded - low;
+			if (fraction === 0 || low === maxNote) return keyPosition(low);
+			return keyPosition(low) + (keyPosition(low + 1) - keyPosition(low)) * fraction;
+		};
+		const pitchFor = (note: number) => {
+			const position = pianoPosition(note) / whiteCount;
+			return vertical ? position * width : (1 - position) * height;
+		};
 		const pointFor = (at: number, note: number): [number, number] => vertical
 			? [pitchFor(note), timeFor(at)]
 			: [timeFor(at), pitchFor(note)];
 
+		const whiteSize = (vertical ? width : height) / whiteCount;
+		ctx.fillStyle = '#111115';
+		if (vertical) ctx.fillRect(0, 0, width, railSize);
+		else ctx.fillRect(0, 0, railSize, height);
+
+		for (const [index, note] of whiteNotes.entries()) {
+			const inScale = engine.inScaleNotes.includes(note);
+			ctx.fillStyle = inScale ? '#e4f1ee' : '#c9c9cd';
+			ctx.strokeStyle = '#57575f';
+			ctx.lineWidth = 0.75;
+			if (vertical) {
+				const x = index * whiteSize;
+				ctx.fillRect(x, 0, whiteSize, railSize);
+				ctx.strokeRect(x, 0, whiteSize, railSize);
+			} else {
+				const y = height - (index + 1) * whiteSize;
+				ctx.fillRect(0, y, railSize, whiteSize);
+				ctx.strokeRect(0, y, railSize, whiteSize);
+			}
+		}
+
+		for (let note = minNote; note <= maxNote; note++) {
+			if (!isBlackKey(note)) continue;
+			const inScale = engine.inScaleNotes.includes(note);
+			ctx.fillStyle = inScale ? '#789e96' : '#17171b';
+			ctx.strokeStyle = '#08080a';
+			ctx.lineWidth = 1;
+			const center = pianoPosition(note) * whiteSize;
+			if (vertical) {
+				const keyWidth = whiteSize * 0.6;
+				ctx.fillRect(center - keyWidth / 2, 0, keyWidth, railSize * 0.62);
+				ctx.strokeRect(center - keyWidth / 2, 0, keyWidth, railSize * 0.62);
+			} else {
+				const keyHeight = whiteSize * 0.6;
+				const y = height - center - keyHeight / 2;
+				ctx.fillRect(0, y, railSize * 0.66, keyHeight);
+				ctx.strokeRect(0, y, railSize * 0.66, keyHeight);
+			}
+		}
+
 		for (let note = minNote; note <= maxNote; note++) {
 			const pitch = pitchFor(note);
-			const black = [1, 3, 6, 8, 10].includes(note % 12);
-			ctx.fillStyle = black ? '#1b1b1f' : '#d8d8da';
-			if (vertical) ctx.fillRect(pitch - 2.5, 0, 5, black ? 18 : railSize);
-			else ctx.fillRect(0, pitch - 2.5, black ? 33 : KEY_RAIL, 5);
 			ctx.strokeStyle = note % 12 === 0 ? '#38383e' : '#202025';
 			ctx.lineWidth = note % 12 === 0 ? 1 : 0.5;
 			ctx.beginPath();
@@ -160,10 +219,10 @@
 			}
 			ctx.stroke();
 			if (note % 12 === 0) {
-				ctx.fillStyle = '#74747c';
+				ctx.fillStyle = '#55555d';
 				ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
 				ctx.textAlign = vertical ? 'center' : 'start';
-				ctx.fillText(midiToName(note), vertical ? pitch : 4, vertical ? railSize - 3 : Math.max(9, pitch - 4));
+				ctx.fillText(midiToName(note), vertical ? pitch : 37, vertical ? railSize - 4 : pitch + 3);
 			}
 		}
 		ctx.textAlign = 'start';
@@ -343,7 +402,7 @@
 	.roll-frame { position: relative; min-height: 0; background: #0b0b0d; }
 	canvas { display: block; width: 100%; height: 100%; }
 	.empty { position: absolute; inset: 0; display: grid; place-items: center; padding-left: 50px; color: var(--proto-dim); font-size: 12px; pointer-events: none; }
-	.empty.vertical { padding-top: 28px; padding-left: 0; }
+	.empty.vertical { padding-top: 42px; padding-left: 0; }
 	footer { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--proto-line); }
 	footer > div { min-width: 0; padding: 8px 11px; border-right: 1px solid var(--proto-line); }
 	footer > div:last-child { border-right: 0; }
