@@ -109,6 +109,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		midiDevicePicker: true,
 		audioFx: true,
 		companionLanes: true,
+		patternLanes: true,
 		// Tauri renders the full I/O Input subtab source radio —
 		// MIDI / Guitar Audio (cpal backend) / Voice (disabled).
 		inputSourcePicker: true,
@@ -365,6 +366,30 @@ export class TauriAdapter implements ContrapunkAdapter {
 			await invoke('counterpoint_configure', { partial });
 		} catch (e) {
 			throw new Error(`Failed to configure counterpoint lane: ${e}`);
+		}
+	}
+
+	async patternConfigure(
+		laneId: 'pattern_low' | 'pattern_counter',
+		partial: Record<string, unknown>
+	): Promise<void> {
+		try {
+			await invoke('pattern_configure', { laneId, partial });
+		} catch (e) {
+			throw new Error(`Failed to configure ${laneId}: ${e}`);
+		}
+	}
+
+	async patternState(
+		laneId: 'pattern_low' | 'pattern_counter'
+	): Promise<Record<string, unknown> | null> {
+		try {
+			const state = await invoke('pattern_state', { laneId });
+			return state !== null && typeof state === 'object'
+				? (state as Record<string, unknown>)
+				: null;
+		} catch (e) {
+			throw new Error(`Failed to read ${laneId}: ${e}`);
 		}
 	}
 

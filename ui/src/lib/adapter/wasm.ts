@@ -129,6 +129,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		audioFx: true,
 		// WASM has Companion lanes via the WasmCompanion bridge.
 		companionLanes: true,
+		patternLanes: true,
 		// WASM exposes MIDI + guitar-audio via Web MIDI + WebAudio
 		// (guitarCapture.ts). Voice option is disabled like everywhere.
 		inputSourcePicker: true,
@@ -283,9 +284,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 		for (const op of ops) {
 			const laneNotes =
-				op.lane === 'canon'
+				op.lane === 'canon' || op.lane === 'pattern_low'
 					? activeCanonNotes
-					: op.lane === 'counterpoint'
+					: op.lane === 'counterpoint' || op.lane === 'pattern_counter'
 						? activeCounterpointNotes
 						: null;
 			if (op.kind === 'note_on' && typeof op.note === 'number') {
@@ -517,7 +518,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 	// when running in browser mode.
 
 	async companionSetEnabled(enabled: boolean): Promise<void> {
-		if (companion) companion.set_enabled(enabled);
+		if (!companion) return;
+		if (!enabled) await this.panicAllNotesOff();
+		companion.set_enabled(enabled);
 	}
 
 	async companionIsEnabled(): Promise<boolean> {
@@ -604,6 +607,34 @@ export class WasmAdapter implements ContrapunkAdapter {
 			companion.configure_counterpoint(JSON.stringify(partial));
 		} catch (e) {
 			console.warn('[wasm] counterpointConfigure failed:', e);
+		}
+	}
+
+	async patternConfigure(
+		laneId: 'pattern_low' | 'pattern_counter',
+		partial: Record<string, unknown>
+	): Promise<void> {
+		if (!companion) return;
+		try {
+			companion.configure_pattern(laneId, JSON.stringify(partial));
+		} catch (e) {
+			console.warn(`[wasm] ${laneId} configuration failed:`, e);
+			throw e;
+		}
+	}
+
+	async patternState(
+		laneId: 'pattern_low' | 'pattern_counter'
+	): Promise<Record<string, unknown> | null> {
+		if (!companion) return null;
+		try {
+			const state = JSON.parse(companion.pattern_state(laneId));
+			return state !== null && typeof state === 'object'
+				? (state as Record<string, unknown>)
+				: null;
+		} catch (e) {
+			console.warn(`[wasm] ${laneId} state read failed:`, e);
+			return null;
 		}
 	}
 

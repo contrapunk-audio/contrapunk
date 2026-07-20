@@ -111,6 +111,28 @@ export interface ArrangementCounterpointConfig {
 	holdMode: HoldMode | null;
 }
 
+export type ArrangementPatternLaneId = 'pattern_low' | 'pattern_counter';
+
+export interface ArrangementPatternEventConfig {
+	beat: number;
+	degree: number;
+	octave: number;
+	durationBeats: number;
+	velocity: number;
+}
+
+export interface ArrangementPatternLaneConfig {
+	enabled: boolean;
+	cycleBeats: number;
+	tailBeats: number;
+	events: ArrangementPatternEventConfig[];
+}
+
+export interface ArrangementPatternConfig {
+	lowSupport: ArrangementPatternLaneConfig;
+	counterline: ArrangementPatternLaneConfig;
+}
+
 export interface ArrangementConfig {
 	harmony: ArrangementHarmonyConfig;
 	companion: {
@@ -118,6 +140,8 @@ export interface ArrangementConfig {
 		globalHoldMode: HoldMode;
 		canon: ArrangementCanonConfig;
 		counterpoint: ArrangementCounterpointConfig;
+		/** Optional for backward-compatible schema-v2 user presets. */
+		patterns?: ArrangementPatternConfig;
 	};
 	mix: {
 		input: number;
@@ -166,6 +190,13 @@ export function arrangementConfigCapabilities(config: ArrangementConfig): Arrang
 	if (config.companion.enabled && config.companion.counterpoint.enabled) {
 		capabilities.add('species_counterpoint');
 	}
+	const patterns = config.companion.patterns;
+	if (config.companion.enabled && patterns && (patterns.lowSupport.enabled || patterns.counterline.enabled)) {
+		capabilities.add('pattern_lane');
+		if (patterns.lowSupport.enabled && patterns.counterline.enabled) {
+			capabilities.add('stable_lane_groups');
+		}
+	}
 	if (Object.values(config.mix).some((value) => value !== 1)) capabilities.add('role_mix');
 	return [...capabilities];
 }
@@ -210,6 +241,34 @@ export function validateArrangementConfig(config: ArrangementConfig): string[] {
 	for (const [index, voice] of config.companion.canon.voices.entries()) {
 		if (!Number.isFinite(voice.timeRatio) || voice.timeRatio < 0.125 || voice.timeRatio > 8) {
 			errors.push(`Canon voice ${index + 1} timeRatio must be between 0.125 and 8`);
+		}
+	}
+	if (config.companion.patterns) {
+		for (const [role, pattern] of Object.entries(config.companion.patterns)) {
+			if (!Number.isFinite(pattern.cycleBeats) || pattern.cycleBeats < 0.25 || pattern.cycleBeats > 32) {
+				errors.push(`${role} cycleBeats must be between 0.25 and 32`);
+			}
+			if (!Number.isFinite(pattern.tailBeats) || pattern.tailBeats < 0.25 || pattern.tailBeats > 32) {
+				errors.push(`${role} tailBeats must be between 0.25 and 32`);
+			}
+			if (pattern.events.length > 16) errors.push(`${role} supports at most 16 events`);
+			for (const event of pattern.events) {
+				if (!Number.isFinite(event.beat) || event.beat < 0 || event.beat >= pattern.cycleBeats) {
+					errors.push(`${role} event beat must fall inside the cycle`);
+				}
+				if (!Number.isInteger(event.degree) || event.degree < 0 || event.degree > 6) {
+					errors.push(`${role} event degree must be between 0 and 6`);
+				}
+				if (!Number.isInteger(event.octave) || event.octave < -4 || event.octave > 4) {
+					errors.push(`${role} event octave must be between -4 and 4`);
+				}
+				if (!Number.isFinite(event.durationBeats) || event.durationBeats < 0.03125 || event.durationBeats > 32) {
+					errors.push(`${role} event durationBeats must be between 0.03125 and 32`);
+				}
+				if (!Number.isInteger(event.velocity) || event.velocity < 1 || event.velocity > 127) {
+					errors.push(`${role} event velocity must be between 1 and 127`);
+				}
+			}
 		}
 	}
 	for (const [role, value] of Object.entries(config.mix)) {

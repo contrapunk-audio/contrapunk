@@ -20,7 +20,7 @@ use wasm_bindgen::prelude::*;
 use wmidi::Note;
 
 use contrapunk_companion::lane::InputEvent;
-use contrapunk_companion::{CanonLane, CounterpointLane};
+use contrapunk_companion::{CanonLane, CounterpointLane, PatternLane};
 use contrapunk_companion::{Companion, DispatchOp, WorldState};
 use contrapunk_harmony::{HarmonyEngine, HarmonyMode, Key};
 use contrapunk_transport::Transport;
@@ -53,6 +53,13 @@ impl CompanionWasm {
         let mut companion = Companion::new(world.clone());
         companion.lanes.push(Box::new(CanonLane::new()));
         companion.lanes.push(Box::new(CounterpointLane::new()));
+        companion
+            .lanes
+            .push(Box::new(PatternLane::new("Low Support", "pattern_low")));
+        companion.lanes.push(Box::new(PatternLane::new(
+            "Counterline Pattern",
+            "pattern_counter",
+        )));
         // Master enable defaults ON to match the Tauri build's FTUX.
         companion
             .enabled
@@ -137,6 +144,18 @@ impl CompanionWasm {
             .map_err(|e| JsValue::from_str(&e))
     }
 
+    #[wasm_bindgen]
+    pub fn configure_pattern(&mut self, lane_id: &str, json: &str) -> Result<(), JsValue> {
+        if !matches!(lane_id, "pattern_low" | "pattern_counter") {
+            return Err(JsValue::from_str("unknown pattern lane"));
+        }
+        let value: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.inner
+            .configure_lane(lane_id, value)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
     /// Set the Companion's global HoldMode default. JSON shape:
     ///   {"kind":"cancel"}
     ///   {"kind":"near_future","tail_beats":1.0}
@@ -145,6 +164,18 @@ impl CompanionWasm {
     /// Lanes / voices can still override via the existing
     /// `configure_canon` / `configure_counterpoint` JSON paths (they
     /// each accept a `hold_mode` field with the same shape).
+    #[wasm_bindgen]
+    pub fn pattern_state(&self, lane_id: &str) -> Result<String, JsValue> {
+        if !matches!(lane_id, "pattern_low" | "pattern_counter") {
+            return Err(JsValue::from_str("unknown pattern lane"));
+        }
+        Ok(self
+            .inner
+            .lane_state(lane_id)
+            .unwrap_or(serde_json::Value::Null)
+            .to_string())
+    }
+
     #[wasm_bindgen]
     pub fn set_global_hold_mode(&self, json: &str) -> Result<(), JsValue> {
         let value: serde_json::Value =
@@ -236,10 +267,20 @@ impl CompanionWasm {
             .inner
             .lane_state("counterpoint")
             .unwrap_or(serde_json::Value::Null);
+        let pattern_low = self
+            .inner
+            .lane_state("pattern_low")
+            .unwrap_or(serde_json::Value::Null);
+        let pattern_counter = self
+            .inner
+            .lane_state("pattern_counter")
+            .unwrap_or(serde_json::Value::Null);
         serde_json::json!({
             "snapshot": snapshot,
             "canon": canon,
             "counterpoint": counterpoint,
+            "pattern_low": pattern_low,
+            "pattern_counter": pattern_counter,
             "companion_enabled": self.inner.enabled.load(std::sync::atomic::Ordering::Acquire),
             "transport_beats": self.world.transport.total_beats(),
         })

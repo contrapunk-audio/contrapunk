@@ -4,7 +4,10 @@ import { engine } from './engine.svelte';
 import {
 	validateArrangementConfig,
 	type ArrangementCapability,
-	type ArrangementConfig
+	type ArrangementConfig,
+	type ArrangementPatternConfig,
+	type ArrangementPatternLaneConfig,
+	type ArrangementPatternLaneId
 } from '$lib/arrangement/presets';
 
 export interface CounterpointLaneState {
@@ -21,8 +24,23 @@ const DEFAULT_COUNTERPOINT: CounterpointLaneState = {
 	preferAbove: true
 };
 
+const EMPTY_PATTERN_LANE: ArrangementPatternLaneConfig = {
+	enabled: false,
+	cycleBeats: 4,
+	tailBeats: 4,
+	events: []
+};
+
+function emptyPatterns(): ArrangementPatternConfig {
+	return {
+		lowSupport: { ...EMPTY_PATTERN_LANE, events: [] },
+		counterline: { ...EMPTY_PATTERN_LANE, events: [] }
+	};
+}
+
 class ArrangementStore {
 	counterpoint = $state<CounterpointLaneState>({ ...DEFAULT_COUNTERPOINT });
+	patterns = $state<ArrangementPatternConfig>(emptyPatterns());
 	mixLevels = $state([1, 1, 1, 1]);
 	mixLoaded = $state(false);
 	applying = $state(false);
@@ -33,6 +51,10 @@ class ArrangementStore {
 			capabilities.add('strict_canon');
 			capabilities.add('free_imitation');
 			capabilities.add('species_counterpoint');
+		}
+		if (adapter.capabilities.patternLanes) {
+			capabilities.add('pattern_lane');
+			capabilities.add('stable_lane_groups');
 		}
 		if (adapter.capabilities.roleMix) capabilities.add('role_mix');
 		return capabilities;
@@ -53,6 +75,18 @@ class ArrangementStore {
 			// Surface does not expose the dedicated Counterpoint lane.
 		}
 
+		for (const [role, laneId] of [
+			['lowSupport', 'pattern_low'],
+			['counterline', 'pattern_counter']
+		] as const) {
+			try {
+				const state = await adapter.patternState(laneId);
+				if (state) this.patterns[role] = patternFromWire(state);
+			} catch {
+				// Surface does not expose stable pattern roles.
+			}
+		}
+
 		if (adapter.capabilities.roleMix) {
 			try {
 				const state = await adapter.getSynthState();
@@ -64,6 +98,32 @@ class ArrangementStore {
 			}
 		}
 		this.mixLoaded = true;
+	}
+
+	async setPattern(
+		role: keyof ArrangementPatternConfig,
+		laneId: ArrangementPatternLaneId,
+		config: ArrangementPatternLaneConfig
+	) {
+		const previous = this.patterns[role];
+		this.patterns[role] = clonePattern(config);
+		try {
+			await adapter.patternConfigure(laneId, {
+				enabled: config.enabled,
+				cycle_beats: config.cycleBeats,
+				tail_beats: config.tailBeats,
+				events: config.events.map((event) => ({
+					beat: event.beat,
+					degree: event.degree,
+					octave: event.octave,
+					duration_beats: event.durationBeats,
+					velocity: event.velocity
+				}))
+			});
+		} catch (error) {
+			this.patterns[role] = previous;
+			throw error;
+		}
 	}
 
 	async setCounterpoint(patch: Partial<CounterpointLaneState>) {
@@ -160,6 +220,9 @@ class ArrangementStore {
 			preferAbove: companion.counterpoint.preferAbove
 		});
 		await engine.setCounterpointLaneHoldMode(companion.counterpoint.holdMode);
+		const patterns = companion.patterns ?? emptyPatterns();
+		await this.setPattern('lowSupport', 'pattern_low', patterns.lowSupport);
+		await this.setPattern('counterline', 'pattern_counter', patterns.counterline);
 		await engine.setCompanionEnabled(companion.enabled);
 
 		const mix = [config.mix.input, config.mix.harmony, config.mix.canon, config.mix.counterpoint];
@@ -215,6 +278,10 @@ class ArrangementStore {
 					transposeDegrees: this.counterpoint.transposeDegrees,
 					preferAbove: this.counterpoint.preferAbove,
 					holdMode: engine.counterpointLaneHoldMode
+				},
+				patterns: {
+					lowSupport: clonePattern(this.patterns.lowSupport),
+					counterline: clonePattern(this.patterns.counterline)
 				}
 			},
 			mix: {
@@ -225,6 +292,38 @@ class ArrangementStore {
 			}
 		};
 	}
+}
+
+function clonePattern(config: ArrangementPatternLaneConfig): ArrangementPatternLaneConfig {
+	return { ...config, events: config.events.map((event) => ({ ...event })) };
+}
+
+function patternFromWire(state: Record<string, unknown>): ArrangementPatternLaneConfig {
+	return {
+		enabled: state.enabled === true,
+		cycleBeats: typeof state.cycle_beats === 'number' ? state.cycle_beats : 4,
+		tailBeats: typeof state.tail_beats === 'number' ? state.tail_beats : 4,
+		events: Array.isArray(state.events)
+			? state.events.flatMap((value) => {
+					if (typeof value !== 'object' || value === null) return [];
+					const event = value as Record<string, unknown>;
+					if (
+						typeof event.beat !== 'number' ||
+						typeof event.degree !== 'number' ||
+						typeof event.octave !== 'number' ||
+						typeof event.duration_beats !== 'number' ||
+						typeof event.velocity !== 'number'
+					) return [];
+					return [{
+						beat: event.beat,
+						degree: event.degree,
+						octave: event.octave,
+						durationBeats: event.duration_beats,
+						velocity: event.velocity
+					}];
+				})
+			: []
+	};
 }
 
 function clamp01(value: number): number {

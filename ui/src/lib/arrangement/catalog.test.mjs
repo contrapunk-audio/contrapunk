@@ -49,6 +49,7 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 			'23-sixth-diminished-conveyor',
 			'25-bebop-chase',
 			'27-quartal-colossus',
+			'36-pixel-trio',
 			'43-hollow-choir',
 			'48-crystal-chorale'
 		]
@@ -504,21 +505,49 @@ test('Crystal Chorale combines a four-part harmonic-minor shadow with one delaye
 	}
 });
 
-test('Pixel Trio remains visible and honestly capability-locked', () => {
-	assert.equal(PIXEL_TRIO_PRESET.researchStatus, 'blocked');
+test('Pixel Trio uses two independent declarative pattern roles', () => {
+	assert.equal(PIXEL_TRIO_PRESET.researchStatus, 'approved');
 	assert.equal(PIXEL_TRIO_PRESET.play.transportRequired, true);
 	assert.deepEqual(PIXEL_TRIO_PRESET.requirements, ['pattern_lane', 'stable_lane_groups']);
+	assert.equal(PIXEL_TRIO_PRESET.config.harmony.mode, 'PassThrough');
+	assert.equal(PIXEL_TRIO_PRESET.config.harmony.voiceCount, 1);
+	assert.equal(PIXEL_TRIO_PRESET.config.companion.canon.enabled, false);
+	assert.equal(PIXEL_TRIO_PRESET.config.companion.counterpoint.enabled, false);
+	assert.deepEqual(PIXEL_TRIO_PRESET.config.companion.patterns, {
+		lowSupport: {
+			enabled: true,
+			cycleBeats: 4,
+			tailBeats: 4,
+			events: [
+				{ beat: 0, degree: 0, octave: -2, durationBeats: 1.25, velocity: 78 },
+				{ beat: 2.5, degree: 4, octave: -2, durationBeats: 0.75, velocity: 72 }
+			]
+		},
+		counterline: {
+			enabled: true,
+			cycleBeats: 4,
+			tailBeats: 4,
+			events: [
+				{ beat: 1, degree: 4, octave: 0, durationBeats: 0.75, velocity: 70 },
+				{ beat: 3, degree: 2, octave: 0, durationBeats: 0.75, velocity: 68 }
+			]
+		}
+	});
 	assert.deepEqual(
 		missingArrangementCapabilities(
 			PIXEL_TRIO_PRESET,
-			new Set(['harmony', 'voice_leading', 'strict_canon', 'free_imitation'])
+			new Set(['pattern_lane', 'stable_lane_groups'])
 		),
-		['pattern_lane', 'stable_lane_groups']
+		[]
 	);
+	assert.deepEqual(arrangementConfigCapabilities(PIXEL_TRIO_PRESET.config), [
+		'harmony',
+		'pattern_lane',
+		'stable_lane_groups'
+	]);
 	assert.match(PIXEL_TRIO_PRESET.result, /independent low support/i);
-	assert.match(PIXEL_TRIO_PRESET.approximation, /share every source onset and release/i);
-	assert.match(PIXEL_TRIO_PRESET.approximation, /cannot supply independent/i);
-	assert.match(PIXEL_TRIO_PRESET.approximation, /will not emulate NES hardware/i);
+	assert.match(PIXEL_TRIO_PRESET.approximation, /shared declarative pattern lanes/i);
+	assert.match(PIXEL_TRIO_PRESET.approximation, /does not emulate NES hardware/i);
 	assert.deepEqual(validateArrangementPreset(PIXEL_TRIO_PRESET), []);
 
 	for (const preserved of [

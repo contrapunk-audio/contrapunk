@@ -1,10 +1,24 @@
 # Synthesis: Preset 36 — Pixel Trio
 
-**Decision:** `keep_locked`
+**Decision:** `ready_for_implementation`
 
-**Blocking capability:** a reusable transport-aware three-role scheduler with stable role ownership, independent bass/counterline onset and rest patterns, register bounds, density ceiling, and exact lifecycle cleanup
+**Delivered capability:** two reusable transport-aware declarative PatternLane roles with stable ownership, independent low-support/counterline onset and rest patterns, register offsets, bounded density, and exact lifecycle cleanup
 
 **Reference scope:** selected 1985–87 Famicom/NES practice in Koji Kondo’s *Super Mario Bros.* and Manami Matsumae’s original *Mega Man*, limited to economical pitched-role allocation, hook clarity, repetition, contrast, and space
+
+## Implementation resolution
+
+After the initial `keep_locked` decision, the user explicitly chose to build the missing shared capability rather than substitute another baseline. The core now registers two generic PatternLane instances, `pattern_low` and `pattern_counter`. Presets provide only declarative scale-degree events; Rust contains no Pixel Trio branch or stored game material.
+
+Pixel Trio uses a four-beat Ionian cycle armed and extended by live NoteOns:
+
+- low support: tonic two octaves below at beat 0 for 1.25 beats, then fifth two octaves below at beat 2.5 for 0.75 beats;
+- counterline: fifth in the middle register at beat 1 for 0.75 beats, then third at beat 3 for 0.75 beats;
+- both roles run for a four-beat tail after the latest live input, then stop;
+- low support and counterline have distinct stable lane IDs, output/mix attribution, schedules, register policies, and NoteOn/NoteOff ownership;
+- transport stop, panic/reset, preset replacement, and natural tail completion clear all active and pending role state.
+
+The live source remains PassThrough and owns the foreground hook. The pattern roles overlap only briefly, so one-, two-, and three-role states remain possible instead of permanent saturation. This satisfies the researched minimum without motif capture, phrase inference, chip synthesis, or preset-specific logic.
 
 ## 1. Historical claim boundary
 
@@ -23,13 +37,13 @@ The named composers remain meaningfully different. Kondo’s selected evidence e
 
 ## 2. Report agreement and conflict
 
-All reports agree that the current engine cannot provide literal chip synthesis, percussion, looping, channel stealing, independent game-state adaptation, or either composer’s identity.
+All reports agree that an arrangement engine cannot provide literal chip synthesis, percussion, channel stealing, independent game-state adaptation, or either composer’s identity.
 
 The history and theory reports further agree that “melody, bass, and counterline” are behavioral roles, not labels for three simultaneous pitches. A credible bass must sometimes move, sustain, or rest independently of the melody. A credible counterline must sometimes answer during a lead gap, use contrary/oblique motion, or remain silent. Full three-role density must be a peak rather than the default.
 
 The performance report proposes a narrower current product: three total pitches from each clean input note, explicitly described as event-coupled shadows rather than independent roles. That could be a useful generic **Pixel Stack** exercise, but it does not satisfy the catalog identity of Pixel Trio. Renaming synchronous harmony outputs “bass” and “counterline” would be metadata-only role fiction.
 
-The parent therefore keeps Pixel Trio locked rather than weakening its defining promise.
+The parent initially kept Pixel Trio locked rather than weakening its defining promise. The delivered generic pattern roles now satisfy that promise within the bounded declarative scope above.
 
 ## 3. Why current shared strategies are insufficient
 
@@ -64,7 +78,7 @@ The minimum declared requirements are `pattern_lane` and `stable_lane_groups`. I
 
 ## 5. Target performer contract
 
-When the reusable capability exists:
+With the delivered reusable capability:
 
 - Play a two-bar, four-to-eight-attack monophonic hook with a recognizable rhythm and at least one beat of rest.
 - Repeat it exactly once, change one ending pitch or register, then leave a full-bar opening.
@@ -76,21 +90,20 @@ When the reusable capability exists:
 
 The player still supplies the hook, accents, repetition, controlled variation, phrase return, cadence, and live intent.
 
-## 6. Honest locked catalog copy
+## 6. Honest operational catalog copy
 
 Use copy equivalent to:
 
 - **Name:** Pixel Trio
 - **Target result:** A compact live hook stays foreground while independent low support and one answering tonal line alternate under a three-pitched-role ceiling.
 - **Play:** Perform a catchy two-bar single-note hook, repeat it exactly, change one ending, then leave a full bar for role separation and cleanup.
-- **Approximation:** A future modern MIDI arrangement inspired by three-pitched-role economy in selected 1985–87 Famicom/NES practice. It will not emulate NES hardware, reproduce game music, simulate Kondo or Matsumae, or add unclaimed noise, DMC, percussion, chip timbre, sound effects, or game-state logic.
-- **Locked reason:** Current HarmonyEngine outputs are synchronous shadows of each input note; Pixel Trio requires independent low-support and counterline timing with stable ownership.
+- **Approximation:** A modern deterministic MIDI pattern inspired by three-pitched-role economy in selected 1985–87 Famicom/NES practice. Shared declarative pattern lanes supply tonic/fifth low support and a sparse upper answer while the player authors the hook and form. It does not emulate NES hardware, reproduce game music, simulate Kondo or Matsumae, or add noise, DMC, percussion, chip timbre, sound effects, motif recognition, or game-state logic.
 
 Do not say “the NES had only three channels,” “authentic NES,” “hardware-accurate,” “Kondo preset,” “Matsumae style,” “automatic 8-bit music,” or name/quote any protected game melody.
 
-## 7. Future acceptance checks
+## 7. Implementation acceptance checks
 
-The preset may become operational only when one deterministic 4–8-bar fixture proves:
+The preset is operational only when deterministic fixtures prove:
 
 1. active pitched roles never exceed lead, low support, and counter/support;
 2. bass and counter onset sets each differ from the lead onset set;

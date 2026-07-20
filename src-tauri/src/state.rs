@@ -187,6 +187,14 @@ impl Default for AppState {
             c.lanes.push(Box::new(crate::companion::CanonLane::new()));
             c.lanes
                 .push(Box::new(crate::companion::CounterpointLane::new()));
+            c.lanes.push(Box::new(crate::companion::PatternLane::new(
+                "Low Support",
+                "pattern_low",
+            )));
+            c.lanes.push(Box::new(crate::companion::PatternLane::new(
+                "Counterline Pattern",
+                "pattern_counter",
+            )));
         }
         Self {
             engine,

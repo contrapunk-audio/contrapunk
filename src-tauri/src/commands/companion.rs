@@ -28,6 +28,11 @@ use crate::state::AppState;
 /// in the middle of a tick.
 #[tauri::command]
 pub fn companion_set_enabled(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    if !enabled {
+        // The router's panic boundary dispatches All Notes Off and resets every
+        // lane before the master gate can prevent their cleanup ticks.
+        state.panic_pending.store(true, Ordering::Release);
+    }
     let companion = state.companion.lock().map_err(|e| e.to_string())?;
     companion.enabled.store(enabled, Ordering::Release);
     Ok(())
@@ -254,6 +259,32 @@ pub fn counterpoint_configure(
 ) -> Result<(), String> {
     let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
     companion.configure_lane("counterpoint", partial)
+}
+
+/// Configure one of the two reusable stable pattern roles. Presets provide
+/// declarative event data; the shared lane contains no preset-specific logic.
+#[tauri::command]
+pub fn pattern_configure(
+    lane_id: String,
+    partial: serde_json::Value,
+    state: State<AppState>,
+) -> Result<(), String> {
+    if !matches!(lane_id.as_str(), "pattern_low" | "pattern_counter") {
+        return Err("unknown pattern lane".into());
+    }
+    let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.configure_lane(&lane_id, partial)
+}
+
+#[tauri::command]
+pub fn pattern_state(lane_id: String, state: State<AppState>) -> Result<serde_json::Value, String> {
+    if !matches!(lane_id.as_str(), "pattern_low" | "pattern_counter") {
+        return Err("unknown pattern lane".into());
+    }
+    let companion = state.companion.lock().map_err(|e| e.to_string())?;
+    Ok(companion
+        .lane_state(&lane_id)
+        .unwrap_or(serde_json::Value::Null))
 }
 
 #[cfg(test)]

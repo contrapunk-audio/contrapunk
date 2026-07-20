@@ -19,6 +19,7 @@ pub mod counterpoint_lane;
 pub mod lane;
 pub mod loops;
 pub mod orchestrator;
+pub mod pattern_lane;
 pub mod voice_output;
 pub mod world;
 
@@ -28,6 +29,7 @@ pub use voice_output::VoiceOutputTarget as VoiceOutput;
 pub use canon_lane::CanonLane;
 #[allow(unused_imports)]
 pub use counterpoint_lane::CounterpointLane;
+pub use pattern_lane::PatternLane;
 
 #[allow(unused_imports)]
 pub use lane::{

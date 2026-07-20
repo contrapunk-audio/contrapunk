@@ -646,12 +646,12 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 	id: '36-pixel-trio',
 	name: 'Pixel Trio',
 	family: 'game',
-	tags: ['famicom-nes', 'three-pitched-roles', 'research-complete', 'capability-locked'],
+	tags: ['famicom-nes', 'three-pitched-roles', 'pattern-lane', 'stable-role-groups'],
 	builtIn: true,
 	result:
 		'A compact live hook stays foreground while independent low support and one answering tonal line alternate under a three-pitched-role ceiling.',
 	approximation:
-		'A future modern MIDI arrangement inspired by three-pitched-role economy in selected 1985–87 Famicom/NES practice. Current HarmonyEngine outputs share every source onset and release, so they cannot supply independent low-support and counterline timing. The target will not emulate NES hardware, reproduce game music, simulate Koji Kondo or Manami Matsumae, or add unclaimed noise, DMC, percussion, chip timbre, sound effects, or game-state logic.',
+		'A modern deterministic MIDI pattern informed by three-pitched-role economy in selected 1985–87 Famicom/NES practice. Two shared declarative pattern lanes supply tonic/fifth low support and a sparse upper answer while the player authors the hook and form. It does not emulate NES hardware, reproduce game music, simulate Koji Kondo or Manami Matsumae, or add noise, DMC, percussion, chip timbre, sound effects, motif recognition, or game-state logic.',
 	play: {
 		prompt:
 			'Play a catchy two-bar single-note hook, repeat it exactly, change one ending, then leave a full bar for role separation and cleanup.',
@@ -660,7 +660,7 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 			'Clean, separated single notes; keyboard sustain and chord mode off, guitar strings muted with no bends, slides, double-stops, or ringing releases.',
 		density: 'Four to eight source attacks per two-bar hook; exactly one physical source note at a time.',
 		space: 'Include at least one beat of rest in the hook and one full bar after each variation.',
-		tempo: '100–150 BPM once the required role scheduler exists.',
+		tempo: '100–150 BPM in 4/4; transport is required for the two stable pattern roles.',
 		transportRequired: true
 	},
 	references: [
@@ -670,9 +670,57 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 				'Bounded reference to pitched-role economy in Koji Kondo’s Super Mario Bros. (1985) and Manami Matsumae’s original Mega Man (1987), not either composer’s complete output or an artist/hardware simulation.'
 		}
 	],
-	researchStatus: 'blocked',
+	researchStatus: 'approved',
 	requirements: ['pattern_lane', 'stable_lane_groups'],
-	config: SAFE_DRAFT_CONFIG
+	config: {
+		harmony: {
+			scaleMode: 'Ionian',
+			mode: 'PassThrough',
+			voiceCount: 1,
+			voicePosition: 0,
+			voiceLeadingEnabled: false,
+			voiceLeadingStyle: 'Free',
+			octaveMode: 'None',
+			octaveIntensity: 1,
+			interchangeEnabled: false,
+			interchangeRange: 3,
+			counterpointSpecies: 'Species1',
+			counterpointStrictness: 'Strict'
+		},
+		companion: {
+			enabled: true,
+			globalHoldMode: { kind: 'cancel' },
+			canon: { enabled: false, form: 'free_imitation', holdMode: null, voices: [] },
+			counterpoint: {
+				enabled: false,
+				species: 'Species1',
+				transposeDegrees: 2,
+				preferAbove: true,
+				holdMode: null
+			},
+			patterns: {
+				lowSupport: {
+					enabled: true,
+					cycleBeats: 4,
+					tailBeats: 4,
+					events: [
+						{ beat: 0, degree: 0, octave: -2, durationBeats: 1.25, velocity: 78 },
+						{ beat: 2.5, degree: 4, octave: -2, durationBeats: 0.75, velocity: 72 }
+					]
+				},
+				counterline: {
+					enabled: true,
+					cycleBeats: 4,
+					tailBeats: 4,
+					events: [
+						{ beat: 1, degree: 4, octave: 0, durationBeats: 0.75, velocity: 70 },
+						{ beat: 3, degree: 2, octave: 0, durationBeats: 0.75, velocity: 68 }
+					]
+				}
+			}
+		},
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+	}
 };
 
 export const HOLLOW_CHOIR_PRESET: ArrangementPresetV2 = {

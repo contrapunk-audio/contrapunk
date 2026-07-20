@@ -1401,8 +1401,8 @@ fn dispatch_companion_ops(
         // Per-lane set the note belongs to, if any. Other lane tags
         // (or AllNotesOff) leave both untouched.
         let (lane_notes, mix_group): (Option<&Arc<Mutex<NoteCounts>>>, u8) = match *lane {
-            "canon" => (Some(canon_notes), MIX_CANON),
-            "counterpoint" => (Some(counterpoint_notes), MIX_COUNTERPOINT),
+            "canon" | "pattern_low" => (Some(canon_notes), MIX_CANON),
+            "counterpoint" | "pattern_counter" => (Some(counterpoint_notes), MIX_COUNTERPOINT),
             _ => (None, MIX_HARMONY),
         };
         match op {

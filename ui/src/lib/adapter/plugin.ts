@@ -72,6 +72,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// IPC handlers in editor.rs route HoldMode / canon_configure /
 		// counterpoint_configure into the running plugin instance.
 		companionLanes: true,
+		patternLanes: false,
 		// DAW owns audio + MIDI routing into the plugin. The source
 		// radio (MIDI / Guitar / Voice) doesn't apply — the host bus
 		// is the source. Hide the InputPanel entirely in plugin mode.
@@ -272,6 +273,17 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async counterpointConfigure(partial: Record<string, unknown>): Promise<void> {
 		this.send('counterpointConfigure', partial);
+	}
+
+	async patternConfigure(
+		_laneId: 'pattern_low' | 'pattern_counter',
+		_partial: Record<string, unknown>
+	): Promise<void> {}
+
+	async patternState(
+		_laneId: 'pattern_low' | 'pattern_counter'
+	): Promise<Record<string, unknown> | null> {
+		return null;
 	}
 
 	async counterpointState(): Promise<{

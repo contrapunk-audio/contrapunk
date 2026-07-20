@@ -114,6 +114,8 @@ fn main() {
             commands::companion::canon_state,
             commands::companion::counterpoint_set_config,
             commands::companion::counterpoint_state,
+            commands::companion::pattern_configure,
+            commands::companion::pattern_state,
             commands::harmony::set_detune,
             commands::harmony::get_detune,
             // MIDI device management

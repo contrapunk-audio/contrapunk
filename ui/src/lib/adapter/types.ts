@@ -232,6 +232,9 @@ export interface AdapterCapabilities {
 	 *  doesn't wire Companion yet (deferred to v1.4). The
 	 *  CompanionPanel and master HoldMode toggle hide when false. */
 	companionLanes: boolean;
+	/** Whether the reusable declarative PatternLane roles are wired on
+	 *  this surface. Kept separate from legacy Canon/Counterpoint support. */
+	patternLanes: boolean;
 	/** Whether the InputPanel renders the three-way source picker
 	 *  (MIDI / Guitar Audio / Voice). False in plugin mode — the DAW
 	 *  routes audio in and chooses the input bus itself, so the picker
@@ -394,6 +397,13 @@ export interface ContrapunkAdapter {
 	/** Generic lane-level configure for CounterpointLane (#11 override
 	 *  path). Same shape as `canonConfigure`. */
 	counterpointConfigure(partial: Record<string, unknown>): Promise<void>;
+
+	/** Configure/read one reusable stable pattern role. */
+	patternConfigure(
+		laneId: 'pattern_low' | 'pattern_counter',
+		partial: Record<string, unknown>
+	): Promise<void>;
+	patternState(laneId: 'pattern_low' | 'pattern_counter'): Promise<Record<string, unknown> | null>;
 
 	/** Read the dedicated CounterpointLane's current state. */
 	counterpointState(): Promise<{
