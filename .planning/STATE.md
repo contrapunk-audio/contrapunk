@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 10.2 Wave 2 preset 43 operational; final cataloged baseline research gate is preset 48 Crystal Chorale.
-last_updated: "2026-07-20T11:51:00Z"
-last_activity: 2026-07-20 — Shipped Hollow Choir as a bounded Aeolian four-part SATB-style harmonic shadow.
+stopped_at: Phase 10.2 Wave 2 preset 48 research approved; bounded chorale-plus-octave-echo implementation is next.
+last_updated: "2026-07-20T12:45:00Z"
+last_activity: 2026-07-20 — Approved Crystal Chorale only as HarmonicMinor SATB harmony plus one fixed two-beat per-note octave echo.
 progress:
   total_phases: 55
   completed_phases: 18
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisio
 
 Phase: 10.2 Composer-Informed Arrangement Presets
 Plan: Wave 2 — research packs, catalog/authoring UX, and first 12 presets
-Status: Executing Wave 2; 10/12 baseline presets operational; preset 36 blocked
-Last activity: 2026-07-20 — Hollow Choir is operational as a reactive Aeolian SATB-style harmonic shadow. Literal choir, distance, counterline, ambience, adaptive scenes, and soundtrack imitation remain excluded; preset 48 research is next.
+Status: Executing Wave 2; 10/12 baseline presets operational; preset 36 blocked; preset 48 research approved
+Last activity: 2026-07-20 — Crystal Chorale research narrows the octave layer to a fixed per-note echo, not a phrase answer or theme mechanism. Implementation is next; Wave 3 remains prohibited.
 
 ### Phase 10.2 Start — 2026-07-19
 

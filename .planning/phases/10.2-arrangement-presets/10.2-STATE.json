@@ -3,7 +3,7 @@
   "phase": "10.2",
   "status": "executing_wave_2",
   "current_wave": 2,
-  "current_slice": "research-preset-48-crystal-chorale",
+  "current_slice": "implement-preset-48-crystal-chorale",
   "user_checkpoint": {
     "required_after_operational_count": 12,
     "approved_to_begin_wave_3": false,
@@ -432,6 +432,36 @@
         "commit": "f37acf4",
         "preset_id": "43-hollow-choir"
       }
+    },
+    "48-crystal-chorale": {
+      "status": "approved",
+      "required_reports": 3,
+      "completed_reports": 3,
+      "history": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/history.md"
+      },
+      "theory": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/theory.md"
+      },
+      "performance": {
+        "status": "complete",
+        "attempts": 1,
+        "path": ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/performance.md"
+      },
+      "synthesis": {
+        "status": "approved",
+        "path": ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/synthesis.md",
+        "decision": "ready_for_implementation",
+        "note": "Approved only as HarmonicMinor BachChorale plus one fixed two-beat per-note octave echo; no phrase answer, Prelude, theme, form, orchestration, game state, or artist claim."
+      },
+      "implementation": {
+        "status": "ready",
+        "preset_id": "48-crystal-chorale"
+      }
     }
   },
   "completed_requirements": [
@@ -801,6 +831,10 @@
     {
       "command": "npm --prefix ui run check (Hollow Choir)",
       "result": "0 errors; 29 pre-existing warnings"
+    },
+    {
+      "command": "preset 48 research-pack validation",
+      "result": "3 nonempty independently cited reports plus template-complete parent synthesis; narrowed decision ready_for_implementation"
     }
   ],
   "blockers": [
@@ -819,8 +853,9 @@
     "Preset 25 is a performer-bounded four-to-six-note burst answered four beats later by a complete unity-time octave echo; no shortening, phrase recognition, swing, chord logic, trading fours, or artist imitation is claimed.",
     "Preset 27 is a static Dorian DiatonicFourths study with four total voices and source-lowest; exact perfect-fourth stacks occur only on degrees 1, 2, 5, and 6, and all temporal development remains performer-authored.",
     "Preset 36 remains locked: current HarmonyEngine three-pitch outputs share every source onset/release and cannot honestly represent independent lead, low-support, and counterline roles; unlocking requires reusable pattern_lane and stable_lane_groups capabilities.",
-    "Preset 43 is a static Aeolian BachChorale harmonic shadow with the source as soprano; choir timbre, distance, independent counterline, ambience, adaptive scenes, soundtrack reconstruction, and artist identity remain out of scope."
+    "Preset 43 is a static Aeolian BachChorale harmonic shadow with the source as soprano; choir timbre, distance, independent counterline, ambience, adaptive scenes, soundtrack reconstruction, and artist identity remain out of scope.",
+    "Preset 48 combines four immediate HarmonicMinor BachChorale notes with one fixed two-beat delayed +12 PassThrough echo; the honest peak is five notes, and no phrase-answer, Prelude, motif, form, orchestration, game-state, or artist claim is made."
   ],
-  "last_commit": "f37acf4",
-  "next_action": "Launch exactly three fresh openai-codex/gpt-5.6-sol reports for preset 48 Crystal Chorale (bounded Nobuo Uematsu / Final Fantasy corpus), then parent-synthesize before implementation."
+  "last_commit": "b34395e",
+  "next_action": "Implement preset 48 exactly as synthesized; add HarmonicMinor BachChorale and one-voice delayed-octave lifecycle regressions, then report 11/12 operational with preset 36 blocked and hard-stop without Wave 3."
 }
