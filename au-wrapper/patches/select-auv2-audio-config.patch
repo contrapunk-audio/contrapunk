@@ -19,7 +19,7 @@
 +                !config.has_main_output)
 +              continue;
 +            selected = config.id;
-+            if (config.main_input_channel_count == 2 && config.main_output_channel_count == 2)
++            if (config.main_input_channel_count == 1 && config.main_output_channel_count == 1)
 +              break;
 +          }
 +          if (selected != CLAP_INVALID_ID) configs->select(_plugin->_plugin, selected);
