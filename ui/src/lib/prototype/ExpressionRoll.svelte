@@ -43,7 +43,6 @@
 		canon: PIANO_CANON,
 		counterpoint: PIANO_COUNTERPOINT
 	};
-	const offsets: Record<Role, number> = { player: -4, harmony: -1.5, canon: 1.5, counterpoint: 4 };
 
 	let canvas = $state<HTMLCanvasElement>();
 	let orientation = $state<'horizontal' | 'vertical'>('horizontal');
@@ -284,9 +283,9 @@
 			ctx.globalAlpha = gate.endedAt === null ? 0.95 : 0.62;
 			ctx.fillStyle = colors[gate.role];
 			if (vertical) {
-				ctx.fillRect(startX + offsets[gate.role] - 2.5, startY, 5, Math.max(3, endY - startY));
+				ctx.fillRect(startX - 2.5, startY, 5, Math.max(3, endY - startY));
 			} else {
-				ctx.fillRect(startX, startY + offsets[gate.role] - 2.5, Math.max(3, endX - startX), 5);
+				ctx.fillRect(startX, startY - 2.5, Math.max(3, endX - startX), 5);
 			}
 		}
 		ctx.globalAlpha = 1;
