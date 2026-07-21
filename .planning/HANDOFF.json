@@ -1,320 +1,168 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-20T13:56:20Z",
+  "timestamp": "2026-07-21T10:54:53.741Z",
   "context": "phase",
   "phase": "10.2",
   "phase_name": "Composer-Informed Arrangement Presets",
   "phase_dir": ".planning/phases/10.2-arrangement-presets",
-  "plan": 2,
-  "task": "wave-3-preset-13-axis-mirror-research",
-  "total_plans": 7,
-  "status": "in_progress",
+  "plan": 3,
+  "task": 6,
+  "task_name": "preset-13-axis-mirror-research",
+  "total_tasks": 10,
+  "status": "paused",
   "loop": {
     "id": 1,
-    "title": "Complete Contrapunk\u2019s research-backed arrangement preset catalog",
-    "status": "wave_3_in_progress",
-    "hard_stop": "Cleared by explicit user approval on 2026-07-20"
+    "title": "Complete Contrapunk's research-backed arrangement preset catalog",
+    "status": "wave_3_paused",
+    "checkpoint": "The 12-preset performance checkpoint was explicitly cleared on 2026-07-20."
   },
-  "completed_work": [
+  "completed_tasks": [
     {
-      "name": "Document Phase 10.2 GSD waves, 50-preset catalog, research template, and loop",
-      "commit": "f2360b0",
-      "status": "done"
-    },
-    {
-      "name": "Fix Canon Hold precedence and transport lifecycle cleanup",
-      "commit": "161368c",
+      "id": 1,
+      "name": "Arrangement V2 foundation, transactional apply, capability gating, and lifecycle safety",
       "status": "done",
-      "evidence": "Companion 60 passed; Tauri 36 passed; UI check zero errors."
+      "commits": ["161368c", "f290e80", "a131035", "61453d5"]
     },
     {
-      "name": "Define ArrangementPresetV2 and capabilities",
-      "commit": "f290e80",
-      "status": "done"
-    },
-    {
-      "name": "Centralize arrangement snapshot/apply, Counterpoint, and role mix",
-      "commit": "a131035",
-      "status": "done"
-    },
-    {
-      "name": "Add V2 user-preset persistence and legacy migration",
-      "commit": "61453d5",
+      "id": 2,
+      "name": "Wave 2 research and first 12 operational presets",
       "status": "done",
-      "evidence": "2 migration tests passed; UI check zero errors."
+      "operational_presets": [2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48],
+      "evidence": "Every preset has three independent cited reports, a parent synthesis, deterministic lifecycle coverage, and honest capability gating."
     },
     {
-      "name": "Preset 02 Modal Linework research, implementation, 50-record catalog, and V2 UI",
-      "status": "done_operational",
-      "commits": [
-        "4ce9ffd",
-        "9cb71a7",
-        "43e9363"
-      ],
-      "evidence": "Harmony 267 passed; catalog/persistence 4 passed; UI check zero errors.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/02-modal-linework/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 23 Sixth-Diminished Conveyor research and implementation",
-      "commits": [
-        "7c55ff23",
-        "0460ec7"
-      ],
-      "status": "done_operational",
-      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis; shared BarryHarris path now emits exactly four total voices with source once as soprano; Harmony 269, catalog/persistence 10, UI zero errors.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/23-sixth-diminished-conveyor/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 25 Bebop Chase research and parent synthesis",
-      "commit": "86b3973",
-      "status": "done_research_approved",
-      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Approved only as a complete four-beat-delayed octave answer; the original shortened-answer claim is rejected.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/25-bebop-chase/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 25 Bebop Chase bounded implementation",
-      "commit": "f72aafb",
-      "status": "done_operational",
-      "evidence": "Complete four-beat-delayed octave answer only; Companion 69 passed, catalog/persistence 11 passed, UI check zero errors and 29 pre-existing warnings."
-    },
-    {
-      "name": "Preset 27 Quartal Colossus research and parent synthesis",
-      "commit": "0425296",
-      "status": "done_research_approved",
-      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Approved only as a static four-voice Dorian fourth-derived block with exact P4 subset degrees 1, 2, 5, and 6.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/27-quartal-colossus/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 27 Quartal Colossus bounded implementation",
-      "commit": "2509e0c",
-      "status": "done_operational",
-      "evidence": "Static four-voice Dorian fourth-derived mapping; Harmony 270 passed, catalog/persistence 12 passed, UI check zero errors and 29 pre-existing warnings."
-    },
-    {
-      "name": "Preset 36 Pixel Trio research and parent synthesis",
-      "commit": "d31d84d",
-      "status": "done_research_blocked",
-      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Current synchronous HarmonyEngine outputs cannot represent independent lead, low-support, and counterline roles; requires reusable pattern_lane and stable_lane_groups.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/36-pixel-trio/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 36 Pixel Trio visible capability lock",
-      "commit": "32d90ef",
-      "status": "done_blocked_visible",
-      "evidence": "Catalog record was honestly blocked until shared pattern_lane + stable_lane_groups support existed."
-    },
-    {
-      "name": "Reusable PatternLane scheduler and operational Pixel Trio",
-      "commit": "b1b80eb",
-      "status": "done_operational",
-      "evidence": "Two generic declarative lanes provide independent low-support/counterline timing, rests, register offsets, stable role IDs, bounded tails, and exact cleanup across Tauri/WASM. Companion 76, Tauri 36, catalog/persistence 15, UI zero errors; WASM check passed."
-    },
-    {
-      "name": "Preset 43 Hollow Choir research and parent synthesis",
-      "commit": "c2920de",
-      "status": "done_research_approved",
-      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Approved only as static Aeolian four-part SATB-style harmonic shadow.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/43-hollow-choir/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 43 Hollow Choir bounded implementation",
-      "commit": "f37acf4",
-      "status": "done_operational",
-      "evidence": "Static Aeolian four-part SATB-style harmonic shadow; Harmony 271 passed, catalog/persistence 14 passed, UI check zero errors and 29 pre-existing warnings."
-    },
-    {
-      "name": "Preset 48 Crystal Chorale research and parent synthesis",
-      "commit": "b34395e",
-      "status": "done_research_approved",
-      "evidence": "Three independent openai-codex/gpt-5.6-sol reports plus parent synthesis. Approved only as HarmonicMinor BachChorale plus one fixed two-beat per-note octave echo.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/48-crystal-chorale/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 48 Crystal Chorale bounded implementation",
-      "commit": "57a4979",
-      "status": "done_operational",
-      "evidence": "HarmonicMinor SATB shadow plus one two-beat delayed per-note octave echo; Harmony 272, Companion 70, catalog/persistence 15, UI zero errors and 29 pre-existing warnings."
-    },
-    {
-      "name": "Preset 01 Cloister Organum research and bounded implementation",
+      "id": 3,
+      "name": "Wave 3 reusable voicing strategies: Cloister Organum",
+      "status": "done",
       "commit": "337d3c97",
-      "status": "done_operational",
-      "evidence": "Three independent reports plus parent synthesis; reusable explicit interval maps across Tauri/WASM, plugin capability gating, focused Setup editor, Apply/manual edit/Save As round-trip, final-pitch routing, and exact release ownership. Harmony 275, Companion 76, Tauri 36, catalog/persistence 17, UI zero errors.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/01-cloister-organum/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/01-cloister-organum/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/01-cloister-organum/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/01-cloister-organum/synthesis.md"
-      ]
+      "evidence": "Reusable ExplicitIntervals mode, exact NoteOn/NoteOff ownership, final-pitch routing, Tauri/WASM persistence and controls, and plugin capability gating."
     },
     {
-      "name": "Restore realtime Tauri dev guitar analysis",
+      "id": 4,
+      "name": "Restore realtime Tauri development guitar analysis",
+      "status": "done",
       "commit": "7aca7ca",
-      "status": "done_hardware_confirmed",
-      "evidence": "July 19 worker queue overflows emitted sixteen CC123 resets and fragmented sustained notes. Optimizing only contrapunk-audio in dev reduced the two-second synthetic sustain from 6.09s to 0.26s; all 226 audio library tests pass in 0.27s; the user confirmed one sustained hardware note now produces one continuous MIDI note."
+      "evidence": "The two-second sustain check fell from 6.09s to 0.26s; 226 audio tests passed; hardware sustain was user-confirmed."
+    },
+    {
+      "id": 5,
+      "name": "Production and v1.3.0 release preparation completed while Phase 10.2 was parked",
+      "status": "done_to_current_head",
+      "commit": "9a5ace4e",
+      "evidence": "Production UI and universal plug-ins are complete, unfinished built-ins are hidden, Holdsworth HAL versions/codename are set, app and Starlight docs are live, and current product/website CI is green."
     }
   ],
-  "remaining_work": [
+  "remaining_tasks": [
     {
-      "name": "Preset 04 Mensuration Web research and implementation",
-      "status": "done_operational",
-      "commits": [
-        "eef1094",
-        "3b96b4e"
-      ],
-      "evidence": "Companion 61 passed; catalog/persistence 5 passed; UI check zero errors.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/04-mensuration-web/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 07 Stretto Engine research and implementation",
-      "status": "done_operational",
-      "commits": [
-        "d1ab796",
-        "ff74c6d"
-      ],
-      "evidence": "Companion 62 passed; catalog/persistence 6 passed; UI check zero errors.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/07-stretto-engine/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 08 Suspension Garland research, Species IV lifecycle, and operational preset",
-      "status": "done_operational",
-      "commits": [
-        "ef5fd3a",
-        "135042c"
-      ],
-      "evidence": "Companion 68 passed; catalog/persistence 7 passed; UI check zero errors. Normal trace proves weak preparation, retained strong suspension, downward-step resolution, and balanced cleanup.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/08-suspension-garland/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 12 Planed Cathedral research and implementation",
-      "status": "done_operational",
-      "commits": [
-        "a2768ab",
-        "8ccf269"
-      ],
-      "evidence": "Harmony 268 passed; catalog/persistence 8 passed; UI check zero errors.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/12-planed-cathedral/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/12-planed-cathedral/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/12-planed-cathedral/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/12-planed-cathedral/synthesis.md"
-      ]
-    },
-    {
-      "name": "Preset 14 Color-Mode Windows research and implementation",
-      "status": "done_operational",
-      "commits": [
-        "ac25c498",
-        "462041c2"
-      ],
-      "evidence": "Harmony 269 passed; catalog/persistence 9 passed; UI check zero errors.",
-      "artifacts": [
-        ".planning/phases/10.2-arrangement-presets/research/14-color-mode-windows/history.md",
-        ".planning/phases/10.2-arrangement-presets/research/14-color-mode-windows/theory.md",
-        ".planning/phases/10.2-arrangement-presets/research/14-color-mode-windows/performance.md",
-        ".planning/phases/10.2-arrangement-presets/research/14-color-mode-windows/synthesis.md"
-      ]
-    },
-    {
-      "name": "Research and implement remaining first-12 baselines",
-      "status": "done_operational",
-      "details": "All 12 baselines are operational; Pixel Trio uses reusable pattern_lane + stable_lane_groups support."
-    },
-    {
-      "name": "Mandatory user performance checkpoint",
-      "status": "approved",
-      "details": "Reached at 12/12 operational; the user requested continuing Loop 1 after exercising the prototype and receiving UI fixes."
-    },
-    {
-      "name": "Wave 3 reusable voicing strategies",
-      "status": "in_progress",
-      "details": "Preset 01 Cloister Organum is operational in 337d3c97 through reusable explicit interval maps. Preset 13 Axis Mirror is next."
-    },
-    {
-      "name": "Waves 4-7",
+      "id": 6,
+      "name": "Create three independent Axis Mirror research reports",
       "status": "not_started",
-      "details": "Phrase/motif, advanced pattern/timing, stable groups/timeline/adaptive, and experimental completion follow Wave 3 boundaries."
+      "details": "Use fresh read-only agents on openai-codex/gpt-5.6-sol for history/sources, theory/temporal behavior, and performer/interaction guidance."
+    },
+    {
+      "id": 7,
+      "name": "Parent-synthesize Axis Mirror before any implementation",
+      "status": "not_started",
+      "details": "Write synthesis.md against 10.2-RESEARCH-TEMPLATE.md, then either approve a bounded shared inversion strategy or keep the preset locked."
+    },
+    {
+      "id": 8,
+      "name": "Implement and verify Axis Mirror only if research approves it",
+      "status": "not_started",
+      "details": "Reuse a shared HarmonyEngine strategy, add real controls/capability gates for tunables, and prove exact NoteOn/NoteOff cleanup."
+    },
+    {
+      "id": 9,
+      "name": "Continue Waves 3-7",
+      "status": "not_started",
+      "details": "Complete reusable voicing, phrase/motif, pattern/timing, stable groups/timeline/adaptive scenes, and experimental catalog work."
+    },
+    {
+      "id": 10,
+      "name": "Finish the separate v1.3.0 release-candidate gate",
+      "status": "not_started",
+      "details": "Remove tracked .pi-subagents runtime artifacts, refresh public docs, build and verify six RC assets, complete manual Logic acceptance, and present a go/no-go report. Do not tag without explicit approval."
     }
   ],
   "blockers": [
     {
-      "description": "Dirty tree contains unrelated Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents work.",
-      "type": "technical",
-      "workaround": "Stage explicit Phase 10.2 paths only; never stage .pi-subagents/."
+      "description": "v1.3.0 tag creation and publication require explicit human approval after the release-candidate report.",
+      "type": "human_action",
+      "workaround": "Complete RC assets and report, then stop for approval."
+    },
+    {
+      "description": "Final Logic guitar audio-to-MIDI routing acceptance is manual.",
+      "type": "human_action",
+      "workaround": "The user validates Logic; agents must not operate Logic's UI."
     }
   ],
-  "human_actions_pending": [],
+  "human_actions_pending": [
+    {
+      "action": "Validate final Logic MIDI FX and Guitar Audio FX routing.",
+      "context": "End-to-end guitar audio -> detection -> virtual CoreMIDI -> instrument acceptance cannot be automated here.",
+      "blocking": true
+    },
+    {
+      "action": "Approve or reject the v1.3.0 release candidate after the go/no-go report.",
+      "context": "No v1.3.0 tag, GitHub release, or website v1.3.0 download copy may be published before approval.",
+      "blocking": true
+    }
+  ],
   "decisions": [
-    "Technique/image preset titles; artist names are references, not imitation claims.",
-    "Research scopes works and periods, career evolution, persistent versus period traits, temporal movement, distinguishing vocabulary, and caricatures to avoid.",
-    "Exactly three independent reports plus a parent synthesis are required before activation.",
-    "Preset apply preserves tonic, tempo, devices, routing, sound, master level, mute/solo, plugins, and transport state.",
-    "Temporal behavior uses reusable Companion Lanes; stateless pitch mapping uses shared harmony strategies.",
-    "Pixel Trio uses two generic declarative PatternLane roles; no preset-specific Rust scheduling branch is allowed.",
-    "Stop after the first 12 for user testing.",
-    "The user explicitly approved continuing Loop 1 on 2026-07-20; Wave 3 is open.",
-    "Use only openai-codex/gpt-5.6-sol for research and all other subagent work.",
-    "Cloister Organum is a bounded two-voice Dorian P4/P5/P8 mapping, not an authentic organum reconstruction.",
-    "The July 19 guitar worker move exposed opt-level 0 throughput in Tauri dev; 7aca7ca optimizes only contrapunk-audio rather than changing detector thresholds."
+    {
+      "decision": "Every operational arrangement requires three independent cited reports and a parent synthesis before implementation.",
+      "rationale": "Prevents superficial style labels and unsupported artist-imitation claims.",
+      "phase": "10.2"
+    },
+    {
+      "decision": "Use only openai-codex/gpt-5.6-sol for all subagent and research work.",
+      "rationale": "User requirement.",
+      "phase": "10.2"
+    },
+    {
+      "decision": "Only researchStatus=approved built-ins appear in production arrangement menus; custom presets remain visible.",
+      "rationale": "Unfinished presets must not be presented as operational.",
+      "phase": "10.2"
+    },
+    {
+      "decision": "New arrangement behavior must be a shared HarmonyEngine strategy or reusable Companion lane, never a preset-specific algorithm.",
+      "rationale": "Keeps all product surfaces consistent and lifecycle ownership testable.",
+      "phase": "10.2"
+    },
+    {
+      "decision": "Arrangement Apply preserves tonic, BPM, transport, devices, routing, sound, master, mute/solo, and plugins.",
+      "rationale": "Arrangement presets own musical arrangement state only.",
+      "phase": "10.2"
+    },
+    {
+      "decision": "The v1.3.0 codename is Holdsworth HAL and release website data stays on v1.2.0 until all six v1.3.0 assets exist.",
+      "rationale": "Do not advertise unavailable downloads.",
+      "phase": "release"
+    }
+  ],
+  "blocking_constraints": [
+    {
+      "name": "Research-provider failures",
+      "severity": "advisory",
+      "evidence": "Earlier parallel research launches failed on provider transport or missing Codex credentials.",
+      "mitigation": "Discover agents first, require openai-codex/gpt-5.6-sol explicitly, validate written artifacts, and fall back to sequential fresh runs after a failed parallel launch. Stop after three failures."
+    },
+    {
+      "name": "Realtime detector throughput",
+      "severity": "advisory",
+      "evidence": "Unoptimized development DSP ran slower than realtime, overflowed the worker queue, and emitted CC123 resets.",
+      "mitigation": "Keep the contrapunk-audio dev optimization; do not compensate by weakening detector thresholds or note ownership."
+    }
   ],
   "background_processes": [],
-  "uncommitted_files": [
-    "[focused-planning] .planning/HANDOFF.json",
-    "[focused-planning] .planning/STATE.md",
-    "[focused-planning] .planning/phases/10.2-arrangement-presets/10.2-STATE.json",
-    "[focused-planning] .planning/phases/10.2-arrangement-presets/.continue-here.md",
-    "[unrelated] Golem, Elixir, AU wrapper, recon, docs, and .pi-subagents changes remain"
-  ],
-  "next_action": "Run three independent openai-codex/gpt-5.6-sol reports for preset 13 Axis Mirror before parent synthesis.",
-  "context_notes": "Thirteen presets are operational: 2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48, 1. Cloister Organum shipped in 337d3c97; the Tauri dev guitar throughput fix is 7aca7ca."
+  "uncommitted_files": [],
+  "repository_state": {
+    "branch": "main",
+    "head": "9a5ace4e",
+    "remote": "origin/main",
+    "clean": true,
+    "tracked_pi_subagent_artifacts": 376
+  },
+  "next_action": "Discover executable subagents, then launch three independent fresh-context openai-codex/gpt-5.6-sol research reports for preset 13 Axis Mirror; validate all three artifacts before parent synthesis and do not implement inversion behavior first.",
+  "context_notes": "Thirteen presets are operational: 2, 4, 7, 8, 12, 14, 23, 25, 27, 36, 43, 48, and 1. Phase 10.2 is paused at the start of Axis Mirror research. The product repository is clean at 9a5ace4e. The separate release loop still owes cleanup, public-doc refresh, six RC assets, manual Logic acceptance, and a pre-tag approval gate. Direct VST3 hosting remains parked under Phase 21.C3. Legacy placeholder matches exist in older SUMMARY.md files outside Phase 10.2; none are current Phase 10.2 completion evidence."
 }
