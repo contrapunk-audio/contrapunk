@@ -1,112 +1,114 @@
-# Run Contrapunk side-by-side with a DAW
+# Route Contrapunk with a DAW
 
-Contrapunk is a standalone app, not a DAW plugin (yet — see #9). To use it alongside Logic Pro / Ableton Live / FL Studio / Reaper / Bitwig, you bridge MIDI and (optionally) audio between the two processes using virtual loopback devices.
+Contrapunk can run **inside a DAW** as a plug-in or **beside a DAW** as the desktop app. Use the plug-in path when your published release and host support it; use virtual MIDI when you need desktop-only features or explicit multi-port routing.
 
-This guide covers the **side-by-side** scenario: Contrapunk's harmony voices feed your DAW's instrument tracks via virtual MIDI, and you optionally route the DAW's audio output back into Contrapunk for the built-in synth or future analysis features.
+## Plug-in routing
 
-If you just want Contrapunk → standalone plugin (no DAW), use [IAC_PLUGIN_SETUP.md](./IAC_PLUGIN_SETUP.md) instead. Same MIDI mechanics, simpler audio path.
+### Logic Pro: MIDI controller or MIDI region
 
-## macOS
+On a software-instrument channel strip:
 
-### MIDI bridge: IAC Driver
+1. Open the **MIDI FX** slot.
+2. Choose **Audio Units → Contrapunk Audio → Contrapunk**.
+3. Load your instrument after the MIDI FX slot.
+4. Record-enable or monitor the track.
+5. Play MIDI and confirm that the instrument receives the generated notes.
 
-1. Open **Audio MIDI Setup** (`/Applications/Utilities/Audio MIDI Setup.app`).
-2. `Window` → `Show MIDI Studio`.
-3. Double-click **IAC Driver** → tick **Device is online**.
-4. The default "Bus 1" is enough for one-track routing. Add more buses (`+`) if you want per-voice port-based routing.
+The regular **Contrapunk** component is MIDI-only. Logic does not send track audio to a MIDI FX slot.
 
-### Audio bridge: BlackHole 2ch
+### Logic Pro: live guitar audio
 
-[BlackHole](https://existential.audio/blackhole/) is a free, open-source virtual audio loopback driver. The 2-channel build is the right pick for stereo bridging.
+On the guitar audio track:
 
-1. Install BlackHole 2ch via Homebrew: `brew install --cask blackhole-2ch`. Or download from [existential.audio](https://existential.audio/blackhole/).
-2. In Audio MIDI Setup → MIDI Studio is now Audio devices: confirm "BlackHole 2ch" appears.
-3. (Optional, for hearing your DAW *and* Contrapunk simultaneously) create an **Aggregate Device** combining BlackHole 2ch with your audio interface:
-   - Audio MIDI Setup → click `+` bottom-left → **Create Aggregate Device**.
-   - Check "BlackHole 2ch" + your interface.
-   - Set the aggregate device as your system output if you want Contrapunk and the DAW playing into the same monitor.
+1. Set the track input to the correct interface channel.
+2. Insert **Audio FX → Audio Units → Contrapunk Audio → Contrapunk Guitar**.
+3. Enable input monitoring.
+4. Confirm that the editor shows the incoming guitar signal. The component accepts mono or stereo input and passes the track audio through.
+5. Create a software-instrument track.
+6. Route the CoreMIDI source **Contrapunk Guitar MIDI Out** to that instrument through Logic's MIDI Environment or your preferred CoreMIDI routing method.
 
-### Contrapunk-side wiring
+Do not route the virtual MIDI output back into the Guitar component. After installing a new component version, restart Logic and rescan Audio Units if its cache still shows old metadata.
 
-1. Launch Contrapunk.
-2. **MIDI Output** picker → select `IAC Driver Bus 1` (and additional buses if you set them up).
-3. **MIDI Input** picker → either a hardware controller, or `IAC Driver Bus 1` if you want to chain through another tool.
-4. **Audio Output** (built-in synth) → leave as the system default unless you've created the Aggregate Device above.
+For acceptance testing, play one dry sustained note and then a slow four-note phrase. Confirm uninterrupted guitar audio, pitch activity in the editor, and matching generated NoteOn/NoteOff events at the instrument.
 
-### DAW-side wiring (Logic Pro)
+### VST3 and CLAP hosts
 
-1. Logic Pro → Preferences → MIDI → Inputs → confirm `IAC Driver Bus 1` is enabled.
-2. Create a software-instrument track.
-3. In the track header, set **MIDI In** → `IAC Driver Bus 1`. Logic will now receive Contrapunk's harmony notes.
-4. Arm the track for recording / monitoring as usual.
+Contrapunk's VST3/CLAP build emits generated MIDI/events for a downstream instrument. Put Contrapunk before the instrument or route its event output to another track according to the host's plug-in-routing model. MIDI-output support varies by DAW; if the host cannot route a plug-in's generated events, use the desktop/virtual-MIDI workflow below.
 
-### DAW-side wiring (Ableton Live)
+The DAW host owns transport, audio devices, and instrument sound. Controls that only make sense in the desktop app are capability-gated in the plug-in UI.
 
-1. Preferences → Link/Tempo/MIDI → MIDI tab.
-2. Under **Input Ports**, find `IAC Driver (Bus 1)` and turn **Track** on (you can also enable Remote if you want CCs mapping live).
-3. Create a MIDI track. Set its `MIDI From` to `IAC Driver (Bus 1)` and the channel to match what Contrapunk emits (default: channel 1 for channel-based, or the per-voice channel for MPE).
+## Desktop app beside a DAW
 
-### DAW-side wiring (Reaper)
+The desktop app sends harmony voices through a virtual MIDI port. The DAW receives that port on an instrument track.
 
-1. Options → Preferences → Audio → MIDI Devices.
-2. Right-click `IAC Driver Bus 1` → Enable input.
-3. Insert a new track. Set its MIDI input to `IAC Driver Bus 1, all channels`.
-4. Record-arm.
+```text
+Controller or guitar → Contrapunk desktop → virtual MIDI → DAW instrument
+```
 
-## Windows
+### macOS: IAC Driver
 
-### MIDI bridge: loopMIDI
+1. Open **Audio MIDI Setup** in `/Applications/Utilities`.
+2. Choose **Window → Show MIDI Studio**.
+3. Open **IAC Driver**, enable **Device is online**, and create one or more buses.
+4. In Contrapunk, select an IAC bus as the MIDI output.
+5. In the DAW, enable that bus as a MIDI input and monitor a software-instrument track.
 
-[loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) is the standard free virtual MIDI cable on Windows.
+One bus is enough for channel-based routing. Create multiple buses only when using port-based per-voice routing.
 
-1. Install loopMIDI from tobias-erichsen.de.
-2. Launch it; click `+` to create a port named e.g. `Contrapunk Out`. Add a second port `Contrapunk Out 2` for per-voice routing if needed.
-3. In Contrapunk, pick `Contrapunk Out` as the MIDI output port.
-4. In your DAW (FL Studio, Cubase, Bitwig, Reaper), enable the same `Contrapunk Out` port as a MIDI input device in your audio preferences, then route a MIDI track from it.
+#### Logic Pro
 
-### Audio bridge: VB-Audio Virtual Cable
+Enable the IAC bus in Logic's MIDI settings, then route it to a monitored software-instrument track. Use the Audio Unit workflow above when you do not need the desktop app.
 
-[VB-Cable](https://vb-audio.com/Cable/) by VB-Audio is the loopMIDI equivalent for audio.
+#### Ableton Live
 
-1. Install VB-Cable from vb-audio.com (free, donation-ware).
-2. In your DAW audio output settings, route the audio output to "CABLE Input (VB-Audio Virtual Cable)".
-3. In Contrapunk, if you want to consume that audio, pick "CABLE Output" as audio input. (Currently only useful if you're using the guitar-input pipeline — Contrapunk doesn't yet do general audio analysis on system input.)
-4. For monitoring both Contrapunk and the DAW: use VoiceMeeter (also from VB-Audio) as a software mixer.
+1. Open **Settings/Preferences → Link, Tempo & MIDI**.
+2. Enable **Track** for the IAC input port.
+3. Choose the IAC bus in the MIDI track's **MIDI From** selector.
+4. Monitor the track and load an instrument.
 
-## Linux
+#### Reaper
 
-### MIDI bridge: ALSA virtual port or `a2jmidid`
+1. Open **Preferences → Audio → MIDI Devices**.
+2. Enable the IAC bus as an input.
+3. Record-arm a track and select the bus as its MIDI input.
 
-1. Modern desktops with PipeWire: ALSA-level virtual MIDI ports auto-appear. You can also create one explicitly with `modprobe snd-virmidi`.
-2. Alternative: install `a2jmidid` and run `a2jmidid -e` to bridge JACK MIDI ↔ ALSA.
-3. Contrapunk and your DAW (Ardour, Bitwig Linux, Reaper Linux) both pick the virtual port from their MIDI device pickers.
+### Windows: loopMIDI
 
-### Audio bridge: JACK or PipeWire
+1. Install [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html).
+2. Create a port such as `Contrapunk Out`.
+3. Select it as Contrapunk's MIDI output.
+4. Enable the same port as a DAW MIDI input and monitor an instrument track.
 
-Both PipeWire (newer) and JACK provide arbitrary inter-application audio routing. Use `qjackctl` (JACK) or `pwvucontrol` / `helvum` (PipeWire) to draw connections between Contrapunk's audio output and your DAW's input.
+### Linux: ALSA, JACK, or PipeWire
 
-## Tips and pitfalls
+Use an ALSA virtual MIDI port (`snd-virmidi`) or bridge JACK MIDI with `a2jmidid`. PipeWire/JACK patch-bay tools such as Helvum or qjackctl can connect the Contrapunk output to the DAW input.
 
-- **Latency**: virtual MIDI is essentially zero-latency; virtual audio bridges (BlackHole, VB-Cable) add ~1-2 buffer periods. Don't compensate manually; let the DAW's automatic plugin-delay compensation handle it.
-- **Stuck notes**: if Contrapunk crashes or you yank a USB MIDI cable mid-phrase, send a CC 123 (All Notes Off) from your DAW to Contrapunk to recover — Contrapunk handles CC 123 as a panic drain since v1.2.x. Or restart routing.
-- **Per-voice routing**: Contrapunk's per-voice routing table can send each harmony voice (soprano / alto / tenor / bass) to a different MIDI port. Set up multiple IAC / loopMIDI buses, then assign in Contrapunk's Voice Routing panel.
-- **MPE mode**: if you want Contrapunk to drive an MPE-capable instrument (Equator, Pigments, MPE-mode Kontakt), turn on **MPE / per-string channels** in Contrapunk's Routing settings. The instrument needs MPE mode enabled too.
-- **Audio feedback loops**: if you route Contrapunk's audio out → DAW → BlackHole → Contrapunk in, you'll create a feedback loop. Mute Contrapunk's built-in synth if you only want DAW-rendered audio.
+## Optional audio loopback
 
-## What this guide does NOT cover
+Virtual audio is not required for MIDI harmony. Use it only when a workflow explicitly needs audio shared between applications.
 
-- **Audio-rate sidechain triggers** (Contrapunk reacts to DAW audio peaks). Planned for a future Contrapunk release; see issue #99 for status. For now Contrapunk only consumes MIDI input, not audio.
-- **Tempo sync between DAW and Contrapunk's transport**. Manual right now (set the same BPM in both). Ableton Link sync is being researched but the canonical Rust binding has a GPL license that conflicts with Contrapunk's MIT posture — see `.planning/research/CLEAN-ROOM-CANDIDATES.md` for the long-term plan.
-- **Plugin-format Contrapunk** (VST3 / AU / CLAP). The plugin shell exists but isn't shipping yet. See issue #9 for status.
+- **macOS:** [BlackHole 2ch](https://existential.audio/blackhole/)
+- **Windows:** [VB-Cable](https://vb-audio.com/Cable/)
+- **Linux:** JACK or PipeWire
 
-## Compatibility notes
+Avoid routing Contrapunk's monitored audio back into its own input; that creates a feedback loop.
 
-| DAW | Tested | Notes |
-|---|---|---|
-| Logic Pro 11 | yes | IAC Driver works out of the box. MPE auto-recognized by ESP / SC standalone instruments. |
-| Ableton Live 12 | yes | Enable each IAC bus in Preferences. MPE requires a Live 12 MPE-aware instrument or a Max for Live device. |
-| Reaper 7 | yes | Most flexible — enable per port, per channel. Custom routing via ReaRoute on Windows. |
-| Bitwig Studio 5 | yes | Native MPE support. |
-| FL Studio | partial | Windows-only via loopMIDI. macOS via Wine is fragile; not recommended. |
+## Routing notes
 
-If your DAW isn't listed, the MIDI bridge mechanism is universal — every DAW has a "MIDI input device" picker.
+- **Channel-based routing:** one MIDI connection; channel 1 is the MPE master, channel 2 carries the melody, and later channels carry generated voices.
+- **Port-based routing:** each voice uses a separate output port on channel 1.
+- **Stuck-note recovery:** use Contrapunk's panic/reset control or restart routing. Configuration changes and transport stops also drain owned notes.
+- **Tempo:** plug-in builds follow host transport where available. The desktop side-by-side workflow does not currently synchronize transport with the DAW; set the same BPM manually when needed.
+- **Direct hosting:** the desktop app can host CLAP instruments/effects. Generic VST3 instrument hosting is parked and is not a current release feature.
+
+## Compatibility status
+
+| Host | Supported route |
+|---|---|
+| Logic Pro | Contrapunk MIDI FX AU; Contrapunk Guitar Audio FX AU; IAC side-by-side |
+| Ableton Live | IAC/loopMIDI side-by-side; plug-in event routing depends on host support |
+| Reaper | VST3/CLAP event routing or virtual MIDI |
+| Bitwig Studio | CLAP/VST3 or virtual MIDI; verify the selected track/event routing |
+| FL Studio | loopMIDI side-by-side; verify plug-in event routing in the target version |
+
+If a host drops generated events, use virtual MIDI rather than adding an in-process instrument host to Contrapunk.

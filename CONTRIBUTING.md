@@ -14,32 +14,52 @@ Welcome to Contrapunk! This guide covers development setup, architecture overvie
 
 ### Building
 
-```bash
-# Desktop app (Tauri)
-cargo tauri dev
+Install UI dependencies once with `npm --prefix ui ci`, then build the surface you are changing:
 
-# Native library only
+```bash
+# Native CLI
 cargo build --release
 
-# WASM build
-cd ui && npm install && npm run build:wasm && npm run dev
+# Desktop app (Tauri)
+(cd src-tauri && cargo tauri dev)
+
+# Browser/WASM
+npm --prefix ui run build:wasm
+npm --prefix ui run dev
+
+# VST3/CLAP with the production UI
+npm --prefix ui run build
+CONTRAPUNK_PLUGIN_UI_DIR="$PWD/ui/build" \
+  cargo xtask bundle contrapunk_plugin --release --features embed-ui
+
+# Universal macOS VST3/CLAP + Logic Audio Units
+CONTRAPUNK_PLUGIN_UI_DIR="$PWD/ui/build" \
+  cargo xtask bundle-universal contrapunk_plugin --release --features embed-ui
+./au-wrapper/build.sh
 ```
 
-### Running Tests
+### Running tests
+
+Use focused checks first:
 
 ```bash
-cargo test              # All tests
-cargo test --doc        # Documentation tests only
-cargo test -- --nocapture  # See println! output
+cargo test -p contrapunk-harmony --lib
+cargo test -p contrapunk-audio --lib
+cargo test -p contrapunk-companion --lib
+npm --prefix ui run check
 ```
 
-### Linting
+Before submitting a cross-surface change:
 
 ```bash
-cargo clippy            # Lint checks
-cargo fmt -- --check    # Format check
-cargo fmt               # Auto-format
+cargo check --workspace --message-format=short
+cargo test --workspace --lib --bins --tests --examples
+cargo clippy --all-targets -- -D warnings
+cargo fmt --all -- --check
+npm --prefix ui run check
 ```
+
+Harmony-crate doctests currently reference the top-level `contrapunk` crate; use `--lib` for focused harmony work.
 
 ### Documentation
 
@@ -48,64 +68,43 @@ cargo doc --all-features     # Generate docs
 cargo doc --all-features --open  # Generate and open in browser
 ```
 
-## Architecture Overview
+## Architecture overview
 
-Contrapunk is a real-time MIDI harmony generator. Here's how the key modules fit together:
+One Rust core feeds four distribution surfaces. A core fix should land once, but each surface has its own adapter:
 
+| Surface | Entry point | Adapter boundary |
+|---|---|---|
+| Native CLI | `src/main.rs` | `src/router.rs` and `src/server/` |
+| Tauri desktop | `src-tauri/` | `src-tauri/src/commands/` |
+| Browser/WASM | `wasm/src/lib.rs` | `ui/src/lib/adapter/wasm.ts` |
+| VST3/CLAP/AU | `plugin/src/lib.rs` | `ui/src/lib/adapter/plugin.ts` and `au-wrapper/` |
+
+### Core crates
+
+| Crate/path | Purpose |
+|---|---|
+| `crates/contrapunk-harmony/` | Scales, harmony modes, stateful voice leading, and exact NoteOn/NoteOff ownership |
+| `crates/contrapunk-companion/` | Canon, counterpoint, and pattern lanes driven by transport |
+| `crates/contrapunk-audio/` | Guitar onset/pitch analysis and audio input support |
+| `crates/contrapunk-transport/` | Shared beat/transport state |
+| `crates/contrapunk-midi/` | MIDI types and native routing support |
+| `src/chain/` | Built-in audio/MIDI processing chain |
+| `src/synth/` and `src/fx/` | Built-in sound and effects |
+| `ui/src/lib/` | Production Svelte workspace, stores, adapters, and arrangement catalog |
+
+### Data flow
+
+```text
+MIDI or guitar audio
+  → surface adapter/router
+  → HarmonyEngine immediate voices
+  → Companion transport-scheduled voices
+  → humanization/routing
+  → owned MIDI NoteOn/NoteOff events
+  → built-in audio, hardware/virtual MIDI, or DAW host
 ```
-                    +------------------+
-                    |   MIDI Input     |
-                    | (midir / WebMIDI)|
-                    +--------+---------+
-                             |
-                             v
-+----------------------------+----------------------------+
-|                      Harmony Engine                      |
-|  +-------------+  +-----------+  +-------------------+  |
-|  |   Scale     |  |  Modes    |  |  Voice Leading    |  |
-|  | (key, mode) |  | (1-8)     |  |  (post-process)   |  |
-|  +-------------+  +-----------+  +-------------------+  |
-+----------------------------+----------------------------+
-                             |
-                             v
-+----------------------------+----------------------------+
-|                      Humanizer                           |
-|  +-------------+  +-----------+  +-------------------+  |
-|  | Beat Clock  |  |  Jitter   |  |  Swing/Groove     |  |
-|  | (tempo)     |  | (timing)  |  |  (off-beat shift) |  |
-|  +-------------+  +-----------+  +-------------------+  |
-+----------------------------+----------------------------+
-                             |
-                             v
-                    +------------------+
-                    |   MIDI Output    |
-                    | (midir / WebMIDI)|
-                    +------------------+
-```
 
-### Key Modules
-
-| Module | Path | Purpose |
-|--------|------|---------|
-| **harmony/** | `src/harmony/` | Core harmony generation: scales, modes, chord detection, voice leading |
-| **humanize/** | `src/humanize/` | Timing variation: jitter, velocity, swing, beat clock |
-| **midi/** | `src/midi/` | MIDI I/O via midir (native) and Web MIDI API (WASM) |
-| **app.rs** | `src/app.rs` | Main application state and eframe integration |
-| **ui.rs** | `src/ui.rs` | GUI layout, rendering, and user interaction |
-| **chord.rs** | `src/chord.rs` | Chord detection and roman numeral analysis |
-| **generator/** | `src/generator/` | Note Generator (virtual MIDI input) |
-| **preset.rs** | `src/preset.rs` | Musical style presets and persistence |
-
-### Data Flow
-
-```
-1. MIDI Note arrives (physical controller or Note Generator)
-2. HarmonyEngine.harmonize_note_on(note) is called
-3. Engine applies selected mode algorithm to generate harmony notes
-4. Voice leading post-processes the harmony (if enabled)
-5. Humanizer adds timing/velocity variation to harmony notes (melody bypassed)
-6. Notes are sent to MIDI outputs (potentially with delay via DelayQueue)
-```
+When adding a setting, trace it through the shared core and every supported adapter. Unsupported surfaces must report a capability gap instead of silently accepting a no-op. Parameters that change active harmony state must preserve the panic/reharmonization cleanup contract.
 
 ## Harmony Algorithm Deep Dive
 
@@ -262,13 +261,16 @@ After harmony generation, octave transformations are applied:
 4. Run `cargo test` and `cargo clippy`
 5. Submit a pull request
 
-### Before Submitting
+### Before submitting
 
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
-- [ ] `cargo fmt -- --check` passes
-- [ ] Added doc comments to new public items
-- [ ] Updated relevant documentation if needed
+- [ ] Focused tests for the changed crate pass
+- [ ] `cargo check --workspace --message-format=short` passes
+- [ ] `cargo clippy --all-targets -- -D warnings` passes
+- [ ] `cargo fmt --all -- --check` passes
+- [ ] `npm --prefix ui run check` passes for UI/adapter changes
+- [ ] Every emitted NoteOn has deterministic NoteOff/reset coverage
+- [ ] New tunables have real controls on supported surfaces and capability gates elsewhere
+- [ ] Relevant user/developer documentation is updated
 
 ### Commit Style
 
