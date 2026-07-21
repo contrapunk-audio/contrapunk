@@ -46,7 +46,7 @@ updates:
       day: "monday"
     labels:
       - "dependencies"
-      - "ci"
+      - "kind/ci"
     commit-message:
       prefix: "ci(deps):"
     open-pull-requests-limit: 5
