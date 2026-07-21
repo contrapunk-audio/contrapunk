@@ -2,7 +2,7 @@ import {
 	ARRANGEMENT_PRESET_SCHEMA_VERSION,
 	type ArrangementPresetV2
 } from '$lib/arrangement/presets';
-import { BUILT_IN_ARRANGEMENT_PRESETS } from '$lib/arrangement/catalog';
+import { OPERATIONAL_BUILT_IN_ARRANGEMENT_PRESETS } from '$lib/arrangement/catalog';
 import {
 	loadUserArrangementPresets,
 	saveUserArrangementPresets
@@ -14,11 +14,11 @@ class ArrangementPresetStore {
 	appliedId = $state<string | null>(null);
 
 	get builtInPresets(): readonly ArrangementPresetV2[] {
-		return BUILT_IN_ARRANGEMENT_PRESETS;
+		return OPERATIONAL_BUILT_IN_ARRANGEMENT_PRESETS;
 	}
 
 	get allPresets(): readonly ArrangementPresetV2[] {
-		return [...BUILT_IN_ARRANGEMENT_PRESETS, ...this.userPresets];
+		return [...OPERATIONAL_BUILT_IN_ARRANGEMENT_PRESETS, ...this.userPresets];
 	}
 
 	create(preset: Omit<ArrangementPresetV2, 'schemaVersion' | 'id' | 'builtIn'>): string {

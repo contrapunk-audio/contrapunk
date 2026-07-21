@@ -9,6 +9,7 @@ import {
 	HOLLOW_CHOIR_PRESET,
 	MENSURATION_WEB_PRESET,
 	MODAL_LINEWORK_PRESET,
+	OPERATIONAL_BUILT_IN_ARRANGEMENT_PRESETS,
 	PIXEL_TRIO_PRESET,
 	PLANED_CATHEDRAL_PRESET,
 	QUARTAL_COLOSSUS_PRESET,
@@ -36,25 +37,30 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 		assert.deepEqual(validateArrangementConfig(preset.config), []);
 	}
 
+	const approvedIds = [
+		'01-cloister-organum',
+		'02-modal-linework',
+		'04-mensuration-web',
+		'07-stretto-engine',
+		'08-suspension-garland',
+		'12-planed-cathedral',
+		'14-color-mode-windows',
+		'23-sixth-diminished-conveyor',
+		'25-bebop-chase',
+		'27-quartal-colossus',
+		'36-pixel-trio',
+		'43-hollow-choir',
+		'48-crystal-chorale'
+	];
 	assert.deepEqual(
 		BUILT_IN_ARRANGEMENT_PRESETS.filter((preset) => preset.researchStatus === 'approved').map(
 			(preset) => preset.id
 		),
-		[
-			'01-cloister-organum',
-			'02-modal-linework',
-			'04-mensuration-web',
-			'07-stretto-engine',
-			'08-suspension-garland',
-			'12-planed-cathedral',
-			'14-color-mode-windows',
-			'23-sixth-diminished-conveyor',
-			'25-bebop-chase',
-			'27-quartal-colossus',
-			'36-pixel-trio',
-			'43-hollow-choir',
-			'48-crystal-chorale'
-		]
+		approvedIds
+	);
+	assert.deepEqual(
+		OPERATIONAL_BUILT_IN_ARRANGEMENT_PRESETS.map((preset) => preset.id),
+		approvedIds
 	);
 });
 

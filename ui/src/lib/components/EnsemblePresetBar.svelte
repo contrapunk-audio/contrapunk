@@ -138,7 +138,7 @@
 			options={options}
 			value={arrangementPresets.selectedId}
 			label="Arrangement preset"
-			help="Selects a researched arrangement. Nothing changes until Apply. Hollow diamonds are visible drafts that remain locked."
+			help="Selects a fully implemented arrangement. Nothing changes until Apply. Your custom presets are also shown."
 			onchange={(value) => {
 				arrangementPresets.selectedId = value;
 				error = '';

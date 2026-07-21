@@ -995,6 +995,10 @@ export const BUILT_IN_ARRANGEMENT_PRESETS: readonly ArrangementPresetV2[] = DRAF
 	}
 );
 
+export const OPERATIONAL_BUILT_IN_ARRANGEMENT_PRESETS = BUILT_IN_ARRANGEMENT_PRESETS.filter(
+	(preset) => preset.researchStatus === 'approved'
+);
+
 function singleLineFollower(transposeDegrees: number, timeRatio: number, delayBeats = 0) {
 	return {
 		delayBeats,
