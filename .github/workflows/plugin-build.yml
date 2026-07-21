@@ -238,7 +238,7 @@ jobs:
 
       - name: Attach macOS plugins to GitHub Release (tag pushes only)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/Contrapunk-Plugins-macOS-universal.pkg
@@ -385,7 +385,7 @@ jobs:
 
       - name: Attach Windows plugins to GitHub Release (tag pushes only)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/Contrapunk-Plugins-Windows-x64.exe
