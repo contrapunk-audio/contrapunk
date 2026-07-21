@@ -2,7 +2,7 @@
 
 # Stage 1: Build WASM module with wasm-pack
 FROM rust:1.88 AS wasm-builder
-RUN cargo install wasm-pack --locked
+RUN cargo install wasm-pack --version 0.14.0 --locked
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
