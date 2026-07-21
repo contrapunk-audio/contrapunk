@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 wmidi = "4.0"
 serde = { version = "1.0", features = ["derive"] }
-ringbuf = "0.4"
+ringbuf = "0.5"
 pitch-detection = "0.3"
 serde_json = "1.0"
 
