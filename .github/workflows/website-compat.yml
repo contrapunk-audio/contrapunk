@@ -27,12 +27,12 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout contrapunk PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: contrapunk
 
       - name: Checkout website main
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: contrapunk-audio/website
           ref: main
