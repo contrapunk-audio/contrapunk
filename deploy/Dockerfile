@@ -14,9 +14,11 @@ COPY crates/ crates/
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
 COPY plugin/Cargo.toml plugin/Cargo.toml
 COPY xtask/Cargo.toml xtask/Cargo.toml
+COPY apps/golem/src-tauri/Cargo.toml apps/golem/src-tauri/Cargo.toml
 RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs
 RUN mkdir -p plugin/src && echo "" > plugin/src/lib.rs
 RUN mkdir -p xtask/src && echo "fn main() {}" > xtask/src/main.rs
+RUN mkdir -p apps/golem/src-tauri/src && echo "fn main() {}" > apps/golem/src-tauri/src/main.rs
 RUN wasm-pack build wasm/ --target web --out-dir /app/ui/src/lib/wasm-pkg --release
 
 # Stage 2: Build SvelteKit frontend
