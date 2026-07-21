@@ -19,12 +19,11 @@ on:
 jobs:
   website-build:
     name: Website builds with this PR
+    # GitHub withholds repository secrets from Dependabot PRs, so those
+    # runs cannot clone the private website. Skip instead of reporting a
+    # misleading failure unrelated to the dependency change.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    # Non-blocking: contrapunk-audio/website is now a private repo, so
-    # the default GITHUB_TOKEN can't clone it. When a WEBSITE_REPO_TOKEN
-    # secret with read access is configured, this job succeeds and gives
-    # us the cross-repo build check; when it isn't (e.g. PRs from forks
-    # or pre-secret-setup), the job fails but doesn't block merge.
     continue-on-error: true
     steps:
       - name: Checkout contrapunk PR

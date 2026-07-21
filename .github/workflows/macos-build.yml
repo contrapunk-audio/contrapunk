@@ -111,10 +111,17 @@ jobs:
         working-directory: src-tauri
         env:
           CARGO_TERM_COLOR: always
-          # Tauri 2.x reads APPLE_SIGNING_IDENTITY + APPLE_TEAM_ID to sign
-          # the .app + DMG, and APPLE_API_KEY/ISSUER/KEY_PATH to notarize
-          # + staple. Empty values short-circuit each step.
-        run: cargo tauri build --target universal-apple-darwin --bundles dmg,app
+        run: |
+          # Dependabot and fork PRs receive no secrets. Tauri treats an
+          # exported-but-empty identity as a request to sign, so remove the
+          # variables entirely for unsigned PR validation builds.
+          if [[ -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+            unset APPLE_SIGNING_IDENTITY APPLE_TEAM_ID
+          fi
+          if [[ -z "${APPLE_API_KEY_BASE64:-}" ]]; then
+            unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
+          fi
+          cargo tauri build --target universal-apple-darwin --bundles dmg,app
 
       - name: Verify signature on built .app (strict on tagged releases)
         if: env.APPLE_SIGNING_IDENTITY != ''
