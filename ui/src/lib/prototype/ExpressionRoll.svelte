@@ -280,12 +280,13 @@
 			const end = Math.min(now, gate.endedAt ?? now);
 			const [startX, startY] = pointFor(start, gate.note);
 			const [endX, endY] = pointFor(end, gate.note);
+			const keySize = whiteSize * (isBlackKey(gate.note) ? 0.6 : 1);
 			ctx.globalAlpha = gate.endedAt === null ? 0.95 : 0.62;
 			ctx.fillStyle = colors[gate.role];
 			if (vertical) {
-				ctx.fillRect(startX - 2.5, startY, 5, Math.max(3, endY - startY));
+				ctx.fillRect(startX - keySize / 2, startY, keySize, Math.max(3, endY - startY));
 			} else {
-				ctx.fillRect(startX, startY - 2.5, Math.max(3, endX - startX), 5);
+				ctx.fillRect(startX, startY - keySize / 2, Math.max(3, endX - startX), keySize);
 			}
 		}
 		ctx.globalAlpha = 1;
