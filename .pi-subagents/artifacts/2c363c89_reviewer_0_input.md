@@ -1,3 +1,0 @@
-# Task for reviewer
-
-Review only the current unstaged Pixel Trio / PatternLane diff for correctness and lifecycle bugs. Focus on transport scheduling, skipped ticks, NoteOn/NoteOff ownership, disable/reset/rewind, Tauri/WASM registration and command plumbing, ArrangementPresetV2 apply/rollback/backward compatibility, capability gating, and whether the implementation actually satisfies independent low-support/counterline roles without preset-specific Rust logic. Ignore unrelated dirty files and pre-existing warnings. Do not modify files. Return findings ordered by severity with exact paths/lines; say APPROVE if no blockers.

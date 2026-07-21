@@ -1,9 +1,0 @@
-# Task for researcher
-
-Produce the independent MUSIC-THEORY / TEMPORAL-BEHAVIOR research report for Phase 10.2 preset 36 “Pixel Trio,” referenced to bounded early Famicom/NES work by Koji Kondo and Manami Matsumae. Follow 10.2-RESEARCH-TEMPLATE.md completely. Analyze limited-channel melody/bass/counterline economy, interval and harmonic vocabulary, voice leading, register, rhythm, articulation, looping, density, silence, phrase/section/game-state development, and meaningful differences between the composers. Audit the current shared HarmonyEngine and ArrangementPresetV2 to determine exactly whether a three-total-voice mapping (such as Dorian/Ionian plus a shared mode/voice-leading setting) can honestly evoke three-channel economy without independent bass, patterns, chip synthesis, or lane roles. Derive exact pitch vectors/ownership tests for any approved mapping and keep unsupported channel simulation locked. Use rigorous web research with inline citations and kept/dropped sources plus original abstract acceptance examples. Do not inspect or reuse another researcher’s output. Do not modify repository files; return only the complete standalone Markdown report.
-
----
-**Output:**
-Write your findings to exactly this path: /Users/vibhavbobade/go/src/github.com/contrapunk-audio/contrapunk/.pi-subagents/artifacts/outputs/95aea82a/.planning/phases/10.2-arrangement-presets/research/36-pixel-trio/theory.md
-This path is authoritative for this run.
-Ignore any other output filename or output path mentioned elsewhere, including output destinations in the base agent prompt, system prompt, or task instructions.

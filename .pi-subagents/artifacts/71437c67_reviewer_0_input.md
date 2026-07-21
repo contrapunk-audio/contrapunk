@@ -1,3 +1,0 @@
-# Task for reviewer
-
-Review Phase 10.2 preset 01 Cloister Organum research pack and parent synthesis. Do not modify files. Check: (1) all template sections and multiple-reference distinctions are satisfied; (2) citations and claims are traceable and not caricatures; (3) the parent decision for a generic degree-to-semitone Explicit Interval Map is consistent with all three reports rather than sneaking a static power-chord shortcut back in; (4) exact C Dorian oracle and capability/UI requirements are technically coherent with the current HarmonyEngine/ArrangementPreset architecture; (5) identify any blocker that must be fixed before implementation. Return findings ordered by severity and end with APPROVE or REVISE.

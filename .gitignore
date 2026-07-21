@@ -55,5 +55,8 @@ au-wrapper/build/
 !.pi/gsd/
 !.pi/gsd/**
 
+# pi-subagents runtime artifacts
+.pi-subagents/
+
 # Local rigor-gate config (ephemeral, per-checkout)
 rigor.yaml
