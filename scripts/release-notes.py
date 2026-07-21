@@ -8,7 +8,7 @@ Outputs Markdown suitable for a GitHub Release body.
 Environment variables:
     LAST_TAG   — previous release tag (empty = first release)
     VERSION    — version string for this release
-    CODENAME   — release codename (e.g. "Hendrix HAL")
+    CODENAME   — release codename (e.g. "Holdsworth HAL")
 """
 
 import os

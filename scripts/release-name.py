@@ -23,7 +23,7 @@ MUSICIANS = {
     "E": ["Ellington", "Eno"],
     "F": ["Fela", "Frusciante"],
     "G": ["Gilmour", "Gould", "Glass", "Gesualdo"],
-    "H": ["Hendrix", "Holst", "Herbie"],
+    "H": ["Holdsworth", "Holst", "Herbie"],
     "J": ["Joplin", "Jobim", "Josquin"],
     "K": ["Kraftwerk", "Khaled"],
     "L": ["Lennon", "Liszt"],
