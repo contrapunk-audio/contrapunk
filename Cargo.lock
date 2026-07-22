@@ -856,7 +856,7 @@ dependencies = [
 
 [[package]]
 name = "contrapunk"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "anyhow",
  "clack-extensions",
@@ -908,7 +908,7 @@ version = "1.1.0"
 
 [[package]]
 name = "contrapunk-companion"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "contrapunk-harmony",
  "contrapunk-transport",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "contrapunk-tauri"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "anyhow",
  "contrapunk",
@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "contrapunk_plugin"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "contrapunk",
  "contrapunk-companion",
