@@ -53,6 +53,7 @@ impl ContrapunkEditorHandler {
             "key": format!("{:?}", self.params.key.value()),
             "mode": format!("{:?}", self.params.harmony_mode.value()),
             "voiceLeading": self.params.voice_leading.value(),
+            "voiceLeadingStyle": format!("{:?}", self.params.voice_leading_style.value()),
             "octaveMode": format!("{:?}", self.params.octave_mode.value()),
             "octaveIntensity": self.params.octave_intensity.value(),
             "voicePosition": self.params.voice_position.value(),
@@ -66,6 +67,7 @@ impl ContrapunkEditorHandler {
                 )
             ),
             "synthEnabled": self.params.synth_enabled.value(),
+            "synthReleaseMs": self.params.synth_release_ms.value(),
             "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
         })
         .to_string()
@@ -209,6 +211,14 @@ impl EditorHandler for ContrapunkEditorHandler {
                     setter.set_parameter(&self.params.voice_leading, enabled);
                 }
             }
+            "setVoiceLeadingStyle" => {
+                if let Some(style) = msg.get("value").and_then(|v| v.as_str()) {
+                    if let Some(style) = parse_voice_leading_style(style) {
+                        let setter = cx.get_param_setter();
+                        setter.set_parameter(&self.params.voice_leading_style, style);
+                    }
+                }
+            }
             "setInputMode" => {
                 if let Some(mode_str) = msg.get("value").and_then(|v| v.as_str()) {
                     if let Some(input_variant) = parse_input_mode(mode_str) {
@@ -232,6 +242,12 @@ impl EditorHandler for ContrapunkEditorHandler {
                 if let Some(enabled) = msg.get("value").and_then(|v| v.as_bool()) {
                     let setter = cx.get_param_setter();
                     setter.set_parameter(&self.params.synth_enabled, enabled);
+                }
+            }
+            "setSynthReleaseMs" => {
+                if let Some(release_ms) = msg.get("value").and_then(|v| v.as_i64()) {
+                    let setter = cx.get_param_setter();
+                    setter.set_parameter(&self.params.synth_release_ms, release_ms as i32);
                 }
             }
             "panic" => {
@@ -415,7 +431,10 @@ fn get_plugin_build_asset(path: &str) -> Option<&'static [u8]> {
 
 // ── Parameter parsing helpers ───────────────────────────────────────
 
-use crate::{PluginInputMode, PluginKey, PluginMidiOutputMode, PluginMode, PluginOctaveMode};
+use crate::{
+    PluginInputMode, PluginKey, PluginMidiOutputMode, PluginMode, PluginOctaveMode,
+    PluginVoiceLeadingStyle,
+};
 
 fn parse_key(s: &str) -> Option<PluginKey> {
     match s {
@@ -447,6 +466,16 @@ fn parse_mode(s: &str) -> Option<PluginMode> {
         "BarryHarris" => Some(PluginMode::BarryHarris),
         "FunctionalHarmony" => Some(PluginMode::FunctionalHarmony),
         "BachChorale" => Some(PluginMode::BachChorale),
+        _ => None,
+    }
+}
+
+fn parse_voice_leading_style(s: &str) -> Option<PluginVoiceLeadingStyle> {
+    match s {
+        "Free" => Some(PluginVoiceLeadingStyle::Free),
+        "Jazz" => Some(PluginVoiceLeadingStyle::Jazz),
+        "Palestrina" => Some(PluginVoiceLeadingStyle::Palestrina),
+        "BachChorale" => Some(PluginVoiceLeadingStyle::BachChorale),
         _ => None,
     }
 }

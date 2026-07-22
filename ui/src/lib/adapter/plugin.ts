@@ -154,7 +154,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 			octaveMode: (currentParams.octaveMode as string) ?? 'None',
 			octaveIntensity: (currentParams.octaveIntensity as number) ?? 1,
 			voiceLeadingEnabled: (currentParams.voiceLeading as boolean) ?? false,
-			voiceLeadingStyle: 'Free',
+			voiceLeadingStyle: (currentParams.voiceLeadingStyle as string) ?? 'Free',
 			interchangeEnabled: false,
 			interchangeRange: 3,
 			voicePosition: (currentParams.voicePosition as number) ?? 0,
@@ -188,8 +188,9 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('setOctaveIntensity', amount);
 	}
 
-	async setVoiceLeading(enabled: boolean, _style: string): Promise<void> {
+	async setVoiceLeading(enabled: boolean, style: string): Promise<void> {
 		this.send('setVoiceLeading', enabled);
+		this.send('setVoiceLeadingStyle', style);
 	}
 
 	async setInterchange(_enabled: boolean, _range: number): Promise<void> {
@@ -501,7 +502,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 			attackMs: 5,
 			decayMs: 120,
 			sustain: 0.7,
-			releaseMs: 250,
+			releaseMs: (currentParams.synthReleaseMs as number) ?? 400,
 			cutoffHz: 6000,
 			resonance: 0.2,
 			masterGain: 0.25
@@ -512,7 +513,11 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async setSynthAttackMs(_ms: number): Promise<void> {}
 	async setSynthDecayMs(_ms: number): Promise<void> {}
 	async setSynthSustain(_level: number): Promise<void> {}
-	async setSynthReleaseMs(_ms: number): Promise<void> {}
+	async setSynthReleaseMs(ms: number): Promise<void> {
+		const value = Math.max(20, Math.min(4000, Math.round(ms)));
+		currentParams = { ...currentParams, synthReleaseMs: value };
+		this.send('setSynthReleaseMs', value);
+	}
 	async setSynthCutoffHz(_hz: number): Promise<void> {}
 	async setSynthResonance(_value: number): Promise<void> {}
 	async setSynthMasterGain(_value: number): Promise<void> {}

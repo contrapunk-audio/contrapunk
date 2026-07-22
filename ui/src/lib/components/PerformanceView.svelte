@@ -5,10 +5,9 @@
 	  Mode  Voices  Tightness  Adventurous
 	  Key   Scale   Your register   Spread
 
-	Composite knobs (Tightness / Adventurous / Spread) hold local state and
-	fan out to multiple engine setters on change. They do NOT round-trip
-	from engine state — they just display the user's last-touched position
-	(per .planning/PERFORMANCE-VIEW.md, "Implementation notes").
+	Composite knobs fan out to multiple engine setters on change. Tightness
+	round-trips from voice-leading state; Adventurous and Spread retain their
+	last-touched positions.
 -->
 
 <script lang="ts">
@@ -114,7 +113,15 @@
 	}
 
 	// === Tightness (0..1, composite) ===
-	let tightness = $state(0.5);
+	let tightness = $derived(
+		!engine.voiceLeadingEnabled
+			? 0
+			: engine.voiceLeadingStyle === 'Free'
+				? 0.45
+				: engine.voiceLeadingStyle === 'Jazz'
+					? 0.7
+					: 1
+	);
 	function tightnessLabel(t: number): string {
 		if (t < 0.3) return 'Off';
 		if (t < 0.6) return 'Loose';
@@ -122,7 +129,6 @@
 		return 'Strict';
 	}
 	function applyTightness(t: number) {
-		tightness = t;
 		if (t < 0.3) {
 			void engine.setVoiceLeading(false);
 			return;
@@ -311,6 +317,7 @@
 					step={0.01}
 					size={72}
 					label="Tightness"
+					help="Voice-leading strength, not timing: Off disables smoothing; Loose allows free motion; Smooth favors compact jazz movement; Strict applies Palestrina-style constraints."
 					format={tightnessLabel}
 					onchange={applyTightness}
 				/>

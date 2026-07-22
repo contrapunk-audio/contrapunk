@@ -43,7 +43,10 @@ The DAW host owns transport, audio devices, and instrument sound. Controls that 
 2. Remove any older, manually copied `Contrapunk.vst3` bundles from custom plug-in folders so FL Studio sees only one copy.
 3. Open **Options → Manage plugins**. The standard VST3 folder should already be scanned; add it to the search paths if it is absent.
 4. When replacing the same displayed version with a test build, enable **Rescan previously verified plugins** and **Rescan plugins with errors**, then choose **Find installed plugins**.
-5. Load **Contrapunk** as a generator. To drive another instrument with its generated MIDI, use FL Studio's plug-in event routing when available; otherwise use the loopMIDI workflow below.
+5. Load **Contrapunk** as a generator. Open its wrapper settings and assign an unused **Output port**, such as `10`.
+6. Load the destination instrument, such as Serum. Open its wrapper settings and set **Input port** to the same number.
+7. Keep Contrapunk's **MIDI Output** on **Input + Contrapunk**. Turn **Internal Monitor** off when you only want to hear the destination instrument.
+8. If the host does not forward the wrapper port, put both plug-ins in Patcher and connect Contrapunk's MIDI output to the instrument. The desktop loopMIDI workflow below is the final fallback.
 
 Published Windows installers are currently unsigned, so Windows may show a SmartScreen warning. Download installers only from the official Contrapunk GitHub release or an explicitly linked Contrapunk Actions run.
 

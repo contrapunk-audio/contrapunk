@@ -23,7 +23,7 @@ mod logic_midi;
 
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
 use contrapunk::chain::{AudioBlock, MidiBlockEvent};
-use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode};
+use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, VoiceLeadingStyle};
 use contrapunk::synth::{Synth, SynthParams};
 use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
 use contrapunk_transport::Transport;
@@ -282,6 +282,26 @@ impl PluginOctaveMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+enum PluginVoiceLeadingStyle {
+    Free,
+    Jazz,
+    Palestrina,
+    #[name = "Bach Chorale"]
+    BachChorale,
+}
+
+impl PluginVoiceLeadingStyle {
+    fn to_contrapunk(self) -> VoiceLeadingStyle {
+        match self {
+            Self::Free => VoiceLeadingStyle::Free,
+            Self::Jazz => VoiceLeadingStyle::Jazz,
+            Self::Palestrina => VoiceLeadingStyle::Palestrina,
+            Self::BachChorale => VoiceLeadingStyle::BachChorale,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 enum PluginInputMode {
     /// MIDI input — harmonize incoming MIDI notes
     #[name = "MIDI"]
@@ -340,8 +360,14 @@ struct ContrapunkParams {
     #[id = "voice_lead"]
     pub voice_leading: BoolParam,
 
+    #[id = "voice_style"]
+    pub voice_leading_style: EnumParam<PluginVoiceLeadingStyle>,
+
     #[id = "synth"]
     pub synth_enabled: BoolParam,
+
+    #[id = "synth_release"]
+    pub synth_release_ms: IntParam,
 
     #[id = "midi_output"]
     pub midi_output_mode: EnumParam<PluginMidiOutputMode>,
@@ -370,7 +396,20 @@ impl Default for ContrapunkParams {
             .with_value_to_string(formatters::v2s_f32_percentage(0)),
             auto_key: BoolParam::new("Auto Key", false),
             voice_leading: BoolParam::new("Voice Leading", false),
+            voice_leading_style: EnumParam::new(
+                "Voice Leading Style",
+                PluginVoiceLeadingStyle::Free,
+            ),
             synth_enabled: BoolParam::new("Built-in Synth", true),
+            synth_release_ms: IntParam::new(
+                "Synth Release",
+                400,
+                IntRange::Linear {
+                    min: 20,
+                    max: 4_000,
+                },
+            )
+            .with_unit(" ms"),
             midi_output_mode: EnumParam::new("MIDI Output", PluginMidiOutputMode::Full),
             webview_state: editor::default_webview_state(),
         }
@@ -403,6 +442,7 @@ struct WorkerParams {
     voice_position: i32,
     auto_key: bool,
     voice_leading: bool,
+    voice_leading_style: PluginVoiceLeadingStyle,
     sample_rate: f32,
 }
 
@@ -417,6 +457,7 @@ impl Default for WorkerParams {
             voice_position: 0,
             auto_key: false,
             voice_leading: false,
+            voice_leading_style: PluginVoiceLeadingStyle::Free,
             sample_rate: 48_000.0,
         }
     }
@@ -775,6 +816,7 @@ fn configure_music_worker(
         engine.set_voice_position(params.voice_position as usize);
         engine.set_auto_key(params.auto_key);
         engine.set_voice_leading_enabled(params.voice_leading);
+        engine.set_voice_leading_style(params.voice_leading_style.to_contrapunk());
         engine.clear_active_notes();
     }
     companion
@@ -1058,6 +1100,7 @@ struct ContrapunkPlugin {
     last_voice_pos: i32,
     last_auto_key: bool,
     last_voice_leading: bool,
+    last_voice_leading_style: PluginVoiceLeadingStyle,
     last_input_mode: PluginInputMode,
     last_midi_output_mode: PluginMidiOutputMode,
 }
@@ -1136,6 +1179,7 @@ impl Default for ContrapunkPlugin {
             last_voice_pos: 0,
             last_auto_key: false,
             last_voice_leading: false,
+            last_voice_leading_style: PluginVoiceLeadingStyle::Free,
             last_input_mode: default_input_mode,
             last_midi_output_mode: PluginMidiOutputMode::Full,
         }
@@ -1152,6 +1196,8 @@ impl ContrapunkPlugin {
     fn sync_params(&mut self) -> bool {
         self.synth_params
             .set_enabled(self.params.synth_enabled.value());
+        self.synth_params
+            .set_release_ms(self.params.synth_release_ms.value() as u32);
 
         let params = WorkerParams {
             key: self.params.key.value(),
@@ -1162,6 +1208,7 @@ impl ContrapunkPlugin {
             voice_position: self.params.voice_position.value(),
             auto_key: self.params.auto_key.value(),
             voice_leading: self.params.voice_leading.value(),
+            voice_leading_style: self.params.voice_leading_style.value(),
             sample_rate: self.sample_rate,
         };
         if params.key == self.last_key
@@ -1172,6 +1219,7 @@ impl ContrapunkPlugin {
             && params.voice_position == self.last_voice_pos
             && params.auto_key == self.last_auto_key
             && params.voice_leading == self.last_voice_leading
+            && params.voice_leading_style == self.last_voice_leading_style
             && (params.sample_rate - self.worker_params.sample_rate).abs() < f32::EPSILON
         {
             return false;
@@ -1186,6 +1234,7 @@ impl ContrapunkPlugin {
         self.last_voice_pos = params.voice_position;
         self.last_auto_key = params.auto_key;
         self.last_voice_leading = params.voice_leading;
+        self.last_voice_leading_style = params.voice_leading_style;
         true
     }
 
@@ -1888,6 +1937,23 @@ mod tests {
         assert!(!is_all_notes_off_cc(64));
         assert!(is_all_notes_off_cc(120));
         assert!(is_all_notes_off_cc(123));
+    }
+
+    #[test]
+    fn plugin_performance_controls_reach_distinct_engine_settings() {
+        assert_eq!(
+            PluginVoiceLeadingStyle::Free.to_contrapunk(),
+            VoiceLeadingStyle::Free
+        );
+        assert_eq!(
+            PluginVoiceLeadingStyle::Jazz.to_contrapunk(),
+            VoiceLeadingStyle::Jazz
+        );
+        assert_eq!(
+            PluginVoiceLeadingStyle::Palestrina.to_contrapunk(),
+            VoiceLeadingStyle::Palestrina
+        );
+        assert_eq!(ContrapunkParams::default().synth_release_ms.value(), 400);
     }
 
     #[test]

@@ -3,6 +3,7 @@
 	import { adapter } from '$lib/adapter';
 	import type { PluginInputMode, PluginMidiOutputMode } from '$lib/adapter/types';
 	import PixelSelect from './PixelSelect.svelte';
+	import Knob from './Knob.svelte';
 
 	const inputOptions = [
 		{ value: 'midi', label: 'Host MIDI' },
@@ -16,13 +17,19 @@
 	let inputMode = $state<PluginInputMode>('midi');
 	let outputMode = $state<PluginMidiOutputMode>('full');
 	let synthEnabled = $state(true);
+	let releaseMs = $state(400);
 
 	async function refresh() {
-		[inputMode, outputMode, synthEnabled] = await Promise.all([
+		const [nextInputMode, nextOutputMode, nextSynthEnabled, synthState] = await Promise.all([
 			adapter.getPluginInputMode(),
 			adapter.getPluginMidiOutputMode(),
-			adapter.getPluginSynthEnabled()
+			adapter.getPluginSynthEnabled(),
+			adapter.getSynthState()
 		]);
+		inputMode = nextInputMode;
+		outputMode = nextOutputMode;
+		synthEnabled = nextSynthEnabled;
+		releaseMs = synthState.releaseMs;
 	}
 
 	onMount(() => {
@@ -44,6 +51,11 @@
 		synthEnabled = !synthEnabled;
 		await adapter.setPluginSynthEnabled(synthEnabled);
 	}
+
+	async function setRelease(ms: number) {
+		releaseMs = Math.round(ms);
+		await adapter.setSynthReleaseMs(releaseMs);
+	}
 </script>
 
 <div class="plugin-routing" aria-label="DAW plugin routing">
@@ -58,13 +70,26 @@
 	<button type="button" class:enabled={synthEnabled} onclick={toggleSynth}>
 		INTERNAL MONITOR {synthEnabled ? 'ON' : 'OFF'}
 	</button>
+	<Knob
+		label="Release"
+		help="Fade time for the built-in monitor after NoteOff. Raise it if short computer-keyboard notes click."
+		value={releaseMs}
+		min={20}
+		max={4000}
+		step={10}
+		defaultValue={400}
+		size={48}
+		format={(value) => `${Math.round(value)}ms`}
+		onchange={setRelease}
+	/>
+	<p><strong>FL Studio:</strong> set Contrapunk's wrapper <strong>Output port</strong> and the destination synth's wrapper <strong>Input port</strong> to the same number. Turn Internal Monitor off when listening through Serum. If wrapper port forwarding is unavailable, place both plug-ins in Patcher and connect Contrapunk's MIDI output to the synth.</p>
 	<p>For Logic guitar input, insert <strong>Contrapunk Guitar</strong> as an Audio FX, choose <strong>Guitar audio</strong>, then select <strong>Contrapunk Guitar MIDI Out</strong> on the Analog Lab instrument track.</p>
 </div>
 
 <style>
 	.plugin-routing {
 		display: grid;
-		grid-template-columns: 1fr 1fr auto;
+		grid-template-columns: 1fr 1fr auto auto;
 		gap: 12px;
 		margin-bottom: 14px;
 		padding: 14px;
@@ -72,6 +97,7 @@
 		background: var(--proto-panel, var(--color-bg-panel));
 	}
 	.plugin-routing > div { display: grid; gap: 6px; }
+	.plugin-routing :global(.knob) { align-self: center; }
 	span { color: var(--proto-muted, var(--color-text-secondary)); font: 700 8px var(--font-code); letter-spacing: .12em; }
 	button { align-self: end; min-height: 32px; border: 1px solid var(--proto-line-strong, var(--color-border)); background: transparent; color: var(--proto-muted, var(--color-text-secondary)); font: 700 9px var(--font-code); }
 	button.enabled { color: var(--proto-text, var(--color-text-primary)); }
