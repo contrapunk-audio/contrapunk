@@ -8,7 +8,6 @@ use nih_plug_webview::{
     Context, EditorHandler, WebViewConfig, WebViewEditor, WebViewSource, WebViewState,
 };
 use std::borrow::Cow;
-use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -307,7 +306,7 @@ pub fn create_editor(
             // of treating `/index.html` as an app route and showing a 404.
             url: String::new(),
         },
-        workdir: PathBuf::from("/tmp/contrapunk-webview"),
+        workdir: std::env::temp_dir().join("contrapunk-webview"),
     };
 
     let handler = ContrapunkEditorHandler {

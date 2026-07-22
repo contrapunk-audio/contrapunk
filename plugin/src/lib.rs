@@ -58,6 +58,16 @@ fn is_all_notes_off_cc(cc: u8) -> bool {
     cc == 120 || cc == 123
 }
 
+fn combine_output_sample(existing: f32, synth: f32, has_audio_input: bool) -> f32 {
+    let dry = if has_audio_input && existing.is_finite() {
+        existing
+    } else {
+        0.0
+    };
+    let synth = if synth.is_finite() { synth } else { 0.0 };
+    (dry + synth).clamp(-1.0, 1.0)
+}
+
 fn track_note_on(active: &mut [u32], index: usize) -> bool {
     let count = &mut active[index];
     let first_owner = *count == 0;
@@ -1013,6 +1023,7 @@ struct ContrapunkPlugin {
     worker_block: u64,
     worker_config_pending: bool,
     sample_rate: f32,
+    has_audio_input: bool,
     synth: Synth,
     synth_params: Arc<SynthParams>,
     synth_scratch: Vec<f32>,
@@ -1107,6 +1118,7 @@ impl Default for ContrapunkPlugin {
             worker_block: 0,
             worker_config_pending: true,
             sample_rate: 48000.0,
+            has_audio_input: false,
             synth,
             synth_params,
             synth_scratch: Vec::new(),
@@ -1317,6 +1329,13 @@ impl ContrapunkPlugin {
 
         let len = samples * channels;
         if len > self.synth_scratch.len() {
+            // A host must not receive stale/uninitialized output when it
+            // supplies a block larger than the negotiated maximum.
+            if !self.has_audio_input {
+                for channel in buffer.as_slice() {
+                    channel.fill(0.0);
+                }
+            }
             return;
         }
 
@@ -1327,7 +1346,11 @@ impl ContrapunkPlugin {
         for frame in 0..samples {
             let base = frame * channels;
             for ch in 0..channels {
-                output[ch][frame] = (output[ch][frame] + scratch[base + ch]).clamp(-1.0, 1.0);
+                output[ch][frame] = combine_output_sample(
+                    output[ch][frame],
+                    scratch[base + ch],
+                    self.has_audio_input,
+                );
             }
         }
     }
@@ -1655,6 +1678,7 @@ impl Plugin for ContrapunkPlugin {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         self.sample_rate = buffer_config.sample_rate;
+        self.has_audio_input = audio_io_layout.main_input_channels.is_some();
         self.synth.set_sample_rate(buffer_config.sample_rate as u32);
         let channels = audio_io_layout
             .main_output_channels
@@ -1864,6 +1888,13 @@ mod tests {
         assert!(!is_all_notes_off_cc(64));
         assert!(is_all_notes_off_cc(120));
         assert!(is_all_notes_off_cc(123));
+    }
+
+    #[test]
+    fn instrument_output_replaces_host_buffer_instead_of_mixing_garbage() {
+        assert_eq!(combine_output_sample(0.75, 0.25, false), 0.25);
+        assert_eq!(combine_output_sample(f32::NAN, 0.0, false), 0.0);
+        assert_eq!(combine_output_sample(0.25, 0.5, true), 0.75);
     }
 
     #[test]

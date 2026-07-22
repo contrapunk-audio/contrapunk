@@ -42,6 +42,18 @@ select {
 	-moz-osx-font-smoothing: grayscale !important;
 	text-rendering: optimizeLegibility !important;
 }
+
+/* WebView2 renders native select popups outside the page compositor.
+   Give the popup an explicit dark palette instead of relying on inherited
+   transparent colors, which produces white-on-white options on Windows. */
+select {
+	color-scheme: dark;
+}
+select option,
+select optgroup {
+	background-color: var(--color-bg-panel);
+	color: var(--color-text-primary);
+}
 .font-body {
 	font-family: var(--font-body);
 }
