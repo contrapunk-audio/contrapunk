@@ -37,6 +37,16 @@ Contrapunk's VST3/CLAP build emits generated MIDI/events for a downstream instru
 
 The DAW host owns transport, audio devices, and instrument sound. Controls that only make sense in the desktop app are capability-gated in the plug-in UI.
 
+#### Windows: install and rescan in FL Studio
+
+1. Close FL Studio and run `Contrapunk-Plugins-Windows-x64.exe` as administrator. The installer puts `Contrapunk.vst3` in `C:\Program Files\Common Files\VST3`; do not copy files out of that bundle.
+2. Remove any older, manually copied `Contrapunk.vst3` bundles from custom plug-in folders so FL Studio sees only one copy.
+3. Open **Options → Manage plugins**. The standard VST3 folder should already be scanned; add it to the search paths if it is absent.
+4. When replacing the same displayed version with a test build, enable **Rescan previously verified plugins** and **Rescan plugins with errors**, then choose **Find installed plugins**.
+5. Load **Contrapunk** as a generator. To drive another instrument with its generated MIDI, use FL Studio's plug-in event routing when available; otherwise use the loopMIDI workflow below.
+
+Published Windows installers are currently unsigned, so Windows may show a SmartScreen warning. Download installers only from the official Contrapunk GitHub release or an explicitly linked Contrapunk Actions run.
+
 ## Desktop app beside a DAW
 
 The desktop app sends harmony voices through a virtual MIDI port. The DAW receives that port on an instrument track.
