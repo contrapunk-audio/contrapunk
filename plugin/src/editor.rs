@@ -8,6 +8,7 @@ use nih_plug_webview::{
     Context, EditorHandler, WebViewConfig, WebViewEditor, WebViewSource, WebViewState,
 };
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -286,6 +287,22 @@ impl EditorHandler for ContrapunkEditorHandler {
     }
 }
 
+fn webview_workdir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if let Some(root) = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(PathBuf::from)
+                .map(|home| home.join("AppData").join("Local"))
+        })
+    {
+        return root.join("Contrapunk").join("WebView2");
+    }
+
+    std::env::temp_dir().join("contrapunk-webview")
+}
+
 /// Create the WebViewEditor for the plugin.
 pub fn create_editor(
     params: Arc<ContrapunkParams>,
@@ -306,7 +323,7 @@ pub fn create_editor(
             // of treating `/index.html` as an app route and showing a 404.
             url: String::new(),
         },
-        workdir: std::env::temp_dir().join("contrapunk-webview"),
+        workdir: webview_workdir(),
     };
 
     let handler = ContrapunkEditorHandler {
