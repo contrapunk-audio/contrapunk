@@ -288,6 +288,8 @@ impl EditorHandler for ContrapunkEditorHandler {
 }
 
 fn webview_workdir() -> PathBuf {
+    // FL Studio overrides TEMP/TMP with a directory under Program Files, which
+    // WebView2 cannot write without elevation. Use the per-user data root.
     #[cfg(target_os = "windows")]
     if let Some(root) = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
