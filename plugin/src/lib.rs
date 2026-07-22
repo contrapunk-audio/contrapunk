@@ -1898,6 +1898,27 @@ mod tests {
     }
 
     #[test]
+    fn instrument_render_clears_host_buffer_when_synth_is_idle() {
+        let mut plugin = ContrapunkPlugin::default();
+        plugin.has_audio_input = false;
+        plugin.synth_scratch.resize(8, 0.0);
+
+        let mut host_output = vec![vec![0.75; 4], vec![f32::NAN; 4]];
+        let mut buffer = Buffer::default();
+        unsafe {
+            buffer.set_slices(4, |channels| {
+                let (left, right) = host_output.split_at_mut(1);
+                *channels = vec![&mut left[0], &mut right[0]];
+            });
+        }
+
+        plugin.render_builtin_synth(&mut buffer);
+        drop(buffer);
+
+        assert_eq!(host_output, vec![vec![0.0; 4], vec![0.0; 4]]);
+    }
+
+    #[test]
     fn lane_note_state_does_not_remove_same_pitch_harmony() {
         let mut state = PluginNoteState::default();
         state.harmony_notes.insert(64);
