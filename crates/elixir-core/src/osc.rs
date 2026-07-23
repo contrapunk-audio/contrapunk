@@ -165,6 +165,9 @@ impl Oscillator {
 
     /// Configure the oscillator's pitch.
     pub fn set_frequency(&mut self, freq_hz: f32, sample_rate: f32) {
+        if !freq_hz.is_finite() || !sample_rate.is_finite() {
+            return;
+        }
         let sr = sample_rate.max(1.0);
         let ratio = (freq_hz / sr).clamp(0.0, 0.499_999); // Nyquist guard
         let inc = ratio * ((1u64 << 32) as f32);

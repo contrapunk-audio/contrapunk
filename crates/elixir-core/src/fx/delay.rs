@@ -7,6 +7,8 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
+use crate::util::set_finite_clamped;
+
 pub struct Delay {
     buf_l: Vec<f32>,
     buf_r: Vec<f32>,
@@ -39,14 +41,16 @@ impl Delay {
         self.delay_samples = n.clamp(1, self.buf_l.len() - 1);
     }
     pub fn set_delay_secs(&mut self, secs: f32, sample_rate: f32) {
-        let n = (secs.max(0.0) * sample_rate.max(1.0)) as usize;
-        self.set_delay_samples(n);
+        if secs.is_finite() && sample_rate.is_finite() {
+            let n = (secs.max(0.0) * sample_rate.max(1.0)) as usize;
+            self.set_delay_samples(n);
+        }
     }
     pub fn set_feedback(&mut self, f: f32) {
-        self.feedback = f.clamp(0.0, 0.99);
+        set_finite_clamped(&mut self.feedback, f, 0.0, 0.99);
     }
     pub fn set_mix(&mut self, m: f32) {
-        self.mix = m.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.mix, m, 0.0, 1.0);
     }
     pub fn delay_samples(&self) -> usize {
         self.delay_samples

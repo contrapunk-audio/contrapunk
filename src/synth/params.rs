@@ -193,8 +193,10 @@ impl SynthParams {
         self.decay_ms.store(ms.clamp(1, 5_000), Ordering::Relaxed);
     }
     pub fn set_sustain_level(&self, v: f32) {
-        let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
-        self.sustain_ppt.store(ppt, Ordering::Relaxed);
+        if v.is_finite() {
+            let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
+            self.sustain_ppt.store(ppt, Ordering::Relaxed);
+        }
     }
     pub fn set_release_ms(&self, ms: u32) {
         self.release_ms
@@ -205,14 +207,21 @@ impl SynthParams {
             .store(hz.clamp(20, 20_000), Ordering::Relaxed);
     }
     pub fn set_resonance(&self, v: f32) {
-        let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
-        self.resonance_ppt.store(ppt, Ordering::Relaxed);
+        if v.is_finite() {
+            let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
+            self.resonance_ppt.store(ppt, Ordering::Relaxed);
+        }
     }
     pub fn set_master_gain(&self, v: f32) {
-        let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
-        self.master_gain_ppt.store(ppt, Ordering::Relaxed);
+        if v.is_finite() {
+            let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
+            self.master_gain_ppt.store(ppt, Ordering::Relaxed);
+        }
     }
     pub fn set_mix_gain(&self, group: usize, v: f32) {
+        if !v.is_finite() {
+            return;
+        }
         if let Some(gain) = self.mix_gain_ppt.get(group) {
             let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
             gain.store(ppt, Ordering::Relaxed);
@@ -223,6 +232,25 @@ impl SynthParams {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_finite_atomic_controls_preserve_last_valid_state() {
+        let params = SynthParams::new();
+        params.set_sustain_level(0.2);
+        params.set_resonance(0.3);
+        params.set_master_gain(0.4);
+        params.set_mix_gain(1, 0.5);
+
+        params.set_sustain_level(f32::NAN);
+        params.set_resonance(f32::INFINITY);
+        params.set_master_gain(f32::NEG_INFINITY);
+        params.set_mix_gain(1, f32::NAN);
+
+        assert_eq!(params.sustain_level(), 0.2);
+        assert_eq!(params.resonance(), 0.3);
+        assert_eq!(params.master_gain(), 0.4);
+        assert_eq!(params.mix_gains()[1], 0.5);
+    }
 
     #[test]
     fn synth_event_channel_is_bounded_and_marks_overflow() {

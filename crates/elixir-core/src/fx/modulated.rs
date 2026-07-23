@@ -12,6 +12,8 @@ use contrapunk_dsp::allpass::Allpass1;
 use contrapunk_dsp::delay_line::StereoDelayLine;
 use contrapunk_dsp::window::{equal_power, frac01};
 
+use crate::util::{finite_or, set_finite_clamped};
+
 /// Multi-tap style chorus implemented as a stereo modulated delay.
 pub struct Chorus {
     sr: f32,
@@ -25,7 +27,7 @@ pub struct Chorus {
 
 impl Chorus {
     pub fn new(sample_rate: f32) -> Self {
-        let sr = sample_rate.max(1.0);
+        let sr = finite_or(sample_rate, 48_000.0).max(1.0);
         Self {
             sr,
             delay: StereoDelayLine::new_power_of_two((sr * 0.080) as usize + 8),
@@ -38,13 +40,13 @@ impl Chorus {
     }
 
     pub fn set_rate_hz(&mut self, hz: f32) {
-        self.rate_hz = hz.clamp(0.01, 8.0);
+        set_finite_clamped(&mut self.rate_hz, hz, 0.01, 8.0);
     }
     pub fn set_depth_ms(&mut self, ms: f32) {
-        self.depth_ms = ms.clamp(0.0, 40.0);
+        set_finite_clamped(&mut self.depth_ms, ms, 0.0, 40.0);
     }
     pub fn set_mix(&mut self, mix: f32) {
-        self.mix = mix.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
     }
 
     pub fn process_inplace(&mut self, buf: &mut [f32], channels: usize) {
@@ -86,7 +88,7 @@ pub struct Flanger {
 
 impl Flanger {
     pub fn new(sample_rate: f32) -> Self {
-        let sr = sample_rate.max(1.0);
+        let sr = finite_or(sample_rate, 48_000.0).max(1.0);
         Self {
             sr,
             delay: StereoDelayLine::new_power_of_two((sr * 0.020) as usize + 8),
@@ -99,16 +101,16 @@ impl Flanger {
         }
     }
     pub fn set_rate_hz(&mut self, hz: f32) {
-        self.rate_hz = hz.clamp(0.01, 10.0);
+        set_finite_clamped(&mut self.rate_hz, hz, 0.01, 10.0);
     }
     pub fn set_depth_ms(&mut self, ms: f32) {
-        self.depth_ms = ms.clamp(0.0, 10.0);
+        set_finite_clamped(&mut self.depth_ms, ms, 0.0, 10.0);
     }
     pub fn set_feedback(&mut self, fb: f32) {
-        self.feedback = fb.clamp(-0.95, 0.95);
+        set_finite_clamped(&mut self.feedback, fb, -0.95, 0.95);
     }
     pub fn set_mix(&mut self, mix: f32) {
-        self.mix = mix.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
     }
 
     pub fn process_inplace(&mut self, buf: &mut [f32], channels: usize) {
@@ -151,7 +153,7 @@ pub struct Phaser {
 impl Phaser {
     pub fn new(sample_rate: f32) -> Self {
         Self {
-            sr: sample_rate.max(1.0),
+            sr: finite_or(sample_rate, 48_000.0).max(1.0),
             left: [Allpass1::new(); 12],
             right: [Allpass1::new(); 12],
             phase: 0.0,
@@ -164,16 +166,16 @@ impl Phaser {
         }
     }
     pub fn set_rate_hz(&mut self, hz: f32) {
-        self.rate_hz = hz.clamp(0.01, 8.0);
+        set_finite_clamped(&mut self.rate_hz, hz, 0.01, 8.0);
     }
     pub fn set_depth(&mut self, depth: f32) {
-        self.depth = depth.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.depth, depth, 0.0, 1.0);
     }
     pub fn set_feedback(&mut self, fb: f32) {
-        self.feedback = fb.clamp(0.0, 0.95);
+        set_finite_clamped(&mut self.feedback, fb, 0.0, 0.95);
     }
     pub fn set_mix(&mut self, mix: f32) {
-        self.mix = mix.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
     }
 
     pub fn process_inplace(&mut self, buf: &mut [f32], channels: usize) {
@@ -224,7 +226,7 @@ pub struct Compressor {
 impl Compressor {
     pub fn new(sample_rate: f32) -> Self {
         Self {
-            sr: sample_rate.max(1.0),
+            sr: finite_or(sample_rate, 48_000.0).max(1.0),
             env: 0.0,
             threshold_db: -18.0,
             ratio: 4.0,
@@ -235,22 +237,22 @@ impl Compressor {
         }
     }
     pub fn set_threshold_db(&mut self, db: f32) {
-        self.threshold_db = db.clamp(-60.0, 0.0);
+        set_finite_clamped(&mut self.threshold_db, db, -60.0, 0.0);
     }
     pub fn set_ratio(&mut self, ratio: f32) {
-        self.ratio = ratio.clamp(1.0, 40.0);
+        set_finite_clamped(&mut self.ratio, ratio, 1.0, 40.0);
     }
     pub fn set_attack_ms(&mut self, ms: f32) {
-        self.attack_ms = ms.clamp(0.1, 500.0);
+        set_finite_clamped(&mut self.attack_ms, ms, 0.1, 500.0);
     }
     pub fn set_release_ms(&mut self, ms: f32) {
-        self.release_ms = ms.clamp(1.0, 2000.0);
+        set_finite_clamped(&mut self.release_ms, ms, 1.0, 2000.0);
     }
     pub fn set_makeup_db(&mut self, db: f32) {
-        self.makeup_db = db.clamp(-24.0, 24.0);
+        set_finite_clamped(&mut self.makeup_db, db, -24.0, 24.0);
     }
     pub fn set_mix(&mut self, mix: f32) {
-        self.mix = mix.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
     }
 
     pub fn process_inplace(&mut self, buf: &mut [f32], channels: usize) {

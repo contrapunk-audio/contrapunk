@@ -96,8 +96,13 @@ impl ModMatrix {
         }
     }
 
-    /// Add a route. Returns the slot index, or `None` if full.
+    /// Add a route. Returns the slot index, or `None` if invalid or full.
     pub fn add_route(&mut self, route: ModRoute) -> Option<usize> {
+        let valid_src = !matches!(route.src, ModSrc::Lfo(i) if i as usize >= MAX_GLOBAL_LFOS);
+        let valid_dst = !matches!(route.dst, ModDest::LfoRate(i) if i as usize >= MAX_GLOBAL_LFOS);
+        if !route.amount.is_finite() || !valid_src || !valid_dst {
+            return None;
+        }
         for i in self.next_slot..MAX_ROUTES {
             if self.routes[i].is_none() {
                 self.routes[i] = Some(route);
@@ -193,14 +198,18 @@ impl Smoothed {
     /// [`Smoothed::step`]. Compute once when sample rate / block size
     /// is known.
     pub fn set_coeff(&mut self, coeff: f32) {
-        self.coeff = coeff.clamp(0.0, 1.0);
+        crate::util::set_finite_clamped(&mut self.coeff, coeff, 0.0, 1.0);
     }
     pub fn set(&mut self, value: f32) {
-        self.target = value;
+        if value.is_finite() {
+            self.target = value;
+        }
     }
     pub fn snap_to(&mut self, value: f32) {
-        self.current = value;
-        self.target = value;
+        if value.is_finite() {
+            self.current = value;
+            self.target = value;
+        }
     }
     pub fn value(&self) -> f32 {
         self.current
@@ -221,6 +230,33 @@ mod tests {
         m.route_for_source(|_| 1.0);
         assert_eq!(m.master_gain_mod, 0.0);
         assert_eq!(m.lfo_rate_mod_hz[0], 0.0);
+    }
+
+    #[test]
+    fn invalid_routes_are_rejected() {
+        let mut m = ModMatrix::new();
+        assert!(m
+            .add_route(ModRoute::new(
+                ModSrc::Constant,
+                ModDest::MasterGain,
+                f32::NAN,
+            ))
+            .is_none());
+        assert!(m
+            .add_route(ModRoute::new(
+                ModSrc::Lfo(MAX_GLOBAL_LFOS as u8),
+                ModDest::MasterGain,
+                1.0,
+            ))
+            .is_none());
+        assert!(m
+            .add_route(ModRoute::new(
+                ModSrc::Constant,
+                ModDest::LfoRate(MAX_GLOBAL_LFOS as u8),
+                1.0,
+            ))
+            .is_none());
+        assert_eq!(m.route_count(), 0);
     }
 
     #[test]

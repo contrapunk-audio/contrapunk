@@ -5,6 +5,22 @@
 
 pub use contrapunk_dsp::pitch::midi_to_freq;
 
+#[inline]
+pub(crate) fn finite_or(value: f32, fallback: f32) -> f32 {
+    if value.is_finite() {
+        value
+    } else {
+        fallback
+    }
+}
+
+#[inline]
+pub(crate) fn set_finite_clamped(target: &mut f32, value: f32, min: f32, max: f32) {
+    if value.is_finite() {
+        *target = value.clamp(min, max);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

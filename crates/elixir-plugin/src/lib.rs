@@ -552,12 +552,12 @@ impl ElixirPlugin {
 
     fn sync_fx_params(&mut self) {
         if let FxSlot::Drive(drive) = &mut self.engine.fx_chain[0] {
-            drive.drive = self.params.drive_amount.value();
-            drive.mix = if self.params.drive_on.value() {
+            drive.set_drive(self.params.drive_amount.value());
+            drive.set_mix(if self.params.drive_on.value() {
                 self.params.drive_mix.value()
             } else {
                 0.0
-            };
+            });
         }
         if let FxSlot::Delay(delay) = &mut self.engine.fx_chain[1] {
             delay.set_delay_secs(self.params.delay_time.value(), self.sample_rate);

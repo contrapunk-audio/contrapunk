@@ -28,10 +28,10 @@ impl Lfo {
     }
 
     pub fn set_sample_rate(&mut self, sr: f32) {
-        self.sample_rate = sr.max(1.0);
+        crate::util::set_finite_clamped(&mut self.sample_rate, sr, 1.0, f32::MAX);
     }
     pub fn set_rate_hz(&mut self, hz: f32) {
-        self.base_rate_hz = hz.max(0.0);
+        crate::util::set_finite_clamped(&mut self.base_rate_hz, hz, 0.0, f32::MAX);
     }
     pub fn base_rate_hz(&self) -> f32 {
         self.base_rate_hz
@@ -41,7 +41,9 @@ impl Lfo {
     /// the engine before mod evaluation, then this is summed from every
     /// route targeting `ModDest::LfoRate`.
     pub fn set_rate_mod_hz(&mut self, hz: f32) {
-        self.rate_mod_hz = hz;
+        if hz.is_finite() {
+            self.rate_mod_hz = hz;
+        }
     }
 
     pub fn reset_phase(&mut self) {

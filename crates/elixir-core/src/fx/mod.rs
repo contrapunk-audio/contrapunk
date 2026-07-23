@@ -72,3 +72,77 @@ impl Default for FxSlot {
 /// Number of FX slots in the chain. A5 shipped four MVP slots; A6
 /// expands this to the design-doc eight-slot reorderable chain surface.
 pub const FX_SLOTS: usize = 8;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_finite_fx_controls_cannot_poison_audio() {
+        let mut drive = Drive::new();
+        drive.set_drive(f32::NAN);
+        drive.set_mix(f32::INFINITY);
+        drive.drive = f32::NAN;
+        drive.mix = f32::INFINITY;
+
+        let mut delay = Delay::new(1024);
+        delay.set_delay_secs(f32::NAN, 48_000.0);
+        delay.set_feedback(f32::INFINITY);
+        delay.set_mix(f32::NAN);
+
+        let mut reverb = Reverb::new(f32::NAN);
+        reverb.set_decay(f32::NAN);
+        reverb.set_damping(f32::INFINITY);
+        reverb.set_mix(f32::NEG_INFINITY);
+
+        let mut fdn = FdnReverb::new(f32::NAN);
+        fdn.set_decay_seconds(f32::NAN);
+        fdn.set_damping(f32::INFINITY);
+        fdn.set_mix(f32::NEG_INFINITY);
+
+        let mut chorus = Chorus::new(f32::NAN);
+        chorus.set_rate_hz(f32::NAN);
+        chorus.set_depth_ms(f32::INFINITY);
+        chorus.set_mix(f32::NEG_INFINITY);
+
+        let mut flanger = Flanger::new(f32::NAN);
+        flanger.set_rate_hz(f32::NAN);
+        flanger.set_depth_ms(f32::INFINITY);
+        flanger.set_feedback(f32::NEG_INFINITY);
+        flanger.set_mix(f32::NAN);
+
+        let mut phaser = Phaser::new(f32::NAN);
+        phaser.set_rate_hz(f32::NAN);
+        phaser.set_depth(f32::INFINITY);
+        phaser.set_feedback(f32::NEG_INFINITY);
+        phaser.set_mix(f32::NAN);
+
+        let mut compressor = Compressor::new(f32::NAN);
+        compressor.set_threshold_db(f32::NAN);
+        compressor.set_ratio(f32::INFINITY);
+        compressor.set_attack_ms(f32::NEG_INFINITY);
+        compressor.set_release_ms(f32::NAN);
+        compressor.set_makeup_db(f32::INFINITY);
+        compressor.set_mix(f32::NEG_INFINITY);
+
+        let mut slots = [
+            FxSlot::Drive(drive),
+            FxSlot::Delay(delay),
+            FxSlot::Reverb(reverb),
+            FxSlot::FdnReverb(fdn),
+            FxSlot::Chorus(chorus),
+            FxSlot::Flanger(flanger),
+            FxSlot::Phaser(phaser),
+            FxSlot::Compressor(compressor),
+        ];
+        for slot in &mut slots {
+            let mut audio = [0.1; 64];
+            slot.process_inplace(&mut audio, 2);
+            assert!(
+                audio.iter().all(|sample| sample.is_finite()),
+                "{}",
+                slot.name()
+            );
+        }
+    }
+}

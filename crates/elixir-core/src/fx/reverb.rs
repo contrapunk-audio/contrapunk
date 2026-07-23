@@ -10,6 +10,8 @@ use alloc::vec::Vec;
 
 use contrapunk_dsp::matrix::hadamard16;
 
+use crate::util::{finite_or, set_finite_clamped};
+
 pub struct Reverb {
     combs: [Comb; 4],
     aps: [Allpass; 2],
@@ -20,6 +22,7 @@ pub struct Reverb {
 
 impl Reverb {
     pub fn new(sample_rate: f32) -> Self {
+        let sample_rate = finite_or(sample_rate, 48_000.0).max(1.0);
         let r = sample_rate / 44_100.0;
         let comb_delays = [1116usize, 1188, 1277, 1356];
         let ap_delays = [225usize, 556];
@@ -41,19 +44,23 @@ impl Reverb {
     }
 
     pub fn set_decay(&mut self, d: f32) {
-        self.decay = d.clamp(0.0, 0.99);
-        for c in self.combs.iter_mut() {
-            c.feedback = self.decay;
+        if d.is_finite() {
+            self.decay = d.clamp(0.0, 0.99);
+            for c in self.combs.iter_mut() {
+                c.feedback = self.decay;
+            }
         }
     }
     pub fn set_damping(&mut self, d: f32) {
-        self.damping = d.clamp(0.0, 1.0);
-        for c in self.combs.iter_mut() {
-            c.damping = self.damping;
+        if d.is_finite() {
+            self.damping = d.clamp(0.0, 1.0);
+            for c in self.combs.iter_mut() {
+                c.damping = self.damping;
+            }
         }
     }
     pub fn set_mix(&mut self, m: f32) {
-        self.mix = m.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.mix, m, 0.0, 1.0);
     }
     pub fn decay(&self) -> f32 {
         self.decay
@@ -117,7 +124,7 @@ pub struct FdnReverb {
 
 impl FdnReverb {
     pub fn new(sample_rate: f32) -> Self {
-        let sr = sample_rate.max(1.0);
+        let sr = finite_or(sample_rate, 48_000.0).max(1.0);
         // Canonical-ish mutually-prime lengths around 140-320 ms at
         // 48 kHz. The fractional design-doc values are rounded and
         // sample-rate scaled here; modulation drift can layer on later.
@@ -143,17 +150,19 @@ impl FdnReverb {
     }
 
     pub fn set_decay_seconds(&mut self, seconds: f32) {
-        self.decay_seconds = seconds.clamp(0.2, 20.0);
-        self.recompute_feedback(self.sample_rate);
+        if seconds.is_finite() {
+            self.decay_seconds = seconds.clamp(0.2, 20.0);
+            self.recompute_feedback(self.sample_rate);
+        }
     }
     pub fn sample_rate(&self) -> f32 {
         self.sample_rate
     }
     pub fn set_damping(&mut self, damping: f32) {
-        self.damping = damping.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.damping, damping, 0.0, 1.0);
     }
     pub fn set_mix(&mut self, mix: f32) {
-        self.mix = mix.clamp(0.0, 1.0);
+        set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
     }
 
     fn recompute_feedback(&mut self, sr: f32) {

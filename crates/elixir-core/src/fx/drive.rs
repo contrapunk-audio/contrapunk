@@ -23,12 +23,32 @@ impl Drive {
     }
 
     pub fn with_drive(drive: f32) -> Self {
-        Self { drive, mix: 1.0 }
+        let mut value = Self::new();
+        value.set_drive(drive);
+        value
+    }
+
+    pub fn set_drive(&mut self, drive: f32) {
+        if drive.is_finite() {
+            self.drive = drive;
+        }
+    }
+
+    pub fn set_mix(&mut self, mix: f32) {
+        crate::util::set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
     }
 
     pub fn process_inplace(&mut self, buf: &mut [f32]) {
-        let drive = self.drive.max(0.0);
-        let mix = self.mix.clamp(0.0, 1.0);
+        let drive = if self.drive.is_finite() {
+            self.drive.max(0.0)
+        } else {
+            1.0
+        };
+        let mix = if self.mix.is_finite() {
+            self.mix.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         let dry_w = 1.0 - mix;
         for s in buf.iter_mut() {
             let driven = libm::tanhf(*s * drive);

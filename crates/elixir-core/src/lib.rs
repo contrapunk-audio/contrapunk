@@ -183,24 +183,40 @@ impl Engine {
     /// voice's envelope so the UI can drive ADSR without per-voice
     /// plumbing.
     pub fn set_amp_attack_secs(&mut self, s: f32) {
+        if !s.is_finite() {
+            return;
+        }
+        let s = s.max(0.001);
         self.amp_attack_secs = s;
         for v in self.voices.iter_mut() {
             v.set_amp_attack_secs(s);
         }
     }
     pub fn set_amp_decay_secs(&mut self, s: f32) {
+        if !s.is_finite() {
+            return;
+        }
+        let s = s.max(0.001);
         self.amp_decay_secs = s;
         for v in self.voices.iter_mut() {
             v.set_amp_decay_secs(s);
         }
     }
     pub fn set_amp_sustain(&mut self, l: f32) {
+        if !l.is_finite() {
+            return;
+        }
+        let l = l.clamp(0.0, 1.0);
         self.amp_sustain = l;
         for v in self.voices.iter_mut() {
             v.set_amp_sustain(l);
         }
     }
     pub fn set_amp_release_secs(&mut self, s: f32) {
+        if !s.is_finite() {
+            return;
+        }
+        let s = s.max(0.001);
         self.amp_release_secs = s;
         for v in self.voices.iter_mut() {
             v.set_amp_release_secs(s);
@@ -239,19 +255,25 @@ impl Engine {
         self.osc_params.spectral_morph = morph;
     }
     pub fn set_morph_amount(&mut self, amount: f32) {
-        self.osc_params.morph_amount = amount.clamp(0.0, 1.0);
+        if amount.is_finite() {
+            self.osc_params.morph_amount = amount.clamp(0.0, 1.0);
+        }
     }
     pub fn set_phase_distortion(&mut self, mode: PhaseDistortionMode) {
         self.osc_params.phase_distortion = mode;
     }
     pub fn set_phase_amount(&mut self, amount: f32) {
-        self.osc_params.phase_amount = amount.clamp(0.0, 1.0);
+        if amount.is_finite() {
+            self.osc_params.phase_amount = amount.clamp(0.0, 1.0);
+        }
     }
     pub fn set_unison_voices(&mut self, voices: u8) {
         self.osc_params.unison_voices = voices.clamp(1, crate::osc::MAX_UNISON as u8);
     }
     pub fn set_unison_detune_cents(&mut self, cents: f32) {
-        self.osc_params.unison_detune_cents = cents.clamp(0.0, 1200.0);
+        if cents.is_finite() {
+            self.osc_params.unison_detune_cents = cents.clamp(0.0, 1200.0);
+        }
     }
     pub fn set_unison_style(&mut self, style: UnisonStyle) {
         self.osc_params.unison_style = style;
@@ -313,17 +335,23 @@ impl Engine {
     /// Adjust the master output gain. Clamped to `[0, 1]`. Default is
     /// `0.25` to leave headroom for stacked voices.
     pub fn set_master_gain(&mut self, gain: f32) {
-        self.master_gain = gain.clamp(0.0, 1.0);
+        if gain.is_finite() {
+            self.master_gain = gain.clamp(0.0, 1.0);
+        }
     }
 
     /// Set the base voice-filter cutoff (Hz). Modulation routes add to
     /// this each block.
     pub fn set_filter_cutoff_hz(&mut self, hz: f32) {
-        self.filter_cutoff_hz = hz.clamp(20.0, 22_000.0);
+        if hz.is_finite() {
+            self.filter_cutoff_hz = hz.clamp(20.0, 22_000.0);
+        }
     }
     /// Set the voice-filter resonance, `0..1`.
     pub fn set_filter_resonance(&mut self, r: f32) {
-        self.filter_resonance = r.clamp(0.0, 1.0);
+        if r.is_finite() {
+            self.filter_resonance = r.clamp(0.0, 1.0);
+        }
     }
     pub fn set_filter_kind(&mut self, kind: FilterKind) {
         self.filter_kind = kind;
@@ -332,14 +360,20 @@ impl Engine {
         }
     }
     pub fn set_filter_drive(&mut self, drive: f32) {
-        self.filter_drive = drive.clamp(0.1, 32.0);
+        if drive.is_finite() {
+            self.filter_drive = drive.clamp(0.1, 32.0);
+        }
     }
     pub fn set_filter_gain(&mut self, gain: f32) {
-        self.filter_gain = gain.clamp(0.0, 4.0);
+        if gain.is_finite() {
+            self.filter_gain = gain.clamp(0.0, 4.0);
+        }
     }
     pub fn set_filter_morph(&mut self, x: f32, y: f32) {
-        self.filter_morph_x = x.clamp(0.0, 1.0);
-        self.filter_morph_y = y.clamp(0.0, 1.0);
+        if x.is_finite() && y.is_finite() {
+            self.filter_morph_x = x.clamp(0.0, 1.0);
+            self.filter_morph_y = y.clamp(0.0, 1.0);
+        }
     }
     pub fn filter_cutoff_hz(&self) -> f32 {
         self.filter_cutoff_hz
@@ -660,6 +694,52 @@ mod tests {
         e.prepare(48_000, 512);
         assert_eq!(e.sample_rate(), 48_000);
         assert_eq!(e.max_block(), 512);
+    }
+
+    #[test]
+    fn non_finite_engine_controls_preserve_last_valid_state() {
+        let mut e = Engine::new();
+        e.set_amp_attack_secs(0.2);
+        e.set_amp_decay_secs(0.3);
+        e.set_amp_sustain(0.4);
+        e.set_amp_release_secs(0.5);
+        e.set_master_gain(0.6);
+        e.set_morph_amount(0.7);
+        e.set_phase_amount(0.8);
+        e.set_unison_detune_cents(9.0);
+        e.set_filter_cutoff_hz(1_000.0);
+        e.set_filter_resonance(0.2);
+        e.set_filter_drive(3.0);
+        e.set_filter_gain(1.5);
+        e.set_filter_morph(0.25, 0.75);
+
+        e.set_amp_attack_secs(f32::NAN);
+        e.set_amp_decay_secs(f32::INFINITY);
+        e.set_amp_sustain(f32::NEG_INFINITY);
+        e.set_amp_release_secs(f32::NAN);
+        e.set_master_gain(f32::NAN);
+        e.set_morph_amount(f32::INFINITY);
+        e.set_phase_amount(f32::NEG_INFINITY);
+        e.set_unison_detune_cents(f32::NAN);
+        e.set_filter_cutoff_hz(f32::INFINITY);
+        e.set_filter_resonance(f32::NAN);
+        e.set_filter_drive(f32::NEG_INFINITY);
+        e.set_filter_gain(f32::NAN);
+        e.set_filter_morph(f32::NAN, 0.5);
+
+        assert_eq!(e.amp_attack_secs(), 0.2);
+        assert_eq!(e.amp_decay_secs(), 0.3);
+        assert_eq!(e.amp_sustain(), 0.4);
+        assert_eq!(e.amp_release_secs(), 0.5);
+        assert_eq!(e.master_gain(), 0.6);
+        assert_eq!(e.osc_params().morph_amount, 0.7);
+        assert_eq!(e.osc_params().phase_amount, 0.8);
+        assert_eq!(e.osc_params().unison_detune_cents, 9.0);
+        assert_eq!(e.filter_cutoff_hz(), 1_000.0);
+        assert_eq!(e.filter_resonance(), 0.2);
+        assert_eq!(e.filter_drive(), 3.0);
+        assert_eq!(e.filter_gain(), 1.5);
+        assert_eq!(e.filter_morph(), (0.25, 0.75));
     }
 
     #[test]

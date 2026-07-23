@@ -57,20 +57,20 @@ impl AdsrEnvelope {
     }
 
     pub fn set_sample_rate(&mut self, sr: f32) {
-        self.sample_rate = sr.max(1.0);
+        crate::util::set_finite_clamped(&mut self.sample_rate, sr, 1.0, f32::MAX);
     }
 
     pub fn set_attack(&mut self, secs: f32) {
-        self.attack_secs = secs.max(0.001);
+        crate::util::set_finite_clamped(&mut self.attack_secs, secs, 0.001, f32::MAX);
     }
     pub fn set_decay(&mut self, secs: f32) {
-        self.decay_secs = secs.max(0.001);
+        crate::util::set_finite_clamped(&mut self.decay_secs, secs, 0.001, f32::MAX);
     }
     pub fn set_sustain(&mut self, lvl: f32) {
-        self.sustain_level = lvl.clamp(0.0, 1.0);
+        crate::util::set_finite_clamped(&mut self.sustain_level, lvl, 0.0, 1.0);
     }
     pub fn set_release(&mut self, secs: f32) {
-        self.release_secs = secs.max(0.001);
+        crate::util::set_finite_clamped(&mut self.release_secs, secs, 0.001, f32::MAX);
     }
 
     pub fn note_on(&mut self) {
