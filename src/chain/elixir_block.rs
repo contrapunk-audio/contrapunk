@@ -100,6 +100,7 @@ impl ElixirSynthBlock {
                         self.engine.handle_voice_event(VoiceEvent::NoteOn {
                             voice_id: synth_event_voice_id(note, role),
                             role,
+                            midi_anchor: note,
                             frequency_hz: elixir_core::util::midi_to_freq(note),
                             velocity,
                         });

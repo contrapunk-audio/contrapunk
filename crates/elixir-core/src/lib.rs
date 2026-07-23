@@ -85,6 +85,7 @@ pub enum VoiceEvent {
     NoteOn {
         voice_id: VoiceId,
         role: VoiceRole,
+        midi_anchor: u8,
         frequency_hz: f32,
         velocity: u8,
     },
@@ -422,15 +423,23 @@ impl Engine {
             VoiceEvent::NoteOn {
                 voice_id,
                 role,
+                midi_anchor,
                 frequency_hz,
                 velocity,
-            } => self.start_voice(voice_id, role, frequency_hz, velocity),
+            } => self.start_voice(voice_id, role, midi_anchor, frequency_hz, velocity),
             VoiceEvent::NoteOff { voice_id } => self.release_voice(voice_id),
             VoiceEvent::Panic => self.panic(),
         }
     }
 
-    fn start_voice(&mut self, voice_id: VoiceId, role: VoiceRole, frequency_hz: f32, velocity: u8) {
+    fn start_voice(
+        &mut self,
+        voice_id: VoiceId,
+        role: VoiceRole,
+        midi_anchor: u8,
+        frequency_hz: f32,
+        velocity: u8,
+    ) {
         if self.sample_rate == 0
             || voice_id == VoiceId::INVALID
             || !frequency_hz.is_finite()
@@ -445,7 +454,7 @@ impl Engine {
         // Retrigger the caller-owned voice without consuming a new slot.
         for v in self.voices.iter_mut() {
             if v.has_voice_id(voice_id) {
-                v.note_on(voice_id, role, frequency_hz, velocity, sr, age);
+                v.note_on(voice_id, role, midi_anchor, frequency_hz, velocity, sr, age);
                 return;
             }
         }
@@ -478,7 +487,7 @@ impl Engine {
             }
         }
         if let Some(i) = inactive_idx.or(killing_idx) {
-            self.voices[i].note_on(voice_id, role, frequency_hz, velocity, sr, age);
+            self.voices[i].note_on(voice_id, role, midi_anchor, frequency_hz, velocity, sr, age);
             return;
         }
 
@@ -491,7 +500,15 @@ impl Engine {
                 oldest_idx = i;
             }
         }
-        self.voices[oldest_idx].note_on(voice_id, role, frequency_hz, velocity, sr, age);
+        self.voices[oldest_idx].note_on(
+            voice_id,
+            role,
+            midi_anchor,
+            frequency_hz,
+            velocity,
+            sr,
+            age,
+        );
     }
 
     fn release_voice(&mut self, voice_id: VoiceId) {
@@ -506,6 +523,7 @@ impl Engine {
         self.start_voice(
             VoiceId::from_midi_note(note),
             VoiceRole::Input,
+            note,
             crate::util::midi_to_freq(note),
             velocity,
         );
@@ -910,27 +928,32 @@ mod tests {
         VoiceEvent::NoteOn {
             voice_id: VoiceId::new(voice_id),
             role,
+            midi_anchor: 69,
             frequency_hz,
             velocity: 100,
         }
     }
 
     #[test]
-    fn canonical_same_frequency_voices_are_independent() {
+    fn canonical_same_anchor_voices_retain_independent_identity_frequency_and_role() {
         let mut e = Engine::new();
         e.prepare(48_000, 256);
         e.handle_voice_event(note_on_event(1, VoiceRole::Input, 440.0));
-        e.handle_voice_event(note_on_event(2, VoiceRole::Harmony, 440.0));
+        e.handle_voice_event(note_on_event(2, VoiceRole::Harmony, 442.0));
 
         assert_eq!(e.live_voice_count(), 2);
-        assert!(e
-            .voices
-            .iter()
-            .any(|v| { v.owns_voice_id(VoiceId::new(1)) && v.role() == VoiceRole::Input }));
-        assert!(e
-            .voices
-            .iter()
-            .any(|v| { v.owns_voice_id(VoiceId::new(2)) && v.role() == VoiceRole::Harmony }));
+        assert!(e.voices.iter().any(|v| {
+            v.owns_voice_id(VoiceId::new(1))
+                && v.role() == VoiceRole::Input
+                && v.midi_anchor() == 69
+                && v.frequency_hz() == 440.0
+        }));
+        assert!(e.voices.iter().any(|v| {
+            v.owns_voice_id(VoiceId::new(2))
+                && v.role() == VoiceRole::Harmony
+                && v.midi_anchor() == 69
+                && v.frequency_hz() == 442.0
+        }));
     }
 
     #[test]

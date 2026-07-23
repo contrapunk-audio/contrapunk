@@ -29,6 +29,7 @@ pub struct Voice {
     released: bool,
     voice_id: VoiceId,
     role: VoiceRole,
+    midi_anchor: u8,
     frequency_hz: f32,
     velocity: f32,
     age: u64,
@@ -46,6 +47,7 @@ impl Voice {
             released: false,
             voice_id: VoiceId::INVALID,
             role: VoiceRole::Input,
+            midi_anchor: 0,
             frequency_hz: 0.0,
             velocity: 0.0,
             age: 0,
@@ -77,6 +79,7 @@ impl Voice {
         &mut self,
         voice_id: VoiceId,
         role: VoiceRole,
+        midi_anchor: u8,
         frequency_hz: f32,
         velocity: u8,
         sample_rate: f32,
@@ -88,6 +91,7 @@ impl Voice {
         self.released = false;
         self.voice_id = voice_id;
         self.role = role;
+        self.midi_anchor = midi_anchor;
         self.frequency_hz = frequency_hz;
         self.velocity = (velocity as f32 / 127.0).clamp(0.0, 1.0);
         self.osc.set_frequency(frequency_hz, sample_rate);
@@ -165,6 +169,9 @@ impl Voice {
     }
     pub fn role(&self) -> VoiceRole {
         self.role
+    }
+    pub fn midi_anchor(&self) -> u8 {
+        self.midi_anchor
     }
     pub fn frequency_hz(&self) -> f32 {
         self.frequency_hz
@@ -303,7 +310,15 @@ mod tests {
         let table = SineTable::new();
         let bypass = bypass_coeffs();
         let mut v = Voice::new();
-        v.note_on(VoiceId::new(69), VoiceRole::Input, 440.0, 100, 48_000.0, 0);
+        v.note_on(
+            VoiceId::new(69),
+            VoiceRole::Input,
+            69,
+            440.0,
+            100,
+            48_000.0,
+            0,
+        );
         assert!(v.is_active());
         let mut any_nonzero = false;
         for _ in 0..2048 {
@@ -320,7 +335,7 @@ mod tests {
         let bypass = bypass_coeffs();
         let mut v = Voice::new();
         let id = VoiceId::new(60);
-        v.note_on(id, VoiceRole::Input, 261.625_5, 100, 48_000.0, 0);
+        v.note_on(id, VoiceRole::Input, 60, 261.625_5, 100, 48_000.0, 0);
         for _ in 0..(48_000 / 4) {
             let _ = v.tick(&table, &bypass);
         }
@@ -339,6 +354,7 @@ mod tests {
         v.note_on(
             VoiceId::new(60),
             VoiceRole::Input,
+            60,
             261.625_5,
             100,
             48_000.0,
@@ -359,6 +375,7 @@ mod tests {
         v.note_on(
             VoiceId::new(60),
             VoiceRole::Input,
+            60,
             261.625_5,
             127,
             48_000.0,
@@ -385,7 +402,7 @@ mod tests {
         let bypass = bypass_coeffs();
         let mut v = Voice::new();
         let id = VoiceId::new(60);
-        v.note_on(id, VoiceRole::Input, 261.625_5, 100, 48_000.0, 0);
+        v.note_on(id, VoiceRole::Input, 60, 261.625_5, 100, 48_000.0, 0);
         for _ in 0..2048 {
             let _ = v.tick(&table, &bypass);
         }

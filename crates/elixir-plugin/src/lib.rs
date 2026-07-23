@@ -511,6 +511,7 @@ impl ElixirPlugin {
                 self.engine.handle_voice_event(VoiceEvent::NoteOn {
                     voice_id: Self::host_voice_id(voice_id, channel, note),
                     role: VoiceRole::Input,
+                    midi_anchor: note,
                     frequency_hz: elixir_core::util::midi_to_freq(note),
                     velocity,
                 });
