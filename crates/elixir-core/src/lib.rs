@@ -138,6 +138,9 @@ pub struct Engine {
     /// Post-voice FX chain. Slots are processed in order; `FxSlot::Empty`
     /// is skipped. Reorder by swapping slots.
     pub fx_chain: [FxSlot; FX_SLOTS],
+    /// A non-finite FX result quarantines the chain without dropping its
+    /// preallocated state on the audio thread.
+    fx_quarantined: bool,
     /// Canonical amp-envelope params. Pushed to every voice on every
     /// `set_amp_*` call so the UI can drive ADSR without per-voice
     /// plumbing.
@@ -172,6 +175,7 @@ impl Engine {
             filter_morph_x: 0.0,
             filter_morph_y: 0.0,
             fx_chain: core::array::from_fn(|_| FxSlot::Empty),
+            fx_quarantined: false,
             amp_attack_secs: 0.005,
             amp_decay_secs: 0.120,
             amp_sustain: 0.70,
@@ -296,6 +300,7 @@ impl Engine {
         for slot in self.fx_chain.iter_mut() {
             *slot = FxSlot::Empty;
         }
+        self.fx_quarantined = false;
     }
 
     /// Configure the engine for a given device sample rate and maximum
@@ -624,16 +629,28 @@ impl Engine {
             }
         }
 
-        // (8) FX chain in declared slot order
-        for slot in self.fx_chain.iter_mut() {
-            slot.process_inplace(buffer, channels);
+        // (8) FX chain in declared slot order. A poisoned chain remains
+        // allocated but bypassed until a non-audio control clears it.
+        if !self.fx_quarantined {
+            for slot in self.fx_chain.iter_mut() {
+                slot.process_inplace(buffer, channels);
+            }
         }
 
         // (9) master gain (post-FX so reverb / delay ride the same fader)
         let effective_gain =
             (self.master_gain * (1.0 + self.matrix.master_gain_mod)).clamp(0.0, 2.0);
+        let mut poisoned = false;
         for s in buffer.iter_mut() {
             *s *= effective_gain;
+            if !s.is_finite() {
+                *s = 0.0;
+                poisoned = true;
+            }
+        }
+        if poisoned {
+            self.fx_quarantined = true;
+            self.panic();
         }
     }
 
@@ -740,6 +757,27 @@ mod tests {
         assert_eq!(e.filter_drive(), 3.0);
         assert_eq!(e.filter_gain(), 1.5);
         assert_eq!(e.filter_morph(), (0.25, 0.75));
+    }
+
+    #[test]
+    fn non_finite_output_is_silenced_and_poisoned_state_is_quarantined() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.note_on(69, 100);
+        e.master_gain = f32::NAN;
+
+        let mut poisoned = [1.0; 1024];
+        e.process(&mut poisoned, 2);
+        assert!(poisoned.iter().all(|sample| *sample == 0.0));
+        assert!(e.fx_quarantined);
+        assert_eq!(e.live_voice_count(), 0);
+
+        e.master_gain = 0.25;
+        e.note_on(71, 100);
+        let mut recovered = [0.0; 1024];
+        e.process(&mut recovered, 2);
+        assert!(recovered.iter().all(|sample| sample.is_finite()));
+        assert!(recovered.iter().any(|sample| sample.abs() > 1.0e-6));
     }
 
     #[test]
