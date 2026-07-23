@@ -14,6 +14,10 @@
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
+
 pub mod env;
 pub mod filter;
 pub mod fx;
@@ -778,6 +782,40 @@ mod tests {
         e.process(&mut recovered, 2);
         assert!(recovered.iter().all(|sample| sample.is_finite()));
         assert!(recovered.iter().any(|sample| sample.abs() > 1.0e-6));
+    }
+
+    #[test]
+    fn steady_state_voice_and_fx_processing_allocates_nothing() {
+        use crate::fx::{Chorus, Compressor, Delay, Drive, FdnReverb, Flanger, Phaser, Reverb};
+
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        let slots = [
+            FxSlot::Drive(Drive::new()),
+            FxSlot::Delay(Delay::new(1024)),
+            FxSlot::Reverb(Reverb::new(48_000.0)),
+            FxSlot::FdnReverb(FdnReverb::new(48_000.0)),
+            FxSlot::Chorus(Chorus::new(48_000.0)),
+            FxSlot::Flanger(Flanger::new(48_000.0)),
+            FxSlot::Phaser(Phaser::new(48_000.0)),
+            FxSlot::Compressor(Compressor::new(48_000.0)),
+        ];
+        for (index, slot) in slots.into_iter().enumerate() {
+            e.set_fx_slot(index, slot);
+        }
+        let mut audio = [0.0; 512];
+
+        assert_no_alloc::assert_no_alloc(|| {
+            e.handle_voice_event(note_on_event(1, VoiceRole::Input, 440.0));
+            e.process(&mut audio, 2);
+            e.handle_voice_event(VoiceEvent::NoteOff {
+                voice_id: VoiceId::new(1),
+            });
+            e.process(&mut audio, 2);
+            e.handle_voice_event(VoiceEvent::Panic);
+            e.process(&mut audio, 2);
+        });
+        assert!(audio.iter().all(|sample| sample.is_finite()));
     }
 
     #[test]

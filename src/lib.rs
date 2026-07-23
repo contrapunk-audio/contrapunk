@@ -42,6 +42,10 @@
 //! // engine.harmonize(Note::C4) would return [C4, E4]
 //! ```
 
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
+
 // =============================================================================
 // Core modules -- always available on all platforms
 // =============================================================================

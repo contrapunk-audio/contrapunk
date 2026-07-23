@@ -905,7 +905,9 @@ mod tests {
         let mut left = [0.0; 100];
         let mut right = [0.0; 100];
         let mut outputs: [&mut [f32]; 2] = [&mut left, &mut right];
-        plugin.process_buffer_with_events(&mut outputs, 100, Some(note_on(0, 1)), || None);
+        assert_no_alloc::assert_no_alloc(|| {
+            plugin.process_buffer_with_events(&mut outputs, 100, Some(note_on(0, 1)), || None);
+        });
 
         assert_eq!(plugin.process_calls, 13);
         assert_eq!(plugin.scratch.capacity(), scratch_capacity);

@@ -17,6 +17,9 @@ contrapunk-dsp = { path = "../contrapunk-dsp" }
 # and tiny (~70 KB compiled).
 libm = "0.2"
 
+[dev-dependencies]
+assert_no_alloc = { git = "https://github.com/robbert-vdh/rust-assert-no-alloc.git", branch = "feature/nested-permit-forbid", features = ["backtrace", "log"] }
+
 [features]
 default = []
 # Opt-in std support for tests and downstream consumers that don't care

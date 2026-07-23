@@ -53,6 +53,9 @@ ringbuf = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 pitch-detection = "0.3"
+[dev-dependencies]
+assert_no_alloc = { git = "https://github.com/robbert-vdh/rust-assert-no-alloc.git", branch = "feature/nested-permit-forbid", features = ["backtrace", "log"] }
+
 [features]
 default = []
 # Phase 21.A0 cutover flag. While opt-in, the legacy `src/synth/` powers

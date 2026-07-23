@@ -11,3 +11,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 elixir-core = { path = "../elixir-core", features = ["std"] }
 nih_plug = { git = "https://github.com/contrapunk-audio/nih-plug.git", features = ["assert_process_allocs"] }
+
+[dev-dependencies]
+assert_no_alloc = { git = "https://github.com/robbert-vdh/rust-assert-no-alloc.git", branch = "feature/nested-permit-forbid", features = ["backtrace", "log"] }

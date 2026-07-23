@@ -392,6 +392,33 @@ mod tests {
     }
 
     #[test]
+    fn steady_state_ring_and_block_processing_allocates_nothing() {
+        let (mut block, mut events, fault) = event_block(Arc::new(SynthParams::new()));
+        let mut audio = [0.0; 512];
+
+        assert_no_alloc::assert_no_alloc(|| {
+            events
+                .try_push(SynthEvent::NoteOn {
+                    note: 69,
+                    velocity: 100,
+                    mix_group: 0,
+                })
+                .unwrap();
+            block.process(&mut audio, 2);
+            events
+                .try_push(SynthEvent::NoteOff {
+                    note: 69,
+                    mix_group: 0,
+                })
+                .unwrap();
+            block.process(&mut audio, 2);
+            fault.store(true, Ordering::Release);
+            block.process(&mut audio, 2);
+        });
+        assert!(audio.iter().all(|sample| sample.is_finite()));
+    }
+
+    #[test]
     fn all_notes_off_silences_eventually() {
         let mut b = ElixirSynthBlock::new(48_000);
         b.midi_event(MidiBlockEvent::NoteOn {
