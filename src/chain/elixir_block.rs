@@ -18,7 +18,8 @@ use ringbuf::traits::{Consumer, Split};
 use ringbuf::{HeapCons, HeapRb};
 
 use super::block::{AudioBlock, MidiBlockEvent};
-use crate::synth::params::MIX_GROUP_ALL;
+#[cfg(test)]
+use crate::synth::SynthVoiceId;
 use crate::synth::{SynthEvent, SynthParams, Waveform};
 use elixir_core::osc::{PhaseDistortionMode, SpectralMorph};
 use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole};
@@ -32,14 +33,8 @@ pub struct ElixirSynthBlock {
 }
 
 pub const ELIXIR_EVENT_QUEUE_CAPACITY: usize = 1024;
-const SYNTH_EVENT_ID_PREFIX: u64 = 1 << 62;
-
 fn voice_role(mix_group: u8) -> Option<VoiceRole> {
     VoiceRole::ALL.get(mix_group as usize).copied()
-}
-
-fn synth_event_voice_id(note: u8, role: VoiceRole) -> VoiceId {
-    VoiceId::new(SYNTH_EVENT_ID_PREFIX | ((role as u64) << 7) | note as u64)
 }
 
 impl ElixirSynthBlock {
@@ -92,33 +87,26 @@ impl ElixirSynthBlock {
             };
             match ev {
                 SynthEvent::NoteOn {
-                    note,
+                    voice_id,
+                    midi_anchor,
+                    frequency_hz,
                     velocity,
                     mix_group,
                 } => {
                     if let Some(role) = voice_role(mix_group) {
                         self.engine.handle_voice_event(VoiceEvent::NoteOn {
-                            voice_id: synth_event_voice_id(note, role),
+                            voice_id: VoiceId::new(voice_id.get()),
                             role,
-                            midi_anchor: note,
-                            frequency_hz: elixir_core::util::midi_to_freq(note),
+                            midi_anchor,
+                            frequency_hz,
                             velocity,
                         });
                     }
                 }
-                SynthEvent::NoteOff { note, mix_group } if mix_group == MIX_GROUP_ALL => {
-                    for role in VoiceRole::ALL {
-                        self.engine.handle_voice_event(VoiceEvent::NoteOff {
-                            voice_id: synth_event_voice_id(note, role),
-                        });
-                    }
-                }
-                SynthEvent::NoteOff { note, mix_group } => {
-                    if let Some(role) = voice_role(mix_group) {
-                        self.engine.handle_voice_event(VoiceEvent::NoteOff {
-                            voice_id: synth_event_voice_id(note, role),
-                        });
-                    }
+                SynthEvent::NoteOff { voice_id } => {
+                    self.engine.handle_voice_event(VoiceEvent::NoteOff {
+                        voice_id: VoiceId::new(voice_id.get()),
+                    });
                 }
                 SynthEvent::AllNotesOff => self.engine.all_notes_off(),
             }
@@ -254,6 +242,16 @@ mod tests {
         )
     }
 
+    fn note_on(id: u64, midi_anchor: u8, frequency_hz: f32, mix_group: u8) -> SynthEvent {
+        SynthEvent::note_on(
+            SynthVoiceId::new(id),
+            midi_anchor,
+            frequency_hz,
+            100,
+            mix_group,
+        )
+    }
+
     #[test]
     fn block_identifies_itself() {
         let b = ElixirSynthBlock::new(48_000);
@@ -296,12 +294,7 @@ mod tests {
         let params = Arc::new(SynthParams::new());
         params.set_enabled(false);
         let (mut b, mut tx, _fault) = event_block(params);
-        tx.try_push(SynthEvent::NoteOn {
-            note: 69,
-            velocity: 100,
-            mix_group: 0,
-        })
-        .unwrap();
+        tx.try_push(note_on(1, 69, 440.0, 0)).unwrap();
         let mut buf = [0.5f32; 1024];
         b.process(&mut buf, 2);
         assert!(buf.iter().all(|s| *s == 0.0));
@@ -310,12 +303,7 @@ mod tests {
     #[test]
     fn synth_event_receiver_produces_audio() {
         let (mut b, mut tx, _fault) = event_block(Arc::new(SynthParams::new()));
-        tx.try_push(SynthEvent::NoteOn {
-            note: 69,
-            velocity: 100,
-            mix_group: 0,
-        })
-        .unwrap();
+        tx.try_push(note_on(1, 69, 440.0, 0)).unwrap();
         let mut buf = [0.0f32; 1024];
         b.process(&mut buf, 2);
         let peak = buf.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
@@ -326,43 +314,30 @@ mod tests {
     }
 
     #[test]
-    fn synth_events_preserve_same_pitch_roles_and_release_selectively() {
-        let params = Arc::new(SynthParams::new());
-        params.set_mix_gain(0, 0.0);
-        params.set_mix_gain(1, 1.0);
-        let (mut b, mut tx, _fault) = event_block(params);
-        for mix_group in [0, 1] {
-            tx.try_push(SynthEvent::NoteOn {
-                note: 69,
-                velocity: 100,
-                mix_group,
-            })
-            .unwrap();
-        }
+    fn same_anchor_same_role_voices_keep_ids_and_release_selectively() {
+        let (mut b, mut tx, _fault) = event_block(Arc::new(SynthParams::new()));
+        tx.try_push(note_on(1, 69, 440.0, 0)).unwrap();
+        tx.try_push(note_on(2, 69, 442.0, 0)).unwrap();
 
         let mut sounding = [0.0; 1024];
         b.process(&mut sounding, 2);
-        assert!(sounding.iter().any(|sample| sample.abs() > 1.0e-6));
+        assert_eq!(b.engine.live_voice_count(), 2);
 
-        tx.try_push(SynthEvent::NoteOff {
-            note: 69,
-            mix_group: 0,
-        })
-        .unwrap();
-        let mut harmony_still_sounding = [0.0; 1024];
-        b.process(&mut harmony_still_sounding, 2);
-        assert!(harmony_still_sounding
+        tx.try_push(SynthEvent::note_off(SynthVoiceId::new(1)))
+            .unwrap();
+        let mut first_tail = [0.0; 32_000];
+        b.process(&mut first_tail, 2);
+        assert_eq!(b.engine.live_voice_count(), 1);
+        assert!(first_tail[first_tail.len() - 64..]
             .iter()
             .any(|sample| sample.abs() > 1.0e-6));
 
-        tx.try_push(SynthEvent::NoteOff {
-            note: 69,
-            mix_group: 1,
-        })
-        .unwrap();
-        let mut tail = [0.0; 32_000];
-        b.process(&mut tail, 2);
-        assert!(tail[tail.len() - 64..]
+        tx.try_push(SynthEvent::note_off(SynthVoiceId::new(2)))
+            .unwrap();
+        let mut final_tail = [0.0; 32_000];
+        b.process(&mut final_tail, 2);
+        assert_eq!(b.engine.live_voice_count(), 0);
+        assert!(final_tail[final_tail.len() - 64..]
             .iter()
             .all(|sample| sample.abs() < 1.0e-3));
     }
@@ -370,22 +345,12 @@ mod tests {
     #[test]
     fn event_fault_discards_queue_and_panics_without_blocking() {
         let (mut b, mut tx, fault) = event_block(Arc::new(SynthParams::new()));
-        tx.try_push(SynthEvent::NoteOn {
-            note: 69,
-            velocity: 100,
-            mix_group: 0,
-        })
-        .unwrap();
+        tx.try_push(note_on(1, 69, 440.0, 0)).unwrap();
         let mut sounding = [0.0; 1024];
         b.process(&mut sounding, 2);
         assert!(sounding.iter().any(|sample| sample.abs() > 1.0e-6));
 
-        tx.try_push(SynthEvent::NoteOn {
-            note: 72,
-            velocity: 100,
-            mix_group: 1,
-        })
-        .unwrap();
+        tx.try_push(note_on(2, 72, 523.251_1, 1)).unwrap();
         fault.store(true, Ordering::Release);
         let mut tail = [0.0; 800];
         b.process(&mut tail, 2);
@@ -398,19 +363,10 @@ mod tests {
         let mut audio = [0.0; 512];
 
         assert_no_alloc::assert_no_alloc(|| {
-            events
-                .try_push(SynthEvent::NoteOn {
-                    note: 69,
-                    velocity: 100,
-                    mix_group: 0,
-                })
-                .unwrap();
+            events.try_push(note_on(1, 69, 440.0, 0)).unwrap();
             block.process(&mut audio, 2);
             events
-                .try_push(SynthEvent::NoteOff {
-                    note: 69,
-                    mix_group: 0,
-                })
+                .try_push(SynthEvent::note_off(SynthVoiceId::new(1)))
                 .unwrap();
             block.process(&mut audio, 2);
             fault.store(true, Ordering::Release);

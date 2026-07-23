@@ -442,6 +442,7 @@ impl Engine {
     ) {
         if self.sample_rate == 0
             || voice_id == VoiceId::INVALID
+            || midi_anchor >= 128
             || !frequency_hz.is_finite()
             || frequency_hz <= 0.0
         {
@@ -932,6 +933,27 @@ mod tests {
             frequency_hz,
             velocity: 100,
         }
+    }
+
+    #[test]
+    fn canonical_note_on_rejects_invalid_anchor_and_frequency() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.handle_voice_event(VoiceEvent::NoteOn {
+            voice_id: VoiceId::new(1),
+            role: VoiceRole::Input,
+            midi_anchor: 128,
+            frequency_hz: 440.0,
+            velocity: 100,
+        });
+        e.handle_voice_event(VoiceEvent::NoteOn {
+            voice_id: VoiceId::new(2),
+            role: VoiceRole::Input,
+            midi_anchor: 69,
+            frequency_hz: f32::NAN,
+            velocity: 100,
+        });
+        assert_eq!(e.live_voice_count(), 0);
     }
 
     #[test]

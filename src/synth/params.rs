@@ -5,7 +5,7 @@
 //! each getter.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 
 /// Oscillator waveform. Stored as a u8 in [`SynthParams::waveform`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,29 +28,111 @@ impl Waveform {
     }
 }
 
-/// MIDI-ish events pushed from the router thread into the audio thread.
+/// Stable identity assigned before a synth event enters the audio path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SynthVoiceId(u64);
+
+impl SynthVoiceId {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Voice events pushed from the router thread into the audio thread.
 #[derive(Clone, Copy, Debug)]
 pub enum SynthEvent {
     NoteOn {
-        note: u8,
+        voice_id: SynthVoiceId,
+        midi_anchor: u8,
+        frequency_hz: f32,
         velocity: u8,
         mix_group: u8,
     },
     NoteOff {
-        note: u8,
-        mix_group: u8,
+        voice_id: SynthVoiceId,
     },
     AllNotesOff,
+}
+
+impl SynthEvent {
+    pub const fn note_on(
+        voice_id: SynthVoiceId,
+        midi_anchor: u8,
+        frequency_hz: f32,
+        velocity: u8,
+        mix_group: u8,
+    ) -> Self {
+        Self::NoteOn {
+            voice_id,
+            midi_anchor,
+            frequency_hz,
+            velocity,
+            mix_group,
+        }
+    }
+
+    pub const fn note_off(voice_id: SynthVoiceId) -> Self {
+        Self::NoteOff { voice_id }
+    }
 }
 
 /// Fixed router-to-synth queue bound. Overflow is non-blocking and raises
 /// a shared fault so the audio side can panic instead of stranding a voice.
 pub const SYNTH_EVENT_QUEUE_CAPACITY: usize = 1024;
+const ROUTER_VOICE_ID_PREFIX: u64 = 1 << 62;
+
+#[derive(Clone, Copy)]
+struct SynthOwner {
+    voice_id: SynthVoiceId,
+    midi_anchor: u8,
+    mix_group: u8,
+}
+
+struct SynthOwners {
+    next_id: u64,
+    active: Vec<SynthOwner>,
+}
+
+impl SynthOwners {
+    fn new() -> Self {
+        Self {
+            next_id: 0,
+            active: Vec::with_capacity(SYNTH_EVENT_QUEUE_CAPACITY),
+        }
+    }
+
+    fn allocate(&mut self, midi_anchor: u8, mix_group: u8) -> Option<SynthVoiceId> {
+        if midi_anchor >= 128 || self.active.len() == self.active.capacity() {
+            return None;
+        }
+        let voice_id = SynthVoiceId::new(ROUTER_VOICE_ID_PREFIX | self.next_id);
+        self.next_id = self.next_id.wrapping_add(1) & (ROUTER_VOICE_ID_PREFIX - 1);
+        self.active.push(SynthOwner {
+            voice_id,
+            midi_anchor,
+            mix_group,
+        });
+        Some(voice_id)
+    }
+
+    fn release(&mut self, midi_anchor: u8, mix_group: u8) -> Option<SynthVoiceId> {
+        let index = self.active.iter().position(|owner| {
+            owner.midi_anchor == midi_anchor
+                && (mix_group == MIX_GROUP_ALL || owner.mix_group == mix_group)
+        })?;
+        Some(self.active.remove(index).voice_id)
+    }
+}
 
 #[derive(Clone)]
 pub struct SynthEventSender {
     tx: mpsc::SyncSender<SynthEvent>,
     fault: Arc<AtomicBool>,
+    owners: Arc<Mutex<SynthOwners>>,
 }
 
 pub struct SynthEventReceiver {
@@ -65,6 +147,7 @@ pub fn synth_event_channel() -> (SynthEventSender, SynthEventReceiver) {
         SynthEventSender {
             tx,
             fault: Arc::clone(&fault),
+            owners: Arc::new(Mutex::new(SynthOwners::new())),
         },
         SynthEventReceiver { rx, fault },
     )
@@ -73,12 +156,77 @@ pub fn synth_event_channel() -> (SynthEventSender, SynthEventReceiver) {
 impl SynthEventSender {
     /// Non-blocking send. A full queue marks the audio side for panic.
     pub fn send(&self, event: SynthEvent) -> Result<(), mpsc::TrySendError<SynthEvent>> {
-        self.tx.try_send(event).inspect_err(|error| {
-            if matches!(error, mpsc::TrySendError::Full(_)) {
-                self.fault.store(true, Ordering::Release);
+        if matches!(event, SynthEvent::AllNotesOff) {
+            let mut owners = self
+                .owners
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            owners.active.clear();
+            return self.try_send(event);
+        }
+        self.try_send(event)
+    }
+
+    /// Assign a bounded router identity before entering the audio path.
+    pub fn note_on(
+        &self,
+        midi_anchor: u8,
+        velocity: u8,
+        mix_group: u8,
+    ) -> Result<SynthVoiceId, mpsc::TrySendError<SynthEvent>> {
+        let mut owners = self
+            .owners
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let Some(voice_id) = owners.allocate(midi_anchor, mix_group) else {
+            self.fault.store(true, Ordering::Release);
+            return Err(mpsc::TrySendError::Full(SynthEvent::AllNotesOff));
+        };
+        let event = SynthEvent::note_on(
+            voice_id,
+            midi_anchor,
+            midi_to_freq(midi_anchor),
+            velocity,
+            mix_group,
+        );
+        if let Err(error) = self.try_send(event) {
+            owners.active.clear();
+            return Err(error);
+        }
+        Ok(voice_id)
+    }
+
+    /// Release the oldest matching owner. `MIX_GROUP_ALL` releases every role.
+    pub fn note_off(
+        &self,
+        midi_anchor: u8,
+        mix_group: u8,
+    ) -> Result<(), mpsc::TrySendError<SynthEvent>> {
+        let mut owners = self
+            .owners
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        while let Some(voice_id) = owners.release(midi_anchor, mix_group) {
+            if let Err(error) = self.try_send(SynthEvent::note_off(voice_id)) {
+                owners.active.clear();
+                return Err(error);
             }
+            if mix_group != MIX_GROUP_ALL {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn try_send(&self, event: SynthEvent) -> Result<(), mpsc::TrySendError<SynthEvent>> {
+        self.tx.try_send(event).inspect_err(|_| {
+            self.fault.store(true, Ordering::Release);
         })
     }
+}
+
+fn midi_to_freq(note: u8) -> f32 {
+    440.0 * 2f32.powf((note as f32 - 69.0) / 12.0)
 }
 
 impl SynthEventReceiver {
@@ -250,6 +398,46 @@ mod tests {
         assert_eq!(params.resonance(), 0.3);
         assert_eq!(params.master_gain(), 0.4);
         assert_eq!(params.mix_gains()[1], 0.5);
+    }
+
+    #[test]
+    fn sender_assigns_distinct_ids_and_releases_exact_or_stale_anchor_owners() {
+        let (tx, rx) = synth_event_channel();
+        let first = tx.note_on(69, 100, 0).unwrap();
+        let second = tx.note_on(69, 100, 0).unwrap();
+        assert_ne!(first, second);
+
+        for expected in [first, second] {
+            assert!(matches!(
+                rx.try_recv().unwrap(),
+                SynthEvent::NoteOn {
+                    voice_id,
+                    midi_anchor: 69,
+                    frequency_hz: 440.0,
+                    mix_group: 0,
+                    ..
+                } if voice_id == expected
+            ));
+        }
+
+        tx.note_off(69, 0).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOff { voice_id } if voice_id == first
+        ));
+        tx.note_off(69, MIX_GROUP_ALL).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOff { voice_id } if voice_id == second
+        ));
+        assert!(rx.try_recv().is_err());
+
+        tx.note_on(72, 100, 1).unwrap();
+        let _ = rx.try_recv().unwrap();
+        tx.send(SynthEvent::AllNotesOff).unwrap();
+        assert!(matches!(rx.try_recv().unwrap(), SynthEvent::AllNotesOff));
+        tx.note_off(72, MIX_GROUP_ALL).unwrap();
+        assert!(rx.try_recv().is_err(), "panic must clear adapter ownership");
     }
 
     #[test]

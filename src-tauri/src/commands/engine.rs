@@ -1259,14 +1259,10 @@ fn dispatch_voice(
 
     match (target, event) {
         (VoiceOutputTarget::Synth, VoiceDispatch::NoteOn { note, velocity }) => {
-            let _ = synth_tx.send(SynthEvent::NoteOn {
-                note,
-                velocity,
-                mix_group,
-            });
+            let _ = synth_tx.note_on(note, velocity, mix_group);
         }
         (VoiceOutputTarget::Synth, VoiceDispatch::NoteOff { note, .. }) => {
-            let _ = synth_tx.send(SynthEvent::NoteOff { note, mix_group });
+            let _ = synth_tx.note_off(note, mix_group);
         }
         (VoiceOutputTarget::MidiPort { port }, _) if port >= num_ports => {}
         (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOn { note, velocity }) => {
