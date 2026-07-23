@@ -32,6 +32,64 @@ use crate::osc::{OscParams, PhaseDistortionMode, SpectralMorph, UnisonStyle};
 use crate::tables::SineTable;
 use crate::voice::Voice;
 
+/// Stable caller-owned identity for one sounding voice.
+///
+/// The high bit is reserved for the temporary MIDI-note compatibility
+/// wrappers; canonical callers should keep it clear.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct VoiceId(u64);
+
+impl VoiceId {
+    pub const INVALID: Self = Self(u64::MAX);
+    const LEGACY_MIDI_PREFIX: u64 = 1 << 63;
+
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
+    const fn from_midi_note(note: u8) -> Self {
+        Self(Self::LEGACY_MIDI_PREFIX | note as u64)
+    }
+}
+
+/// Contrapunk performance role retained with each voice.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum VoiceRole {
+    #[default]
+    Input = 0,
+    Harmony = 1,
+    Canon = 2,
+    Counterpoint = 3,
+}
+
+impl VoiceRole {
+    pub const ALL: [Self; 4] = [Self::Input, Self::Harmony, Self::Canon, Self::Counterpoint];
+
+    const fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// Canonical host-neutral voice event.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VoiceEvent {
+    NoteOn {
+        voice_id: VoiceId,
+        role: VoiceRole,
+        frequency_hz: f32,
+        velocity: u8,
+    },
+    NoteOff {
+        voice_id: VoiceId,
+    },
+    Panic,
+}
+
 /// Voice pool capacity. `MAX_POLYPHONY` voices count as "live"; the
 /// extra slots hold killing voices that are still ringing out their
 /// 5 ms kill ramp. Sized so a steal can re-trigger immediately into a
@@ -52,6 +110,7 @@ pub struct Engine {
     voices: [Voice; MAX_VOICES],
     sine_table: SineTable,
     master_gain: f32,
+    role_gains: [f32; VoiceRole::ALL.len()],
     sustain_pedal: bool,
     note_counter: u64,
     /// Global modulation LFOs. A3 v1 wires up just LFO 0 by default;
@@ -99,6 +158,7 @@ impl Engine {
             voices: core::array::from_fn(|_| Voice::new()),
             sine_table: SineTable::new(),
             master_gain: 0.25,
+            role_gains: [1.0; VoiceRole::ALL.len()],
             sustain_pedal: false,
             note_counter: 0,
             lfos: core::array::from_fn(|_| Lfo::new()),
@@ -160,6 +220,14 @@ impl Engine {
     }
     pub fn master_gain(&self) -> f32 {
         self.master_gain
+    }
+    pub fn set_role_gain(&mut self, role: VoiceRole, gain: f32) {
+        if gain.is_finite() {
+            self.role_gains[role.index()] = gain.clamp(0.0, 1.0);
+        }
+    }
+    pub fn role_gain(&self, role: VoiceRole) -> f32 {
+        self.role_gains[role.index()]
     }
 
     /// A6 oscillator params. Defaults are passthrough/single-voice sine,
@@ -304,25 +372,43 @@ impl Engine {
         }
     }
 
-    /// Trigger a note. No-op if the engine has not been prepared.
-    pub fn note_on(&mut self, note: u8, velocity: u8) {
-        if self.sample_rate == 0 {
+    /// Apply one canonical voice event. Invalid/non-positive frequencies
+    /// and events received before `prepare` are safe no-ops.
+    pub fn handle_voice_event(&mut self, event: VoiceEvent) {
+        match event {
+            VoiceEvent::NoteOn {
+                voice_id,
+                role,
+                frequency_hz,
+                velocity,
+            } => self.start_voice(voice_id, role, frequency_hz, velocity),
+            VoiceEvent::NoteOff { voice_id } => self.release_voice(voice_id),
+            VoiceEvent::Panic => self.panic(),
+        }
+    }
+
+    fn start_voice(&mut self, voice_id: VoiceId, role: VoiceRole, frequency_hz: f32, velocity: u8) {
+        if self.sample_rate == 0
+            || voice_id == VoiceId::INVALID
+            || !frequency_hz.is_finite()
+            || frequency_hz <= 0.0
+        {
             return;
         }
         let sr = self.sample_rate as f32;
         let age = self.note_counter;
         self.note_counter = self.note_counter.wrapping_add(1);
 
-        // 1. Retrigger: same note already live → reuse slot, no steal.
+        // Retrigger the caller-owned voice without consuming a new slot.
         for v in self.voices.iter_mut() {
-            if v.is_playing_note(note) {
-                v.note_on(note, velocity, sr, age);
+            if v.has_voice_id(voice_id) {
+                v.note_on(voice_id, role, frequency_hz, velocity, sr, age);
                 return;
             }
         }
 
-        // 2. If we're at the live-polyphony cap, force-kill the oldest
-        //    live voice so a slot opens up.
+        // If we're at the live-polyphony cap, force-kill the oldest live
+        // voice so a slot opens immediately for the new identity.
         let live_count = self.voices.iter().filter(|v| v.is_live()).count();
         if live_count >= MAX_POLYPHONY {
             let mut oldest_idx = 0usize;
@@ -336,7 +422,8 @@ impl Engine {
             self.voices[oldest_idx].kill();
         }
 
-        // 3. Find a non-live slot. Prefer fully inactive over killing.
+        // Prefer a fully inactive slot over a voice already on its bounded
+        // kill ramp.
         let mut inactive_idx: Option<usize> = None;
         let mut killing_idx: Option<usize> = None;
         for (i, v) in self.voices.iter().enumerate() {
@@ -348,12 +435,11 @@ impl Engine {
             }
         }
         if let Some(i) = inactive_idx.or(killing_idx) {
-            self.voices[i].note_on(note, velocity, sr, age);
+            self.voices[i].note_on(voice_id, role, frequency_hz, velocity, sr, age);
             return;
         }
 
-        // 4. Fallback (shouldn't reach): every slot is live. Steal the
-        //    oldest outright.
+        // Defensive fallback: steal the oldest slot outright.
         let mut oldest_idx = 0usize;
         let mut oldest_age = u64::MAX;
         for (i, v) in self.voices.iter().enumerate() {
@@ -362,22 +448,43 @@ impl Engine {
                 oldest_idx = i;
             }
         }
-        self.voices[oldest_idx].note_on(note, velocity, sr, age);
+        self.voices[oldest_idx].note_on(voice_id, role, frequency_hz, velocity, sr, age);
     }
 
-    /// Release a note. If sustain is down, the matching voice goes
-    /// `sustained` instead of `released`.
-    pub fn note_off(&mut self, note: u8) {
+    fn release_voice(&mut self, voice_id: VoiceId) {
         let pedal = self.sustain_pedal;
         for v in self.voices.iter_mut() {
-            v.note_off_or_sustain(note, pedal);
+            v.note_off_or_sustain(voice_id, pedal);
         }
     }
 
-    /// Force-release every voice. Drops the sustain-pedal state too.
+    /// Temporary 12-TET compatibility wrapper for MIDI-note callers.
+    pub fn note_on(&mut self, note: u8, velocity: u8) {
+        self.start_voice(
+            VoiceId::from_midi_note(note),
+            VoiceRole::Input,
+            crate::util::midi_to_freq(note),
+            velocity,
+        );
+    }
+
+    /// Temporary 12-TET compatibility wrapper for MIDI-note callers.
+    pub fn note_off(&mut self, note: u8) {
+        self.release_voice(VoiceId::from_midi_note(note));
+    }
+
+    /// Release every voice with the configured envelope tail.
     pub fn all_notes_off(&mut self) {
         for v in self.voices.iter_mut() {
             v.all_notes_off();
+        }
+        self.sustain_pedal = false;
+    }
+
+    /// Fast bounded panic ramp for every voice and pedal state.
+    pub fn panic(&mut self) {
+        for v in self.voices.iter_mut() {
+            v.kill();
         }
         self.sustain_pedal = false;
     }
@@ -467,13 +574,15 @@ impl Engine {
         //      loop below is now `tanf`-free for every voice.
         let filter_coeffs = filter_params.prepare_coeffs();
 
-        // (7) render voices at unity into the interleaved buffer; FX
-        //     and master gain apply on top.
+        // (7) render voices with their retained performance-role gain;
+        //     FX and master gain apply on top.
+        let role_gains = self.role_gains;
         for f in 0..frames {
             let mut mix = 0.0f32;
             for v in self.voices.iter_mut() {
                 mix +=
-                    v.tick_with_filter_coeffs(&self.sine_table, &filter_coeffs, &self.osc_params);
+                    v.tick_with_filter_coeffs(&self.sine_table, &filter_coeffs, &self.osc_params)
+                        * role_gains[v.role().index()];
             }
             let base = f * channels;
             for c in 0..channels {
@@ -637,8 +746,104 @@ mod tests {
         e.prepare(48_000, 256);
         e.note_on(60, 100);
         assert_eq!(e.live_voice_count(), 1);
-        e.note_on(60, 100); // same note again
+        e.note_on(60, 100); // same compatibility-wrapper identity
         assert_eq!(e.live_voice_count(), 1);
+    }
+
+    fn note_on_event(voice_id: u64, role: VoiceRole, frequency_hz: f32) -> VoiceEvent {
+        VoiceEvent::NoteOn {
+            voice_id: VoiceId::new(voice_id),
+            role,
+            frequency_hz,
+            velocity: 100,
+        }
+    }
+
+    #[test]
+    fn canonical_same_frequency_voices_are_independent() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.handle_voice_event(note_on_event(1, VoiceRole::Input, 440.0));
+        e.handle_voice_event(note_on_event(2, VoiceRole::Harmony, 440.0));
+
+        assert_eq!(e.live_voice_count(), 2);
+        assert!(e
+            .voices
+            .iter()
+            .any(|v| { v.owns_voice_id(VoiceId::new(1)) && v.role() == VoiceRole::Input }));
+        assert!(e
+            .voices
+            .iter()
+            .any(|v| { v.owns_voice_id(VoiceId::new(2)) && v.role() == VoiceRole::Harmony }));
+    }
+
+    #[test]
+    fn retained_role_gain_is_applied_selectively() {
+        let mut mixed = Engine::new();
+        mixed.prepare(48_000, 256);
+        mixed.set_role_gain(VoiceRole::Input, 0.0);
+        mixed.handle_voice_event(note_on_event(1, VoiceRole::Input, 440.0));
+        mixed.handle_voice_event(note_on_event(2, VoiceRole::Harmony, 440.0));
+        let mut mixed_audio = [0.0; 1024];
+        mixed.process(&mut mixed_audio, 2);
+
+        let mut harmony = Engine::new();
+        harmony.prepare(48_000, 256);
+        harmony.handle_voice_event(note_on_event(2, VoiceRole::Harmony, 440.0));
+        let mut harmony_audio = [0.0; 1024];
+        harmony.process(&mut harmony_audio, 2);
+
+        assert_eq!(mixed_audio, harmony_audio);
+    }
+
+    #[test]
+    fn canonical_note_off_releases_only_its_voice_and_is_idempotent() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.handle_voice_event(note_on_event(10, VoiceRole::Canon, 440.0));
+        e.handle_voice_event(note_on_event(11, VoiceRole::Counterpoint, 440.0));
+
+        e.handle_voice_event(VoiceEvent::NoteOff {
+            voice_id: VoiceId::new(10),
+        });
+        e.handle_voice_event(VoiceEvent::NoteOff {
+            voice_id: VoiceId::new(10),
+        });
+        e.handle_voice_event(VoiceEvent::NoteOff {
+            voice_id: VoiceId::new(999),
+        });
+
+        assert!(!e.voices.iter().any(|v| v.owns_voice_id(VoiceId::new(10))));
+        assert!(e.voices.iter().any(|v| v.owns_voice_id(VoiceId::new(11))));
+    }
+
+    #[test]
+    fn canonical_panic_fast_releases_every_voice_and_pedal() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.set_sustain_pedal(true);
+        e.handle_voice_event(note_on_event(1, VoiceRole::Input, 261.625_5));
+        e.handle_voice_event(note_on_event(2, VoiceRole::Harmony, 329.627_56));
+
+        e.handle_voice_event(VoiceEvent::Panic);
+        assert_eq!(e.live_voice_count(), 0);
+        assert!(!e.sustain_pedal());
+        let mut tail = [0.0; 800];
+        e.process(&mut tail, 2);
+        assert_eq!(e.active_voice_count(), 0);
+    }
+
+    #[test]
+    fn midi_a4_compatibility_wrapper_is_exactly_440_hz() {
+        let mut e = Engine::new();
+        e.prepare(48_000, 256);
+        e.note_on(69, 100);
+        let voice = e
+            .voices
+            .iter()
+            .find(|v| v.owns_voice_id(VoiceId::from_midi_note(69)))
+            .unwrap();
+        assert_eq!(voice.frequency_hz(), 440.0);
     }
 
     // ─── A5 FX chain tests ──────────────────────────────────────────

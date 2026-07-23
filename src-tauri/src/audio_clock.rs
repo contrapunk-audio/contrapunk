@@ -28,14 +28,18 @@ use cpal::SampleFormat;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-#[cfg(feature = "elixir-synth")]
-use contrapunk::chain::ElixirSynthBlock;
 use contrapunk::chain::{AudioBlock, BlockDescriptor, Chain, ChainCommandConsumer, ChainCommander};
+#[cfg(feature = "elixir-synth")]
+use contrapunk::chain::{ElixirSynthBlock, ELIXIR_EVENT_QUEUE_CAPACITY};
 use contrapunk::fx::{Delay, DelayParams, Reverb, ReverbParams};
 #[cfg(not(feature = "elixir-synth"))]
 use contrapunk::synth::Synth;
-use contrapunk::synth::{SynthEvent, SynthParams};
+use contrapunk::synth::{synth_event_channel, SynthEventReceiver, SynthParams};
 use contrapunk::transport::{BeatCrossing, Transport};
+#[cfg(feature = "elixir-synth")]
+use ringbuf::traits::{Producer, Split};
+#[cfg(feature = "elixir-synth")]
+use ringbuf::HeapRb;
 
 /// Payload for the `beat-update` Tauri event.
 #[derive(Clone, Serialize)]
@@ -118,7 +122,7 @@ pub fn start(
     transport: Arc<Transport>,
     metronome_enabled: Arc<AtomicBool>,
     synth_params: Arc<SynthParams>,
-    synth_rx: Option<mpsc::Receiver<SynthEvent>>,
+    synth_rx: Option<SynthEventReceiver>,
     reverb_params: Arc<ReverbParams>,
     delay_params: Arc<DelayParams>,
 ) -> Result<Arc<ChainCommander>, String> {
@@ -216,21 +220,40 @@ fn initial_synth_descriptor() -> BlockDescriptor {
 
 #[cfg(feature = "elixir-synth")]
 fn make_synth_block(
-    _params: Arc<SynthParams>,
-    events: mpsc::Receiver<SynthEvent>,
+    params: Arc<SynthParams>,
+    events: SynthEventReceiver,
     sample_rate: u32,
 ) -> Box<dyn AudioBlock> {
-    Box::new(ElixirSynthBlock::new_with_params_and_events(
+    let queue = HeapRb::new(ELIXIR_EVENT_QUEUE_CAPACITY);
+    let (mut tx, rx) = queue.split();
+    let source_fault = events.fault_flag();
+    let event_fault = Arc::new(AtomicBool::new(false));
+    let bridge_fault = Arc::clone(&event_fault);
+    let _ = thread::Builder::new()
+        .name("elixir-event-bridge".into())
+        .spawn(move || {
+            while let Ok(event) = events.recv() {
+                if source_fault.swap(false, Ordering::AcqRel) {
+                    while events.try_recv().is_ok() {}
+                    bridge_fault.store(true, Ordering::Release);
+                } else if tx.try_push(event).is_err() {
+                    bridge_fault.store(true, Ordering::Release);
+                }
+            }
+            bridge_fault.store(true, Ordering::Release);
+        });
+    Box::new(ElixirSynthBlock::new_with_event_consumer(
         sample_rate,
-        _params,
-        events,
+        params,
+        rx,
+        event_fault,
     ))
 }
 
 #[cfg(not(feature = "elixir-synth"))]
 fn make_synth_block(
     params: Arc<SynthParams>,
-    events: mpsc::Receiver<SynthEvent>,
+    events: SynthEventReceiver,
     sample_rate: u32,
 ) -> Box<dyn AudioBlock> {
     Box::new(Synth::new(params, events, sample_rate))
@@ -240,7 +263,7 @@ fn build_and_run_stream(
     transport: Arc<Transport>,
     metronome_enabled: Arc<AtomicBool>,
     synth_params: Arc<SynthParams>,
-    synth_rx: Option<mpsc::Receiver<SynthEvent>>,
+    synth_rx: Option<SynthEventReceiver>,
     reverb_params: Arc<ReverbParams>,
     delay_params: Arc<DelayParams>,
     chain_rx: ChainCommandConsumer,
@@ -273,7 +296,7 @@ fn build_and_run_stream(
     // If no rx was provided (non-default AppState), we still run with an
     // empty one.
     let synth_rx = synth_rx.unwrap_or_else(|| {
-        let (_tx, rx) = mpsc::channel();
+        let (_tx, rx) = synth_event_channel();
         rx
     });
 

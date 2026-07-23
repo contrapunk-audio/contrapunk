@@ -24,5 +24,7 @@
 pub mod params;
 pub mod voice;
 
-pub use params::{SynthEvent, SynthParams, Waveform};
+pub use params::{
+    synth_event_channel, SynthEvent, SynthEventReceiver, SynthEventSender, SynthParams, Waveform,
+};
 pub use voice::Synth;

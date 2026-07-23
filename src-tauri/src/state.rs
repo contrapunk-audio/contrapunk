@@ -15,7 +15,7 @@ use contrapunk::chain::ChainCommander;
 use contrapunk::fx::{DelayParams, ReverbParams};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::preset::PresetManager;
-use contrapunk::synth::{SynthEvent, SynthParams};
+use contrapunk::synth::{synth_event_channel, SynthEventReceiver, SynthEventSender, SynthParams};
 use contrapunk::transport::Transport;
 
 /// Maximum number of voices the app exposes. Mirrors the 8 voice slots
@@ -125,11 +125,11 @@ pub struct AppState {
     /// Sender half of the synth's MIDI-event channel. The router thread
     /// pushes events here whenever harmony produces a note-on/off; the
     /// audio callback drains the receiver end on every buffer.
-    pub synth_tx: mpsc::Sender<SynthEvent>,
+    pub synth_tx: SynthEventSender,
 
     /// Receiver, stored in an Option so the audio_clock setup hook can
     /// `.take()` it and move it into the stream callback.
-    pub synth_rx: Mutex<Option<mpsc::Receiver<SynthEvent>>>,
+    pub synth_rx: Mutex<Option<SynthEventReceiver>>,
 
     /// Built-in reverb parameters. Read by the audio callback each
     /// buffer; mutated by Tauri command handlers in response to UI
@@ -216,7 +216,7 @@ impl Default for AppState {
             metronome_enabled: Arc::new(AtomicBool::new(false)),
             synth_params: Arc::new(SynthParams::default()),
             synth_tx: {
-                let (tx, _) = mpsc::channel();
+                let (tx, _) = synth_event_channel();
                 tx
             },
             synth_rx: Mutex::new(None),
@@ -235,7 +235,7 @@ impl AppState {
     /// matching rx to `.take()`.
     pub fn new() -> Self {
         let mut base = Self::default();
-        let (tx, rx) = mpsc::channel::<SynthEvent>();
+        let (tx, rx) = synth_event_channel();
         base.synth_tx = tx;
         base.synth_rx = Mutex::new(Some(rx));
         base

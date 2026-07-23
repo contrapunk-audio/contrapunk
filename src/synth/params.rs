@@ -4,7 +4,8 @@
 //! callback can read them without locks. Ranges are documented on
 //! each getter.
 
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use std::sync::{mpsc, Arc};
 
 /// Oscillator waveform. Stored as a u8 in [`SynthParams::waveform`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +43,62 @@ pub enum SynthEvent {
     AllNotesOff,
 }
 
+/// Fixed router-to-synth queue bound. Overflow is non-blocking and raises
+/// a shared fault so the audio side can panic instead of stranding a voice.
+pub const SYNTH_EVENT_QUEUE_CAPACITY: usize = 1024;
+
+#[derive(Clone)]
+pub struct SynthEventSender {
+    tx: mpsc::SyncSender<SynthEvent>,
+    fault: Arc<AtomicBool>,
+}
+
+pub struct SynthEventReceiver {
+    rx: mpsc::Receiver<SynthEvent>,
+    fault: Arc<AtomicBool>,
+}
+
+pub fn synth_event_channel() -> (SynthEventSender, SynthEventReceiver) {
+    let (tx, rx) = mpsc::sync_channel(SYNTH_EVENT_QUEUE_CAPACITY);
+    let fault = Arc::new(AtomicBool::new(false));
+    (
+        SynthEventSender {
+            tx,
+            fault: Arc::clone(&fault),
+        },
+        SynthEventReceiver { rx, fault },
+    )
+}
+
+impl SynthEventSender {
+    /// Non-blocking send. A full queue marks the audio side for panic.
+    pub fn send(&self, event: SynthEvent) -> Result<(), mpsc::TrySendError<SynthEvent>> {
+        self.tx.try_send(event).inspect_err(|error| {
+            if matches!(error, mpsc::TrySendError::Full(_)) {
+                self.fault.store(true, Ordering::Release);
+            }
+        })
+    }
+}
+
+impl SynthEventReceiver {
+    pub fn try_recv(&self) -> Result<SynthEvent, mpsc::TryRecvError> {
+        self.rx.try_recv()
+    }
+
+    pub fn recv(&self) -> Result<SynthEvent, mpsc::RecvError> {
+        self.rx.recv()
+    }
+
+    pub fn take_fault(&self) -> bool {
+        self.fault.swap(false, Ordering::AcqRel)
+    }
+
+    pub fn fault_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.fault)
+    }
+}
+
 /// Per-role mix groups used by the native performance mixer.
 pub const MIX_GROUP_COUNT: usize = 4;
 pub const MIX_GROUP_ALL: u8 = u8::MAX;
@@ -63,7 +120,7 @@ pub struct SynthParams {
     resonance_ppt: AtomicU32,
     master_gain_ppt: AtomicU32,
     mix_gain_ppt: [AtomicU32; MIX_GROUP_COUNT],
-    enabled: std::sync::atomic::AtomicBool,
+    enabled: AtomicBool,
 }
 
 impl Default for SynthParams {
@@ -78,7 +135,7 @@ impl Default for SynthParams {
             resonance_ppt: AtomicU32::new(200),   // 0.20
             master_gain_ppt: AtomicU32::new(250), // 0.25 — conservative
             mix_gain_ppt: std::array::from_fn(|_| AtomicU32::new(1000)),
-            enabled: std::sync::atomic::AtomicBool::new(true),
+            enabled: AtomicBool::new(true),
         }
     }
 }
@@ -160,5 +217,23 @@ impl SynthParams {
             let ppt = (v.clamp(0.0, 1.0) * 1000.0) as u32;
             gain.store(ppt, Ordering::Relaxed);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn synth_event_channel_is_bounded_and_marks_overflow() {
+        let (tx, rx) = synth_event_channel();
+        for _ in 0..SYNTH_EVENT_QUEUE_CAPACITY {
+            tx.send(SynthEvent::AllNotesOff).unwrap();
+        }
+        assert!(matches!(
+            tx.send(SynthEvent::AllNotesOff),
+            Err(mpsc::TrySendError::Full(_))
+        ));
+        assert!(rx.fault_flag().load(Ordering::Acquire));
     }
 }

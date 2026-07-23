@@ -11,18 +11,35 @@
 //! surface, and lets the audio chain swap from legacy synth to Elixir
 //! behind the `elixir-synth` feature.
 
-use std::sync::{mpsc, Arc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use ringbuf::traits::{Consumer, Split};
+use ringbuf::{HeapCons, HeapRb};
 
 use super::block::{AudioBlock, MidiBlockEvent};
+use crate::synth::params::MIX_GROUP_ALL;
 use crate::synth::{SynthEvent, SynthParams, Waveform};
 use elixir_core::osc::{PhaseDistortionMode, SpectralMorph};
-use elixir_core::Engine;
+use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole};
 
 /// `AudioBlock` adapter for the Elixir engine.
 pub struct ElixirSynthBlock {
     engine: Engine,
     params: Arc<SynthParams>,
-    events: mpsc::Receiver<SynthEvent>,
+    events: HeapCons<SynthEvent>,
+    event_fault: Arc<AtomicBool>,
+}
+
+pub const ELIXIR_EVENT_QUEUE_CAPACITY: usize = 1024;
+const SYNTH_EVENT_ID_PREFIX: u64 = 1 << 62;
+
+fn voice_role(mix_group: u8) -> Option<VoiceRole> {
+    VoiceRole::ALL.get(mix_group as usize).copied()
+}
+
+fn synth_event_voice_id(note: u8, role: VoiceRole) -> VoiceId {
+    VoiceId::new(SYNTH_EVENT_ID_PREFIX | ((role as u64) << 7) | note as u64)
 }
 
 impl ElixirSynthBlock {
@@ -30,26 +47,23 @@ impl ElixirSynthBlock {
     /// into the engine via [`AudioBlock::set_sample_rate`] later, but we
     /// prepare here so a fresh block is immediately usable.
     pub fn new(sample_rate: u32) -> Self {
-        let (_tx, rx) = mpsc::channel();
-        Self::new_with_params_and_events(sample_rate, Arc::new(SynthParams::new()), rx)
+        let queue = HeapRb::new(ELIXIR_EVENT_QUEUE_CAPACITY);
+        let (_tx, rx) = queue.split();
+        Self::new_with_event_consumer(
+            sample_rate,
+            Arc::new(SynthParams::new()),
+            rx,
+            Arc::new(AtomicBool::new(false)),
+        )
     }
 
-    /// Construct an Elixir synth block wired to the existing router →
-    /// audio-thread event channel. This is the A-Cut bridge: router code
-    /// can keep sending [`SynthEvent`] while the chain swaps the first
-    /// block from legacy [`crate::synth::Synth`] to Elixir.
-    pub fn new_with_events(sample_rate: u32, events: mpsc::Receiver<SynthEvent>) -> Self {
-        Self::new_with_params_and_events(sample_rate, Arc::new(SynthParams::new()), events)
-    }
-
-    /// Construct an Elixir synth block sharing the same public synth
-    /// params used by the legacy built-in synth. This keeps existing UI
-    /// commands meaningful under the feature flag while A6-specific
-    /// controls are introduced separately.
-    pub fn new_with_params_and_events(
+    /// Construct an Elixir synth block with a preallocated SPSC event
+    /// consumer. Producers live outside the audio callback.
+    pub fn new_with_event_consumer(
         sample_rate: u32,
         params: Arc<SynthParams>,
-        events: mpsc::Receiver<SynthEvent>,
+        events: HeapCons<SynthEvent>,
+        event_fault: Arc<AtomicBool>,
     ) -> Self {
         let mut engine = Engine::new();
         engine.prepare(sample_rate, DEFAULT_MAX_BLOCK);
@@ -57,14 +71,54 @@ impl ElixirSynthBlock {
             engine,
             params,
             events,
+            event_fault,
         }
     }
 
     fn drain_events(&mut self) {
-        while let Ok(ev) = self.events.try_recv() {
+        if self.event_fault.swap(false, Ordering::AcqRel) {
+            for _ in 0..ELIXIR_EVENT_QUEUE_CAPACITY {
+                if self.events.try_pop().is_none() {
+                    break;
+                }
+            }
+            self.engine.panic();
+            return;
+        }
+
+        for _ in 0..ELIXIR_EVENT_QUEUE_CAPACITY {
+            let Some(ev) = self.events.try_pop() else {
+                break;
+            };
             match ev {
-                SynthEvent::NoteOn { note, velocity, .. } => self.engine.note_on(note, velocity),
-                SynthEvent::NoteOff { note, .. } => self.engine.note_off(note),
+                SynthEvent::NoteOn {
+                    note,
+                    velocity,
+                    mix_group,
+                } => {
+                    if let Some(role) = voice_role(mix_group) {
+                        self.engine.handle_voice_event(VoiceEvent::NoteOn {
+                            voice_id: synth_event_voice_id(note, role),
+                            role,
+                            frequency_hz: elixir_core::util::midi_to_freq(note),
+                            velocity,
+                        });
+                    }
+                }
+                SynthEvent::NoteOff { note, mix_group } if mix_group == MIX_GROUP_ALL => {
+                    for role in VoiceRole::ALL {
+                        self.engine.handle_voice_event(VoiceEvent::NoteOff {
+                            voice_id: synth_event_voice_id(note, role),
+                        });
+                    }
+                }
+                SynthEvent::NoteOff { note, mix_group } => {
+                    if let Some(role) = voice_role(mix_group) {
+                        self.engine.handle_voice_event(VoiceEvent::NoteOff {
+                            voice_id: synth_event_voice_id(note, role),
+                        });
+                    }
+                }
                 SynthEvent::AllNotesOff => self.engine.all_notes_off(),
             }
         }
@@ -73,11 +127,17 @@ impl ElixirSynthBlock {
     /// Set the voice-filter cutoff in Hz (A4). Pass-through to the
     /// underlying engine.
     pub fn set_filter_cutoff_hz(&mut self, hz: f32) {
-        self.engine.set_filter_cutoff_hz(hz);
+        if hz.is_finite() {
+            self.params.set_cutoff_hz(hz.round() as u32);
+            self.engine.set_filter_cutoff_hz(hz);
+        }
     }
     /// Set the voice-filter resonance, `0..1`.
     pub fn set_filter_resonance(&mut self, r: f32) {
-        self.engine.set_filter_resonance(r);
+        if r.is_finite() {
+            self.params.set_resonance(r);
+            self.engine.set_filter_resonance(r);
+        }
     }
 
     fn apply_params(&mut self, buffer: &mut [f32]) -> bool {
@@ -96,6 +156,10 @@ impl ElixirSynthBlock {
         self.engine.set_filter_cutoff_hz(self.params.cutoff_hz());
         self.engine.set_filter_resonance(self.params.resonance());
         self.engine.set_master_gain(self.params.master_gain());
+        let mix_gains = self.params.mix_gains();
+        for (role, gain) in VoiceRole::ALL.into_iter().zip(mix_gains) {
+            self.engine.set_role_gain(role, gain);
+        }
 
         // Compatibility mapping for the existing four-shape UI. These
         // are musical approximations until the Elixir-specific UI owns
@@ -173,6 +237,21 @@ impl AudioBlock for ElixirSynthBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ringbuf::traits::Producer;
+    use ringbuf::HeapProd;
+
+    fn event_block(
+        params: Arc<SynthParams>,
+    ) -> (ElixirSynthBlock, HeapProd<SynthEvent>, Arc<AtomicBool>) {
+        let queue = HeapRb::new(ELIXIR_EVENT_QUEUE_CAPACITY);
+        let (tx, rx) = queue.split();
+        let fault = Arc::new(AtomicBool::new(false));
+        (
+            ElixirSynthBlock::new_with_event_consumer(48_000, params, rx, Arc::clone(&fault)),
+            tx,
+            fault,
+        )
+    }
 
     #[test]
     fn block_identifies_itself() {
@@ -215,9 +294,8 @@ mod tests {
     fn shared_synth_params_can_mute_elixir() {
         let params = Arc::new(SynthParams::new());
         params.set_enabled(false);
-        let (tx, rx) = mpsc::channel();
-        let mut b = ElixirSynthBlock::new_with_params_and_events(48_000, params, rx);
-        tx.send(SynthEvent::NoteOn {
+        let (mut b, mut tx, _fault) = event_block(params);
+        tx.try_push(SynthEvent::NoteOn {
             note: 69,
             velocity: 100,
             mix_group: 0,
@@ -230,9 +308,8 @@ mod tests {
 
     #[test]
     fn synth_event_receiver_produces_audio() {
-        let (tx, rx) = mpsc::channel();
-        let mut b = ElixirSynthBlock::new_with_events(48_000, rx);
-        tx.send(SynthEvent::NoteOn {
+        let (mut b, mut tx, _fault) = event_block(Arc::new(SynthParams::new()));
+        tx.try_push(SynthEvent::NoteOn {
             note: 69,
             velocity: 100,
             mix_group: 0,
@@ -245,6 +322,73 @@ mod tests {
             peak > 0.0,
             "expected audio after queued SynthEvent::NoteOn, got silence"
         );
+    }
+
+    #[test]
+    fn synth_events_preserve_same_pitch_roles_and_release_selectively() {
+        let params = Arc::new(SynthParams::new());
+        params.set_mix_gain(0, 0.0);
+        params.set_mix_gain(1, 1.0);
+        let (mut b, mut tx, _fault) = event_block(params);
+        for mix_group in [0, 1] {
+            tx.try_push(SynthEvent::NoteOn {
+                note: 69,
+                velocity: 100,
+                mix_group,
+            })
+            .unwrap();
+        }
+
+        let mut sounding = [0.0; 1024];
+        b.process(&mut sounding, 2);
+        assert!(sounding.iter().any(|sample| sample.abs() > 1.0e-6));
+
+        tx.try_push(SynthEvent::NoteOff {
+            note: 69,
+            mix_group: 0,
+        })
+        .unwrap();
+        let mut harmony_still_sounding = [0.0; 1024];
+        b.process(&mut harmony_still_sounding, 2);
+        assert!(harmony_still_sounding
+            .iter()
+            .any(|sample| sample.abs() > 1.0e-6));
+
+        tx.try_push(SynthEvent::NoteOff {
+            note: 69,
+            mix_group: 1,
+        })
+        .unwrap();
+        let mut tail = [0.0; 32_000];
+        b.process(&mut tail, 2);
+        assert!(tail[tail.len() - 64..]
+            .iter()
+            .all(|sample| sample.abs() < 1.0e-3));
+    }
+
+    #[test]
+    fn event_fault_discards_queue_and_panics_without_blocking() {
+        let (mut b, mut tx, fault) = event_block(Arc::new(SynthParams::new()));
+        tx.try_push(SynthEvent::NoteOn {
+            note: 69,
+            velocity: 100,
+            mix_group: 0,
+        })
+        .unwrap();
+        let mut sounding = [0.0; 1024];
+        b.process(&mut sounding, 2);
+        assert!(sounding.iter().any(|sample| sample.abs() > 1.0e-6));
+
+        tx.try_push(SynthEvent::NoteOn {
+            note: 72,
+            velocity: 100,
+            mix_group: 1,
+        })
+        .unwrap();
+        fault.store(true, Ordering::Release);
+        let mut tail = [0.0; 800];
+        b.process(&mut tail, 2);
+        assert!(tail[tail.len() - 64..].iter().all(|sample| *sample == 0.0));
     }
 
     #[test]

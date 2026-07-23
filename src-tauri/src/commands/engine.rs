@@ -19,7 +19,7 @@ use contrapunk::chord::chord_display_with_analysis;
 use contrapunk::harmony::HarmonyEngine;
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
-use contrapunk::synth::SynthEvent;
+use contrapunk::synth::{SynthEvent, SynthEventSender};
 use contrapunk::transport::Transport;
 
 use crate::guitar_bridge::GuitarBridge;
@@ -460,7 +460,7 @@ fn run_tauri_router(
     app_handle: AppHandle,
     detune_cents: Arc<AtomicI32>,
     panic_pending: Arc<std::sync::atomic::AtomicBool>,
-    synth_tx: mpsc::Sender<SynthEvent>,
+    synth_tx: SynthEventSender,
     voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
     transport: Arc<Transport>,
     companion: Arc<Mutex<crate::companion::Companion>>,
@@ -940,7 +940,7 @@ fn process_midi_message(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
-    synth_tx: &mpsc::Sender<SynthEvent>,
+    synth_tx: &SynthEventSender,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
 ) {
     let msg = match MidiMessage::try_from(bytes) {
@@ -1025,7 +1025,7 @@ fn handle_note_on(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
-    synth_tx: &mpsc::Sender<SynthEvent>,
+    synth_tx: &SynthEventSender,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
 ) {
     let notes = engine.harmonize_note_on(note);
@@ -1136,7 +1136,7 @@ fn handle_note_off(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
-    synth_tx: &mpsc::Sender<SynthEvent>,
+    synth_tx: &SynthEventSender,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
 ) {
     let notes = engine.harmonize_note_off(note);
@@ -1241,7 +1241,7 @@ fn dispatch_voice(
     channel: u8,
     event: VoiceDispatch,
     num_ports: usize,
-    synth_tx: &mpsc::Sender<SynthEvent>,
+    synth_tx: &SynthEventSender,
     output: &mut OutputRouter,
 ) {
     // Pin the u7/u4 invariants for callers — every existing site
@@ -1311,7 +1311,7 @@ fn dispatch_voice(
 fn broadcast_note_off(
     note: u8,
     num_ports: usize,
-    synth_tx: &mpsc::Sender<SynthEvent>,
+    synth_tx: &SynthEventSender,
     output: &mut OutputRouter,
 ) {
     debug_assert!(note < 128, "MIDI note out of range: {}", note);
@@ -1389,7 +1389,7 @@ fn midi_bytes_to_input_event(bytes: &[u8]) -> Option<crate::companion::InputEven
 fn dispatch_companion_ops(
     tagged: &[(&'static str, crate::companion::DispatchOp)],
     num_ports: usize,
-    synth_tx: &mpsc::Sender<SynthEvent>,
+    synth_tx: &SynthEventSender,
     output: &mut OutputRouter,
     _harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     canon_notes: &Arc<Mutex<NoteCounts>>,

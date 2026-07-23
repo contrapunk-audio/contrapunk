@@ -16,11 +16,10 @@
 
 #![cfg(feature = "elixir-synth")]
 
-use std::sync::mpsc;
 use std::sync::Arc;
 
 use contrapunk::chain::{AudioBlock, ElixirSynthBlock, MidiBlockEvent};
-use contrapunk::synth::{Synth, SynthEvent, SynthParams, Waveform};
+use contrapunk::synth::{synth_event_channel, Synth, SynthParams, Waveform};
 
 const SAMPLE_RATE: u32 = 48_000;
 const CHANNELS: usize = 2;
@@ -55,7 +54,7 @@ fn render_legacy_sine(buf: &mut [f32]) {
     params.set_cutoff_hz(20_000);
     params.set_resonance(0.0);
     params.set_master_gain(0.25);
-    let (_tx, rx) = mpsc::channel::<SynthEvent>();
+    let (_tx, rx) = synth_event_channel();
     let mut s = Synth::new(params, rx, SAMPLE_RATE);
     s.midi_event(MidiBlockEvent::NoteOn {
         note: NOTE,

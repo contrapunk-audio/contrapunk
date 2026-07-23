@@ -42,7 +42,7 @@ pub use command::ChainCommand;
 pub use commander::{BlockDescriptor, ChainCommander};
 
 #[cfg(feature = "elixir-synth")]
-pub use elixir_block::ElixirSynthBlock;
+pub use elixir_block::{ElixirSynthBlock, ELIXIR_EVENT_QUEUE_CAPACITY};
 
 /// Consumer half of the chain command queue. Re-exported so downstream
 /// crates (e.g. the Tauri binary) can reference the type without a

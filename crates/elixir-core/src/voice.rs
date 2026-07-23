@@ -17,7 +17,7 @@ use crate::env::AdsrEnvelope;
 use crate::filter::{FilterCoeffs, FilterKind, FilterModel, FilterParams, SvfCoeffs};
 use crate::osc::{OscParams, Oscillator};
 use crate::tables::SineTable;
-use crate::util::midi_to_freq;
+use crate::{VoiceId, VoiceRole};
 
 pub struct Voice {
     osc: Oscillator,
@@ -26,7 +26,10 @@ pub struct Voice {
     active: bool,
     killing: bool,
     sustained: bool,
-    note: u8,
+    released: bool,
+    voice_id: VoiceId,
+    role: VoiceRole,
+    frequency_hz: f32,
     velocity: f32,
     age: u64,
 }
@@ -40,7 +43,10 @@ impl Voice {
             active: false,
             killing: false,
             sustained: false,
-            note: 0,
+            released: false,
+            voice_id: VoiceId::INVALID,
+            role: VoiceRole::Input,
+            frequency_hz: 0.0,
             velocity: 0.0,
             age: 0,
         }
@@ -67,13 +73,24 @@ impl Voice {
         self.filter.set_kind(kind);
     }
 
-    pub fn note_on(&mut self, note: u8, velocity: u8, sample_rate: f32, age: u64) {
+    pub fn note_on(
+        &mut self,
+        voice_id: VoiceId,
+        role: VoiceRole,
+        frequency_hz: f32,
+        velocity: u8,
+        sample_rate: f32,
+        age: u64,
+    ) {
         self.active = true;
         self.killing = false;
         self.sustained = false;
-        self.note = note;
+        self.released = false;
+        self.voice_id = voice_id;
+        self.role = role;
+        self.frequency_hz = frequency_hz;
         self.velocity = (velocity as f32 / 127.0).clamp(0.0, 1.0);
-        self.osc.set_frequency(midi_to_freq(note), sample_rate);
+        self.osc.set_frequency(frequency_hz, sample_rate);
         self.osc.reset_phase();
         self.env.set_sample_rate(sample_rate);
         self.env.note_on();
@@ -82,11 +99,12 @@ impl Voice {
     }
 
     /// Handle note-off. If `sustain_down` is true and the voice matches
-    /// the requested note, mark it sustained instead of releasing.
-    pub fn note_off_or_sustain(&mut self, note: u8, sustain_down: bool) {
-        if !self.active || self.killing || self.note != note {
+    /// the requested ID, mark it sustained instead of releasing.
+    pub fn note_off_or_sustain(&mut self, voice_id: VoiceId, sustain_down: bool) {
+        if !self.active || self.killing || self.released || self.voice_id != voice_id {
             return;
         }
+        self.released = true;
         if sustain_down {
             self.sustained = true;
         } else {
@@ -111,6 +129,7 @@ impl Voice {
         if self.active && !self.killing {
             self.killing = true;
             self.sustained = false;
+            self.released = true;
             self.env.kill();
         }
     }
@@ -118,6 +137,7 @@ impl Voice {
     pub fn all_notes_off(&mut self) {
         if self.active {
             self.sustained = false;
+            self.released = true;
             self.env.note_off();
         }
     }
@@ -131,14 +151,23 @@ impl Voice {
         self.active && !self.killing
     }
 
-    /// Voice owns a currently-playing note that's neither released nor
-    /// being killed nor sustain-held.
-    pub fn is_playing_note(&self, note: u8) -> bool {
-        self.is_live() && self.note == note && !self.sustained
+    /// Whether this active, non-killing slot belongs to `voice_id`.
+    pub fn has_voice_id(&self, voice_id: VoiceId) -> bool {
+        self.is_live() && self.voice_id == voice_id
     }
 
-    pub fn note(&self) -> u8 {
-        self.note
+    pub fn owns_voice_id(&self, voice_id: VoiceId) -> bool {
+        self.has_voice_id(voice_id) && !self.released
+    }
+
+    pub fn voice_id(&self) -> VoiceId {
+        self.voice_id
+    }
+    pub fn role(&self) -> VoiceRole {
+        self.role
+    }
+    pub fn frequency_hz(&self) -> f32 {
+        self.frequency_hz
     }
     pub fn age(&self) -> u64 {
         self.age
@@ -274,7 +303,7 @@ mod tests {
         let table = SineTable::new();
         let bypass = bypass_coeffs();
         let mut v = Voice::new();
-        v.note_on(69, 100, 48_000.0, 0);
+        v.note_on(VoiceId::new(69), VoiceRole::Input, 440.0, 100, 48_000.0, 0);
         assert!(v.is_active());
         let mut any_nonzero = false;
         for _ in 0..2048 {
@@ -290,11 +319,12 @@ mod tests {
         let table = SineTable::new();
         let bypass = bypass_coeffs();
         let mut v = Voice::new();
-        v.note_on(60, 100, 48_000.0, 0);
+        let id = VoiceId::new(60);
+        v.note_on(id, VoiceRole::Input, 261.625_5, 100, 48_000.0, 0);
         for _ in 0..(48_000 / 4) {
             let _ = v.tick(&table, &bypass);
         }
-        v.note_off_or_sustain(60, false);
+        v.note_off_or_sustain(id, false);
         for _ in 0..30_000 {
             let _ = v.tick(&table, &bypass);
         }
@@ -306,8 +336,15 @@ mod tests {
         let table = SineTable::new();
         let bypass = bypass_coeffs();
         let mut v = Voice::new();
-        v.note_on(60, 100, 48_000.0, 0);
-        v.note_off_or_sustain(72, false);
+        v.note_on(
+            VoiceId::new(60),
+            VoiceRole::Input,
+            261.625_5,
+            100,
+            48_000.0,
+            0,
+        );
+        v.note_off_or_sustain(VoiceId::new(72), false);
         for _ in 0..100 {
             let _ = v.tick(&table, &bypass);
         }
@@ -319,7 +356,14 @@ mod tests {
         let table = SineTable::new();
         let bypass = bypass_coeffs();
         let mut v = Voice::new();
-        v.note_on(60, 127, 48_000.0, 0);
+        v.note_on(
+            VoiceId::new(60),
+            VoiceRole::Input,
+            261.625_5,
+            127,
+            48_000.0,
+            0,
+        );
         // settle into sustain
         for _ in 0..2048 {
             let _ = v.tick(&table, &bypass);
@@ -340,12 +384,13 @@ mod tests {
         let table = SineTable::new();
         let bypass = bypass_coeffs();
         let mut v = Voice::new();
-        v.note_on(60, 100, 48_000.0, 0);
+        let id = VoiceId::new(60);
+        v.note_on(id, VoiceRole::Input, 261.625_5, 100, 48_000.0, 0);
         for _ in 0..2048 {
             let _ = v.tick(&table, &bypass);
         }
         // pedal down → note-off marks sustained, voice keeps playing
-        v.note_off_or_sustain(60, true);
+        v.note_off_or_sustain(id, true);
         assert!(v.is_sustained());
         assert!(v.is_live() || v.is_active());
         for _ in 0..2048 {

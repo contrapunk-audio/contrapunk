@@ -12,7 +12,7 @@ use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    mpsc, Arc, Mutex,
+    Arc, Mutex,
 };
 use std::thread;
 use std::time::Duration;
@@ -24,7 +24,7 @@ mod logic_midi;
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
 use contrapunk::chain::{AudioBlock, MidiBlockEvent};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, VoiceLeadingStyle};
-use contrapunk::synth::{Synth, SynthParams};
+use contrapunk::synth::{synth_event_channel, Synth, SynthParams};
 use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
 use contrapunk_transport::Transport;
 
@@ -1133,7 +1133,7 @@ impl Default for ContrapunkPlugin {
         let world = WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
         let companion = Arc::new(Mutex::new(Companion::new(world)));
         let synth_params = Arc::new(SynthParams::default());
-        let (_synth_tx, synth_rx) = mpsc::channel();
+        let (_synth_tx, synth_rx) = synth_event_channel();
         let synth = Synth::new(Arc::clone(&synth_params), synth_rx, 48_000);
         {
             let mut c = companion

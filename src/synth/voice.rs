@@ -2,10 +2,12 @@
 //! no locks.
 
 use std::f32::consts::TAU;
-use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
-use super::params::{SynthEvent, SynthParams, Waveform, MIX_GROUP_ALL};
+use super::params::{
+    SynthEvent, SynthEventReceiver, SynthParams, Waveform, MIX_GROUP_ALL,
+    SYNTH_EVENT_QUEUE_CAPACITY,
+};
 use crate::chain::{AudioBlock, MidiBlockEvent};
 
 const MAX_VOICES: usize = 8;
@@ -76,13 +78,13 @@ impl Voice {
 pub struct Synth {
     voices: [Voice; MAX_VOICES],
     params: Arc<SynthParams>,
-    events: Receiver<SynthEvent>,
+    events: SynthEventReceiver,
     sample_rate: f32,
     note_counter: u64,
 }
 
 impl Synth {
-    pub fn new(params: Arc<SynthParams>, events: Receiver<SynthEvent>, sample_rate: u32) -> Self {
+    pub fn new(params: Arc<SynthParams>, events: SynthEventReceiver, sample_rate: u32) -> Self {
         Self {
             voices: [Voice::idle(); MAX_VOICES],
             params,
@@ -141,6 +143,16 @@ impl Synth {
     }
 
     fn process_events(&mut self) {
+        if self.events.take_fault() {
+            for _ in 0..SYNTH_EVENT_QUEUE_CAPACITY {
+                if self.events.try_recv().is_err() {
+                    break;
+                }
+            }
+            self.all_notes_off();
+            return;
+        }
+
         while let Ok(ev) = self.events.try_recv() {
             match ev {
                 SynthEvent::NoteOn {
@@ -342,10 +354,9 @@ fn render_osc(wf: Waveform, phase: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc;
 
-    fn mk_synth() -> (Synth, mpsc::Sender<SynthEvent>) {
-        let (tx, rx) = mpsc::channel();
+    fn mk_synth() -> (Synth, super::super::SynthEventSender) {
+        let (tx, rx) = super::super::synth_event_channel();
         let params = Arc::new(SynthParams::default());
         let synth = Synth::new(params, rx, 48_000);
         (synth, tx)
