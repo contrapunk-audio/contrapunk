@@ -12,7 +12,7 @@ use elixir_core::fx::{
     Chorus, Compressor, Delay, Drive, FdnReverb, Flanger, FxSlot, Phaser, Reverb,
 };
 use elixir_core::osc::{PhaseDistortionMode, SpectralMorph, UnisonStyle};
-use elixir_core::Engine;
+use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole};
 use nih_plug::prelude::*;
 
 // ── Plugin-facing enums ─────────────────────────────────────────────
@@ -463,6 +463,9 @@ struct ElixirPlugin {
     engine: Engine,
     sample_rate: f32,
     max_block: usize,
+    scratch: Vec<f32>,
+    #[cfg(test)]
+    process_calls: usize,
 }
 
 impl Default for ElixirPlugin {
@@ -472,6 +475,9 @@ impl Default for ElixirPlugin {
             engine: Engine::new(),
             sample_rate: 48_000.0,
             max_block: 2048,
+            scratch: vec![0.0; 2048 * 2],
+            #[cfg(test)]
+            process_calls: 0,
         };
         plugin.engine.prepare(48_000, 2048);
         plugin.install_fx_chain();
@@ -481,6 +487,119 @@ impl Default for ElixirPlugin {
 }
 
 impl ElixirPlugin {
+    const HOST_VOICE_PREFIX: u64 = 1 << 61;
+    const HOST_ID_FLAG: u64 = 1 << 32;
+
+    fn host_voice_id(voice_id: Option<i32>, channel: u8, note: u8) -> VoiceId {
+        let value = match voice_id {
+            Some(id) => Self::HOST_ID_FLAG | id as u32 as u64,
+            None => ((channel as u64) << 7) | note as u64,
+        };
+        VoiceId::new(Self::HOST_VOICE_PREFIX | value)
+    }
+
+    fn handle_note_event(&mut self, event: NoteEvent<()>) {
+        match event {
+            NoteEvent::NoteOn {
+                voice_id,
+                channel,
+                note,
+                velocity,
+                ..
+            } => {
+                let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
+                self.engine.handle_voice_event(VoiceEvent::NoteOn {
+                    voice_id: Self::host_voice_id(voice_id, channel, note),
+                    role: VoiceRole::Input,
+                    frequency_hz: elixir_core::util::midi_to_freq(note),
+                    velocity,
+                });
+            }
+            NoteEvent::NoteOff {
+                voice_id,
+                channel,
+                note,
+                ..
+            }
+            | NoteEvent::Choke {
+                voice_id,
+                channel,
+                note,
+                ..
+            } => self.engine.handle_voice_event(VoiceEvent::NoteOff {
+                voice_id: Self::host_voice_id(voice_id, channel, note),
+            }),
+            _ => {}
+        }
+    }
+
+    fn render_range(
+        &mut self,
+        outputs: &mut [&mut [f32]],
+        channels: usize,
+        start: usize,
+        end: usize,
+    ) {
+        let frames = end - start;
+        #[cfg(test)]
+        {
+            self.process_calls += 1;
+        }
+        let scratch = &mut self.scratch[..frames * channels];
+        scratch.fill(0.0);
+        self.engine.process(scratch, channels);
+        for frame in 0..frames {
+            for channel in 0..channels {
+                outputs[channel][start + frame] = scratch[frame * channels + channel];
+            }
+        }
+    }
+
+    fn process_buffer_with_events(
+        &mut self,
+        outputs: &mut [&mut [f32]],
+        frames: usize,
+        mut event: Option<NoteEvent<()>>,
+        mut next_event: impl FnMut() -> Option<NoteEvent<()>>,
+    ) {
+        let channels = outputs.len().min(2);
+        if channels == 0 {
+            while let Some(current) = event {
+                if current.timing() as usize >= frames {
+                    break;
+                }
+                self.handle_note_event(current);
+                event = next_event();
+            }
+            return;
+        }
+
+        let max_frames = self.scratch.len() / channels;
+        if max_frames == 0 {
+            for channel in outputs.iter_mut().take(channels) {
+                channel[..frames].fill(0.0);
+            }
+            return;
+        }
+
+        let mut cursor = 0;
+        while cursor < frames {
+            while event.is_some_and(|current| current.timing() as usize <= cursor) {
+                self.handle_note_event(event.take().unwrap());
+                event = next_event();
+            }
+            let event_frame = event
+                .map(|current| current.timing() as usize)
+                .unwrap_or(frames)
+                .min(frames);
+            let end = event_frame.min(cursor.saturating_add(max_frames));
+            if end > cursor {
+                self.render_range(outputs, channels, cursor, end);
+                cursor = end;
+            }
+        }
+    }
+
     fn install_fx_chain(&mut self) {
         let sr = self.sample_rate.max(1.0);
         let mut delay = Delay::new((sr * 2.0) as usize);
@@ -668,6 +787,7 @@ impl Plugin for ElixirPlugin {
     ) -> bool {
         self.sample_rate = buffer_config.sample_rate;
         self.max_block = buffer_config.max_buffer_size as usize;
+        self.scratch.resize(self.max_block.max(1) * 2, 0.0);
         self.engine
             .prepare(buffer_config.sample_rate as u32, self.max_block);
         self.install_fx_chain();
@@ -689,35 +809,11 @@ impl Plugin for ElixirPlugin {
     ) -> ProcessStatus {
         self.sync_params();
 
-        let mut next_event = context.next_event();
-        for (sample_id, mut channel_samples) in buffer.iter_samples().enumerate() {
-            while let Some(event) = next_event {
-                if event.timing() > sample_id as u32 {
-                    break;
-                }
-                match event {
-                    NoteEvent::NoteOn { note, velocity, .. } => {
-                        let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
-                        self.engine.note_on(note, velocity);
-                    }
-                    NoteEvent::NoteOff { note, .. } => {
-                        self.engine.note_off(note);
-                    }
-                    _ => {}
-                }
-                next_event = context.next_event();
-            }
-
-            let channels = channel_samples.len().min(2);
-            if channels == 0 {
-                continue;
-            }
-            let mut frame = [0.0f32; 2];
-            self.engine.process(&mut frame[..channels], channels);
-            for (sample, rendered) in channel_samples.iter_mut().zip(frame.iter()) {
-                *sample = *rendered;
-            }
-        }
+        let frames = buffer.samples();
+        let first_event = context.next_event();
+        self.process_buffer_with_events(buffer.as_slice(), frames, first_event, || {
+            context.next_event()
+        });
 
         ProcessStatus::KeepAlive
     }
@@ -740,6 +836,97 @@ impl Vst3Plugin for ElixirPlugin {
     const VST3_CLASS_ID: [u8; 16] = *b"ElixirSynth_v001";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
         &[Vst3SubCategory::Instrument, Vst3SubCategory::Synth];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn note_on(timing: u32, voice_id: i32) -> NoteEvent<()> {
+        NoteEvent::NoteOn {
+            timing,
+            voice_id: Some(voice_id),
+            channel: 0,
+            note: 69,
+            velocity: 1.0,
+        }
+    }
+
+    fn note_off(timing: u32, voice_id: i32) -> NoteEvent<()> {
+        NoteEvent::NoteOff {
+            timing,
+            voice_id: Some(voice_id),
+            channel: 0,
+            note: 69,
+            velocity: 0.0,
+        }
+    }
+
+    #[test]
+    fn segmented_blocks_match_sample_processing_at_event_boundaries() {
+        let mut block = ElixirPlugin::default();
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let mut outputs: [&mut [f32]; 2] = [&mut left, &mut right];
+        let mut events = [note_on(0, 1), note_off(64, 1)].into_iter();
+        let first = events.next();
+        block.process_buffer_with_events(&mut outputs, 128, first, || events.next());
+        assert_eq!(block.process_calls, 2);
+
+        let mut sample = ElixirPlugin::default();
+        let mut expected_left = [0.0; 128];
+        let mut expected_right = [0.0; 128];
+        for frame in 0..128 {
+            if frame == 0 {
+                sample.handle_note_event(note_on(0, 1));
+            } else if frame == 64 {
+                sample.handle_note_event(note_off(64, 1));
+            }
+            let mut rendered = [0.0; 2];
+            sample.engine.process(&mut rendered, 2);
+            expected_left[frame] = rendered[0];
+            expected_right[frame] = rendered[1];
+        }
+
+        for (actual, expected) in left.iter().zip(expected_left) {
+            assert!((actual - expected).abs() < 1.0e-6);
+        }
+        for (actual, expected) in right.iter().zip(expected_right) {
+            assert!((actual - expected).abs() < 1.0e-6);
+        }
+    }
+
+    #[test]
+    fn oversized_host_block_is_processed_in_preallocated_chunks() {
+        let mut plugin = ElixirPlugin::default();
+        plugin.scratch = vec![0.0; 16];
+        plugin.process_calls = 0;
+        let scratch_capacity = plugin.scratch.capacity();
+        let mut left = [0.0; 100];
+        let mut right = [0.0; 100];
+        let mut outputs: [&mut [f32]; 2] = [&mut left, &mut right];
+        plugin.process_buffer_with_events(&mut outputs, 100, Some(note_on(0, 1)), || None);
+
+        assert_eq!(plugin.process_calls, 13);
+        assert_eq!(plugin.scratch.capacity(), scratch_capacity);
+        assert!(left.iter().all(|sample| sample.is_finite()));
+        assert!(left.iter().any(|sample| sample.abs() > 1.0e-6));
+    }
+
+    #[test]
+    fn host_voice_ids_release_overlapping_same_note_independently() {
+        let mut plugin = ElixirPlugin::default();
+        plugin.handle_note_event(note_on(0, 10));
+        plugin.handle_note_event(note_on(0, 11));
+        assert_eq!(plugin.engine.live_voice_count(), 2);
+
+        plugin.handle_note_event(note_off(0, 10));
+        let mut left = [0.0; 64];
+        let mut right = [0.0; 64];
+        let mut outputs: [&mut [f32]; 2] = [&mut left, &mut right];
+        plugin.process_buffer_with_events(&mut outputs, 64, None, || None);
+        assert_eq!(plugin.engine.active_voice_count(), 1);
+    }
 }
 
 nih_export_clap!(ElixirPlugin);
