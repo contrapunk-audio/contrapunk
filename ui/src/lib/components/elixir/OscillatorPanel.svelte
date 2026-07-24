@@ -1,51 +1,24 @@
-<script lang="ts">
-	let { roleAware = true } = $props<{ roleAware?: boolean }>();
-</script>
-
 <section class="oscillator" aria-labelledby="oscillator-heading">
 	<header>
-		<div>
-			<p class="eyebrow font-code">VOICE SOURCE 01</p>
-			<h2 id="oscillator-heading">Sine</h2>
-		</div>
-		<span class="fixed font-code">FIXED</span>
+		<h2 id="oscillator-heading">Oscillator</h2>
+		<span class="number font-code">1</span>
 	</header>
 
-	<div class="scope" aria-label="Fixed sine oscillator preview">
-		<svg viewBox="0 0 720 184" role="img">
-			<title>Two cycles of the fixed sine oscillator</title>
-			<defs>
-				<linearGradient id="elixir-wave" x1="0" x2="1">
-					<stop offset="0" stop-color="var(--color-accent-cyan)" />
-					<stop offset="0.55" stop-color="var(--color-accent-teal)" />
-					<stop offset="1" stop-color="var(--color-accent-magenta)" />
-				</linearGradient>
-			</defs>
-			<path class="axis" d="M0 92 H720" />
-			<path
-				class="wave"
-				d="M0 92 C45 14 135 14 180 92 S315 170 360 92 S495 14 540 92 S675 170 720 92"
-			/>
-		</svg>
-		<div class="scope-readout font-code">
-			<span>SINE</span>
-			<span>16 VOICES</span>
-			<span>5 MS DE-CLICK</span>
+	<div class="oscillator-body">
+		<div class="scope" aria-label="Sine oscillator preview">
+			<svg viewBox="0 0 720 220" role="img">
+				<title>Sine waveform</title>
+				<path class="grid" d="M0 55 H720 M0 110 H720 M0 165 H720 M90 0 V220 M180 0 V220 M270 0 V220 M360 0 V220 M450 0 V220 M540 0 V220 M630 0 V220" />
+				<path class="axis" d="M0 110 H720" />
+				<path class="wave" d="M0 110 C45 24 135 24 180 110 S315 196 360 110 S495 24 540 110 S675 196 720 110" />
+			</svg>
 		</div>
-	</div>
 
-	<div class="contract">
-		<div>
-			<span class="font-code">PITCH</span>
-			<strong>Exact host frequency</strong>
-		</div>
-		<div>
-			<span class="font-code">DYNAMICS</span>
-			<strong>MIDI velocity</strong>
-		</div>
-		<div>
-			<span class="font-code">LEVEL</span>
-			<strong>{roleAware ? 'Role-aware gain' : 'Master gain'}</strong>
+		<div class="parameter-list">
+			<div><span>Waveform</span><strong>Sine</strong></div>
+			<div><span>Voices</span><strong>16</strong></div>
+			<div><span>Pitch</span><strong>Exact Hz</strong></div>
+			<div><span>Ramp</span><strong>5 ms</strong></div>
 		</div>
 	</div>
 </section>
@@ -53,40 +26,39 @@
 <style>
 	.oscillator {
 		min-width: 0;
-		border: 1px solid var(--color-border);
-		background: linear-gradient(155deg, rgba(26, 24, 51, 0.96), rgba(15, 14, 26, 0.98));
-		box-shadow: 0 20px 80px rgba(0, 0, 0, 0.34), inset 0 1px rgba(255, 255, 255, 0.025);
+		border: 1px solid #3b3b3b;
+		background: #242424;
 	}
 	header {
+		height: 38px;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 24px;
-		padding: 18px 20px 14px;
-		border-bottom: 1px solid var(--color-border);
+		padding: 0 12px;
+		border-bottom: 1px solid #3b3b3b;
+		background: #292929;
 	}
-	h2 { margin: 2px 0 0; font-size: var(--font-size-lg); font-weight: 600; letter-spacing: -0.03em; }
-	.eyebrow { margin: 0; color: var(--color-accent-cyan); font-size: var(--font-size-xs); letter-spacing: 0.18em; }
-	.fixed { border: 1px solid rgba(51, 221, 255, 0.45); padding: 6px 9px; color: var(--color-accent-cyan); font-size: var(--font-size-xs); letter-spacing: 0.16em; }
-	.scope { position: relative; margin: 18px 20px 0; border: 1px solid #242240; background: #090916; overflow: hidden; }
-	.scope::before {
-		content: '';
-		position: absolute;
-		inset: 0;
-		background-image: linear-gradient(rgba(51, 221, 255, 0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(51, 221, 255, 0.055) 1px, transparent 1px);
-		background-size: 36px 23px;
-		pointer-events: none;
+	h2 { margin: 0; font: 600 12px var(--font-ui); text-transform: uppercase; letter-spacing: .06em; color: #d0d0d0; }
+	.number { color: #888; font-size: 10px; }
+	.oscillator-body { padding: 12px; }
+	.scope { border: 1px solid #404040; background: #171717; }
+	svg { display: block; width: 100%; min-height: 220px; }
+	.grid { fill: none; stroke: #242424; stroke-width: 1; }
+	.axis { fill: none; stroke: #383838; stroke-width: 1; }
+	.wave { fill: none; stroke: #8aaac0; stroke-width: 2; vector-effect: non-scaling-stroke; }
+	.parameter-list {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		border: 1px solid #3b3b3b;
+		border-top: 0;
 	}
-	svg { display: block; width: 100%; height: 184px; }
-	.axis { fill: none; stroke: var(--color-border); stroke-width: 1; stroke-dasharray: 4 8; }
-	.wave { fill: none; stroke: url(#elixir-wave); stroke-width: 2.5; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 7px rgba(51, 221, 255, 0.5)); }
-	.scope-readout { display: flex; justify-content: space-between; gap: 12px; padding: 7px 10px; border-top: 1px solid #242240; color: var(--color-text-dim); font-size: var(--font-size-xs); }
-	.contract { display: grid; grid-template-columns: repeat(3, 1fr); padding: 20px; gap: 1px; }
-	.contract div { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--color-border); background: rgba(9, 9, 22, 0.55); }
-	.contract span { color: var(--color-accent-magenta); font-size: var(--font-size-xs); letter-spacing: 0.12em; }
-	.contract strong { color: var(--color-text-secondary); font: 500 var(--font-size-sm) var(--font-ui); }
-	@media (max-width: 760px) {
-		.contract { grid-template-columns: 1fr; }
-		.scope-readout span:last-child { display: none; }
+	.parameter-list div { min-width: 0; padding: 10px; border-right: 1px solid #3b3b3b; display: grid; gap: 3px; }
+	.parameter-list div:last-child { border-right: 0; }
+	.parameter-list span { color: #777; font: 10px var(--font-ui); }
+	.parameter-list strong { color: #c8c8c8; font: 500 12px var(--font-ui); }
+	@media (max-width: 600px) {
+		.parameter-list { grid-template-columns: repeat(2, 1fr); }
+		.parameter-list div:nth-child(2) { border-right: 0; }
+		.parameter-list div:nth-child(-n + 2) { border-bottom: 1px solid #3b3b3b; }
 	}
 </style>
