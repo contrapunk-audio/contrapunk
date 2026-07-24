@@ -125,8 +125,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// Web MIDI device pickers work in browsers that support the
 		// Web MIDI API; the UI gracefully degrades when not granted.
 		midiDevicePicker: true,
-		// WASM has its own Web Audio synth + FX path (embedAudio).
+		// WASM has its own Elixir AudioWorklet synth, without legacy FX.
 		audioFx: true,
+		builtInFx: false,
 		// WASM has Companion lanes via the WasmCompanion bridge.
 		companionLanes: true,
 		intervalMaps: true,
@@ -143,8 +144,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		perVoicePortRouting: false,
 		// Plugin-only host MIDI mode selector.
 		pluginMidiOutputMode: false,
-		// Browser synth does not yet expose per-role gain buses.
-		roleMix: false,
+		// Elixir AudioWorklet exposes the same four role buses as native.
+		roleMix: true,
 		// No persistence layer for the calibration profile on web yet
 		// — hide the Calibrate button + status badge.
 		calibrationFlow: false
@@ -159,6 +160,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private activeInput: MIDIInput | null = null;
 	private activeOutputs: MIDIOutput[] = [];
 	private _detuneCents = 0;
+	private _synthEnabled = true;
+	private _synthMasterGain = 0.25;
+	private _synthMixGains = [1, 1, 1, 1];
 	/** Pitch bend range in semitones (standard MIDI default). */
 	private pitchBendRangeSemitones = 2;
 	/** Guitar audio capture instance for browser-based pitch detection. */
@@ -294,8 +298,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 				const velocity = op.velocity ?? 100;
 				const firstOwner = countNoteOn(activeCompanionNotes, op.note);
 				if (laneNotes) countNoteOn(laneNotes, op.note);
+				const role =
+					op.lane === 'canon' || op.lane === 'pattern_low'
+						? 2
+						: op.lane === 'counterpoint' || op.lane === 'pattern_counter'
+							? 3
+							: 1;
+				embedAudio.noteOn(op.note, velocity, undefined, role);
 				if (firstOwner) {
-					embedAudio.noteOn(op.note, velocity);
 					if (this.activeOutputs.length > 0) {
 						this.activeOutputs[0].send([0x90, op.note, velocity]);
 					}
@@ -303,8 +313,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 			} else if (op.kind === 'note_off' && typeof op.note === 'number') {
 				const lastOwner = countNoteOff(activeCompanionNotes, op.note);
 				if (laneNotes) countNoteOff(laneNotes, op.note);
+				const role =
+					op.lane === 'canon' || op.lane === 'pattern_low'
+						? 2
+						: op.lane === 'counterpoint' || op.lane === 'pattern_counter'
+							? 3
+							: 1;
+				embedAudio.noteOff(op.note, undefined, role);
 				if (lastOwner) {
-					embedAudio.noteOff(op.note);
 					if (this.activeOutputs.length > 0) {
 						this.activeOutputs[0].send([0x80, op.note, 0]);
 					}
@@ -334,16 +350,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 		this.stopNotePolling();
 		this.stopClock();
-		embedAudio.allNotesOff();
+		embedAudio.destroy();
 		clearCompanionNotes();
-		if (this._audioCtx) {
-			try {
-				void this._audioCtx.close();
-			} catch {
-				// best-effort — context may already be closed
-			}
-			this._audioCtx = null;
-		}
 	}
 
 	private ensureInit(): void {
@@ -824,7 +832,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 							}
 							// WebAudio synth so the engine harmonies are
 							// audible even without an external MIDI out.
-							embedAudio.noteOn(sorted[i], velocity);
+							embedAudio.noteOn(sorted[i], velocity, undefined, sorted[i] === note ? 0 : 1);
 						}
 						// Feed the player input to the Companion so canon +
 						// counterpoint lanes fire delayed / subdivided
@@ -856,7 +864,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 							if (outs.length > 0) {
 								outs[i % outs.length].send([0x80, sorted[i], 0]);
 							}
-							embedAudio.noteOff(sorted[i]);
+							embedAudio.noteOff(sorted[i], undefined, sorted[i] === note ? 0 : 1);
 						}
 						if (companion) {
 							try {
@@ -874,6 +882,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 						/* give up */
 					}
 				} else {
+					if (status === 0xb0 && note === 64) embedAudio.setSustainPedal(velocity >= 64);
+					if (status === 0xb0 && note === 123) embedAudio.allNotesOff();
 					// Pass through other MIDI messages (CC, pitch bend, etc.)
 					for (const output of outs) {
 						output.send(Array.from(event.data));
@@ -1105,7 +1115,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 				// Web Audio synth — gives the browser path audible
 				// playback even without a connected MIDI output device
 				// (the desktop Tauri side has its own Rust synth).
-				embedAudio.noteOn(sorted[i], vel);
+				embedAudio.noteOn(sorted[i], vel, undefined, sorted[i] === note ? 0 : 1);
 			}
 			// Feed the player input to the Companion so the Canon and
 			// Counterpoint lanes can fire delayed / subdivided
@@ -1147,7 +1157,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 				if (this.activeOutputs.length > 0) {
 					this.activeOutputs[i % this.activeOutputs.length].send([0x80, sorted[i], 0]);
 				}
-				embedAudio.noteOff(sorted[i]);
+				embedAudio.noteOff(sorted[i], undefined, sorted[i] === note ? 0 : 1);
 			}
 			if (companion) {
 				try {
@@ -1371,43 +1381,18 @@ export class WasmAdapter implements ContrapunkAdapter {
 		bar: 0,
 		metronomeEnabled: false
 	};
-	private _audioCtx: AudioContext | null = null;
 	private _clockTimer: ReturnType<typeof setInterval> | null = null;
 
 	private ensureAudioContext(): AudioContext | null {
-		if (this._audioCtx) return this._audioCtx;
-		try {
-			const Ctor =
-				window.AudioContext ??
-				(window as unknown as { webkitAudioContext?: typeof AudioContext })
-					.webkitAudioContext;
-			if (!Ctor) return null;
-			this._audioCtx = new Ctor();
-			return this._audioCtx;
-		} catch {
-			return null;
-		}
+		return embedAudio.getAudioContext();
 	}
 
 	private playClick(downbeat: boolean) {
 		const ctx = this.ensureAudioContext();
 		if (!ctx) return;
-		// Match Rust constants: CLICK_FREQ_DOWNBEAT=900, CLICK_FREQ_OFFBEAT=600,
-		// CLICK_SECS=0.015, CLICK_GAIN=0.30 (audio_clock.rs).
-		const freq = downbeat ? 900 : 600;
-		const dur = 0.015;
-		const now = ctx.currentTime;
-		const osc = ctx.createOscillator();
-		const gain = ctx.createGain();
-		osc.type = 'sine';
-		osc.frequency.value = freq;
-		// Fast attack + exponential decay over CLICK_SECS.
-		gain.gain.setValueAtTime(0, now);
-		gain.gain.linearRampToValueAtTime(0.3, now + 0.001);
-		gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-		osc.connect(gain).connect(ctx.destination);
-		osc.start(now);
-		osc.stop(now + dur + 0.005);
+		const key = downbeat ? 255 : 254;
+		embedAudio.noteOn(key, 38, ctx.currentTime, 0, downbeat ? 900 : 600);
+		embedAudio.noteOff(key, ctx.currentTime + 0.015, 0);
 	}
 
 	private tick() {
@@ -1470,8 +1455,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		if (this._transport.running) return;
 		// User gesture is implicit — play() is called from a button click,
 		// which satisfies the browser autoplay policy.
-		this.ensureAudioContext();
-		const ctx = this._audioCtx;
+		const ctx = this.ensureAudioContext();
 		if (ctx && ctx.state === 'suspended') {
 			try {
 				await ctx.resume();
@@ -1540,169 +1524,51 @@ export class WasmAdapter implements ContrapunkAdapter {
 		if (enabled) this.ensureAudioContext();
 	}
 
-	// -- Synth (no built-in synth in browser; stubs) --
+	// -- Fixed Elixir sine synth --
 
 	async getSynthState() {
 		return {
-			enabled: false,
-			waveform: 0,
-			attackMs: 5,
-			decayMs: 120,
-			sustain: 0.7,
-			releaseMs: 250,
-			cutoffHz: 6000,
-			resonance: 0.2,
-			masterGain: 0.25
+			enabled: this._synthEnabled,
+			masterGain: this._synthMasterGain,
+			mixGains: [...this._synthMixGains]
 		};
 	}
-	async setSynthEnabled(_enabled: boolean): Promise<void> {
-		// embedAudio is permanently enabled in the browser; toggling it
-		// off would silence the user's own notes too. Tauri toggles a
-		// dedicated Rust synth that runs alongside MIDI-out routing.
-		// No-op until embedAudio grows a mute toggle.
-	}
-	async setSynthWaveform(value: number): Promise<void> {
-		// EngineState.waveform: 0 = sine, 1 = triangle, 2 = sawtooth,
-		// 3 = square — matches contrapunk-audio's Waveform enum.
-		const map = ['sine', 'triangle', 'sawtooth', 'square'] as const;
-		const w = map[Math.max(0, Math.min(3, Math.round(value)))];
-		try {
-			embedAudio.setWaveform(w);
-		} catch {
-			/* embedAudio may not be ready before init */
-		}
-	}
-	async setSynthAttackMs(ms: number): Promise<void> {
-		try {
-			embedAudio.setAttackMs(ms);
-		} catch {
-			/* */
-		}
-	}
-	async setSynthDecayMs(ms: number): Promise<void> {
-		try {
-			embedAudio.setDecayMs(ms);
-		} catch {
-			/* */
-		}
-	}
-	async setSynthSustain(level: number): Promise<void> {
-		try {
-			embedAudio.setSustain(level);
-		} catch {
-			/* */
-		}
-	}
-	async setSynthReleaseMs(ms: number): Promise<void> {
-		try {
-			embedAudio.setReleaseMs(ms);
-		} catch {
-			/* */
-		}
-	}
-	async setSynthCutoffHz(hz: number): Promise<void> {
-		try {
-			embedAudio.setCutoffHz(hz);
-		} catch {
-			/* */
-		}
-	}
-	async setSynthResonance(value: number): Promise<void> {
-		try {
-			embedAudio.setResonance(value);
-		} catch {
-			/* */
-		}
+	async setSynthEnabled(enabled: boolean): Promise<void> {
+		this._synthEnabled = enabled;
+		embedAudio.setEnabled(enabled);
 	}
 	async setSynthMasterGain(value: number): Promise<void> {
-		try {
-			embedAudio.setMasterGain(Math.max(0, Math.min(1, value)));
-		} catch {
-			/* embedAudio may not be ready before init */
-		}
+		this._synthMasterGain = Math.max(0, Math.min(1, value));
+		embedAudio.setMasterGain(this._synthMasterGain);
 	}
-	async setSynthMixGain(_group: number, _value: number): Promise<void> {}
+	async setSynthMixGain(group: number, value: number): Promise<void> {
+		if (group < 0 || group >= this._synthMixGains.length) return;
+		this._synthMixGains[group] = Math.max(0, Math.min(1, value));
+		embedAudio.setRoleGain(group, this._synthMixGains[group]);
+	}
 
-	// -- FX (browser uses WebAudio chain in embedAudio) --
-
+	// Native-only FX remain in the shared adapter contract.
 	async getReverbState() {
-		return { enabled: false, mix: 0.3, roomSize: 0.7, damping: 0.5 };
+		return { enabled: false, mix: 0, roomSize: 0, damping: 0 };
 	}
-	async setReverbEnabled(enabled: boolean): Promise<void> {
-		// embedAudio has no explicit enable; routing mix to 0 silences
-		// the reverb send. Tauri's Rust reverb has a real bypass.
-		if (!enabled) {
-			try {
-				embedAudio.setReverbMix(0);
-			} catch {
-				/* */
-			}
-		}
-	}
-	async setReverbMix(value: number): Promise<void> {
-		try {
-			embedAudio.setReverbMix(Math.max(0, Math.min(1, value)));
-		} catch {
-			/* */
-		}
-	}
-	async setReverbRoomSize(value: number): Promise<void> {
-		try {
-			embedAudio.setReverbRoomSize(value);
-		} catch {
-			/* */
-		}
-	}
-	async setReverbDamping(value: number): Promise<void> {
-		try {
-			embedAudio.setReverbDamping(value);
-		} catch {
-			/* */
-		}
-	}
-
+	async setReverbEnabled(_enabled: boolean): Promise<void> {}
+	async setReverbMix(_value: number): Promise<void> {}
+	async setReverbRoomSize(_value: number): Promise<void> {}
+	async setReverbDamping(_value: number): Promise<void> {}
 	async getDelayState() {
 		return {
 			enabled: false,
-			mix: 0.3,
-			timeMs: 375,
-			feedback: 0.35,
+			mix: 0,
+			timeMs: 0,
+			feedback: 0,
 			syncEnabled: false,
-			subdivision: '1/8d' as const
+			subdivision: '1/8' as const
 		};
 	}
-	async setDelayEnabled(enabled: boolean): Promise<void> {
-		if (!enabled) {
-			try {
-				embedAudio.setDelayMix(0);
-			} catch {
-				/* */
-			}
-		}
-	}
-	async setDelayMix(value: number): Promise<void> {
-		try {
-			embedAudio.setDelayMix(Math.max(0, Math.min(1, value)));
-		} catch {
-			/* */
-		}
-	}
-	async setDelayTimeMs(ms: number): Promise<void> {
-		try {
-			embedAudio.setDelayTime(Math.max(0, ms) / 1000);
-		} catch {
-			/* */
-		}
-	}
-	async setDelayFeedback(value: number): Promise<void> {
-		try {
-			embedAudio.setDelayFeedback(Math.max(0, Math.min(0.99, value)));
-		} catch {
-			/* */
-		}
-	}
-	// WASM embedAudio has no tempo-sync support yet — accept the calls
-	// so the UI works without errors, but they're no-ops on this surface.
+	async setDelayEnabled(_enabled: boolean): Promise<void> {}
+	async setDelayMix(_value: number): Promise<void> {}
+	async setDelayTimeMs(_ms: number): Promise<void> {}
+	async setDelayFeedback(_value: number): Promise<void> {}
 	async setDelaySyncEnabled(_enabled: boolean): Promise<void> {}
 	async setDelaySubdivision(_subdivision: string): Promise<void> {}
 

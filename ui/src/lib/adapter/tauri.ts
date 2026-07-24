@@ -117,6 +117,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		transportControl: true,
 		midiDevicePicker: true,
 		audioFx: true,
+		builtInFx: true,
 		companionLanes: true,
 		intervalMaps: true,
 		patternLanes: true,

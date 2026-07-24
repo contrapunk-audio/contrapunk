@@ -67,6 +67,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// fire send() into the void because plugin/src/lib.rs has no
 		// audio FX params today. Hide until those land.
 		audioFx: false,
+		builtInFx: false,
 		// Companion lanes (canon + counterpoint) are wired in the
 		// plugin's process() via Companion::tick_tagged. CompanionPanel
 		// IPC handlers in editor.rs route HoldMode / canon_configure /

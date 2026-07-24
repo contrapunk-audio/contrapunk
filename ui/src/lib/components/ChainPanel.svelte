@@ -106,7 +106,9 @@
 	</div>
 
 	<ClapPluginPicker bind:open={pickerOpen} />
+	{/if}
 
+	{#if adapter.capabilities.builtInFx}
 	<!-- Delay rack -->
 	<div class="rack delay-rack">
 		<div class="rack-header">
