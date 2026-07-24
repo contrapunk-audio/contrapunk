@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>Contrapunk Audio Plug-ins</title>
+  <options customize="always" require-scripts="false" hostArchitectures="x86_64,arm64"/>
+  <choices-outline>
+    <line choice="contrapunk"/>
+    <line choice="elixir"/>
+  </choices-outline>
+  <choice id="contrapunk" title="Contrapunk" description="Required harmony plug-ins (VST3, CLAP, and Audio Units)." enabled="false" selected="true">
+    <pkg-ref id="com.contrapunk.plugins.core"/>
+  </choice>
+  <choice id="elixir" title="Elixir" description="Optional fixed-Sine instrument (VST3 and CLAP)." selected="true">
+    <pkg-ref id="com.contrapunk.plugins.elixir"/>
+  </choice>
+  <pkg-ref id="com.contrapunk.plugins.core" version="@VERSION@" onConclusion="none">Contrapunk.pkg</pkg-ref>
+  <pkg-ref id="com.contrapunk.plugins.elixir" version="@VERSION@" onConclusion="none">Elixir.pkg</pkg-ref>
+</installer-gui-script>

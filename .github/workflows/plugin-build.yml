@@ -9,6 +9,9 @@ on:
     paths:
       - 'au-wrapper/**'
       - 'plugin/**'
+      - 'crates/elixir-core/**'
+      - 'crates/elixir-plugin/**'
+      - 'packaging/**'
       - 'ui/**'
       - 'wasm/**'
       - 'bundler.toml'
@@ -106,6 +109,8 @@ jobs:
           for name in \
             APPLE_CERTIFICATE_BASE64 \
             APPLE_SIGNING_IDENTITY \
+            APPLE_INSTALLER_CERTIFICATE_BASE64 \
+            APPLE_INSTALLER_CERTIFICATE_PASSWORD \
             APPLE_INSTALLER_SIGNING_IDENTITY \
             APPLE_API_KEY \
             APPLE_API_ISSUER \
@@ -118,54 +123,80 @@ jobs:
             exit 1
           fi
 
-      - name: Build universal VST3 + CLAP
+      - name: Build universal Contrapunk + Elixir VST3/CLAP
         env:
           CONTRAPUNK_PLUGIN_UI_DIR: ${{ github.workspace }}/ui/build
-        run: cargo xtask bundle-universal contrapunk_plugin --release --features embed-ui
+        run: |
+          cargo xtask bundle-universal contrapunk_plugin --release --features embed-ui
+          cargo xtask bundle-universal elixir-plugin --release --features embed-ui
 
-      - name: Sign VST3 + CLAP bundles
+      - name: Sign and verify VST3 + CLAP bundles
         if: env.APPLE_SIGNING_IDENTITY != ''
         run: |
-          codesign --force --deep --options runtime -s "$APPLE_SIGNING_IDENTITY" \
+          for bundle in \
             target/bundled/Contrapunk.vst3 \
-            target/bundled/Contrapunk.clap
-          codesign --verify --deep --strict target/bundled/Contrapunk.vst3
-          codesign --verify --deep --strict target/bundled/Contrapunk.clap
+            target/bundled/Contrapunk.clap \
+            target/bundled/elixir-plugin.vst3 \
+            target/bundled/elixir-plugin.clap
+          do
+            codesign --force --deep --options runtime -s "$APPLE_SIGNING_IDENTITY" "$bundle"
+            codesign --verify --deep --strict "$bundle"
+          done
+
+      - name: Verify macOS plugin bundle integrity
+        run: |
+          for bundle in \
+            target/bundled/Contrapunk.vst3 \
+            target/bundled/Contrapunk.clap \
+            target/bundled/elixir-plugin.vst3 \
+            target/bundled/elixir-plugin.clap
+          do
+            codesign --verify --deep --strict "$bundle"
+          done
 
       - name: Build AU wrapper
         env:
           CONTRAPUNK_PLUGIN_UI_DIR: ${{ github.workspace }}/ui/build
         run: CODESIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:--}" ./au-wrapper/build.sh
 
-      - name: Build macOS plugin installer pkg
+      - name: Build selectable macOS plugin installer
         run: |
           set -euo pipefail
+          python3 packaging/test_installers.py
           VERSION=$(python3 - <<'PY'
           import tomllib
           print(tomllib.load(open('plugin/Cargo.toml', 'rb'))['package']['version'])
           PY
           )
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then VERSION="${GITHUB_REF_NAME#v}"; fi
 
-          PKGROOT="dist/macos-plugin-pkgroot"
+          CORE_ROOT="dist/pkgroot-contrapunk"
+          ELIXIR_ROOT="dist/pkgroot-elixir"
+          COMPONENTS="dist/component-packages"
           SCRIPTS="dist/macos-plugin-scripts"
-          PKG="dist/Contrapunk-Plugins-macOS-universal.pkg"
-          ZIP="dist/Contrapunk-Plugins-macOS-universal-bundles.zip"
+          RAW="dist/macos-plugin-bundles"
+          DIST="dist/Distribution.xml"
+          PKG="dist/Contrapunk-Elixir-Plugins-macOS-universal.pkg"
+          ZIP="dist/Contrapunk-Elixir-Plugins-macOS-universal-bundles.zip"
 
           rm -rf dist
           mkdir -p \
-            "$PKGROOT/Library/Audio/Plug-Ins/VST3" \
-            "$PKGROOT/Library/Audio/Plug-Ins/CLAP" \
-            "$PKGROOT/Library/Audio/Plug-Ins/Components" \
-            "$SCRIPTS"
+            "$CORE_ROOT/Library/Audio/Plug-Ins/VST3" \
+            "$CORE_ROOT/Library/Audio/Plug-Ins/CLAP" \
+            "$CORE_ROOT/Library/Audio/Plug-Ins/Components" \
+            "$ELIXIR_ROOT/Library/Audio/Plug-Ins/VST3" \
+            "$ELIXIR_ROOT/Library/Audio/Plug-Ins/CLAP" \
+            "$COMPONENTS" "$SCRIPTS" \
+            "$RAW/Contrapunk/VST3" "$RAW/Contrapunk/CLAP" "$RAW/Contrapunk/Audio Units" \
+            "$RAW/Elixir/VST3" "$RAW/Elixir/CLAP"
 
-          ditto target/bundled/Contrapunk.vst3 "$PKGROOT/Library/Audio/Plug-Ins/VST3/Contrapunk.vst3"
-          ditto target/bundled/Contrapunk.clap "$PKGROOT/Library/Audio/Plug-Ins/CLAP/Contrapunk.clap"
-          ditto au-wrapper/build/Contrapunk.component "$PKGROOT/Library/Audio/Plug-Ins/Components/Contrapunk.component"
-          ditto "au-wrapper/build/Contrapunk Guitar.component" "$PKGROOT/Library/Audio/Plug-Ins/Components/Contrapunk Guitar.component"
-          chmod -R a+rX "$PKGROOT"
+          ditto target/bundled/Contrapunk.vst3 "$CORE_ROOT/Library/Audio/Plug-Ins/VST3/Contrapunk.vst3"
+          ditto target/bundled/Contrapunk.clap "$CORE_ROOT/Library/Audio/Plug-Ins/CLAP/Contrapunk.clap"
+          ditto au-wrapper/build/Contrapunk.component "$CORE_ROOT/Library/Audio/Plug-Ins/Components/Contrapunk.component"
+          ditto "au-wrapper/build/Contrapunk Guitar.component" "$CORE_ROOT/Library/Audio/Plug-Ins/Components/Contrapunk Guitar.component"
+          ditto target/bundled/elixir-plugin.vst3 "$ELIXIR_ROOT/Library/Audio/Plug-Ins/VST3/Elixir.vst3"
+          ditto target/bundled/elixir-plugin.clap "$ELIXIR_ROOT/Library/Audio/Plug-Ins/CLAP/Elixir.clap"
+          chmod -R a+rX "$CORE_ROOT" "$ELIXIR_ROOT"
 
           cat > "$SCRIPTS/postinstall" <<'SH'
           #!/bin/sh
@@ -174,36 +205,36 @@ jobs:
           SH
           chmod +x "$SCRIPTS/postinstall"
 
+          core_args=(--root "$CORE_ROOT" --scripts "$SCRIPTS" --identifier com.contrapunk.plugins.core --version "$VERSION" --install-location /)
+          elixir_args=(--root "$ELIXIR_ROOT" --identifier com.contrapunk.plugins.elixir --version "$VERSION" --install-location /)
           if [[ -n "${APPLE_INSTALLER_SIGNING_IDENTITY:-}" ]]; then
-            pkgbuild \
-              --root "$PKGROOT" \
-              --scripts "$SCRIPTS" \
-              --identifier com.contrapunk.plugins \
-              --version "$VERSION" \
-              --install-location / \
-              --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" \
-              "$PKG"
-          else
-            pkgbuild \
-              --root "$PKGROOT" \
-              --scripts "$SCRIPTS" \
-              --identifier com.contrapunk.plugins \
-              --version "$VERSION" \
-              --install-location / \
-              "$PKG"
+            core_args+=(--sign "$APPLE_INSTALLER_SIGNING_IDENTITY")
+            elixir_args+=(--sign "$APPLE_INSTALLER_SIGNING_IDENTITY")
           fi
+          pkgbuild "${core_args[@]}" "$COMPONENTS/Contrapunk.pkg"
+          pkgbuild "${elixir_args[@]}" "$COMPONENTS/Elixir.pkg"
 
-          mkdir -p dist/macos-plugin-bundles
-          ditto target/bundled/Contrapunk.vst3 dist/macos-plugin-bundles/Contrapunk.vst3
-          ditto target/bundled/Contrapunk.clap dist/macos-plugin-bundles/Contrapunk.clap
-          ditto au-wrapper/build/Contrapunk.component dist/macos-plugin-bundles/Contrapunk.component
-          ditto "au-wrapper/build/Contrapunk Guitar.component" "dist/macos-plugin-bundles/Contrapunk Guitar.component"
-          (cd dist/macos-plugin-bundles && zip -qry "../$(basename "$ZIP")" .)
+          sed "s/@VERSION@/$VERSION/g" packaging/macos/Distribution.xml.in > "$DIST"
+          xmllint --noout "$DIST"
+          product_args=(--distribution "$DIST" --package-path "$COMPONENTS")
+          if [[ -n "${APPLE_INSTALLER_SIGNING_IDENTITY:-}" ]]; then
+            product_args+=(--sign "$APPLE_INSTALLER_SIGNING_IDENTITY")
+          fi
+          productbuild "${product_args[@]}" "$PKG"
+
+          ditto target/bundled/Contrapunk.vst3 "$RAW/Contrapunk/VST3/Contrapunk.vst3"
+          ditto target/bundled/Contrapunk.clap "$RAW/Contrapunk/CLAP/Contrapunk.clap"
+          ditto au-wrapper/build/Contrapunk.component "$RAW/Contrapunk/Audio Units/Contrapunk.component"
+          ditto "au-wrapper/build/Contrapunk Guitar.component" "$RAW/Contrapunk/Audio Units/Contrapunk Guitar.component"
+          ditto target/bundled/elixir-plugin.vst3 "$RAW/Elixir/VST3/Elixir.vst3"
+          ditto target/bundled/elixir-plugin.clap "$RAW/Elixir/CLAP/Elixir.clap"
+          cp packaging/macos/uninstall.sh "$RAW/uninstall.sh"
+          (cd "$RAW" && zip -qry "../$(basename "$ZIP")" .)
 
       - name: Notarize + staple macOS plugin installer
         if: env.APPLE_API_KEY_BASE64 != '' && env.APPLE_INSTALLER_SIGNING_IDENTITY != ''
         run: |
-          PKG="dist/Contrapunk-Plugins-macOS-universal.pkg"
+          PKG="dist/Contrapunk-Elixir-Plugins-macOS-universal.pkg"
           xcrun notarytool submit "$PKG" \
             --key "$APPLE_API_KEY_PATH" \
             --key-id "$APPLE_API_KEY" \
@@ -212,27 +243,33 @@ jobs:
           xcrun stapler staple "$PKG"
           xcrun stapler validate "$PKG"
 
-      - name: Verify macOS plugin installer
+      - name: Verify macOS component and product packages
         run: |
-          PKG="dist/Contrapunk-Plugins-macOS-universal.pkg"
-          pkgutil --check-signature "$PKG" || {
-            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then exit 1; fi
-            echo "Unsigned pkg allowed for non-tag build"
-          }
+          set -euo pipefail
+          for pkg in \
+            dist/component-packages/Contrapunk.pkg \
+            dist/component-packages/Elixir.pkg \
+            dist/Contrapunk-Elixir-Plugins-macOS-universal.pkg
+          do
+            pkgutil --check-signature "$pkg" || {
+              if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then exit 1; fi
+              echo "Unsigned pkg allowed for non-tag build: $pkg"
+            }
+          done
 
       - name: Upload macOS plugin installer
         uses: actions/upload-artifact@v7
         with:
-          name: contrapunk-plugins-macos-universal-pkg
-          path: dist/Contrapunk-Plugins-macOS-universal.pkg
+          name: contrapunk-elixir-plugins-macos-universal-pkg
+          path: dist/Contrapunk-Elixir-Plugins-macOS-universal.pkg
           if-no-files-found: error
           retention-days: 14
 
       - name: Upload macOS raw plugin bundles
         uses: actions/upload-artifact@v7
         with:
-          name: contrapunk-plugins-macos-universal-bundles
-          path: dist/Contrapunk-Plugins-macOS-universal-bundles.zip
+          name: contrapunk-elixir-plugins-macos-universal-bundles
+          path: dist/Contrapunk-Elixir-Plugins-macOS-universal-bundles.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -241,8 +278,8 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            dist/Contrapunk-Plugins-macOS-universal.pkg
-            dist/Contrapunk-Plugins-macOS-universal-bundles.zip
+            dist/Contrapunk-Elixir-Plugins-macOS-universal.pkg
+            dist/Contrapunk-Elixir-Plugins-macOS-universal-bundles.zip
           fail_on_unmatched_files: true
 
   windows-plugins:
@@ -296,65 +333,22 @@ jobs:
         working-directory: ui
         run: npm run build
 
-      - name: Build VST3 + CLAP
+      - name: Build Contrapunk + Elixir VST3/CLAP
         env:
           CONTRAPUNK_PLUGIN_UI_DIR: ${{ github.workspace }}\ui\build
-        run: cargo xtask bundle contrapunk_plugin --release --features embed-ui
+        run: |
+          cargo xtask bundle contrapunk_plugin --release --features embed-ui
+          cargo xtask bundle elixir-plugin --release --features embed-ui
 
-      - name: Build Windows plugin installer
+      - name: Require Windows signing secrets on tagged releases
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $payload = 'dist\windows-plugin\payload\CommonFiles'
-          New-Item -ItemType Directory -Force "$payload\VST3", "$payload\CLAP" | Out-Null
-          Copy-Item -Recurse -Force 'target\bundled\Contrapunk.vst3' "$payload\VST3\"
-          Copy-Item -Recurse -Force 'target\bundled\Contrapunk.clap' "$payload\CLAP\"
-          Compress-Archive -Force -Path 'dist\windows-plugin\payload\*' -DestinationPath 'dist\Contrapunk-Plugins-Windows-x64-bundles.zip'
+          if (-not $env:WINDOWS_CERTIFICATE_BASE64 -or -not $env:WINDOWS_CERTIFICATE_PASSWORD) {
+            throw 'Windows signing certificate and password are required for tagged plugin releases'
+          }
 
-          $vst3 = (Resolve-Path "$payload\VST3\*").Path
-          $clap = (Resolve-Path "$payload\CLAP\*").Path
-          $nsi = @"
-          Unicode True
-          Name "Contrapunk Plugins"
-          OutFile "${{ github.workspace }}\dist\Contrapunk-Plugins-Windows-x64.exe"
-          InstallDir "`$PROGRAMFILES64\Contrapunk Plugins"
-          RequestExecutionLevel admin
-          SetCompressor /SOLID lzma
-          ShowInstDetails show
-          ShowUninstDetails show
-
-          Section "VST3" SEC_VST3
-            SetOutPath "`$COMMONFILES64\VST3"
-            File /r "$vst3"
-          SectionEnd
-
-          Section "CLAP" SEC_CLAP
-            SetOutPath "`$COMMONFILES64\CLAP"
-            File /r "$clap"
-          SectionEnd
-
-          Section -Registry
-            SetOutPath "`$INSTDIR"
-            WriteUninstaller "`$INSTDIR\Uninstall.exe"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Contrapunk Plugins" "DisplayName" "Contrapunk Plugins"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Contrapunk Plugins" "Publisher" "Contrapunk Audio"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Contrapunk Plugins" "UninstallString" '"`$INSTDIR\Uninstall.exe"'
-          SectionEnd
-
-          Section "Uninstall"
-            RMDir /r "`$COMMONFILES64\VST3\Contrapunk.vst3"
-            Delete "`$COMMONFILES64\CLAP\Contrapunk.clap"
-            RMDir /r "`$COMMONFILES64\CLAP\Contrapunk.clap"
-            Delete "`$INSTDIR\Uninstall.exe"
-            RMDir "`$INSTDIR"
-            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Contrapunk Plugins"
-          SectionEnd
-          "@
-          New-Item -ItemType Directory -Force 'dist\windows-plugin' | Out-Null
-          Set-Content -Path 'dist\windows-plugin\ContrapunkPlugins.nsi' -Value $nsi -Encoding UTF8
-          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" 'dist\windows-plugin\ContrapunkPlugins.nsi'
-
-      - name: Sign Windows plugin installer
+      - name: Sign and verify Windows plugin bundles
         if: env.WINDOWS_CERTIFICATE_BASE64 != ''
         shell: pwsh
         run: |
@@ -365,21 +359,64 @@ jobs:
           if ($env:WINDOWS_CERTIFICATE_THUMBPRINT) {
             $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object Thumbprint -eq $env:WINDOWS_CERTIFICATE_THUMBPRINT | Select-Object -First 1
           }
-          Set-AuthenticodeSignature -FilePath 'dist\Contrapunk-Plugins-Windows-x64.exe' -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' -HashAlgorithm SHA256
+          if (-not $cert) { throw 'Windows signing certificate not found' }
+          $files = Get-ChildItem target\bundled\Contrapunk.vst3,target\bundled\Contrapunk.clap,target\bundled\elixir-plugin.vst3,target\bundled\elixir-plugin.clap -Recurse -File |
+            Where-Object { $_.Extension -in '.vst3', '.clap' }
+          foreach ($file in $files) {
+            $signature = Set-AuthenticodeSignature -FilePath $file.FullName -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' -HashAlgorithm SHA256
+            if ($signature.Status -ne 'Valid') { throw "Invalid signature: $($file.FullName)" }
+          }
+          "WINDOWS_SIGNING_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Remove-Item windows-signing.pfx
+
+      - name: Build Windows plugin installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python packaging/test_installers.py
+          $payload = 'dist\windows-plugin\payload'
+          $out = "${{ github.workspace }}\dist\Contrapunk-Elixir-Plugins-Windows-x64.exe"
+          New-Item -ItemType Directory -Force `
+            "$payload\Contrapunk\VST3", "$payload\Contrapunk\CLAP", `
+            "$payload\Elixir\VST3", "$payload\Elixir\CLAP" | Out-Null
+          Copy-Item -Recurse -Force 'target\bundled\Contrapunk.vst3' "$payload\Contrapunk\VST3\Contrapunk.vst3"
+          Copy-Item -Recurse -Force 'target\bundled\Contrapunk.clap' "$payload\Contrapunk\CLAP\Contrapunk.clap"
+          Copy-Item -Recurse -Force 'target\bundled\elixir-plugin.vst3' "$payload\Elixir\VST3\Elixir.vst3"
+          Copy-Item -Recurse -Force 'target\bundled\elixir-plugin.clap' "$payload\Elixir\CLAP\Elixir.clap"
+          Compress-Archive -Force -Path "$payload\*" -DestinationPath 'dist\Contrapunk-Elixir-Plugins-Windows-x64-bundles.zip'
+
+          $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          & $makensis `
+            "/DOUTFILE=$out" `
+            "/DCONTRAPUNK_VST3=$((Resolve-Path "$payload\Contrapunk\VST3\Contrapunk.vst3").Path)" `
+            "/DCONTRAPUNK_CLAP=$((Resolve-Path "$payload\Contrapunk\CLAP\Contrapunk.clap").Path)" `
+            "/DELIXIR_VST3=$((Resolve-Path "$payload\Elixir\VST3\Elixir.vst3").Path)" `
+            "/DELIXIR_CLAP=$((Resolve-Path "$payload\Elixir\CLAP\Elixir.clap").Path)" `
+            'packaging\windows\ContrapunkPlugins.nsi'
+
+      - name: Sign and verify Windows plugin installer
+        if: env.WINDOWS_CERTIFICATE_BASE64 != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object Thumbprint -eq $env:WINDOWS_SIGNING_CERT_THUMBPRINT | Select-Object -First 1
+          if (-not $cert) { throw 'Imported Windows signing certificate not found' }
+          $signature = Set-AuthenticodeSignature -FilePath 'dist\Contrapunk-Elixir-Plugins-Windows-x64.exe' -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' -HashAlgorithm SHA256
+          if ($signature.Status -ne 'Valid') { throw 'Windows installer signature is invalid' }
 
       - name: Upload Windows plugin installer
         uses: actions/upload-artifact@v7
         with:
-          name: contrapunk-plugins-windows-x64-installer
-          path: dist/Contrapunk-Plugins-Windows-x64.exe
+          name: contrapunk-elixir-plugins-windows-x64-installer
+          path: dist/Contrapunk-Elixir-Plugins-Windows-x64.exe
           if-no-files-found: error
           retention-days: 14
 
       - name: Upload Windows raw plugin bundles
         uses: actions/upload-artifact@v7
         with:
-          name: contrapunk-plugins-windows-x64-bundles
-          path: dist/Contrapunk-Plugins-Windows-x64-bundles.zip
+          name: contrapunk-elixir-plugins-windows-x64-bundles
+          path: dist/Contrapunk-Elixir-Plugins-Windows-x64-bundles.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -388,6 +425,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            dist/Contrapunk-Plugins-Windows-x64.exe
-            dist/Contrapunk-Plugins-Windows-x64-bundles.zip
+            dist/Contrapunk-Elixir-Plugins-Windows-x64.exe
+            dist/Contrapunk-Elixir-Plugins-Windows-x64-bundles.zip
           fail_on_unmatched_files: true
