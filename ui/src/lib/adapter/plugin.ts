@@ -92,7 +92,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 	} as const;
 
 	private noteUpdateCallback: ((state: NoteState) => void) | null = null;
-	private pluginParamsCallback: (() => void) | null = null;
+	private pluginParamsCallbacks = new Set<() => void>();
 	private _detuneCents = 0;
 	private _isReady = false;
 
@@ -112,7 +112,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 					currentParams = data;
 					resolveInitialParams?.();
 					resolveInitialParams = null;
-					this.pluginParamsCallback?.();
+					for (const callback of this.pluginParamsCallbacks) callback();
 				} else if (data.type === 'noteUpdate' && this.noteUpdateCallback) {
 					this.noteUpdateCallback({
 						inputNotes: data.inputNotes ?? [],
@@ -388,10 +388,8 @@ export class PluginAdapter implements ContrapunkAdapter {
 	}
 
 	onPluginParamsUpdate(callback: () => void): () => void {
-		this.pluginParamsCallback = callback;
-		return () => {
-			if (this.pluginParamsCallback === callback) this.pluginParamsCallback = null;
-		};
+		this.pluginParamsCallbacks.add(callback);
+		return () => this.pluginParamsCallbacks.delete(callback);
 	}
 
 	// -- Real-time state --
