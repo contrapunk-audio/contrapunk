@@ -115,6 +115,7 @@ pub struct Engine {
     voices: [Voice; MAX_VOICES],
     sine_table: SineTable,
     master_gain: f32,
+    legacy_compatibility: bool,
     role_gains: [f32; VoiceRole::ALL.len()],
     sustain_pedal: bool,
     note_counter: u64,
@@ -167,6 +168,7 @@ impl Engine {
             voices: core::array::from_fn(|_| Voice::new()),
             sine_table: SineTable::new(),
             master_gain: 0.25,
+            legacy_compatibility: false,
             role_gains: [1.0; VoiceRole::ALL.len()],
             sustain_pedal: false,
             note_counter: 0,
@@ -247,6 +249,15 @@ impl Engine {
     }
     pub fn master_gain(&self) -> f32 {
         self.master_gain
+    }
+    pub fn set_legacy_compatibility(&mut self, enabled: bool) {
+        self.legacy_compatibility = enabled;
+        for voice in &mut self.voices {
+            voice.set_legacy_compatibility(enabled);
+        }
+    }
+    pub fn legacy_compatibility(&self) -> bool {
+        self.legacy_compatibility
     }
     pub fn set_role_gain(&mut self, role: VoiceRole, gain: f32) {
         if gain.is_finite() {
@@ -651,6 +662,14 @@ impl Engine {
         // (6b) prepare filter coefficients ONCE for the block. The hot
         //      loop below is now `tanf`-free for every voice.
         let filter_coeffs = filter_params.prepare_coeffs();
+        let legacy_alpha = if self.legacy_compatibility {
+            1.0 - libm::expf(
+                -core::f32::consts::TAU * effective_cutoff.clamp(20.0, 20_000.0)
+                    / self.sample_rate as f32,
+            )
+        } else {
+            0.0
+        };
 
         // (7) render voices with their retained performance-role gain;
         //     FX and master gain apply on top.
@@ -658,9 +677,12 @@ impl Engine {
         for f in 0..frames {
             let mut mix = 0.0f32;
             for v in self.voices.iter_mut() {
-                mix +=
+                let voice = if self.legacy_compatibility {
+                    v.tick_legacy(legacy_alpha)
+                } else {
                     v.tick_with_filter_coeffs(&self.sine_table, &filter_coeffs, &self.osc_params)
-                        * role_gains[v.role().index()];
+                };
+                mix += voice * role_gains[v.role().index()];
             }
             let base = f * channels;
             for c in 0..channels {
@@ -683,7 +705,11 @@ impl Engine {
             (self.master_gain * (1.0 + self.matrix.master_gain_mod)).clamp(0.0, 2.0);
         let mut poisoned = false;
         for s in buffer.iter_mut() {
-            *s *= effective_gain;
+            *s = if self.legacy_compatibility {
+                libm::tanhf(*s * effective_gain)
+            } else {
+                *s * effective_gain
+            };
             if !s.is_finite() {
                 *s = 0.0;
                 poisoned = true;
@@ -851,6 +877,25 @@ mod tests {
             e.process(&mut audio, 2);
             e.handle_voice_event(VoiceEvent::Panic);
             e.process(&mut audio, 2);
+        });
+        assert!(audio.iter().all(|sample| sample.is_finite()));
+    }
+
+    #[test]
+    fn legacy_compatibility_processing_allocates_nothing() {
+        let mut engine = Engine::new();
+        engine.prepare(48_000, 256);
+        engine.set_legacy_compatibility(true);
+        let mut audio = [0.0; 512];
+        assert_no_alloc::assert_no_alloc(|| {
+            engine.handle_voice_event(note_on_event(1, VoiceRole::Input, 440.0));
+            engine.process(&mut audio, 2);
+            engine.handle_voice_event(VoiceEvent::NoteOff {
+                voice_id: VoiceId::new(1),
+            });
+            engine.process(&mut audio, 2);
+            engine.handle_voice_event(VoiceEvent::Panic);
+            engine.process(&mut audio, 2);
         });
         assert!(audio.iter().all(|sample| sample.is_finite()));
     }

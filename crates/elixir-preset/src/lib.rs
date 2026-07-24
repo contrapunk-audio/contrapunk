@@ -217,6 +217,7 @@ pub struct FxSlotState {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ElixirState {
     pub master_gain: f32,
+    pub legacy_compatibility: bool,
     pub role_gains: [f32; 4],
     pub oscillator: OscillatorState,
     pub amp_envelope: EnvelopeState,
@@ -230,6 +231,7 @@ impl Default for ElixirState {
     fn default() -> Self {
         Self {
             master_gain: 10.0_f32.powf(-12.0 / 20.0),
+            legacy_compatibility: false,
             role_gains: [1.0; 4],
             oscillator: OscillatorState {
                 spectral_morph: SpectralMorphState::Passthrough,
@@ -328,6 +330,35 @@ impl Default for ElixirState {
                 },
             ],
         }
+    }
+}
+
+pub fn contrapunk_default_state() -> ElixirState {
+    ElixirState {
+        master_gain: 0.25,
+        legacy_compatibility: true,
+        filter: FilterState {
+            kind: FilterKindState::DigitalSvf,
+            cutoff_hz: 6_000.0,
+            resonance: 0.2,
+            drive: 1.0,
+            gain: 1.0,
+            morph_x: 0.0,
+            morph_y: 0.0,
+        },
+        ..ElixirState::default()
+    }
+}
+
+pub fn contrapunk_default_preset() -> ElixirPreset {
+    ElixirPreset {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        name: "Contrapunk-Default".into(),
+        author: Some("Contrapunk Audio".into()),
+        style: None,
+        patch: ElixirPatch::default(),
+        state: Some(contrapunk_default_state()),
+        source: PresetSource::Native,
     }
 }
 
@@ -744,6 +775,7 @@ impl ElixirState {
 
         engine.panic();
         engine.set_master_gain(self.master_gain);
+        engine.set_legacy_compatibility(self.legacy_compatibility);
         for (role, gain) in VoiceRole::ALL.into_iter().zip(self.role_gains) {
             engine.set_role_gain(role, gain);
         }
@@ -812,6 +844,7 @@ impl ElixirState {
         let fx_slots = snapshot_fx_slots(engine, sample_rate as f32)?;
         let state = Self {
             master_gain: engine.master_gain(),
+            legacy_compatibility: engine.legacy_compatibility(),
             role_gains: engine.role_gains(),
             oscillator: OscillatorState {
                 spectral_morph: osc.spectral_morph.into(),

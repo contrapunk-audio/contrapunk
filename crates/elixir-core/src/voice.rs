@@ -23,6 +23,10 @@ pub struct Voice {
     osc: Oscillator,
     env: AdsrEnvelope,
     filter: FilterModel,
+    legacy_compatibility: bool,
+    legacy_phase: f32,
+    legacy_phase_inc: f32,
+    legacy_lp: f32,
     active: bool,
     killing: bool,
     sustained: bool,
@@ -41,6 +45,10 @@ impl Voice {
             osc: Oscillator::new(),
             env: AdsrEnvelope::new(),
             filter: FilterModel::new(),
+            legacy_compatibility: false,
+            legacy_phase: 0.0,
+            legacy_phase_inc: 0.0,
+            legacy_lp: 0.0,
             active: false,
             killing: false,
             sustained: false,
@@ -75,6 +83,10 @@ impl Voice {
         self.filter.set_kind(kind);
     }
 
+    pub fn set_legacy_compatibility(&mut self, enabled: bool) {
+        self.legacy_compatibility = enabled;
+    }
+
     pub fn note_on(
         &mut self,
         voice_id: VoiceId,
@@ -96,8 +108,15 @@ impl Voice {
         self.velocity = (velocity as f32 / 127.0).clamp(0.0, 1.0);
         self.osc.set_frequency(frequency_hz, sample_rate);
         self.osc.reset_phase();
+        self.legacy_phase = 0.0;
+        self.legacy_phase_inc = frequency_hz * core::f32::consts::TAU / sample_rate;
+        self.legacy_lp = 0.0;
         self.env.set_sample_rate(sample_rate);
-        self.env.note_on();
+        if self.legacy_compatibility {
+            self.env.note_on_reset();
+        } else {
+            self.env.note_on();
+        }
         self.filter.reset();
         self.age = age;
     }
@@ -248,6 +267,28 @@ impl Voice {
         let osc_v = self.osc.tick_with_params(table, osc_params);
         let filtered = self.filter.tick(osc_v, filter_params);
         filtered * env_v * self.velocity
+    }
+
+    #[inline]
+    pub fn tick_legacy(&mut self, one_pole_alpha: f32) -> f32 {
+        if !self.active {
+            return 0.0;
+        }
+        let env_v = self.env.tick_with_legacy_release(true);
+        if env_v <= 0.0 && self.env.is_idle() {
+            self.active = false;
+            self.killing = false;
+            self.sustained = false;
+            return 0.0;
+        }
+        let osc_v = libm::sinf(self.legacy_phase);
+        self.legacy_phase += self.legacy_phase_inc;
+        if self.legacy_phase >= core::f32::consts::TAU {
+            self.legacy_phase -= core::f32::consts::TAU;
+        }
+        let input = osc_v * env_v * self.velocity;
+        self.legacy_lp += one_pole_alpha * (input - self.legacy_lp);
+        self.legacy_lp
     }
 
     /// Produce one sample using pre-computed per-block filter

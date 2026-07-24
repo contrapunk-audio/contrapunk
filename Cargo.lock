@@ -872,6 +872,7 @@ dependencies = [
  "contrapunk-transport",
  "cpal",
  "elixir-core",
+ "elixir-preset",
  "getrandom 0.2.17",
  "js-sys",
  "midir",

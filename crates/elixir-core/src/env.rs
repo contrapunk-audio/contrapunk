@@ -78,6 +78,12 @@ impl AdsrEnvelope {
         self.kill_active = false;
     }
 
+    pub fn note_on_reset(&mut self) {
+        self.value = 0.0;
+        self.release_start = 0.0;
+        self.note_on();
+    }
+
     pub fn note_off(&mut self) {
         if matches!(
             self.stage,
@@ -115,6 +121,10 @@ impl AdsrEnvelope {
     /// Produce one envelope sample and advance state.
     #[inline]
     pub fn tick(&mut self) -> f32 {
+        self.tick_with_legacy_release(false)
+    }
+
+    pub fn tick_with_legacy_release(&mut self, legacy_release: bool) -> f32 {
         match self.stage {
             EnvStage::Idle => {}
             EnvStage::Attack => {
@@ -142,7 +152,12 @@ impl AdsrEnvelope {
                 } else {
                     self.release_secs
                 };
-                let step = self.release_start / (release_secs * self.sample_rate);
+                let start = if legacy_release && !self.kill_active {
+                    1.0
+                } else {
+                    self.release_start
+                };
+                let step = start / (release_secs * self.sample_rate);
                 self.value -= step;
                 if self.value <= 0.0 {
                     self.value = 0.0;

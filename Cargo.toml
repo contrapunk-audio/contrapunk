@@ -46,6 +46,7 @@ contrapunk-audio = { path = "crates/contrapunk-audio" }
 contrapunk-preset = { path = "crates/contrapunk-preset" }
 contrapunk-dsp = { path = "crates/contrapunk-dsp" }
 elixir-core = { path = "crates/elixir-core", optional = true }
+elixir-preset = { path = "crates/elixir-preset", optional = true }
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.10"
@@ -61,7 +62,7 @@ default = []
 # Phase 21.A0 cutover flag. While opt-in, the legacy `src/synth/` powers
 # Contrapunk audio output. With the flag on, `ElixirSynthBlock` instances
 # the Elixir engine — silence at A0, gradually replaced through A1+.
-elixir-synth = ["dep:elixir-core"]
+elixir-synth = ["dep:elixir-core", "dep:elixir-preset"]
 web-midi = [
     "wasm-bindgen",
     "wasm-bindgen-futures",

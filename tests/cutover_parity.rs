@@ -20,6 +20,8 @@ use std::sync::Arc;
 
 use contrapunk::chain::{AudioBlock, ElixirSynthBlock, MidiBlockEvent};
 use contrapunk::synth::{synth_event_channel, Synth, SynthParams, Waveform};
+use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole};
+use elixir_preset::contrapunk_default_preset;
 
 const SAMPLE_RATE: u32 = 48_000;
 const CHANNELS: usize = 2;
@@ -30,6 +32,7 @@ const FRAMES: usize = SAMPLE_RATE as usize; // one second
 /// now also has a LP filter; topology still differs from the legacy
 /// one-pole, so we don't yet expect the -90 dBFS A-Cut gate).
 const A1_RMS_DBFS_GATE: f32 = -50.0;
+const A_CUT_RMS_DBFS_GATE: f32 = -90.0;
 
 fn rms(samples: &[f32]) -> f32 {
     if samples.is_empty() {
@@ -147,4 +150,95 @@ fn parity_rms_diff_metric_is_recorded() {
         .map(|(a, b)| a - b)
         .collect();
     println!("PARITY_METRIC rms_dbfs={:.3}", db(rms(&diff)));
+}
+
+#[derive(Clone, Copy)]
+enum SequenceEvent {
+    On { note: u8, velocity: u8 },
+    Off { note: u8 },
+}
+
+const SEQUENCE: [(usize, SequenceEvent); 4] = [
+    (
+        0,
+        SequenceEvent::On {
+            note: 60,
+            velocity: 100,
+        },
+    ),
+    (
+        6_000,
+        SequenceEvent::On {
+            note: 64,
+            velocity: 90,
+        },
+    ),
+    (18_000, SequenceEvent::Off { note: 60 }),
+    (30_000, SequenceEvent::Off { note: 64 }),
+];
+const SEQUENCE_FRAMES: usize = 60_000;
+
+fn render_legacy_sequence(output: &mut [f32]) {
+    let params = Arc::new(SynthParams::default());
+    let (_tx, rx) = synth_event_channel();
+    let mut synth = Synth::new(params, rx, SAMPLE_RATE);
+    let mut cursor = 0;
+    for (frame, event) in SEQUENCE {
+        synth.process(&mut output[cursor * CHANNELS..frame * CHANNELS], CHANNELS);
+        match event {
+            SequenceEvent::On { note, velocity } => {
+                synth.midi_event(MidiBlockEvent::NoteOn { note, velocity })
+            }
+            SequenceEvent::Off { note } => synth.midi_event(MidiBlockEvent::NoteOff { note }),
+        }
+        cursor = frame;
+    }
+    synth.process(&mut output[cursor * CHANNELS..], CHANNELS);
+}
+
+fn render_elixir_sequence(output: &mut [f32]) {
+    let mut engine = Engine::new();
+    engine.prepare(SAMPLE_RATE, 2048);
+    contrapunk_default_preset()
+        .state
+        .unwrap()
+        .apply_to_engine(&mut engine)
+        .unwrap();
+    let mut cursor = 0;
+    for (frame, event) in SEQUENCE {
+        engine.process(&mut output[cursor * CHANNELS..frame * CHANNELS], CHANNELS);
+        match event {
+            SequenceEvent::On { note, velocity } => engine.handle_voice_event(VoiceEvent::NoteOn {
+                voice_id: VoiceId::new(note as u64),
+                role: VoiceRole::Input,
+                midi_anchor: note,
+                frequency_hz: elixir_core::util::midi_to_freq(note),
+                velocity,
+            }),
+            SequenceEvent::Off { note } => engine.handle_voice_event(VoiceEvent::NoteOff {
+                voice_id: VoiceId::new(note as u64),
+            }),
+        }
+        cursor = frame;
+    }
+    engine.process(&mut output[cursor * CHANNELS..], CHANNELS);
+}
+
+#[test]
+fn contrapunk_default_fixed_sequence_meets_a_cut_gate() {
+    let mut legacy = vec![0.0; SEQUENCE_FRAMES * CHANNELS];
+    let mut elixir = vec![0.0; SEQUENCE_FRAMES * CHANNELS];
+    render_legacy_sequence(&mut legacy);
+    render_elixir_sequence(&mut elixir);
+    let diff: Vec<_> = legacy
+        .iter()
+        .zip(&elixir)
+        .map(|(legacy, elixir)| legacy - elixir)
+        .collect();
+    let diff_dbfs = db(rms(&diff));
+    println!("A-Cut fixed sequence diff RMS: {diff_dbfs:.3} dBFS");
+    assert!(
+        diff_dbfs < A_CUT_RMS_DBFS_GATE,
+        "A-Cut diff {diff_dbfs:.3} dBFS exceeds {A_CUT_RMS_DBFS_GATE} dBFS"
+    );
 }
