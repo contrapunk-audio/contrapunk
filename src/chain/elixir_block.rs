@@ -23,6 +23,7 @@ use crate::synth::SynthVoiceId;
 use crate::synth::{SynthEvent, SynthParams, Waveform};
 use elixir_core::osc::{PhaseDistortionMode, SpectralMorph};
 use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole};
+use elixir_preset::contrapunk_default_state;
 
 /// `AudioBlock` adapter for the Elixir engine.
 pub struct ElixirSynthBlock {
@@ -62,6 +63,9 @@ impl ElixirSynthBlock {
     ) -> Self {
         let mut engine = Engine::new();
         engine.prepare(sample_rate, DEFAULT_MAX_BLOCK);
+        contrapunk_default_state()
+            .apply_to_engine(&mut engine)
+            .expect("compiled Contrapunk default must remain valid");
         Self {
             engine,
             params,
