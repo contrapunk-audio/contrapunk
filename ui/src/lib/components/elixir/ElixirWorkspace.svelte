@@ -1,50 +1,36 @@
 <script lang="ts">
 	import OscillatorPanel from './OscillatorPanel.svelte';
-	import {
-		createOscillatorState,
-		type OscillatorState
-	} from '$lib/elixir/oscillator';
-
-	let oscillator = $state<OscillatorState>(createOscillatorState());
-
-	function updateOscillator(patch: Partial<OscillatorState>) {
-		oscillator = { ...oscillator, ...patch };
-	}
-
-	function resetOscillator() {
-		oscillator = createOscillatorState();
-	}
 </script>
 
 <main class="workspace">
 	<header class="masthead">
 		<div>
 			<p class="kicker font-code">ELIXIR / INSTRUMENT LAB</p>
-			<h1>Shape one source.<br /><em>Hear the architecture.</em></h1>
+			<h1>One source.<br /><em>Exact by design.</em></h1>
 		</div>
 		<div class="mock-status" role="status">
 			<span aria-hidden="true"></span>
 			<div>
-				<strong>MOCK</strong>
-				<small>Local controls only · not connected to audio</small>
+				<strong>SINE CORE</strong>
+				<small>Fixed oscillator contract · no inert controls</small>
 			</div>
 		</div>
 	</header>
 
 	<div class="workspace-grid">
-		<OscillatorPanel state={oscillator} onchange={updateOscillator} onreset={resetOscillator} />
+		<OscillatorPanel />
 		<aside aria-label="Mock scope">
 			<p class="font-code">SCAFFOLD 01</p>
 			<h2>One oscillator.<br />No ghosts.</h2>
 			<div class="rule"></div>
 			<p>
-				This isolated workspace exercises Elixir's current spectral, phase, and unison
-				vocabulary without pretending to control the engine.
+				The source is always sine. Production controls are limited to real gain, routing,
+				and lifecycle ownership elsewhere in the shared workspace.
 			</p>
 			<dl class="font-code">
-				<div><dt>modules</dt><dd>1</dd></div>
-				<div><dt>signal</dt><dd>local</dd></div>
-				<div><dt>backend</dt><dd>none</dd></div>
+				<div><dt>oscillator</dt><dd>sine</dd></div>
+				<div><dt>polyphony</dt><dd>16</dd></div>
+				<div><dt>user shaping</dt><dd>none</dd></div>
 			</dl>
 		</aside>
 	</div>
