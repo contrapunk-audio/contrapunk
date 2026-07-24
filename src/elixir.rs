@@ -6,6 +6,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
+use crate::slide::{SlideCurve, SlideRole, SlideSettings, SlideSlot, SlideTravel, SlideTrigger};
+
 pub use elixir_core::VoiceRole;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,6 +31,8 @@ pub enum SynthEvent {
         frequency_hz: f32,
         velocity: u8,
         mix_group: u8,
+        slide_slot: SlideSlot,
+        slide: SlideSettings,
     },
     Retune {
         voice_id: SynthVoiceId,
@@ -48,12 +52,39 @@ impl SynthEvent {
         velocity: u8,
         mix_group: u8,
     ) -> Self {
+        Self::note_on_with_slide(
+            voice_id,
+            midi_anchor,
+            frequency_hz,
+            velocity,
+            mix_group,
+            SlideSlot::new(SlideRole::Input, 0),
+            SlideSettings {
+                travel: SlideTravel::Off,
+                trigger: SlideTrigger::Legato,
+                curve: SlideCurve::Linear,
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub const fn note_on_with_slide(
+        voice_id: SynthVoiceId,
+        midi_anchor: u8,
+        frequency_hz: f32,
+        velocity: u8,
+        mix_group: u8,
+        slide_slot: SlideSlot,
+        slide: SlideSettings,
+    ) -> Self {
         Self::NoteOn {
             voice_id,
             midi_anchor,
             frequency_hz,
             velocity,
             mix_group,
+            slide_slot,
+            slide,
         }
     }
 
@@ -184,6 +215,26 @@ impl SynthEventSender {
         velocity: u8,
         mix_group: u8,
     ) -> Result<SynthVoiceId, mpsc::TrySendError<SynthEvent>> {
+        self.note_on_exact_with_slide(
+            midi_anchor,
+            frequency_hz,
+            velocity,
+            mix_group,
+            SlideSlot::new(SlideRole::Input, 0),
+            SlideSettings::default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn note_on_exact_with_slide(
+        &self,
+        midi_anchor: u8,
+        frequency_hz: f32,
+        velocity: u8,
+        mix_group: u8,
+        slide_slot: SlideSlot,
+        slide: SlideSettings,
+    ) -> Result<SynthVoiceId, mpsc::TrySendError<SynthEvent>> {
         if midi_anchor >= 128 || velocity == 0 || !frequency_hz.is_finite() || frequency_hz <= 0.0 {
             self.fault.store(true, Ordering::Release);
             return Err(mpsc::TrySendError::Full(SynthEvent::AllNotesOff));
@@ -201,12 +252,14 @@ impl SynthEventSender {
         } else {
             frequency_hz
         };
-        let event = SynthEvent::note_on(
+        let event = SynthEvent::note_on_with_slide(
             voice_id,
             midi_anchor,
             sounding_frequency,
             velocity,
             mix_group,
+            slide_slot,
+            slide,
         );
         if let Err(error) = self.try_send(event) {
             owners.active.clear();
@@ -369,6 +422,7 @@ mod tests {
                 frequency_hz: 432.0,
                 velocity: 100,
                 mix_group: 0,
+                ..
             } if received_id == voice_id
         ));
     }

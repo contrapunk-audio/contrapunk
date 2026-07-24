@@ -374,16 +374,27 @@ impl SlideRuntime {
             if self.slots[voice.slot_index].latest_voice_id == voice.voice_id {
                 self.slots[voice.slot_index].current_log2 = voice.frequency().log2();
             }
-            if voice.elapsed_samples >= voice.total_samples {
-                voice.moving = false;
-            }
         }
+    }
+
+    pub fn is_moving(&self) -> bool {
+        self.voices.iter().any(|voice| voice.live && voice.moving)
     }
 
     pub fn for_each_moving(&self, mut visit: impl FnMut(u64, f32)) {
         for voice in &self.voices {
             if voice.live && voice.moving {
                 visit(voice.voice_id, voice.frequency());
+            }
+        }
+    }
+
+    /// Call after applying frequencies returned by `for_each_moving` so a
+    /// completed trajectory emits its exact destination once before resting.
+    pub fn finish_completed(&mut self) {
+        for voice in &mut self.voices {
+            if voice.moving && voice.elapsed_samples >= voice.total_samples {
+                voice.moving = false;
             }
         }
     }
@@ -545,6 +556,14 @@ mod tests {
         runtime.note_off(1);
         runtime.note_on(2, slot, 880.0, settings, 48_000.0);
         runtime.advance(4_800);
+        let mut final_frequency = 0.0;
+        runtime.for_each_moving(|id, frequency| {
+            if id == 2 {
+                final_frequency = frequency;
+            }
+        });
+        assert!((final_frequency - 880.0).abs() < 1.0e-3);
+        runtime.finish_completed();
         let voice = runtime
             .voices
             .iter()

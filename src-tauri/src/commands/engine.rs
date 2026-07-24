@@ -20,6 +20,7 @@ use contrapunk::elixir::{SynthEvent, SynthEventSender};
 use contrapunk::harmony::HarmonyEngine;
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
+use contrapunk::slide::{SlideConfig, SlideRole, SlideSettings, SlideSlot};
 use contrapunk::transport::Transport;
 
 use crate::guitar_bridge::GuitarBridge;
@@ -363,6 +364,7 @@ pub fn start_routing(
     // short-circuits and produces no DispatchOps until Lanes
     // register and the master switch flips.
     let companion = Arc::clone(&state.companion);
+    let slide_config = Arc::clone(&state.slide_config);
 
     // Spawn router thread
     thread::spawn(move || {
@@ -392,6 +394,7 @@ pub fn start_routing(
             voice_outputs,
             transport,
             companion,
+            slide_config,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -464,6 +467,7 @@ fn run_tauri_router(
     voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
     transport: Arc<Transport>,
     companion: Arc<Mutex<crate::companion::Companion>>,
+    slide_config: Arc<Mutex<SlideConfig>>,
 ) -> anyhow::Result<()> {
     // Connect to either Guitar Audio bridge, physical MIDI input, or
     // nothing at all (Computer Keyboard virtual input — notes are pushed
@@ -578,6 +582,7 @@ fn run_tauri_router(
                 &canon_notes,
                 &counterpoint_notes,
                 &mut companion_output_notes,
+                &slide_config,
             );
         }
 
@@ -664,6 +669,9 @@ fn run_tauri_router(
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone();
+            let slide_snapshot = *slide_config
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
             for (voices, port_map) in &per_input {
                 // Skip index 0 — that's the user's input note, already
                 // sounding from when they pressed the key. Channel 0
@@ -685,6 +693,10 @@ fn run_tauri_router(
                             note: n,
                             frequency_hz,
                             velocity: 100,
+                            slide_slot: SlideSlot::new(SlideRole::Harmony, slot as u8),
+                            slide: slide_snapshot
+                                .resolve(SlideSlot::new(SlideRole::Harmony, slot as u8))
+                                .unwrap_or_default(),
                         },
                         num_ports,
                         &synth_tx,
@@ -801,6 +813,7 @@ fn run_tauri_router(
                             &canon_notes,
                             &counterpoint_notes,
                             &mut companion_output_notes,
+                            &slide_config,
                         );
                         suppress_default = sup;
                     }
@@ -816,6 +829,7 @@ fn run_tauri_router(
                             routing_mode,
                             &synth_tx,
                             &voice_outputs,
+                            &slide_config,
                         );
                     }
                 }
@@ -948,6 +962,7 @@ fn process_midi_message(
     routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &SynthEventSender,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    slide_config: &Arc<Mutex<SlideConfig>>,
 ) {
     let msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
@@ -962,6 +977,9 @@ fn process_midi_message(
     // on the same Mutex pick it up between messages.
     let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
     let eng: &mut HarmonyEngine = &mut eng;
+    let slide_config = *slide_config
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
 
     match msg {
         MidiMessage::NoteOn(channel, note, velocity) => {
@@ -994,6 +1012,7 @@ fn process_midi_message(
                     routing_mode,
                     synth_tx,
                     voice_outputs,
+                    &slide_config,
                 );
             }
         }
@@ -1033,6 +1052,7 @@ fn handle_note_on(
     routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &SynthEventSender,
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    slide_config: &SlideConfig,
 ) {
     let notes = engine.harmonize_note_on(note);
     let tuning = engine.tune_harmony(&notes).ok();
@@ -1082,6 +1102,12 @@ fn handle_note_on(
     let channel_idx: u8 = channel.index();
     let velocity_byte: u8 = u8::from(velocity);
     for (i, &n) in notes.iter().enumerate() {
+        let arrangement_slot = port_map.get(i).copied().unwrap_or(i);
+        let slide_slot = if i == 0 {
+            SlideSlot::new(SlideRole::Input, 0)
+        } else {
+            SlideSlot::new(SlideRole::Harmony, arrangement_slot as u8)
+        };
         dispatch_voice(
             target_for(i),
             if i == 0 { MIX_INPUT } else { MIX_HARMONY },
@@ -1094,6 +1120,8 @@ fn handle_note_on(
                     .map(|pitch| pitch.frequency_hz as f32)
                     .unwrap_or_else(|| standard_frequency(u8::from(n))),
                 velocity: velocity_byte,
+                slide_slot,
+                slide: slide_config.resolve(slide_slot).unwrap_or_default(),
             },
             num_outputs,
             synth_tx,
@@ -1239,6 +1267,8 @@ enum VoiceDispatch {
         note: u8,
         frequency_hz: f32,
         velocity: u8,
+        slide_slot: SlideSlot,
+        slide: SlideSettings,
     },
     /// Send a NoteOff. `velocity` is the release velocity (0 for most
     /// MIDI consumers; some Yamaha hardware uses non-zero release).
@@ -1284,9 +1314,18 @@ fn dispatch_voice(
                 note,
                 frequency_hz,
                 velocity,
+                slide_slot,
+                slide,
             },
         ) => {
-            let _ = synth_tx.note_on_exact(note, frequency_hz, velocity, mix_group);
+            let _ = synth_tx.note_on_exact_with_slide(
+                note,
+                frequency_hz,
+                velocity,
+                mix_group,
+                slide_slot,
+                slide,
+            );
         }
         (VoiceOutputTarget::Synth, VoiceDispatch::NoteOff { note, .. }) => {
             let _ = synth_tx.note_off(note, mix_group);
@@ -1418,8 +1457,12 @@ fn dispatch_companion_ops(
     canon_notes: &Arc<Mutex<NoteCounts>>,
     counterpoint_notes: &Arc<Mutex<NoteCounts>>,
     output_notes: &mut RoutedNoteCounts,
+    slide_config: &Arc<Mutex<SlideConfig>>,
 ) {
     use crate::companion::DispatchOp;
+    let slide_config = *slide_config
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     for (lane, op) in tagged {
         // Per-lane set the note belongs to, if any. Other lane tags
         // (or AllNotesOff) leave both untouched.
@@ -1440,6 +1483,12 @@ fn dispatch_companion_ops(
                     routed_note_key(*target, *channel, *note, mix_group),
                 );
                 if first_owner {
+                    let slide_role = if mix_group == MIX_CANON {
+                        SlideRole::Canon
+                    } else {
+                        SlideRole::Counterpoint
+                    };
+                    let slide_slot = SlideSlot::new(slide_role, 0);
                     dispatch_voice(
                         *target,
                         mix_group,
@@ -1448,6 +1497,8 @@ fn dispatch_companion_ops(
                             note: *note,
                             frequency_hz: standard_frequency(*note),
                             velocity: *velocity,
+                            slide_slot,
+                            slide: slide_config.resolve(slide_slot).unwrap_or_default(),
                         },
                         num_ports,
                         synth_tx,

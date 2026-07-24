@@ -14,5 +14,6 @@ pub mod midi;
 pub mod plugins;
 pub mod presets;
 pub mod routing;
+pub mod slide;
 pub mod synth;
 pub mod transport;

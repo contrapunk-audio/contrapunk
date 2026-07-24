@@ -107,6 +107,8 @@ fn main() {
             commands::harmony::set_tuning_depth,
             commands::harmony::set_harmonic_limit,
             commands::harmony::set_tuning_compare,
+            commands::slide::get_slide_config,
+            commands::slide::set_slide_config,
             commands::companion::companion_set_enabled,
             commands::companion::companion_is_enabled,
             commands::companion::companion_set_global_hold_mode,
