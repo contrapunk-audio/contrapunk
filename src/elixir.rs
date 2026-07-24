@@ -30,6 +30,10 @@ pub enum SynthEvent {
         velocity: u8,
         mix_group: u8,
     },
+    Retune {
+        voice_id: SynthVoiceId,
+        frequency_hz: f32,
+    },
     NoteOff {
         voice_id: SynthVoiceId,
     },
@@ -53,6 +57,13 @@ impl SynthEvent {
         }
     }
 
+    pub const fn retune(voice_id: SynthVoiceId, frequency_hz: f32) -> Self {
+        Self::Retune {
+            voice_id,
+            frequency_hz,
+        }
+    }
+
     pub const fn note_off(voice_id: SynthVoiceId) -> Self {
         Self::NoteOff { voice_id }
     }
@@ -67,6 +78,7 @@ const ROUTER_VOICE_ID_PREFIX: u64 = 1 << 62;
 struct Owner {
     voice_id: SynthVoiceId,
     midi_anchor: u8,
+    frequency_hz: f32,
     mix_group: u8,
 }
 
@@ -83,7 +95,12 @@ impl Owners {
         }
     }
 
-    fn allocate(&mut self, midi_anchor: u8, mix_group: u8) -> Option<SynthVoiceId> {
+    fn allocate(
+        &mut self,
+        midi_anchor: u8,
+        frequency_hz: f32,
+        mix_group: u8,
+    ) -> Option<SynthVoiceId> {
         if midi_anchor >= 128 || self.active.len() == self.active.capacity() {
             return None;
         }
@@ -92,6 +109,7 @@ impl Owners {
         self.active.push(Owner {
             voice_id,
             midi_anchor,
+            frequency_hz,
             mix_group,
         });
         Some(voice_id)
@@ -111,6 +129,7 @@ pub struct SynthEventSender {
     tx: mpsc::SyncSender<SynthEvent>,
     fault: Arc<AtomicBool>,
     owners: Arc<Mutex<Owners>>,
+    compare_standard: Arc<AtomicBool>,
 }
 
 pub struct SynthEventReceiver {
@@ -126,6 +145,7 @@ pub fn synth_event_channel() -> (SynthEventSender, SynthEventReceiver) {
             tx,
             fault: Arc::clone(&fault),
             owners: Arc::new(Mutex::new(Owners::new())),
+            compare_standard: Arc::new(AtomicBool::new(false)),
         },
         SynthEventReceiver { rx, fault },
     )
@@ -172,16 +192,52 @@ impl SynthEventSender {
             .owners
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let Some(voice_id) = owners.allocate(midi_anchor, mix_group) else {
+        let Some(voice_id) = owners.allocate(midi_anchor, frequency_hz, mix_group) else {
             self.fault.store(true, Ordering::Release);
             return Err(mpsc::TrySendError::Full(SynthEvent::AllNotesOff));
         };
-        let event = SynthEvent::note_on(voice_id, midi_anchor, frequency_hz, velocity, mix_group);
+        let sounding_frequency = if self.compare_standard.load(Ordering::Acquire) {
+            elixir_core::util::midi_to_freq(midi_anchor)
+        } else {
+            frequency_hz
+        };
+        let event = SynthEvent::note_on(
+            voice_id,
+            midi_anchor,
+            sounding_frequency,
+            velocity,
+            mix_group,
+        );
         if let Err(error) = self.try_send(event) {
             owners.active.clear();
             return Err(error);
         }
         Ok(voice_id)
+    }
+
+    pub fn set_compare_standard(
+        &self,
+        enabled: bool,
+    ) -> Result<(), mpsc::TrySendError<SynthEvent>> {
+        if self.compare_standard.swap(enabled, Ordering::AcqRel) == enabled {
+            return Ok(());
+        }
+        let mut owners = self
+            .owners
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        for owner in &owners.active {
+            let frequency_hz = if enabled {
+                elixir_core::util::midi_to_freq(owner.midi_anchor)
+            } else {
+                owner.frequency_hz
+            };
+            if let Err(error) = self.try_send(SynthEvent::retune(owner.voice_id, frequency_hz)) {
+                owners.active.clear();
+                return Err(error);
+            }
+        }
+        Ok(())
     }
 
     pub fn note_off(
@@ -345,6 +401,35 @@ mod tests {
         assert!(matches!(
             rx.try_recv().unwrap(),
             SynthEvent::NoteOff { voice_id } if voice_id == second
+        ));
+    }
+
+    #[test]
+    fn compare_retunes_existing_and_new_voices_without_changing_owners() {
+        let (tx, rx) = synth_event_channel();
+        let first = tx.note_on_exact(69, 432.0, 100, 0).unwrap();
+        let _ = rx.try_recv().unwrap();
+        tx.set_compare_standard(true).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::Retune { voice_id, frequency_hz: 440.0 } if voice_id == first
+        ));
+        let second = tx.note_on_exact(69, 432.0, 100, 0).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOn { voice_id, frequency_hz: 440.0, .. } if voice_id == second
+        ));
+        tx.set_compare_standard(false).unwrap();
+        for expected in [first, second] {
+            assert!(matches!(
+                rx.try_recv().unwrap(),
+                SynthEvent::Retune { voice_id, frequency_hz: 432.0 } if voice_id == expected
+            ));
+        }
+        tx.note_off(69, 0).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOff { voice_id } if voice_id == first
         ));
     }
 

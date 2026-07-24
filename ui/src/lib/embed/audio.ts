@@ -24,10 +24,12 @@ let pending = 0;
 let panicSequence = 0;
 let faulted = false;
 let enabled = true;
+let compareStandard = false;
 let masterGain = 0.25;
 const roleGains = [1, 1, 1, 1];
 const queued: AudioEvent[] = [];
 const voices = new Map<string, number[]>();
+const voiceTargets = new Map<number, { anchor: number; frequency: number }>();
 
 function ensureAudio(): AudioContext | null {
 	if (ctx) return ctx;
@@ -54,6 +56,7 @@ function ensureAudio(): AudioContext | null {
 					pending = Math.max(0, pending - 1);
 					if (data.panic) {
 						voices.clear();
+						voiceTargets.clear();
 						faulted = false;
 					}
 					if (data.ack === panicSequence) faulted = false;
@@ -90,6 +93,7 @@ function post(event: AudioEvent) {
 
 function overflow(audio: AudioContext) {
 	voices.clear();
+	voiceTargets.clear();
 	queued.length = 0;
 	faulted = true;
 	const event = {
@@ -161,13 +165,15 @@ export function noteOn(
 	}
 	role = Math.max(0, Math.min(ROLE_COUNT - 1, Math.trunc(role)));
 	addVoiceOwner(voices, role, midi, voiceId);
+	const anchor = Math.max(0, Math.min(127, Math.trunc(midi)));
+	voiceTargets.set(voiceId, { anchor, frequency: frequencyHz });
 	enqueue({
 		kind: 0,
 		atFrame: eventFrame(audio, scheduleAt),
 		voiceId,
 		role,
-		anchor: Math.max(0, Math.min(127, Math.trunc(midi))),
-		frequency: frequencyHz,
+		anchor,
+		frequency: compareStandard ? midiFrequency(anchor) : frequencyHz,
 		velocity: Math.max(0, Math.min(127, Math.trunc(velocity)))
 	});
 }
@@ -179,6 +185,7 @@ export function noteOff(midi: number, scheduleAt?: number, role = 0) {
 	if (!audio) return;
 	const voiceId = takeVoiceOwner(voices, role, midi);
 	if (voiceId === undefined) return;
+	voiceTargets.delete(voiceId);
 	enqueue({ kind: 1, atFrame: eventFrame(audio, scheduleAt), voiceId });
 }
 
@@ -186,6 +193,7 @@ export function allNotesOff() {
 	const audio = ensureAudio();
 	if (!audio) return;
 	voices.clear();
+	voiceTargets.clear();
 	enqueue({ kind: 3, atFrame: audio.currentTime * audio.sampleRate });
 }
 
@@ -193,6 +201,21 @@ export function setSustainPedal(on: boolean, scheduleAt?: number) {
 	const audio = ensureAudio();
 	if (!audio) return;
 	enqueue({ kind: 2, atFrame: eventFrame(audio, scheduleAt), value: on ? 1 : 0 });
+}
+
+export function setCompareStandard(enabled: boolean) {
+	if (compareStandard === enabled) return;
+	compareStandard = enabled;
+	const audio = ensureAudio();
+	if (!audio) return;
+	for (const [voiceId, target] of voiceTargets) {
+		enqueue({
+			kind: 6,
+			atFrame: audio.currentTime * audio.sampleRate,
+			voiceId,
+			frequency: enabled ? midiFrequency(target.anchor) : target.frequency
+		});
+	}
 }
 
 export function setEnabled(on: boolean) {
@@ -227,7 +250,9 @@ export function getAudioContext(): AudioContext | null {
 }
 
 export function destroy() {
+	compareStandard = false;
 	voices.clear();
+	voiceTargets.clear();
 	queued.length = 0;
 	if (node) {
 		node.disconnect();

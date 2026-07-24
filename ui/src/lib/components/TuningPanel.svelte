@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
+	import { adapter, type HarmonicLimit, type TuningStyle } from '$lib/adapter';
 	import { engine } from '$lib/stores/engine.svelte';
-	import type { HarmonicLimit, TuningStyle } from '$lib/adapter';
 
 	const styles: Array<{ value: TuningStyle; label: string; description: string }> = [
 		{ value: 'standard', label: 'Standard', description: 'Familiar piano and synthesizer tuning.' },
@@ -18,6 +19,24 @@
 	function setLimit(event: Event) {
 		void engine.setHarmonicLimit((event.currentTarget as HTMLSelectElement).value as HarmonicLimit);
 	}
+
+	let comparing = $state(false);
+	let compareRequests = Promise.resolve();
+	function compare(enabled: boolean) {
+		if (comparing === enabled) return;
+		comparing = enabled;
+		compareRequests = compareRequests
+			.then(() => adapter.setTuningCompare(enabled))
+			.catch((error) => console.error('Could not compare tuning', error));
+	}
+
+	$effect(() => {
+		if (engine.tuningStyle !== 'pure' && comparing) compare(false);
+	});
+
+	onDestroy(() => {
+		if (comparing) compare(false);
+	});
 </script>
 
 <section class="tuning" aria-labelledby="tuning-heading">
@@ -53,6 +72,27 @@
 			<small>Full</small>
 		</label>
 
+		<button
+			type="button"
+			class="compare"
+			class:active={comparing}
+			aria-pressed={comparing}
+			onpointerdown={(event) => {
+				event.currentTarget.setPointerCapture(event.pointerId);
+				compare(true);
+			}}
+			onpointerup={() => compare(false)}
+			onpointercancel={() => compare(false)}
+			onlostpointercapture={() => compare(false)}
+			onblur={() => compare(false)}
+			onkeydown={(event) => {
+				if (!event.repeat && (event.key === ' ' || event.key === 'Enter')) compare(true);
+			}}
+			onkeyup={(event) => {
+				if (event.key === ' ' || event.key === 'Enter') compare(false);
+			}}
+		>Hold to compare Standard</button>
+
 		<details>
 			<summary>Advanced</summary>
 			<label class="limit">
@@ -86,6 +126,8 @@
 	}
 	button { padding: 0 12px; }
 	button.active { border-color: #668563; color: #c1d8bd; background: #2d372d; }
+	button.compare { margin-top: 12px; width: 100%; }
+	button.compare.active { border-color: #7c9eb8; color: #d1e3ee; background: #29343b; }
 	.depth { margin-top: 14px; display: grid; grid-template-columns: auto minmax(140px, 1fr) auto; align-items: center; gap: 8px; }
 	.depth > span { grid-column: 1 / -1; display: flex; justify-content: space-between; color: var(--color-text, #ccc); font: 11px var(--font-ui); }
 	.depth output { color: var(--color-text-muted, #999); font-family: var(--font-code); }

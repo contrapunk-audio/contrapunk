@@ -64,6 +64,13 @@ impl Voice {
         self.age = age;
     }
 
+    pub fn retune(&mut self, voice_id: VoiceId, frequency_hz: f32, sample_rate: f32) {
+        if self.has_voice_id(voice_id) && frequency_hz.is_finite() && frequency_hz > 0.0 {
+            self.oscillator.retune(frequency_hz, sample_rate);
+            self.frequency_hz = frequency_hz;
+        }
+    }
+
     pub fn note_off(&mut self, voice_id: VoiceId, sustain_down: bool) {
         if !self.is_live() || self.voice_id != voice_id {
             return;

@@ -43,6 +43,13 @@ impl ElixirAudio {
         });
     }
 
+    pub fn retune(&mut self, voice_id: u32, frequency_hz: f32) {
+        self.engine.handle_voice_event(VoiceEvent::Retune {
+            voice_id: VoiceId::new(voice_id as u64),
+            frequency_hz,
+        });
+    }
+
     pub fn note_off(&mut self, voice_id: u32) {
         self.engine.handle_voice_event(VoiceEvent::NoteOff {
             voice_id: VoiceId::new(voice_id as u64),
@@ -104,6 +111,7 @@ mod tests {
         assert!(audio.output.iter().all(|sample| sample.is_finite()));
         assert!(audio.output.iter().any(|sample| sample.abs() > 1.0e-6));
 
+        audio.retune(2, 432.0);
         audio.note_off(2);
         audio.process(128, 2);
         audio.process(128, 2);

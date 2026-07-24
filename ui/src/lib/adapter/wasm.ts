@@ -541,6 +541,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 		engine.set_harmonic_limit(limit);
 	}
 
+	async setTuningCompare(enabled: boolean): Promise<void> {
+		embedAudio.setCompareStandard(enabled);
+	}
+
 	async setCounterpointSpecies(species: string): Promise<void> {
 		this.ensureInit();
 		try {

@@ -399,6 +399,13 @@ export class ElixirAudio {
         return ret >>> 0;
     }
     /**
+     * @param {number} voice_id
+     * @param {number} frequency_hz
+     */
+    retune(voice_id, frequency_hz) {
+        wasm.elixiraudio_retune(this.__wbg_ptr, voice_id, frequency_hz);
+    }
+    /**
      * @param {number} gain
      */
     set_master_gain(gain) {

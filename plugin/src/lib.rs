@@ -1228,6 +1228,8 @@ struct ContrapunkPlugin {
     last_tuning_style: PluginTuningStyle,
     last_tuning_depth: f32,
     last_harmonic_limit: PluginHarmonicLimit,
+    compare_standard: Arc<AtomicBool>,
+    last_tuning_compare: bool,
     last_input_mode: PluginInputMode,
     last_midi_output_mode: PluginMidiOutputMode,
 }
@@ -1309,6 +1311,8 @@ impl Default for ContrapunkPlugin {
             last_tuning_style: PluginTuningStyle::Standard,
             last_tuning_depth: 0.6,
             last_harmonic_limit: PluginHarmonicLimit::Five,
+            compare_standard: Arc::new(AtomicBool::new(false)),
+            last_tuning_compare: false,
             last_input_mode: default_input_mode,
             last_midi_output_mode: PluginMidiOutputMode::Full,
         }
@@ -1325,6 +1329,11 @@ impl ContrapunkPlugin {
     fn sync_params(&mut self) -> bool {
         self.synth_params
             .set_enabled(self.params.synth_enabled.value());
+        let tuning_compare = self.compare_standard.load(Ordering::Acquire);
+        if tuning_compare != self.last_tuning_compare {
+            self.synth.set_compare_standard(tuning_compare);
+            self.last_tuning_compare = tuning_compare;
+        }
         self.synth_params
             .set_master_gain(self.params.synth_gain.value());
         for (group, gain) in [
@@ -1904,6 +1913,7 @@ impl Plugin for ContrapunkPlugin {
                 Arc::clone(&self.guitar_signal),
                 Arc::clone(&self.companion),
                 Arc::clone(&self.panic_requested),
+                Arc::clone(&self.compare_standard),
                 self.guitar_component,
                 &self.params.webview_state,
             )))

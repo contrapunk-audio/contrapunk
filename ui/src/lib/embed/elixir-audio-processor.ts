@@ -100,6 +100,9 @@ class ElixirAudioProcessor extends AudioWorkletProcessor {
 			case 5:
 				this.engine.set_role_gain(this.events.role[0], this.events.value[0]);
 				break;
+			case 6:
+				this.engine.retune(this.events.voiceId[0], this.events.frequency[0]);
+				break;
 		}
 	}
 }

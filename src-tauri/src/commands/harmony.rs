@@ -126,6 +126,14 @@ pub fn set_harmonic_limit(limit: String, state: State<AppState>) -> Result<(), S
     update_tuning(&state, |config| config.harmonic_limit = limit)
 }
 
+#[tauri::command]
+pub fn set_tuning_compare(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    state
+        .synth_tx
+        .set_compare_standard(enabled)
+        .map_err(|error| format!("Could not compare tuning: {error}"))
+}
+
 /// Returns the engine's current port-map: for each result-index `i`
 /// (0 = the user's input/melody, 1..N = harmony voices), the arrangement
 /// slot the engine will route that voice through. The VGC reads this so

@@ -21,6 +21,7 @@ struct MidiOwner {
     note: u8,
     role: VoiceRole,
     id: VoiceId,
+    frequency_hz: f32,
     age: u64,
 }
 
@@ -32,6 +33,7 @@ pub struct ElixirSynthBlock {
     event_fault: Arc<AtomicBool>,
     midi_owners: [Option<MidiOwner>; MAX_POLYPHONY],
     next_midi_id: u64,
+    compare_standard: bool,
 }
 
 fn voice_role(mix_group: u8) -> Option<VoiceRole> {
@@ -64,6 +66,7 @@ impl ElixirSynthBlock {
             event_fault,
             midi_owners: [None; MAX_POLYPHONY],
             next_midi_id: 0,
+            compare_standard: false,
         }
     }
 
@@ -100,6 +103,15 @@ impl ElixirSynthBlock {
                             velocity,
                         });
                     }
+                }
+                SynthEvent::Retune {
+                    voice_id,
+                    frequency_hz,
+                } => {
+                    self.engine.handle_voice_event(VoiceEvent::Retune {
+                        voice_id: VoiceId::new(voice_id.get()),
+                        frequency_hz,
+                    });
                 }
                 SynthEvent::NoteOff { voice_id } => {
                     self.engine.handle_voice_event(VoiceEvent::NoteOff {
@@ -157,15 +169,38 @@ impl ElixirSynthBlock {
             note,
             role,
             id,
+            frequency_hz,
             age,
         });
+        let sounding_frequency = if self.compare_standard {
+            elixir_core::util::midi_to_freq(note)
+        } else {
+            frequency_hz
+        };
         self.engine.handle_voice_event(VoiceEvent::NoteOn {
             voice_id: id,
             role,
             midi_anchor: note,
-            frequency_hz,
+            frequency_hz: sounding_frequency,
             velocity,
         });
+    }
+
+    pub fn set_compare_standard(&mut self, enabled: bool) {
+        if self.compare_standard == enabled {
+            return;
+        }
+        self.compare_standard = enabled;
+        for owner in self.midi_owners.iter().flatten() {
+            self.engine.handle_voice_event(VoiceEvent::Retune {
+                voice_id: owner.id,
+                frequency_hz: if enabled {
+                    elixir_core::util::midi_to_freq(owner.note)
+                } else {
+                    owner.frequency_hz
+                },
+            });
+        }
     }
 
     pub fn note_off_for_role(&mut self, note: u8, role: VoiceRole) {

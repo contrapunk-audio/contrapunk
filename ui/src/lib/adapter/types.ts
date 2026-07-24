@@ -324,6 +324,7 @@ export interface ContrapunkAdapter {
 	setTuningStyle(style: TuningStyle): Promise<void>;
 	setTuningDepth(depth: number): Promise<void>;
 	setHarmonicLimit(limit: HarmonicLimit): Promise<void>;
+	setTuningCompare(enabled: boolean): Promise<void>;
 
 	/**
 	 * Set the counterpoint species (1-4) used when the harmony mode is

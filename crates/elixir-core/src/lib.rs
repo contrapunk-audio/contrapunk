@@ -60,6 +60,10 @@ pub enum VoiceEvent {
         frequency_hz: f32,
         velocity: u8,
     },
+    Retune {
+        voice_id: VoiceId,
+        frequency_hz: f32,
+    },
     NoteOff {
         voice_id: VoiceId,
     },
@@ -145,6 +149,14 @@ impl Engine {
                 frequency_hz,
                 velocity,
             } => self.start_voice(voice_id, role, midi_anchor, frequency_hz, velocity),
+            VoiceEvent::Retune {
+                voice_id,
+                frequency_hz,
+            } => {
+                for voice in &mut self.voices {
+                    voice.retune(voice_id, frequency_hz, self.sample_rate as f32);
+                }
+            }
             VoiceEvent::NoteOff { voice_id } => {
                 for voice in &mut self.voices {
                     voice.note_off(voice_id, self.sustain_pedal);
@@ -350,6 +362,31 @@ mod tests {
             .voices
             .iter()
             .any(|voice| { voice.metadata().0 == VoiceId::new(0) && voice.is_live() }));
+    }
+
+    #[test]
+    fn retune_preserves_identity_phase_and_ownership() {
+        let mut engine = Engine::new();
+        engine.prepare(48_000, 256);
+        engine.handle_voice_event(note_on(1, VoiceRole::Input, 69, 440.0));
+        let mut before = [0.0; 64];
+        engine.process(&mut before, 1);
+        engine.handle_voice_event(VoiceEvent::Retune {
+            voice_id: VoiceId::new(1),
+            frequency_hz: 432.0,
+        });
+        assert_eq!(engine.live_voice_count(), 1);
+        assert!(engine
+            .voices
+            .iter()
+            .any(|voice| { voice.metadata() == (VoiceId::new(1), VoiceRole::Input, 69, 432.0) }));
+        let mut after = [0.0; 2];
+        engine.process(&mut after, 1);
+        assert_ne!(after[0], 0.0, "retune must not reset oscillator phase");
+        engine.handle_voice_event(VoiceEvent::NoteOff {
+            voice_id: VoiceId::new(1),
+        });
+        assert_eq!(engine.live_voice_count(), 0);
     }
 
     #[test]

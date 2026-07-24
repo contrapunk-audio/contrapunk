@@ -106,6 +106,7 @@ fn main() {
             commands::harmony::set_tuning_style,
             commands::harmony::set_tuning_depth,
             commands::harmony::set_harmonic_limit,
+            commands::harmony::set_tuning_compare,
             commands::companion::companion_set_enabled,
             commands::companion::companion_is_enabled,
             commands::companion::companion_set_global_hold_mode,

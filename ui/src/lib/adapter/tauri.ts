@@ -282,6 +282,10 @@ export class TauriAdapter implements ContrapunkAdapter {
 		await invoke('set_harmonic_limit', { limit });
 	}
 
+	async setTuningCompare(enabled: boolean): Promise<void> {
+		await invoke('set_tuning_compare', { enabled });
+	}
+
 	async setCounterpointSpecies(species: string): Promise<void> {
 		try {
 			await invoke('set_counterpoint_species', { species });

@@ -16,6 +16,10 @@ impl Oscillator {
 
     pub fn start(&mut self, frequency_hz: f32, sample_rate: f32) {
         self.phase = 0.0;
+        self.retune(frequency_hz, sample_rate);
+    }
+
+    pub fn retune(&mut self, frequency_hz: f32, sample_rate: f32) {
         self.phase_step = core::f32::consts::TAU * frequency_hz / sample_rate;
     }
 

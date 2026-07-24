@@ -21,3 +21,17 @@ assert.equal(takeVoiceOwner(owners, 1, 60), 12, 'roles own equal pitches indepen
 assert.equal(takeVoiceOwner(owners, 0, 60), 10, 'repeated pitches release FIFO');
 assert.equal(takeVoiceOwner(owners, 0, 60), 11);
 assert.equal(takeVoiceOwner(owners, 0, 60), undefined);
+
+const exactOwners = new Map();
+const exactTargets = new Map();
+addVoiceOwner(exactOwners, 0, 69, 20);
+exactTargets.set(20, { anchor: 69, frequency: 432 });
+addVoiceOwner(exactOwners, 0, 69, 21);
+exactTargets.set(21, { anchor: 69, frequency: 445 });
+const firstExact = takeVoiceOwner(exactOwners, 0, 69);
+assert.equal(firstExact, 20, 'duplicate anchors retain attack identity');
+assert.deepEqual(exactTargets.get(firstExact), { anchor: 69, frequency: 432 });
+exactTargets.delete(firstExact);
+const secondExact = takeVoiceOwner(exactOwners, 0, 69);
+assert.equal(secondExact, 21);
+assert.deepEqual(exactTargets.get(secondExact), { anchor: 69, frequency: 445 });

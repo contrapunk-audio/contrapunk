@@ -229,6 +229,11 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('setHarmonicLimit', limit);
 	}
 
+	async setTuningCompare(enabled: boolean): Promise<void> {
+		currentParams = { ...currentParams, tuningCompare: enabled };
+		this.send('setTuningCompare', enabled);
+	}
+
 	async setCounterpointSpecies(species: string): Promise<void> {
 		// nih-plug parameters are fixed at compile time; pass through so the
 		// host can route to a parameter if it eventually exposes one.

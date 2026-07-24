@@ -74,6 +74,7 @@ export const elixiraudio_output_capacity: (a: number) => number;
 export const elixiraudio_output_ptr: (a: number) => number;
 export const elixiraudio_panic: (a: number) => void;
 export const elixiraudio_process: (a: number, b: number, c: number) => number;
+export const elixiraudio_retune: (a: number, b: number, c: number) => void;
 export const elixiraudio_set_master_gain: (a: number, b: number) => void;
 export const elixiraudio_set_role_gain: (a: number, b: number, c: number) => void;
 export const elixiraudio_set_sustain: (a: number, b: number) => void;

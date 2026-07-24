@@ -41,6 +41,8 @@ pub struct ContrapunkEditorHandler {
     last_note_json: String,
     /// Set by UI panic button; drained by plugin process() on audio thread.
     panic_requested: Arc<AtomicBool>,
+    /// Momentary, non-persisted Compare state shared with the audio thread.
+    compare_standard: Arc<AtomicBool>,
     /// The dedicated Logic Audio FX always consumes its audio bus.
     guitar_component: bool,
     guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
@@ -59,6 +61,7 @@ impl ContrapunkEditorHandler {
             "tuningStyle": format!("{:?}", self.params.tuning_style.value()),
             "tuningDepth": self.params.tuning_depth.value(),
             "harmonicLimit": format!("{:?}", self.params.harmonic_limit.value()),
+            "tuningCompare": self.compare_standard.load(Ordering::Acquire),
             "octaveMode": format!("{:?}", self.params.octave_mode.value()),
             "octaveIntensity": self.params.octave_intensity.value(),
             "voicePosition": self.params.voice_position.value(),
@@ -142,6 +145,12 @@ impl ContrapunkEditorHandler {
         }
         self.last_note_json = payload.clone();
         Some(payload)
+    }
+}
+
+impl Drop for ContrapunkEditorHandler {
+    fn drop(&mut self) {
+        self.compare_standard.store(false, Ordering::Release);
     }
 }
 
@@ -250,6 +259,11 @@ impl EditorHandler for ContrapunkEditorHandler {
                         cx.get_param_setter()
                             .set_parameter(&self.params.harmonic_limit, limit);
                     }
+                }
+            }
+            "setTuningCompare" => {
+                if let Some(enabled) = msg.get("value").and_then(|value| value.as_bool()) {
+                    self.compare_standard.store(enabled, Ordering::Release);
                 }
             }
             "setInputMode" => {
@@ -382,6 +396,7 @@ pub fn create_editor(
     guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
     companion: Arc<Mutex<Companion>>,
     panic_requested: Arc<AtomicBool>,
+    compare_standard: Arc<AtomicBool>,
     guitar_component: bool,
     state: &Arc<WebViewState>,
 ) -> WebViewEditor {
@@ -404,6 +419,7 @@ pub fn create_editor(
         companion,
         last_note_json: String::new(),
         panic_requested,
+        compare_standard,
         guitar_component,
         guitar_signal,
         guitar_was_live: false,

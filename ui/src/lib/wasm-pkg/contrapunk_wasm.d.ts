@@ -89,6 +89,7 @@ export class ElixirAudio {
      * Render at most the preallocated frame bound and return the frame count.
      */
     process(frames: number, channels: number): number;
+    retune(voice_id: number, frequency_hz: number): void;
     set_master_gain(gain: number): void;
     set_role_gain(role: number, gain: number): void;
     set_sustain(enabled: boolean): void;
@@ -381,6 +382,7 @@ export interface InitOutput {
     readonly elixiraudio_output_ptr: (a: number) => number;
     readonly elixiraudio_panic: (a: number) => void;
     readonly elixiraudio_process: (a: number, b: number, c: number) => number;
+    readonly elixiraudio_retune: (a: number, b: number, c: number) => void;
     readonly elixiraudio_set_master_gain: (a: number, b: number) => void;
     readonly elixiraudio_set_role_gain: (a: number, b: number, c: number) => void;
     readonly elixiraudio_set_sustain: (a: number, b: number) => void;
