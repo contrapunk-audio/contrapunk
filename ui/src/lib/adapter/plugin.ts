@@ -63,10 +63,9 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// DAW routes MIDI to/from the plugin via its own bus / track
 		// pickers; ours would be inert.
 		midiDevicePicker: false,
-		// Plugin is MIDI-out only. The synth/reverb/delay UI knobs
-		// fire send() into the void because plugin/src/lib.rs has no
-		// audio FX params today. Hide until those land.
-		audioFx: false,
+		// Contrapunk's plugin renders its fixed Elixir monitor and exposes
+		// real enabled/master parameters. Legacy delay/reverb stay hidden.
+		audioFx: true,
 		builtInFx: false,
 		// Companion lanes (canon + counterpoint) are wired in the
 		// plugin's process() via Companion::tick_tagged. CompanionPanel

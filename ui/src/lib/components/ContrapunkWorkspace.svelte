@@ -29,6 +29,7 @@
 	import ArrangementMixer from '$lib/prototype/ArrangementMixer.svelte';
 	import ExpressionRoll from '$lib/prototype/ExpressionRoll.svelte';
 	import PatternLanePanel from '$lib/prototype/PatternLanePanel.svelte';
+	import ElixirWorkspace from '$lib/components/elixir/ElixirWorkspace.svelte';
 
 	type SetupSection = 'input' | 'harmony' | 'canon' | 'counterpoint' | 'output' | 'presets' | 'advanced';
 
@@ -44,6 +45,7 @@
 	let setupSection = $state<SetupSection>('input');
 	let companionFocus = $state<'imitative' | 'species'>('imitative');
 	let companionFocusVersion = $state(0);
+	let activeView = $state<'harmony' | 'synth'>('harmony');
 
 	let inputLive = $derived(engine.inputNotes.length > 0);
 	let ensembleLive = $derived(engine.harmonyNotes.length > 0 || engine.canonNotes.length > 0 || engine.counterpointNotes.length > 0);
@@ -154,6 +156,13 @@
 	<header class="app-header">
 		<div class="identity">
 			<img src="/logo.svg" alt="Contrapunk" />
+			{#if adapter.capabilities.audioFx}
+				<nav class="view-tabs" aria-label="Main view">
+					<button class:active={activeView === 'harmony'} onclick={() => (activeView = 'harmony')}>Harmony</button>
+					<span aria-hidden="true">|</span>
+					<button class:active={activeView === 'synth'} onclick={() => (activeView = 'synth')}>Synth</button>
+				</nav>
+			{/if}
 		</div>
 		<div class="signal-path" aria-label="Current signal path">
 			<span class:live={inputLive}><i></i>{sourceName}</span>
@@ -173,6 +182,9 @@
 		</div>
 	</header>
 
+	{#if activeView === 'synth' && adapter.capabilities.audioFx}
+		<div class="synth-body"><ElixirWorkspace embedded /></div>
+	{:else}
 	<main class="performance-body">
 		{#if initError}
 			<div class="notice error" role="alert">{initError}</div>
@@ -194,6 +206,7 @@
 			<ArrangementMixer {openSetup} />
 		{/if}
 	</main>
+	{/if}
 
 	<dialog class="setup-dialog" bind:this={setupDialog} aria-labelledby="setup-title" onclose={() => (setupOpen = false)}>
 		<div class="dialog-frame">
@@ -275,8 +288,12 @@
 		font-family: var(--font-grotesk);
 	}
 	.app-header { position: relative; z-index: 20; display: grid; height: 52px; grid-template-columns: minmax(150px, .8fr) minmax(240px, 1fr) auto; align-items: center; gap: 18px; padding: 0 14px; border-bottom: 1px solid var(--proto-line-strong); background: rgba(5, 5, 5, .96); }
-	.identity { display: flex; align-items: center; gap: 10px; }
+	.identity { display: flex; align-items: center; gap: 12px; }
 	.identity img { width: 28px; height: 34px; object-fit: contain; }
+	.view-tabs { display: flex; align-items: center; gap: 7px; color: var(--proto-line-strong); }
+	.view-tabs button { padding: 4px 0; border: 0; background: transparent; color: var(--proto-dim); font: 650 11px var(--font-grotesk); }
+	.view-tabs button:hover, .view-tabs button.active { color: var(--proto-text); }
+	.view-tabs button.active { box-shadow: 0 1px var(--proto-text); }
 	.signal-path { display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--proto-dim); font-size: 10px; }
 	.signal-path span { display: inline-flex; align-items: center; gap: 5px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.signal-path i { width: 5px; height: 5px; border: 1px solid currentColor; border-radius: 50%; }
@@ -292,6 +309,8 @@
 	.transport-button { width: 31px; padding: 0 !important; font-family: var(--font-code) !important; }
 	.tempo { display: flex; height: 30px; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid var(--proto-line); color: var(--proto-muted); font: 8px var(--font-code); }
 	.tempo input { width: 39px; border: 0; background: transparent; color: var(--proto-text); font: 10px var(--font-code); }
+	.synth-body { height: calc(100vh - 52px); overflow: hidden; }
+	.synth-body > :global(*) { height: 100%; }
 	.performance-body { box-sizing: border-box; display: grid; width: min(1480px, calc(100% - 20px)); height: calc(100vh - 52px); grid-template-rows: auto minmax(0, 1fr) 220px; margin: 0 auto; gap: 8px; overflow: hidden; padding: 8px 0; }
 	.quick-controls { display: grid; grid-template-columns: .7fr 1.2fr 1.3fr .55fr .9fr 1fr; border: 1px solid var(--proto-line); background: var(--proto-panel); }
 	.quick-controls label { display: grid; min-width: 0; gap: 3px; padding: 6px 10px; border-right: 1px solid var(--proto-line); }

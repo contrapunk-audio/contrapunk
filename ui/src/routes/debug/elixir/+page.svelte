@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Elixir UI Mock — Contrapunk</title>
+	<title>Elixir Sine — Contrapunk</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
