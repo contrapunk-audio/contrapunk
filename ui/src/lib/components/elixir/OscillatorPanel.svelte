@@ -1,3 +1,7 @@
+<script lang="ts">
+	let { roleAware = true } = $props<{ roleAware?: boolean }>();
+</script>
+
 <section class="oscillator" aria-labelledby="oscillator-heading">
 	<header>
 		<div>
@@ -40,8 +44,8 @@
 			<strong>MIDI velocity</strong>
 		</div>
 		<div>
-			<span class="font-code">ROUTING</span>
-			<strong>Role-aware gain</strong>
+			<span class="font-code">LEVEL</span>
+			<strong>{roleAware ? 'Role-aware gain' : 'Master gain'}</strong>
 		</div>
 	</div>
 </section>

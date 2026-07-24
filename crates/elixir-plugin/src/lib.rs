@@ -9,10 +9,15 @@ use std::sync::Arc;
 use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole, MAX_POLYPHONY};
 use nih_plug::prelude::*;
 
+mod editor;
+
 #[derive(Params)]
 struct ElixirParams {
     #[id = "gain"]
     gain: FloatParam,
+
+    #[persist = "webview_state"]
+    webview_state: Arc<nih_plug_webview::WebViewState>,
 }
 
 impl Default for ElixirParams {
@@ -30,6 +35,7 @@ impl Default for ElixirParams {
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            webview_state: editor::default_webview_state(),
         }
     }
 }
@@ -273,6 +279,13 @@ impl Plugin for ElixirPlugin {
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
+    }
+
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        Some(Box::new(editor::create_editor(
+            self.params.clone(),
+            &self.params.webview_state,
+        )))
     }
 
     fn initialize(

@@ -61,7 +61,7 @@
 		<div class="notice">This host does not expose an audio-rendering Elixir instance.</div>
 	{:else}
 		<div class="workspace-grid">
-			<OscillatorPanel />
+			<OscillatorPanel roleAware={!masterOnly} />
 			<section class="controls" aria-label="Elixir controls">
 				<header>
 					<div><p class="font-code">OUTPUT</p><h2>Level</h2></div>

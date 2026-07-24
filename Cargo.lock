@@ -1308,6 +1308,8 @@ dependencies = [
  "assert_no_alloc",
  "elixir-core",
  "nih_plug",
+ "nih_plug_webview",
+ "serde_json",
 ]
 
 [[package]]

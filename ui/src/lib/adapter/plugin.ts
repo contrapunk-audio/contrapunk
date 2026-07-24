@@ -132,12 +132,10 @@ export class PluginAdapter implements ContrapunkAdapter {
 			}
 		});
 
-		// Keep embedded host panels at the editor's intended size.
-		window.plugin.resize?.(1200, 800);
-
-		// Signal ready — the Rust side will respond with initial params
+		// Signal ready — the Rust side responds with product + parameter state.
 		window.plugin.send(JSON.stringify({ type: 'ready' }));
 		await initialParams;
+		window.plugin.resize?.(currentParams.product === 'elixir' ? 760 : 1200, currentParams.product === 'elixir' ? 720 : 800);
 		this._isReady = true;
 	}
 

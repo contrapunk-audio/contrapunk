@@ -52,7 +52,11 @@ fn main() {
 
 fn resolve_ui_dir(manifest_dir: &Path, env_dir: Option<PathBuf>) -> PathBuf {
     let Some(path) = env_dir else {
-        return manifest_dir.join("../ui/build");
+        return manifest_dir
+            .ancestors()
+            .map(|ancestor| ancestor.join("ui/build"))
+            .find(|candidate| candidate.exists())
+            .unwrap_or_else(|| manifest_dir.join("../ui/build"));
     };
     if path.is_absolute() {
         return path;
