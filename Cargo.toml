@@ -44,7 +44,7 @@ contrapunk-harmony = { path = "crates/contrapunk-harmony" }
 contrapunk-audio = { path = "crates/contrapunk-audio" }
 contrapunk-preset = { path = "crates/contrapunk-preset" }
 contrapunk-dsp = { path = "crates/contrapunk-dsp" }
-elixir-core = { path = "crates/elixir-core", optional = true }
+elixir-core = { path = "crates/elixir-core" }
 anyhow = "1.0"
 wmidi = "4.0"
 rand = "0.10"
@@ -57,10 +57,6 @@ assert_no_alloc = { git = "https://github.com/robbert-vdh/rust-assert-no-alloc.g
 
 [features]
 default = []
-# Phase 21.A0 cutover flag. While opt-in, the legacy `src/synth/` powers
-# Contrapunk audio output. With the flag on, `ElixirSynthBlock` instances
-# the Elixir engine — silence at A0, gradually replaced through A1+.
-elixir-synth = ["dep:elixir-core"]
 web-midi = [
     "wasm-bindgen",
     "wasm-bindgen-futures",

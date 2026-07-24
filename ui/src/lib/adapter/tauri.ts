@@ -865,13 +865,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 		const raw = (await invoke('get_synth_state')) as Record<string, unknown>;
 		return {
 			enabled: raw.enabled as boolean,
-			waveform: raw.waveform as number,
-			attackMs: raw.attack_ms as number,
-			decayMs: raw.decay_ms as number,
-			sustain: raw.sustain as number,
-			releaseMs: raw.release_ms as number,
-			cutoffHz: raw.cutoff_hz as number,
-			resonance: raw.resonance as number,
 			masterGain: raw.master_gain as number,
 			mixGains: Array.isArray(raw.mix_gains) ? (raw.mix_gains as number[]) : undefined
 		};
@@ -879,27 +872,6 @@ export class TauriAdapter implements ContrapunkAdapter {
 
 	async setSynthEnabled(enabled: boolean): Promise<void> {
 		await invoke('set_synth_enabled', { enabled });
-	}
-	async setSynthWaveform(value: number): Promise<void> {
-		await invoke('set_synth_waveform', { value });
-	}
-	async setSynthAttackMs(ms: number): Promise<void> {
-		await invoke('set_synth_attack_ms', { ms });
-	}
-	async setSynthDecayMs(ms: number): Promise<void> {
-		await invoke('set_synth_decay_ms', { ms });
-	}
-	async setSynthSustain(level: number): Promise<void> {
-		await invoke('set_synth_sustain', { level });
-	}
-	async setSynthReleaseMs(ms: number): Promise<void> {
-		await invoke('set_synth_release_ms', { ms });
-	}
-	async setSynthCutoffHz(hz: number): Promise<void> {
-		await invoke('set_synth_cutoff_hz', { hz });
-	}
-	async setSynthResonance(value: number): Promise<void> {
-		await invoke('set_synth_resonance', { value });
 	}
 	async setSynthMasterGain(value: number): Promise<void> {
 		await invoke('set_synth_master_gain', { value });

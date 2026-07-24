@@ -67,7 +67,7 @@ impl ContrapunkEditorHandler {
                 )
             ),
             "synthEnabled": self.params.synth_enabled.value(),
-            "synthReleaseMs": self.params.synth_release_ms.value(),
+            "synthGain": self.params.synth_gain.value(),
             "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
         })
         .to_string()
@@ -244,10 +244,10 @@ impl EditorHandler for ContrapunkEditorHandler {
                     setter.set_parameter(&self.params.synth_enabled, enabled);
                 }
             }
-            "setSynthReleaseMs" => {
-                if let Some(release_ms) = msg.get("value").and_then(|v| v.as_i64()) {
+            "setSynthGain" => {
+                if let Some(gain) = msg.get("value").and_then(|v| v.as_f64()) {
                     let setter = cx.get_param_setter();
-                    setter.set_parameter(&self.params.synth_release_ms, release_ms as i32);
+                    setter.set_parameter(&self.params.synth_gain, gain as f32);
                 }
             }
             "panic" => {

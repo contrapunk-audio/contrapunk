@@ -15,7 +15,7 @@
 //!
 //! The chain lives inside the audio-owner thread. Parameter changes
 //! come in through each block's own lock-free param store (e.g.
-//! `SynthParams`). Block add/remove would go through an SPSC command
+//! `elixir::SynthParams`). Block add/remove would go through an SPSC command
 //! queue (future work — v1 hard-codes the chain layout at startup).
 //!
 //! # Extension points
@@ -33,7 +33,6 @@ pub mod chain;
 pub mod command;
 pub mod commander;
 
-#[cfg(feature = "elixir-synth")]
 pub mod elixir_block;
 
 pub use block::{AudioBlock, MidiBlockEvent};
@@ -41,7 +40,6 @@ pub use chain::Chain;
 pub use command::ChainCommand;
 pub use commander::{BlockDescriptor, ChainCommander};
 
-#[cfg(feature = "elixir-synth")]
 pub use elixir_block::{ElixirSynthBlock, ELIXIR_EVENT_QUEUE_CAPACITY};
 
 /// Consumer half of the chain command queue. Re-exported so downstream

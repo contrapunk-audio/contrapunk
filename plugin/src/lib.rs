@@ -22,9 +22,9 @@ mod editor;
 mod logic_midi;
 
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
-use contrapunk::chain::{AudioBlock, MidiBlockEvent};
+use contrapunk::chain::{AudioBlock, ElixirSynthBlock, MidiBlockEvent};
+use contrapunk::elixir::{SynthParams, VoiceRole};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, VoiceLeadingStyle};
-use contrapunk::synth::{synth_event_channel, Synth, SynthParams};
 use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
 use contrapunk_transport::Transport;
 
@@ -33,6 +33,20 @@ const FIRST_HARMONY_CHANNEL: u8 = 1;
 const CANON_CHANNEL: u8 = 5;
 const COUNTERPOINT_CHANNEL: u8 = 6;
 const TRACKED_OUTPUT_NOTES: usize = 16 * 128;
+const TRACKED_SYNTH_NOTES: usize = 4 * 128;
+
+fn monitor_role(channel: u8) -> VoiceRole {
+    match channel {
+        MELODY_CHANNEL => VoiceRole::Input,
+        CANON_CHANNEL => VoiceRole::Canon,
+        COUNTERPOINT_CHANNEL => VoiceRole::Counterpoint,
+        _ => VoiceRole::Harmony,
+    }
+}
+
+fn monitor_note_index(role: VoiceRole, note: u8) -> usize {
+    role as usize * 128 + note as usize
+}
 
 fn harmony_output_channel(result_index: usize) -> u8 {
     if result_index == 0 {
@@ -366,8 +380,8 @@ struct ContrapunkParams {
     #[id = "synth"]
     pub synth_enabled: BoolParam,
 
-    #[id = "synth_release"]
-    pub synth_release_ms: IntParam,
+    #[id = "synth_gain"]
+    pub synth_gain: FloatParam,
 
     #[id = "midi_output"]
     pub midi_output_mode: EnumParam<PluginMidiOutputMode>,
@@ -400,16 +414,14 @@ impl Default for ContrapunkParams {
                 "Voice Leading Style",
                 PluginVoiceLeadingStyle::Free,
             ),
-            synth_enabled: BoolParam::new("Built-in Synth", true),
-            synth_release_ms: IntParam::new(
-                "Synth Release",
-                400,
-                IntRange::Linear {
-                    min: 20,
-                    max: 4_000,
-                },
+            synth_enabled: BoolParam::new("Built-in Sine", true),
+            synth_gain: FloatParam::new(
+                "Sine Gain",
+                0.25,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
             )
-            .with_unit(" ms"),
+            .with_unit(" %")
+            .with_value_to_string(formatters::v2s_f32_percentage(0)),
             midi_output_mode: EnumParam::new("MIDI Output", PluginMidiOutputMode::Full),
             webview_state: editor::default_webview_state(),
         }
@@ -1066,7 +1078,7 @@ struct ContrapunkPlugin {
     worker_config_pending: bool,
     sample_rate: f32,
     has_audio_input: bool,
-    synth: Synth,
+    synth: ElixirSynthBlock,
     synth_params: Arc<SynthParams>,
     synth_scratch: Vec<f32>,
 
@@ -1083,9 +1095,8 @@ struct ContrapunkPlugin {
     /// Notes sent out to the DAW, counted by (channel, note). Used for hard
     /// all-notes-off on host stop and panic so downstream synths don't hang.
     active_output_notes: [u32; TRACKED_OUTPUT_NOTES],
-    /// Built-in synth ownership is pitch-only; MIDI channels do not
-    /// create independent synth voices.
-    active_synth_notes: [u32; 128],
+    /// Built-in monitor ownership is tracked independently per routing role.
+    active_synth_notes: [u32; TRACKED_SYNTH_NOTES],
 
     /// A failed best-effort UI-state clear is retried at the start of
     /// the next audio block. The audio thread never waits for the editor.
@@ -1133,8 +1144,7 @@ impl Default for ContrapunkPlugin {
         let world = WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
         let companion = Arc::new(Mutex::new(Companion::new(world)));
         let synth_params = Arc::new(SynthParams::default());
-        let (_synth_tx, synth_rx) = synth_event_channel();
-        let synth = Synth::new(Arc::clone(&synth_params), synth_rx, 48_000);
+        let synth = ElixirSynthBlock::new_with_params(48_000, Arc::clone(&synth_params));
         {
             let mut c = companion
                 .lock()
@@ -1169,7 +1179,7 @@ impl Default for ContrapunkPlugin {
             guitar_signal,
             panic_requested: Arc::new(AtomicBool::new(false)),
             active_output_notes: [0; TRACKED_OUTPUT_NOTES],
-            active_synth_notes: [0; 128],
+            active_synth_notes: [0; TRACKED_SYNTH_NOTES],
             note_state_clear_pending: false,
             last_key: PluginKey::C,
             last_mode: PluginMode::DiatonicThirds,
@@ -1197,7 +1207,7 @@ impl ContrapunkPlugin {
         self.synth_params
             .set_enabled(self.params.synth_enabled.value());
         self.synth_params
-            .set_release_ms(self.params.synth_release_ms.value() as u32);
+            .set_master_gain(self.params.synth_gain.value());
 
         let params = WorkerParams {
             key: self.params.key.value(),
@@ -1258,18 +1268,21 @@ impl ContrapunkPlugin {
         }
     }
 
-    fn synth_note_on(&mut self, note: u8, velocity: f32) {
+    fn synth_note_on(&mut self, note: u8, velocity: f32, role: VoiceRole) {
         let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
-        self.synth
-            .midi_event(MidiBlockEvent::NoteOn { note, velocity });
+        self.synth.note_on_for_role(note, velocity, role);
     }
 
-    fn synth_note_off(&mut self, note: u8) {
-        self.synth.midi_event(MidiBlockEvent::NoteOff { note });
+    fn synth_note_off(&mut self, note: u8, role: VoiceRole) {
+        self.synth.note_off_for_role(note, role);
     }
 
     fn synth_all_notes_off(&mut self) {
         self.synth.midi_event(MidiBlockEvent::AllNotesOff);
+    }
+
+    fn synth_sustain(&mut self, on: bool) {
+        self.synth.midi_event(MidiBlockEvent::SustainPedal { on });
     }
 
     fn emit_note_on(
@@ -1297,9 +1310,9 @@ impl ContrapunkPlugin {
                 self.logic_midi.note_on(channel, note, velocity);
             }
         }
-        if track_note_on(&mut self.active_synth_notes, note as usize) {
-            self.synth_note_on(note, velocity);
-        }
+        let role = monitor_role(channel);
+        track_note_on(&mut self.active_synth_notes, monitor_note_index(role, note));
+        self.synth_note_on(note, velocity, role);
     }
 
     fn emit_note_off(
@@ -1327,9 +1340,9 @@ impl ContrapunkPlugin {
                 self.logic_midi.note_off(channel, note, velocity);
             }
         }
-        if track_note_off(&mut self.active_synth_notes, note as usize) {
-            self.synth_note_off(note);
-        }
+        let role = monitor_role(channel);
+        track_note_off(&mut self.active_synth_notes, monitor_note_index(role, note));
+        self.synth_note_off(note, role);
     }
 
     fn hard_all_notes_off(&mut self, timing: u32, context: &mut impl ProcessContext<Self>) {
@@ -1389,7 +1402,7 @@ impl ContrapunkPlugin {
         }
 
         let scratch = &mut self.synth_scratch[..len];
-        self.synth.render(scratch, channels);
+        self.synth.process(scratch, channels);
 
         let output = buffer.as_slice();
         for frame in 0..samples {
@@ -1635,6 +1648,10 @@ impl ContrapunkPlugin {
                     }
                     self.emit_note_off(timing, channel, note, 0.0, context);
                 }
+                other @ NoteEvent::MidiCC { cc: 64, value, .. } => {
+                    self.synth_sustain(value >= 0.5);
+                    context.send_event(other);
+                }
                 other @ NoteEvent::MidiCC { timing, cc, .. } if is_all_notes_off_cc(cc) => {
                     self.hard_all_notes_off(timing, context);
                     context.send_event(other);
@@ -1821,6 +1838,10 @@ impl Plugin for ContrapunkPlugin {
                             queue_ok = self.try_enqueue_worker_note(timing, note, 0.0, false);
                             queue_overflow |= !queue_ok;
                         }
+                        other @ NoteEvent::MidiCC { cc: 64, value, .. } => {
+                            self.synth_sustain(value >= 0.5);
+                            context.send_event(other);
+                        }
                         other @ NoteEvent::MidiCC { timing, cc, .. } if is_all_notes_off_cc(cc) => {
                             self.hard_all_notes_off(timing, context);
                             context.send_event(other);
@@ -1953,7 +1974,33 @@ mod tests {
             PluginVoiceLeadingStyle::Palestrina.to_contrapunk(),
             VoiceLeadingStyle::Palestrina
         );
-        assert_eq!(ContrapunkParams::default().synth_release_ms.value(), 400);
+        assert_eq!(ContrapunkParams::default().synth_gain.value(), 0.25);
+    }
+
+    #[test]
+    fn internal_sine_monitor_preserves_repeat_and_sustain_ownership() {
+        let mut plugin = ContrapunkPlugin::default();
+        let mut audio = [0.0; 1024];
+        plugin.synth_note_on(69, 1.0, VoiceRole::Input);
+        plugin.synth_note_on(69, 0.8, VoiceRole::Input);
+        plugin.synth.process(&mut audio, 2);
+        plugin.synth_note_off(69, VoiceRole::Input);
+        plugin.synth.process(&mut audio, 2);
+        assert!(audio[audio.len() - 64..]
+            .iter()
+            .any(|sample| sample.abs() > 1.0e-6));
+
+        plugin.synth_sustain(true);
+        plugin.synth_note_off(69, VoiceRole::Input);
+        plugin.synth.process(&mut audio, 2);
+        assert!(audio[audio.len() - 64..]
+            .iter()
+            .any(|sample| sample.abs() > 1.0e-6));
+        plugin.synth_sustain(false);
+        plugin.synth.process(&mut audio, 2);
+        assert!(audio[audio.len() - 64..]
+            .iter()
+            .all(|sample| sample.abs() < 1.0e-6));
     }
 
     #[test]

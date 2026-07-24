@@ -497,30 +497,19 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async getSynthState() {
 		return {
-			enabled: false,
-			waveform: 0,
-			attackMs: 5,
-			decayMs: 120,
-			sustain: 0.7,
-			releaseMs: (currentParams.synthReleaseMs as number) ?? 400,
-			cutoffHz: 6000,
-			resonance: 0.2,
-			masterGain: 0.25
+			enabled: (currentParams.synthEnabled as boolean) ?? true,
+			masterGain: (currentParams.synthGain as number) ?? 0.25
 		};
 	}
-	async setSynthEnabled(_enabled: boolean): Promise<void> {}
-	async setSynthWaveform(_value: number): Promise<void> {}
-	async setSynthAttackMs(_ms: number): Promise<void> {}
-	async setSynthDecayMs(_ms: number): Promise<void> {}
-	async setSynthSustain(_level: number): Promise<void> {}
-	async setSynthReleaseMs(ms: number): Promise<void> {
-		const value = Math.max(20, Math.min(4000, Math.round(ms)));
-		currentParams = { ...currentParams, synthReleaseMs: value };
-		this.send('setSynthReleaseMs', value);
+	async setSynthEnabled(enabled: boolean): Promise<void> {
+		currentParams = { ...currentParams, synthEnabled: enabled };
+		this.send('setSynthEnabled', enabled);
 	}
-	async setSynthCutoffHz(_hz: number): Promise<void> {}
-	async setSynthResonance(_value: number): Promise<void> {}
-	async setSynthMasterGain(_value: number): Promise<void> {}
+	async setSynthMasterGain(value: number): Promise<void> {
+		const gain = Math.max(0, Math.min(1, value));
+		currentParams = { ...currentParams, synthGain: gain };
+		this.send('setSynthGain', gain);
+	}
 	async setSynthMixGain(_group: number, _value: number): Promise<void> {}
 
 	// -- FX (DAW hosts FX in plugin mode) --

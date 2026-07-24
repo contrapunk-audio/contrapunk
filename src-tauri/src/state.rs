@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use contrapunk::audio::guitar::GuitarCalibrationProfile;
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig};
 use contrapunk::chain::ChainCommander;
+use contrapunk::elixir::{synth_event_channel, SynthEventReceiver, SynthEventSender, SynthParams};
 use contrapunk::fx::{DelayParams, ReverbParams};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::preset::PresetManager;
-use contrapunk::synth::{synth_event_channel, SynthEventReceiver, SynthEventSender, SynthParams};
 use contrapunk::transport::Transport;
 
 /// Maximum number of voices the app exposes. Mirrors the 8 voice slots
@@ -148,7 +148,7 @@ pub struct AppState {
     /// Per-voice output routing table, indexed 0..MAX_VOICES.
     /// Router thread reads this on every note to decide whether each
     /// voice goes to the internal synth, to a specific MIDI port, or
-    /// nowhere. Default all `Synth` so users get audio out of the box
+    /// nowhere. Default all to the built-in sine synth so users get audio out of the box
     /// without configuring a MIDI port first.
     pub voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
 

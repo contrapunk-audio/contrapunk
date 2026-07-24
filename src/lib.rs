@@ -53,6 +53,7 @@ static TEST_ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDi
 /// Audio capture, DSP, pitch detection, guitar pipeline — extracted to its own crate.
 pub use contrapunk_audio as audio;
 pub mod chain;
+pub mod elixir;
 /// Chord recognition — extracted to its own crate.
 pub use contrapunk_chord as chord;
 pub mod fx;
@@ -63,7 +64,6 @@ pub use contrapunk_harmony as harmony;
 pub use contrapunk_midi as midi;
 /// Preset save/load — extracted to its own crate.
 pub use contrapunk_preset as preset;
-pub mod synth;
 /// Sample-accurate transport / clock — extracted to its own crate.
 /// Re-exported here so `contrapunk::transport::*` paths keep working.
 pub use contrapunk_transport as transport;

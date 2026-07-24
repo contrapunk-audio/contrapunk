@@ -28,17 +28,14 @@ use cpal::SampleFormat;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use contrapunk::chain::{AudioBlock, BlockDescriptor, Chain, ChainCommandConsumer, ChainCommander};
-#[cfg(feature = "elixir-synth")]
-use contrapunk::chain::{ElixirSynthBlock, ELIXIR_EVENT_QUEUE_CAPACITY};
+use contrapunk::chain::{
+    AudioBlock, BlockDescriptor, Chain, ChainCommandConsumer, ChainCommander, ElixirSynthBlock,
+    ELIXIR_EVENT_QUEUE_CAPACITY,
+};
+use contrapunk::elixir::{synth_event_channel, SynthEventReceiver, SynthParams};
 use contrapunk::fx::{Delay, DelayParams, Reverb, ReverbParams};
-#[cfg(not(feature = "elixir-synth"))]
-use contrapunk::synth::Synth;
-use contrapunk::synth::{synth_event_channel, SynthEventReceiver, SynthParams};
 use contrapunk::transport::{BeatCrossing, Transport};
-#[cfg(feature = "elixir-synth")]
 use ringbuf::traits::{Producer, Split};
-#[cfg(feature = "elixir-synth")]
 use ringbuf::HeapRb;
 
 /// Payload for the `beat-update` Tauri event.
@@ -202,23 +199,13 @@ pub fn start(
     Ok(commander)
 }
 
-#[cfg(feature = "elixir-synth")]
-fn initial_synth_descriptor() -> BlockDescriptor {
-    BlockDescriptor {
-        type_id: "builtin.elixir-synth".into(),
-        name: "Elixir Synth".into(),
-    }
-}
-
-#[cfg(not(feature = "elixir-synth"))]
 fn initial_synth_descriptor() -> BlockDescriptor {
     BlockDescriptor {
         type_id: "builtin.synth".into(),
-        name: "Synth".into(),
+        name: "Sine".into(),
     }
 }
 
-#[cfg(feature = "elixir-synth")]
 fn make_synth_block(
     params: Arc<SynthParams>,
     events: SynthEventReceiver,
@@ -248,15 +235,6 @@ fn make_synth_block(
         rx,
         event_fault,
     ))
-}
-
-#[cfg(not(feature = "elixir-synth"))]
-fn make_synth_block(
-    params: Arc<SynthParams>,
-    events: SynthEventReceiver,
-    sample_rate: u32,
-) -> Box<dyn AudioBlock> {
-    Box::new(Synth::new(params, events, sample_rate))
 }
 
 fn build_and_run_stream(

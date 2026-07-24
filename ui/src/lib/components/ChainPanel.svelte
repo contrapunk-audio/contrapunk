@@ -1,21 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { synth, WAVEFORMS } from '$lib/stores/synth.svelte';
+	import { synth } from '$lib/stores/synth.svelte';
 	import { delay, reverb } from '$lib/stores/fx.svelte';
 	import { chainStore, parsePluginId } from '$lib/stores/chain.svelte';
 	import { adapter } from '$lib/adapter';
 	import Knob from './Knob.svelte';
-	import WaveformView from './WaveformView.svelte';
-	import EnvelopeView from './EnvelopeView.svelte';
-	import PixelSelect from './PixelSelect.svelte';
 	import ClapPluginPicker from './ClapPluginPicker.svelte';
 
-	let waveformOptions = WAVEFORMS.map((w) => ({ value: String(w.value), label: w.label }));
 	let pickerOpen = $state(false);
-
-	function onWaveformChange(v: string) {
-		synth.setWaveform(parseInt(v, 10));
-	}
 
 	onMount(() => {
 		reverb.syncFromBackend();
@@ -42,8 +34,8 @@
 			<div class="flow-arrow font-ui">━━▶</div>
 			{#if b.typeId === 'builtin.synth'}
 				<div class="flow-node synth-node font-ui">
-					<div class="flow-title">Synth</div>
-					<div class="flow-sub">8-voice</div>
+					<div class="flow-title">Sine</div>
+					<div class="flow-sub">16-voice</div>
 				</div>
 			{:else if b.typeId === 'builtin.delay'}
 				<div class="flow-node delay-node font-ui" class:active={delay.enabled}>
@@ -86,116 +78,12 @@
 		</div>
 
 		<div class="rack-grid">
-			<!-- OSC section -->
-			<section class="rack-section osc">
-				<div class="section-label font-ui">Osc</div>
-				<WaveformView waveform={synth.waveform} height={60} />
-				<PixelSelect
-					options={waveformOptions}
-					value={String(synth.waveform)}
-					placeholder="Wave"
-					onchange={onWaveformChange}
-				/>
+			<section class="rack-section source-contract">
+				<div class="section-label font-ui">Source</div>
+				<strong class="font-code">SINE</strong>
+				<span class="font-code">16 voices · fixed 5 ms de-click</span>
 			</section>
 
-			<!-- FILTER section -->
-			<section class="rack-section filter">
-				<div class="section-label font-ui">Filter</div>
-				<div class="knob-row">
-					<Knob
-						label="Cutoff"
-						value={synth.cutoffHz}
-						min={200}
-						max={18000}
-						step={50}
-						defaultValue={6000}
-						size={48}
-						format={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${Math.round(v)}`)}
-						accent="var(--color-accent-cyan)"
-						onchange={(v) => synth.setCutoffHz(Math.round(v))}
-					/>
-					<Knob
-						label="Reso"
-						value={synth.resonance}
-						min={0}
-						max={1}
-						step={0.01}
-						defaultValue={0.2}
-						size={48}
-						format={(v) => `${Math.round(v * 100)}%`}
-						accent="var(--color-accent-cyan)"
-						onchange={(v) => synth.setResonance(v)}
-					/>
-				</div>
-			</section>
-
-			<!-- ENV section -->
-			<section class="rack-section env">
-				<div class="section-label font-ui">Env</div>
-				<EnvelopeView
-					attackMs={synth.attackMs}
-					decayMs={synth.decayMs}
-					sustain={synth.sustain}
-					releaseMs={synth.releaseMs}
-					height={60}
-				/>
-				<div class="knob-row">
-					<Knob
-						label="Attack"
-						help="How quickly sound reaches full level after MIDI NoteOn."
-						value={synth.attackMs}
-						min={1}
-						max={1500}
-						step={1}
-						defaultValue={5}
-						size={44}
-						format={(v) => `${Math.round(v)}ms`}
-						accent="var(--color-accent-magenta)"
-						onchange={(v) => synth.setAttackMs(Math.round(v))}
-					/>
-					<Knob
-						label="Decay"
-						help="Time to fall from the attack peak to the sustain level."
-						value={synth.decayMs}
-						min={1}
-						max={2000}
-						step={1}
-						defaultValue={120}
-						size={44}
-						format={(v) => `${Math.round(v)}ms`}
-						accent="var(--color-accent-magenta)"
-						onchange={(v) => synth.setDecayMs(Math.round(v))}
-					/>
-					<Knob
-						label="Sustain level"
-						help="Held volume while Guitar Input keeps MIDI NoteOn active; it does not lengthen the note."
-						value={synth.sustain}
-						min={0}
-						max={1}
-						step={0.01}
-						defaultValue={0.7}
-						size={44}
-						format={(v) => `${Math.round(v * 100)}%`}
-						accent="var(--color-accent-magenta)"
-						onchange={(v) => synth.setSustain(v)}
-					/>
-					<Knob
-						label="Release tail"
-						help="How long sound fades after Guitar Input emits MIDI NoteOff. Increase this for a longer tail."
-						value={synth.releaseMs}
-						min={1}
-						max={4000}
-						step={1}
-						defaultValue={250}
-						size={44}
-						format={(v) => `${Math.round(v)}ms`}
-						accent="var(--color-accent-magenta)"
-						onchange={(v) => synth.setReleaseMs(Math.round(v))}
-					/>
-				</div>
-			</section>
-
-			<!-- AMP section -->
 			<section class="rack-section amp">
 				<div class="section-label font-ui">Amp</div>
 				<div class="knob-row single">
@@ -215,9 +103,6 @@
 			</section>
 		</div>
 
-		<div class="rack-footer font-ui">
-			Drag knobs ↕ • Shift = fine • Double-click = reset
-		</div>
 	</div>
 
 	<ClapPluginPicker bind:open={pickerOpen} />
@@ -438,64 +323,6 @@
 		font-size: var(--font-size-xs) !important;
 	}
 
-	.blocks-strip {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		padding: 4px 8px;
-		background: rgba(15, 14, 26, 0.4);
-		border: 1px solid var(--color-border);
-		min-height: 30px;
-		align-items: center;
-	}
-
-	.blocks-empty {
-		color: var(--color-text-dim);
-		font-size: var(--font-size-xs);
-		padding: 4px;
-	}
-
-	.block-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 2px 8px;
-		background: rgba(15, 14, 26, 0.7);
-		border: 1px solid var(--color-border);
-		max-width: 200px;
-		overflow: hidden;
-	}
-
-	.block-chip:not(.builtin) {
-		border-color: var(--color-accent-cyan-dim);
-	}
-
-	.block-name {
-		color: var(--color-accent-magenta);
-		font-size: var(--font-size-xs);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.block-chip:not(.builtin) .block-name {
-		color: var(--color-accent-cyan);
-	}
-
-	.block-remove {
-		background: transparent;
-		border: 1px solid var(--color-border);
-		color: var(--color-text-secondary);
-		padding: 0 6px;
-		cursor: pointer;
-		font-size: var(--font-size-xs);
-	}
-
-	.block-remove:hover {
-		color: rgb(255, 120, 120);
-		border-color: rgba(200, 40, 40, 0.6);
-	}
-
 	/* Signal flow strip */
 	.flow {
 		display: flex;
@@ -626,7 +453,7 @@
 
 	.rack-grid {
 		display: grid;
-		grid-template-columns: 1.2fr 0.9fr 1.6fr 0.6fr;
+		grid-template-columns: 1fr auto;
 		gap: 8px;
 	}
 
@@ -648,6 +475,9 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 
+	.source-contract strong { color: var(--color-accent-cyan); font-size: var(--font-size-lg); letter-spacing: .12em; }
+	.source-contract span { color: var(--color-text-dim); font-size: var(--font-size-xs); }
+
 	.knob-row {
 		display: flex;
 		justify-content: space-around;
@@ -659,15 +489,6 @@
 		justify-content: center;
 	}
 
-	.rack-footer {
-		margin-top: 6px;
-		padding-top: 4px;
-		border-top: 1px solid var(--color-border);
-		color: var(--color-text-dim);
-		font-size: var(--font-size-xs);
-		letter-spacing: 0.5px;
-		text-align: center;
-	}
 
 	/* Reverb rack */
 	.reverb-rack {
@@ -754,13 +575,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.plugin-note {
-		color: var(--color-text-dim);
-		font-size: var(--font-size-xs);
-		padding-top: 4px;
-		font-style: italic;
 	}
 
 	.reverb-knobs {

@@ -160,13 +160,6 @@ fn main() {
             // Built-in synth
             commands::synth::get_synth_state,
             commands::synth::set_synth_enabled,
-            commands::synth::set_synth_waveform,
-            commands::synth::set_synth_attack_ms,
-            commands::synth::set_synth_decay_ms,
-            commands::synth::set_synth_sustain,
-            commands::synth::set_synth_release_ms,
-            commands::synth::set_synth_cutoff_hz,
-            commands::synth::set_synth_resonance,
             commands::synth::set_synth_master_gain,
             commands::synth::set_synth_mix_gain,
             // Built-in FX (reverb + delay)

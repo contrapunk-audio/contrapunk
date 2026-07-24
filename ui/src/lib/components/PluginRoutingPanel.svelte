@@ -17,7 +17,7 @@
 	let inputMode = $state<PluginInputMode>('midi');
 	let outputMode = $state<PluginMidiOutputMode>('full');
 	let synthEnabled = $state(true);
-	let releaseMs = $state(400);
+	let synthGain = $state(0.25);
 
 	async function refresh() {
 		const [nextInputMode, nextOutputMode, nextSynthEnabled, synthState] = await Promise.all([
@@ -29,7 +29,7 @@
 		inputMode = nextInputMode;
 		outputMode = nextOutputMode;
 		synthEnabled = nextSynthEnabled;
-		releaseMs = synthState.releaseMs;
+		synthGain = synthState.masterGain;
 	}
 
 	onMount(() => {
@@ -52,9 +52,9 @@
 		await adapter.setPluginSynthEnabled(synthEnabled);
 	}
 
-	async function setRelease(ms: number) {
-		releaseMs = Math.round(ms);
-		await adapter.setSynthReleaseMs(releaseMs);
+	async function setGain(gain: number) {
+		synthGain = gain;
+		await adapter.setSynthMasterGain(gain);
 	}
 </script>
 
@@ -71,16 +71,16 @@
 		INTERNAL MONITOR {synthEnabled ? 'ON' : 'OFF'}
 	</button>
 	<Knob
-		label="Release"
-		help="Fade time for the built-in monitor after NoteOff. Raise it if short computer-keyboard notes click."
-		value={releaseMs}
-		min={20}
-		max={4000}
-		step={10}
-		defaultValue={400}
+		label="Sine gain"
+		help="Level of the built-in fixed-sine monitor."
+		value={synthGain}
+		min={0}
+		max={1}
+		step={0.01}
+		defaultValue={0.25}
 		size={48}
-		format={(value) => `${Math.round(value)}ms`}
-		onchange={setRelease}
+		format={(value) => `${Math.round(value * 100)}%`}
+		onchange={setGain}
 	/>
 	<p><strong>FL Studio:</strong> set Contrapunk's wrapper <strong>Output port</strong> and the destination synth's wrapper <strong>Input port</strong> to the same number. Turn Internal Monitor off when listening through Serum. If wrapper port forwarding is unavailable, place both plug-ins in Patcher and connect Contrapunk's MIDI output to the synth.</p>
 	<p>For Logic guitar input, insert <strong>Contrapunk Guitar</strong> as an Audio FX, choose <strong>Guitar audio</strong>, then select <strong>Contrapunk Guitar MIDI Out</strong> on the Analog Lab instrument track.</p>

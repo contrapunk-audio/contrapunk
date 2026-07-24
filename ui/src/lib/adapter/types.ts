@@ -125,13 +125,6 @@ export interface Preset {
 /** Snapshot of built-in synth parameters. */
 export interface SynthState {
 	enabled: boolean;
-	waveform: number;
-	attackMs: number;
-	decayMs: number;
-	sustain: number;
-	releaseMs: number;
-	cutoffHz: number;
-	resonance: number;
 	masterGain: number;
 	/** Native performance-mixer base gains: input, harmony, canon, counterpoint. */
 	mixGains?: number[];
@@ -611,13 +604,6 @@ export interface ContrapunkAdapter {
 
 	getSynthState(): Promise<SynthState>;
 	setSynthEnabled(enabled: boolean): Promise<void>;
-	setSynthWaveform(value: number): Promise<void>;
-	setSynthAttackMs(ms: number): Promise<void>;
-	setSynthDecayMs(ms: number): Promise<void>;
-	setSynthSustain(level: number): Promise<void>;
-	setSynthReleaseMs(ms: number): Promise<void>;
-	setSynthCutoffHz(hz: number): Promise<void>;
-	setSynthResonance(value: number): Promise<void>;
 	setSynthMasterGain(value: number): Promise<void>;
 	setSynthMixGain(group: number, value: number): Promise<void>;
 

@@ -2,7 +2,7 @@
 
 /// MIDI-style event delivered to a block's `midi_event` method.
 ///
-/// Broader than [`crate::synth::SynthEvent`] because plugin-host blocks
+/// Broader than [`crate::elixir::SynthEvent`] because plugin-host blocks
 /// (CLAP, VST3) may need to forward CC / pitch bend / aftertouch too.
 /// FX blocks typically ignore everything (default impl is no-op).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,7 +47,7 @@ pub trait AudioBlock: Send {
     fn name(&self) -> &str;
 
     /// Stable type ID for rig persistence. Examples:
-    /// - `"builtin.synth"` for the built-in synth
+    /// - `"builtin.synth"` for the built-in Elixir sine synth
     /// - `"builtin.reverb"` for the built-in reverb
     /// - `"clap.com.u-he.Diva"` for a CLAP plugin
     fn type_id(&self) -> &str;

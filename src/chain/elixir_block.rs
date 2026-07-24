@@ -8,8 +8,8 @@ use ringbuf::{HeapCons, HeapRb};
 
 use super::block::{AudioBlock, MidiBlockEvent};
 #[cfg(test)]
-use crate::synth::SynthVoiceId;
-use crate::synth::{SynthEvent, SynthParams};
+use crate::elixir::SynthVoiceId;
+use crate::elixir::{SynthEvent, SynthParams};
 use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole, MAX_POLYPHONY};
 
 pub const ELIXIR_EVENT_QUEUE_CAPACITY: usize = 1024;
@@ -19,6 +19,7 @@ const MIDI_VOICE_PREFIX: u64 = 1 << 63;
 #[derive(Clone, Copy)]
 struct MidiOwner {
     note: u8,
+    role: VoiceRole,
     id: VoiceId,
     age: u64,
 }
@@ -39,14 +40,13 @@ fn voice_role(mix_group: u8) -> Option<VoiceRole> {
 
 impl ElixirSynthBlock {
     pub fn new(sample_rate: u32) -> Self {
+        Self::new_with_params(sample_rate, Arc::new(SynthParams::new()))
+    }
+
+    pub fn new_with_params(sample_rate: u32, params: Arc<SynthParams>) -> Self {
         let queue = HeapRb::new(ELIXIR_EVENT_QUEUE_CAPACITY);
         let (_tx, rx) = queue.split();
-        Self::new_with_event_consumer(
-            sample_rate,
-            Arc::new(SynthParams::new()),
-            rx,
-            Arc::new(AtomicBool::new(false)),
-        )
+        Self::new_with_event_consumer(sample_rate, params, rx, Arc::new(AtomicBool::new(false)))
     }
 
     pub fn new_with_event_consumer(
@@ -114,7 +114,7 @@ impl ElixirSynthBlock {
         }
     }
 
-    fn note_on(&mut self, note: u8, velocity: u8) {
+    pub fn note_on_for_role(&mut self, note: u8, velocity: u8, role: VoiceRole) {
         if note >= 128 || velocity == 0 {
             return;
         }
@@ -138,23 +138,28 @@ impl ElixirSynthBlock {
                 voice_id: stolen.id,
             });
         }
-        self.midi_owners[index] = Some(MidiOwner { note, id, age });
+        self.midi_owners[index] = Some(MidiOwner {
+            note,
+            role,
+            id,
+            age,
+        });
         self.engine.handle_voice_event(VoiceEvent::NoteOn {
             voice_id: id,
-            role: VoiceRole::Input,
+            role,
             midi_anchor: note,
             frequency_hz: elixir_core::util::midi_to_freq(note),
             velocity,
         });
     }
 
-    fn note_off(&mut self, note: u8) {
+    pub fn note_off_for_role(&mut self, note: u8, role: VoiceRole) {
         let owner = self
             .midi_owners
             .iter()
             .enumerate()
             .filter_map(|(index, owner)| owner.map(|owner| (index, owner)))
-            .filter(|(_, owner)| owner.note == note)
+            .filter(|(_, owner)| owner.note == note && owner.role == role)
             .min_by_key(|(_, owner)| owner.age);
         if let Some((index, owner)) = owner {
             self.midi_owners[index] = None;
@@ -177,11 +182,11 @@ impl ElixirSynthBlock {
 
 impl AudioBlock for ElixirSynthBlock {
     fn name(&self) -> &str {
-        "Elixir Synth"
+        "Sine"
     }
 
     fn type_id(&self) -> &str {
-        "builtin.elixir-synth"
+        "builtin.synth"
     }
 
     fn process(&mut self, buffer: &mut [f32], channels: usize) {
@@ -199,8 +204,10 @@ impl AudioBlock for ElixirSynthBlock {
 
     fn midi_event(&mut self, event: MidiBlockEvent) {
         match event {
-            MidiBlockEvent::NoteOn { note, velocity } => self.note_on(note, velocity),
-            MidiBlockEvent::NoteOff { note } => self.note_off(note),
+            MidiBlockEvent::NoteOn { note, velocity } => {
+                self.note_on_for_role(note, velocity, VoiceRole::Input)
+            }
+            MidiBlockEvent::NoteOff { note } => self.note_off_for_role(note, VoiceRole::Input),
             MidiBlockEvent::AllNotesOff => {
                 self.clear_ownership();
                 self.engine.all_notes_off();
@@ -274,6 +281,25 @@ mod tests {
         assert_eq!(block.engine.live_voice_count(), 1);
         block.midi_event(MidiBlockEvent::NoteOff { note: 69 });
         assert_eq!(block.engine.live_voice_count(), 0);
+    }
+
+    #[test]
+    fn same_pitch_roles_keep_independent_gain_and_release_ownership() {
+        let params = Arc::new(SynthParams::new());
+        params.set_mix_gain(0, 0.0);
+        let mut block = ElixirSynthBlock::new_with_params(48_000, params);
+        block.note_on_for_role(69, 100, VoiceRole::Input);
+        block.note_on_for_role(69, 100, VoiceRole::Harmony);
+        let mut audio = [0.0; 512];
+        block.process(&mut audio, 2);
+        assert!(audio.iter().any(|sample| sample.abs() > 1.0e-6));
+
+        block.note_off_for_role(69, VoiceRole::Harmony);
+        block.process(&mut audio, 2);
+        assert!(audio[audio.len() - 16..]
+            .iter()
+            .all(|sample| sample.abs() < 1.0e-6));
+        assert_eq!(block.engine.live_voice_count(), 1);
     }
 
     #[test]

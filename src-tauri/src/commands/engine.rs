@@ -16,10 +16,10 @@ use wmidi::{Channel, MidiMessage, Note, Velocity};
 
 use contrapunk::audio::guitar_input::GuitarInputConfig;
 use contrapunk::chord::chord_display_with_analysis;
+use contrapunk::elixir::{SynthEvent, SynthEventSender};
 use contrapunk::harmony::HarmonyEngine;
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
-use contrapunk::synth::{SynthEvent, SynthEventSender};
 use contrapunk::transport::Transport;
 
 use crate::guitar_bridge::GuitarBridge;
@@ -1315,7 +1315,7 @@ fn broadcast_note_off(
     // Synth fanout — channel arg ignored by the Synth target.
     dispatch_voice(
         VoiceOutputTarget::Synth,
-        contrapunk::synth::params::MIX_GROUP_ALL,
+        contrapunk::elixir::MIX_GROUP_ALL,
         0,
         event,
         num_ports,
