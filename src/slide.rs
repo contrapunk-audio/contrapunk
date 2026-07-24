@@ -6,6 +6,7 @@
 //! retune path.
 
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 pub const SLIDE_ROLE_COUNT: usize = 4;
 pub const SLIDE_VOICES_PER_ROLE: usize = 8;
@@ -48,6 +49,13 @@ impl SlideSlot {
             Some(self.role.index() * SLIDE_VOICES_PER_ROLE + self.voice as usize)
         }
     }
+
+    const fn from_index(index: usize) -> Self {
+        Self {
+            role: SlideRole::ALL[index / SLIDE_VOICES_PER_ROLE],
+            voice: (index % SLIDE_VOICES_PER_ROLE) as u8,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +67,7 @@ pub enum SlideTrigger {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
 #[serde(rename_all = "snake_case")]
 pub enum SlideCurve {
     #[default]
@@ -213,6 +222,7 @@ struct VoiceState {
     target_log2: f32,
     elapsed_samples: u32,
     total_samples: u32,
+    duration_ms: f32,
     curve: SlideCurve,
     live: bool,
     moving: bool,
@@ -226,6 +236,7 @@ impl VoiceState {
         target_log2: 0.0,
         elapsed_samples: 0,
         total_samples: 0,
+        duration_ms: 0.0,
         curve: SlideCurve::Linear,
         live: false,
         moving: false,
@@ -240,6 +251,126 @@ impl VoiceState {
         .clamp(0.0, 1.0);
         let shaped = shape(progress, self.curve);
         (self.start_log2 + (self.target_log2 - self.start_log2) * shaped).exp2()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct SlideVoiceSnapshot {
+    #[serde(serialize_with = "serialize_voice_id")]
+    pub voice_id: u64,
+    pub slot: SlideSlot,
+    pub current_frequency_hz: f32,
+    pub target_frequency_hz: f32,
+    pub progress: f32,
+    pub curve: SlideCurve,
+    pub duration_ms: f32,
+}
+
+/// Lock-free fixed-capacity telemetry written by an audio adapter and read by
+/// UI/control threads. The audio path performs atomic stores only.
+fn serialize_voice_id<S: serde::Serializer>(
+    voice_id: &u64,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&voice_id.to_string())
+}
+
+pub struct SlideTelemetry {
+    version: AtomicU32,
+    voice_ids: [AtomicU64; MAX_SLIDE_VOICES],
+    slots: [AtomicU32; MAX_SLIDE_VOICES],
+    currents: [AtomicU32; MAX_SLIDE_VOICES],
+    targets: [AtomicU32; MAX_SLIDE_VOICES],
+    progresses: [AtomicU32; MAX_SLIDE_VOICES],
+    curves: [AtomicU32; MAX_SLIDE_VOICES],
+    durations: [AtomicU32; MAX_SLIDE_VOICES],
+}
+
+impl Default for SlideTelemetry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SlideTelemetry {
+    pub const fn new() -> Self {
+        Self {
+            version: AtomicU32::new(0),
+            voice_ids: [const { AtomicU64::new(u64::MAX) }; MAX_SLIDE_VOICES],
+            slots: [const { AtomicU32::new(0) }; MAX_SLIDE_VOICES],
+            currents: [const { AtomicU32::new(0) }; MAX_SLIDE_VOICES],
+            targets: [const { AtomicU32::new(0) }; MAX_SLIDE_VOICES],
+            progresses: [const { AtomicU32::new(0) }; MAX_SLIDE_VOICES],
+            curves: [const { AtomicU32::new(0) }; MAX_SLIDE_VOICES],
+            durations: [const { AtomicU32::new(0) }; MAX_SLIDE_VOICES],
+        }
+    }
+
+    pub fn publish(&self, runtime: &SlideRuntime) {
+        self.version.fetch_add(1, Ordering::AcqRel);
+        for voice_id in &self.voice_ids {
+            voice_id.store(u64::MAX, Ordering::Release);
+        }
+        let mut index = 0;
+        runtime.for_each_moving_snapshot(|snapshot| {
+            if index >= MAX_SLIDE_VOICES {
+                return;
+            }
+            self.slots[index].store(
+                (snapshot.slot.role as u32) | (u32::from(snapshot.slot.voice) << 8),
+                Ordering::Relaxed,
+            );
+            self.currents[index].store(snapshot.current_frequency_hz.to_bits(), Ordering::Relaxed);
+            self.targets[index].store(snapshot.target_frequency_hz.to_bits(), Ordering::Relaxed);
+            self.progresses[index].store(snapshot.progress.to_bits(), Ordering::Relaxed);
+            self.curves[index].store(snapshot.curve as u32, Ordering::Relaxed);
+            self.durations[index].store(snapshot.duration_ms.to_bits(), Ordering::Relaxed);
+            self.voice_ids[index].store(snapshot.voice_id, Ordering::Release);
+            index += 1;
+        });
+        self.version.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn snapshot(&self) -> Vec<SlideVoiceSnapshot> {
+        let mut result = Vec::with_capacity(MAX_SLIDE_VOICES);
+        loop {
+            result.clear();
+            let before = self.version.load(Ordering::Acquire);
+            if before & 1 != 0 {
+                std::hint::spin_loop();
+                continue;
+            }
+            for index in 0..MAX_SLIDE_VOICES {
+                let voice_id = self.voice_ids[index].load(Ordering::Acquire);
+                if voice_id == u64::MAX {
+                    continue;
+                }
+                let slot = self.slots[index].load(Ordering::Relaxed);
+                result.push(SlideVoiceSnapshot {
+                    voice_id,
+                    slot: SlideSlot::new(
+                        SlideRole::ALL[(slot as usize & 0xff).min(SLIDE_ROLE_COUNT - 1)],
+                        ((slot >> 8) as u8).min((SLIDE_VOICES_PER_ROLE - 1) as u8),
+                    ),
+                    current_frequency_hz: f32::from_bits(
+                        self.currents[index].load(Ordering::Relaxed),
+                    ),
+                    target_frequency_hz: f32::from_bits(
+                        self.targets[index].load(Ordering::Relaxed),
+                    ),
+                    progress: f32::from_bits(self.progresses[index].load(Ordering::Relaxed)),
+                    curve: match self.curves[index].load(Ordering::Relaxed) {
+                        1 => SlideCurve::Exponential,
+                        2 => SlideCurve::InverseExponential,
+                        _ => SlideCurve::Linear,
+                    },
+                    duration_ms: f32::from_bits(self.durations[index].load(Ordering::Relaxed)),
+                });
+            }
+            if self.version.load(Ordering::Acquire) == before {
+                return result;
+            }
+        }
     }
 }
 
@@ -317,6 +448,7 @@ impl SlideRuntime {
             target_log2,
             elapsed_samples: 0,
             total_samples,
+            duration_ms: total_samples as f32 * 1_000.0 / sample_rate,
             curve: settings.curve,
             live: true,
             moving,
@@ -351,6 +483,7 @@ impl SlideRuntime {
                 voice.target_log2 = log2;
                 voice.elapsed_samples = 0;
                 voice.total_samples = 0;
+                voice.duration_ms = 0.0;
                 voice.moving = false;
                 let slot = &mut self.slots[voice.slot_index];
                 if slot.latest_voice_id == voice_id {
@@ -379,6 +512,28 @@ impl SlideRuntime {
 
     pub fn is_moving(&self) -> bool {
         self.voices.iter().any(|voice| voice.live && voice.moving)
+    }
+
+    pub fn for_each_moving_snapshot(&self, mut visit: impl FnMut(SlideVoiceSnapshot)) {
+        for voice in &self.voices {
+            if !voice.live || !voice.moving {
+                continue;
+            }
+            visit(SlideVoiceSnapshot {
+                voice_id: voice.voice_id,
+                slot: SlideSlot::from_index(voice.slot_index),
+                current_frequency_hz: voice.frequency(),
+                target_frequency_hz: voice.target_log2.exp2(),
+                progress: if voice.total_samples == 0 {
+                    1.0
+                } else {
+                    voice.elapsed_samples as f32 / voice.total_samples as f32
+                }
+                .clamp(0.0, 1.0),
+                curve: voice.curve,
+                duration_ms: voice.duration_ms,
+            });
+        }
     }
 
     pub fn for_each_moving(&self, mut visit: impl FnMut(u64, f32)) {
@@ -542,9 +697,31 @@ mod tests {
             runtime.note_on(2, slot, 660.0, settings, 48_000.0);
             runtime.advance(64);
             runtime.for_each_moving(|_, frequency| assert!(frequency.is_finite()));
+            SlideTelemetry::new().publish(&runtime);
             runtime.note_off(2);
             runtime.clear();
         });
+    }
+
+    #[test]
+    fn telemetry_reports_exact_slot_target_and_progress() {
+        let slot = SlideSlot::new(SlideRole::Harmony, 3);
+        let mut runtime = SlideRuntime::new();
+        let settings = timed(SlideCurve::InverseExponential, SlideTrigger::Always);
+        runtime.note_on(1, slot, 440.0, settings, 48_000.0);
+        runtime.note_off(1);
+        runtime.note_on(2, slot, 880.0, settings, 48_000.0);
+        runtime.advance(2_400);
+        let telemetry = SlideTelemetry::new();
+        telemetry.publish(&runtime);
+        let snapshot = telemetry.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].voice_id, 2);
+        assert_eq!(snapshot[0].slot, slot);
+        assert_eq!(snapshot[0].target_frequency_hz, 880.0);
+        assert_eq!(snapshot[0].duration_ms, 100.0);
+        assert_eq!(snapshot[0].curve, SlideCurve::InverseExponential);
+        assert!((snapshot[0].progress - 0.5).abs() < 1.0e-6);
     }
 
     #[test]

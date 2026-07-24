@@ -4,6 +4,7 @@
 	import type { PluginInputMode, PluginMidiOutputMode } from '$lib/adapter/types';
 	import PixelSelect from './PixelSelect.svelte';
 	import Knob from './Knob.svelte';
+	import ToneSourcePanel from './ToneSourcePanel.svelte';
 
 	const inputOptions = [
 		{ value: 'midi', label: 'Host MIDI' },
@@ -85,6 +86,7 @@
 	<p><strong>FL Studio:</strong> set Contrapunk's wrapper <strong>Output port</strong> and the destination synth's wrapper <strong>Input port</strong> to the same number. Turn Internal Monitor off when listening through Serum. If wrapper port forwarding is unavailable, place both plug-ins in Patcher and connect Contrapunk's MIDI output to the synth.</p>
 	<p>For Logic guitar input, insert <strong>Contrapunk Guitar</strong> as an Audio FX, choose <strong>Guitar audio</strong>, then select <strong>Contrapunk Guitar MIDI Out</strong> on the Analog Lab instrument track.</p>
 </div>
+<ToneSourcePanel />
 
 <style>
 	.plugin-routing {

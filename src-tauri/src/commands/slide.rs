@@ -1,4 +1,4 @@
-use contrapunk::slide::SlideConfig;
+use contrapunk::slide::{SlideConfig, SlideVoiceSnapshot};
 use tauri::State;
 
 use crate::state::AppState;
@@ -9,6 +9,11 @@ pub fn get_slide_config(state: State<AppState>) -> SlideConfig {
         .slide_config
         .lock()
         .unwrap_or_else(|error| error.into_inner())
+}
+
+#[tauri::command]
+pub fn get_slide_voices(state: State<AppState>) -> Vec<SlideVoiceSnapshot> {
+    state.slide_telemetry.snapshot()
 }
 
 #[tauri::command]

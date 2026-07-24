@@ -54,6 +54,15 @@ export interface SlideConfig {
 	roles: [SlideSettings, SlideSettings, SlideSettings, SlideSettings];
 	voices: [SlideOverride[], SlideOverride[], SlideOverride[], SlideOverride[]];
 }
+export interface SlideVoiceState {
+	voiceId: string;
+	slot: SlideSlot;
+	currentFrequencyHz: number;
+	targetFrequencyHz: number;
+	progress: number;
+	curve: SlideCurve;
+	durationMs: number;
+}
 
 /** What lanes do with pending emissions when the player releases the
  *  NoteOn that seeded them (#11). Shape mirrors the Rust `HoldMode`
@@ -353,6 +362,7 @@ export interface ContrapunkAdapter {
 	setTuningCompare(enabled: boolean): Promise<void>;
 	getSlideConfig(): Promise<SlideConfig>;
 	setSlideConfig(config: SlideConfig): Promise<void>;
+	getSlideVoices(): Promise<SlideVoiceState[]>;
 
 	/**
 	 * Set the counterpoint species (1-4) used when the harmony mode is

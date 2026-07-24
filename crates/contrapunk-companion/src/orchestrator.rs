@@ -153,14 +153,11 @@ impl Companion {
     }
 
     /// Variant of `tick` that tags each emitted DispatchOp with the
-    /// `lane.type_id()` that produced it. Used by the WASM bridge to
-    /// surface per-lane note attribution to the UI (different piano
-    /// colors per lane). Tauri callers still use the untagged `tick`
-    /// for backward compatibility.
+    /// lane type and stable voice slot used by routing, Slide, and the UI.
     pub fn tick_tagged(
         &mut self,
         engine: &Mutex<HarmonyEngine>,
-    ) -> Vec<(&'static str, DispatchOp)> {
+    ) -> Vec<(&'static str, u8, DispatchOp)> {
         if !self.enabled.load(Ordering::Acquire) {
             return Vec::new();
         }
@@ -196,9 +193,8 @@ impl Companion {
             .filter(|l| l.phase() == LanePhase::Decide)
         {
             let lane_id = lane.type_id();
-            let out = lane.tick(&self.world);
-            for op in out.ops {
-                tagged.push((lane_id, op));
+            for (voice_slot, op) in lane.tick_slotted(&self.world) {
+                tagged.push((lane_id, voice_slot, op));
             }
         }
         tagged
@@ -255,12 +251,12 @@ impl Companion {
         &mut self,
         ev: InputEvent,
         engine: &Mutex<HarmonyEngine>,
-    ) -> (Vec<(&'static str, DispatchOp)>, bool) {
+    ) -> (Vec<(&'static str, u8, DispatchOp)>, bool) {
         if !self.enabled.load(Ordering::Acquire) {
             return (Vec::new(), false);
         }
 
-        let mut tagged: Vec<(&'static str, DispatchOp)> = Vec::new();
+        let mut tagged: Vec<(&'static str, u8, DispatchOp)> = Vec::new();
         let mut suppress_default = false;
 
         for lane in self.lanes.iter_mut() {
@@ -270,7 +266,7 @@ impl Companion {
             let lane_id = lane.type_id();
             let out = lane.on_input(ev, &self.world);
             for op in out.ops {
-                tagged.push((lane_id, op));
+                tagged.push((lane_id, 0, op));
             }
             if out.suppress_default {
                 suppress_default = true;

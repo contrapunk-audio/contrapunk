@@ -29,6 +29,7 @@ use crate::state::{AppState, VoiceOutputTarget};
 /// Virtual input sentinels — must match the values in MidiDevices.svelte.
 const VIRTUAL_COMPUTER_KEYBOARD: usize = 999_998;
 const GUITAR_AUDIO_SENTINEL: usize = 999_997;
+const VIRTUAL_TONE_SOURCE: usize = 999_996;
 
 const MIX_INPUT: u8 = 0;
 const MIX_HARMONY: u8 = 1;
@@ -36,7 +37,7 @@ const MIX_CANON: u8 = 2;
 const MIX_COUNTERPOINT: u8 = 3;
 
 type NoteCounts = HashMap<u8, u32>;
-type RoutedNoteCounts = HashMap<(VoiceOutputTarget, u8, u8, u8), u32>;
+type RoutedNoteCounts = HashMap<(VoiceOutputTarget, u8, u8, u8, u8), u32>;
 
 fn count_note_on(notes: &mut NoteCounts, note: u8) {
     let count = notes.entry(note).or_insert(0);
@@ -57,18 +58,19 @@ fn routed_note_key(
     channel: u8,
     note: u8,
     mix_group: u8,
-) -> (VoiceOutputTarget, u8, u8, u8) {
-    let (channel, mix_group) = if target == VoiceOutputTarget::Synth {
-        (0, mix_group)
+    voice_slot: u8,
+) -> (VoiceOutputTarget, u8, u8, u8, u8) {
+    let (channel, mix_group, voice_slot) = if target == VoiceOutputTarget::Synth {
+        (0, mix_group, voice_slot)
     } else {
-        (channel, MIX_INPUT)
+        (channel, MIX_INPUT, 0)
     };
-    (target, channel, note, mix_group)
+    (target, channel, note, mix_group, voice_slot)
 }
 
 fn count_routed_note_on(
     notes: &mut RoutedNoteCounts,
-    key: (VoiceOutputTarget, u8, u8, u8),
+    key: (VoiceOutputTarget, u8, u8, u8, u8),
 ) -> bool {
     let first_owner = !notes.contains_key(&key);
     let count = notes.entry(key).or_insert(0);
@@ -78,7 +80,7 @@ fn count_routed_note_on(
 
 fn count_routed_note_off(
     notes: &mut RoutedNoteCounts,
-    key: (VoiceOutputTarget, u8, u8, u8),
+    key: (VoiceOutputTarget, u8, u8, u8, u8),
 ) -> bool {
     let Some(count) = notes.get_mut(&key) else {
         return false;
@@ -474,7 +476,7 @@ fn run_tauri_router(
     // by inject_note_on/off commands via the shared router_tx).
     let _midi_conn;
     let _guitar_bridge;
-    let is_keyboard = input_port == VIRTUAL_COMPUTER_KEYBOARD;
+    let is_virtual = input_port == VIRTUAL_COMPUTER_KEYBOARD || input_port == VIRTUAL_TONE_SOURCE;
 
     // Signal channel for guitar UI feedback (only used in guitar mode)
     let (signal_tx, signal_rx) = mpsc::channel::<crate::guitar_bridge::GuitarSignalInfo>();
@@ -494,8 +496,8 @@ fn run_tauri_router(
         .map_err(|e| anyhow::anyhow!("Guitar bridge error: {}", e))?;
         _guitar_bridge = Some(bridge);
         _midi_conn = None;
-    } else if is_keyboard {
-        // Computer Keyboard mode: no physical connection. The tx is kept
+    } else if is_virtual {
+        // Computer Keyboard / Tone mode: no physical connection. The tx is kept
         // alive by the AppState clone so inject_note_on/off can push.
         // Drop the local tx copy; AppState keeps the channel open.
         drop(tx);
@@ -1209,6 +1211,14 @@ fn handle_note_off(
             VoiceDispatch::NoteOff {
                 note: u8::from(n),
                 velocity: velocity_byte,
+                slide_slot: Some(if i == 0 {
+                    SlideSlot::new(SlideRole::Input, 0)
+                } else {
+                    SlideSlot::new(
+                        SlideRole::Harmony,
+                        port_map.get(i).copied().unwrap_or(i) as u8,
+                    )
+                }),
             },
             num_outputs,
             synth_tx,
@@ -1272,7 +1282,11 @@ enum VoiceDispatch {
     },
     /// Send a NoteOff. `velocity` is the release velocity (0 for most
     /// MIDI consumers; some Yamaha hardware uses non-zero release).
-    NoteOff { note: u8, velocity: u8 },
+    NoteOff {
+        note: u8,
+        velocity: u8,
+        slide_slot: Option<SlideSlot>,
+    },
 }
 
 /// Single fanout shared by every router-thread NoteOn/NoteOff dispatch
@@ -1302,7 +1316,7 @@ fn dispatch_voice(
     debug_assert!(channel < 16, "MIDI channel out of range: {}", channel);
     let (n, v) = match event {
         VoiceDispatch::NoteOn { note, velocity, .. } => (note, velocity),
-        VoiceDispatch::NoteOff { note, velocity } => (note, velocity),
+        VoiceDispatch::NoteOff { note, velocity, .. } => (note, velocity),
     };
     debug_assert!(n < 128, "MIDI note out of range: {}", n);
     debug_assert!(v < 128, "MIDI velocity out of range: {}", v);
@@ -1327,15 +1341,24 @@ fn dispatch_voice(
                 slide,
             );
         }
-        (VoiceOutputTarget::Synth, VoiceDispatch::NoteOff { note, .. }) => {
-            let _ = synth_tx.note_off(note, mix_group);
+        (
+            VoiceOutputTarget::Synth,
+            VoiceDispatch::NoteOff {
+                note, slide_slot, ..
+            },
+        ) => {
+            if let Some(slide_slot) = slide_slot {
+                let _ = synth_tx.note_off_slot(note, mix_group, slide_slot);
+            } else {
+                let _ = synth_tx.note_off(note, mix_group);
+            }
         }
         (VoiceOutputTarget::MidiPort { port }, _) if port >= num_ports => {}
         (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOn { note, velocity, .. }) => {
             let msg = [0x90 | (channel & 0x0F), note, velocity];
             let _ = output.send_to_port(port, &msg);
         }
-        (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOff { note, velocity }) => {
+        (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOff { note, velocity, .. }) => {
             let msg = [0x80 | (channel & 0x0F), note, velocity];
             let _ = output.send_to_port(port, &msg);
         }
@@ -1377,7 +1400,11 @@ fn broadcast_note_off(
     output: &mut OutputRouter,
 ) {
     debug_assert!(note < 128, "MIDI note out of range: {}", note);
-    let event = VoiceDispatch::NoteOff { note, velocity: 0 };
+    let event = VoiceDispatch::NoteOff {
+        note,
+        velocity: 0,
+        slide_slot: None,
+    };
     // Synth fanout — channel arg ignored by the Synth target.
     dispatch_voice(
         VoiceOutputTarget::Synth,
@@ -1449,7 +1476,7 @@ fn midi_bytes_to_input_event(bytes: &[u8]) -> Option<crate::companion::InputEven
 /// is deferred until the audio-graph milestone introduces an
 /// `InstrumentId` model.
 fn dispatch_companion_ops(
-    tagged: &[(&'static str, crate::companion::DispatchOp)],
+    tagged: &[(&'static str, u8, crate::companion::DispatchOp)],
     num_ports: usize,
     synth_tx: &SynthEventSender,
     output: &mut OutputRouter,
@@ -1463,7 +1490,7 @@ fn dispatch_companion_ops(
     let slide_config = *slide_config
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    for (lane, op) in tagged {
+    for (lane, voice_slot, op) in tagged {
         // Per-lane set the note belongs to, if any. Other lane tags
         // (or AllNotesOff) leave both untouched.
         let (lane_notes, mix_group): (Option<&Arc<Mutex<NoteCounts>>>, u8) = match *lane {
@@ -1480,7 +1507,7 @@ fn dispatch_companion_ops(
             } => {
                 let first_owner = count_routed_note_on(
                     output_notes,
-                    routed_note_key(*target, *channel, *note, mix_group),
+                    routed_note_key(*target, *channel, *note, mix_group, *voice_slot),
                 );
                 if first_owner {
                     let slide_role = if mix_group == MIX_CANON {
@@ -1488,7 +1515,7 @@ fn dispatch_companion_ops(
                     } else {
                         SlideRole::Counterpoint
                     };
-                    let slide_slot = SlideSlot::new(slide_role, 0);
+                    let slide_slot = SlideSlot::new(slide_role, *voice_slot);
                     dispatch_voice(
                         *target,
                         mix_group,
@@ -1517,7 +1544,7 @@ fn dispatch_companion_ops(
             } => {
                 let last_owner = count_routed_note_off(
                     output_notes,
-                    routed_note_key(*target, *channel, *note, mix_group),
+                    routed_note_key(*target, *channel, *note, mix_group, *voice_slot),
                 );
                 if last_owner {
                     dispatch_voice(
@@ -1527,6 +1554,14 @@ fn dispatch_companion_ops(
                         VoiceDispatch::NoteOff {
                             note: *note,
                             velocity: 0,
+                            slide_slot: Some(SlideSlot::new(
+                                if mix_group == MIX_CANON {
+                                    SlideRole::Canon
+                                } else {
+                                    SlideRole::Counterpoint
+                                },
+                                *voice_slot,
+                            )),
                         },
                         num_ports,
                         synth_tx,
@@ -1822,16 +1857,21 @@ mod tests {
     #[test]
     fn routed_note_counts_hold_same_pitch_until_last_owner() {
         let mut notes = RoutedNoteCounts::new();
-        let first = routed_note_key(VoiceOutputTarget::Synth, 5, 64, MIX_CANON);
-        let second = routed_note_key(VoiceOutputTarget::Synth, 6, 64, MIX_CANON);
+        let first = routed_note_key(VoiceOutputTarget::Synth, 5, 64, MIX_CANON, 0);
+        let second = routed_note_key(VoiceOutputTarget::Synth, 6, 64, MIX_CANON, 0);
         assert_eq!(
             first, second,
             "synth ownership collapses channels within a role"
         );
         assert_ne!(
             first,
-            routed_note_key(VoiceOutputTarget::Synth, 5, 64, MIX_COUNTERPOINT),
+            routed_note_key(VoiceOutputTarget::Synth, 5, 64, MIX_COUNTERPOINT, 0),
             "different mixer roles keep independent synth voices"
+        );
+        assert_ne!(
+            first,
+            routed_note_key(VoiceOutputTarget::Synth, 5, 64, MIX_CANON, 1),
+            "generated slots keep equal pitches independently owned"
         );
         assert!(count_routed_note_on(&mut notes, first));
         assert!(!count_routed_note_on(&mut notes, second));

@@ -37,6 +37,7 @@ fn main() {
                 .lock()
                 .ok()
                 .and_then(|mut guard| guard.take());
+            let slide_telemetry = Arc::clone(&state.slide_telemetry);
             let reverb_params = Arc::clone(&state.reverb_params);
             let delay_params = Arc::clone(&state.delay_params);
             match audio_clock::start(
@@ -45,6 +46,7 @@ fn main() {
                 metronome_enabled,
                 synth_params,
                 synth_rx,
+                slide_telemetry,
                 reverb_params,
                 delay_params,
             ) {
@@ -108,6 +110,7 @@ fn main() {
             commands::harmony::set_harmonic_limit,
             commands::harmony::set_tuning_compare,
             commands::slide::get_slide_config,
+            commands::slide::get_slide_voices,
             commands::slide::set_slide_config,
             commands::companion::companion_set_enabled,
             commands::companion::companion_is_enabled,

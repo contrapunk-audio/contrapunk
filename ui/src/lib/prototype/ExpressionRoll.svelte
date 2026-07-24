@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { platformName } from '$lib/adapter';
+	import type { SlideVoiceState } from '$lib/adapter/types';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { ui, type PianoKeyCount } from '$lib/stores/ui.svelte';
+	import { slide } from '$lib/stores/slide.svelte';
+	import { harmonySlotLabel } from '$lib/slide/config';
 	import { isBlackKey, midiToName } from '$lib/embed/music-utils';
 	import {
 		getPianoKeyColor,
@@ -14,6 +17,7 @@
 
 	type Role = 'player' | 'harmony' | 'canon' | 'counterpoint';
 	type PitchSample = { at: number; midi: number; rms: number; clarity: number };
+	type SlideSample = { id: string; at: number; midi: number; target: number; role: Role; voice: number; progress: number };
 	type Gate = { id: number; role: Role; note: number; startedAt: number; endedAt: number | null };
 	type GuitarSignalPayload = {
 		rms: number;
@@ -55,6 +59,7 @@
 	let hasHistory = $state(false);
 	let lastSignalAt = 0;
 	let pitchSamples: PitchSample[] = [];
+	let slideSamples: SlideSample[] = [];
 	let gates: Gate[] = [];
 	let nextGateId = 1;
 	const activeGates = new Map<string, Gate>();
@@ -63,9 +68,41 @@
 	let harmonyLive = $derived(engine.harmonyNotes.length > 0);
 	let canonLive = $derived(engine.canonNotes.length > 0);
 	let counterpointLive = $derived(engine.counterpointNotes.length > 0);
+	let slideLive = $derived(slide.voices.length > 0);
 	let midiSummary = $derived(
 		engine.inputNotes.length ? engine.inputNotes.map(midiToName).join('  ') : 'Waiting for a stable pitch'
 	);
+
+	function slideRole(role: string): Role {
+		return role === 'input' ? 'player' : role === 'canon' ? 'canon' : role === 'counterpoint' ? 'counterpoint' : 'harmony';
+	}
+
+	function slideVoiceLabel(role: Role, voice: number): string {
+		if (role === 'player') return 'Your Voice';
+		if (role === 'harmony') return `Harmonic Support · ${harmonySlotLabel(voice, engine.voiceCount)}`;
+		if (role === 'canon') return `Canon · Voice ${voice + 1}`;
+		return 'Counterpoint';
+	}
+
+	function slidePitch(frequencyHz: number): string {
+		return `${midiToName(Math.round(frequencyToMidi(frequencyHz)))} ${frequencyHz.toFixed(2)} Hz`;
+	}
+
+	function slideCurve(curve: string): string {
+		return curve === 'inverse_exponential' ? 'Inverse Exponential' : curve === 'exponential' ? 'Exponential' : 'Linear';
+	}
+
+	function slideSummary(voice: SlideVoiceState): string {
+		const role = slideRole(voice.slot.role);
+		return `${slideVoiceLabel(role, voice.slot.voice)} · ${slidePitch(voice.currentFrequencyHz)} → ${slidePitch(voice.targetFrequencyHz)} · ${slideCurve(voice.curve)} · ${Math.round(voice.durationMs)} ms · ${Math.round(voice.progress * 100)}%`;
+	}
+
+	function slideCanvasLabel(voice: SlideVoiceState): string {
+		const role = slideRole(voice.slot.role);
+		const current = midiToName(Math.round(frequencyToMidi(voice.currentFrequencyHz)));
+		const target = midiToName(Math.round(frequencyToMidi(voice.targetFrequencyHz)));
+		return `${slideVoiceLabel(role, voice.slot.voice)} · ${current} → ${target} · ${Math.round(voice.progress * 100)}%`;
+	}
 
 	function activeKeyColor(note: number): string {
 		return getPianoKeyColor(
@@ -105,8 +142,12 @@
 		if (gates.length > MAX_GATES) gates.splice(0, gates.length - MAX_GATES);
 	});
 
+	function frequencyToMidi(freq: number) {
+		return 69 + 12 * Math.log2(freq / 440);
+	}
+
 	function readPitch(freq: number) {
-		const fractional = 69 + 12 * Math.log2(freq / 440);
+		const fractional = frequencyToMidi(freq);
 		const rounded = Math.round(fractional);
 		pitchName = midiToName(rounded);
 		frequency = freq;
@@ -135,9 +176,27 @@
 		const height = canvas.clientHeight;
 		const now = Date.now();
 		const cutoff = now - WINDOW_MS;
+		for (const voice of slide.voices) {
+			if (
+				voice.currentFrequencyHz > 0 &&
+				voice.targetFrequencyHz > 0 &&
+				Number.isFinite(voice.currentFrequencyHz)
+			) {
+				slideSamples.push({
+					id: voice.voiceId,
+					at: now,
+					midi: frequencyToMidi(voice.currentFrequencyHz),
+					target: frequencyToMidi(voice.targetFrequencyHz),
+					role: slideRole(voice.slot.role),
+					voice: voice.slot.voice,
+					progress: voice.progress
+				});
+			}
+		}
 		pitchSamples = pitchSamples.filter((sample) => sample.at >= cutoff);
+		slideSamples = slideSamples.filter((sample) => sample.at >= cutoff).slice(-1024);
 		gates = gates.filter((gate) => gate.endedAt === null || gate.endedAt >= cutoff);
-		hasHistory = pitchSamples.length > 0 || gates.length > 0;
+		hasHistory = pitchSamples.length > 0 || slideSamples.length > 0 || gates.length > 0;
 		guitarLive = now - lastSignalAt < 250;
 		if (!guitarLive) {
 			frequency = null;
@@ -291,6 +350,58 @@
 		}
 		ctx.globalAlpha = 1;
 
+		const slidePaths = new Map<string, SlideSample[]>();
+		for (const sample of slideSamples) {
+			const path = slidePaths.get(sample.id) ?? [];
+			path.push(sample);
+			slidePaths.set(sample.id, path);
+		}
+		for (const path of slidePaths.values()) {
+			if (!path.length) continue;
+			ctx.strokeStyle = colors[path[0].role];
+			ctx.lineWidth = 2.5;
+			ctx.lineJoin = 'round';
+			ctx.lineCap = 'round';
+			ctx.beginPath();
+			let previous: SlideSample | null = null;
+			for (const sample of path) {
+				const [x, y] = pointFor(sample.at, sample.midi);
+				if (!previous || sample.at - previous.at > 100) ctx.moveTo(x, y);
+				else ctx.lineTo(x, y);
+				previous = sample;
+			}
+			ctx.stroke();
+		}
+		for (const voice of slide.voices) {
+			const role = slideRole(voice.slot.role);
+			const nowPoint = pointFor(now, frequencyToMidi(voice.currentFrequencyHz));
+			const targetPoint = pointFor(now, frequencyToMidi(voice.targetFrequencyHz));
+			ctx.strokeStyle = colors[role];
+			ctx.fillStyle = colors[role];
+			ctx.lineWidth = 1.5;
+			ctx.setLineDash([3, 3]);
+			ctx.beginPath();
+			ctx.moveTo(nowPoint[0], nowPoint[1]);
+			ctx.lineTo(targetPoint[0], targetPoint[1]);
+			ctx.stroke();
+			ctx.setLineDash([]);
+			ctx.beginPath();
+			ctx.arc(nowPoint[0], nowPoint[1], 4, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.beginPath();
+			ctx.arc(targetPoint[0], targetPoint[1], 5, 0, Math.PI * 2);
+			ctx.stroke();
+			ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
+			const alignRight = targetPoint[0] > width * 0.65;
+			ctx.textAlign = alignRight ? 'right' : 'start';
+			ctx.fillText(
+				slideCanvasLabel(voice),
+				alignRight ? width - 6 : targetPoint[0] + 6,
+				Math.max(11, targetPoint[1] - 6)
+			);
+			ctx.textAlign = 'start';
+		}
+
 		if (pitchSamples.length > 1) {
 			ctx.strokeStyle = '#42e8c4';
 			ctx.lineWidth = 1.5;
@@ -401,6 +512,7 @@
 			<span class:live={harmonyLive}><i class="harmony"></i>Harmony</span>
 			<span class:live={canonLive}><i class="canon"></i>Canon</span>
 			<span class:live={counterpointLive}><i class="counterpoint"></i>Counterpoint</span>
+			<span class:live={slideLive}><i class="slide"></i>Slide {slideLive ? slide.voices.length : ''}</span>
 		</div>
 	</header>
 	<div class="roll-frame">
@@ -413,6 +525,7 @@
 		<div><span>GUITAR</span><strong class:live={guitarLive}>{pitchName}{frequency === null ? '' : `  ${cents >= 0 ? '+' : ''}${cents}¢`}</strong></div>
 		<div><span>MIDI OUT</span><strong class:live={playerLive}>{midiSummary}</strong></div>
 		<div><span>DYNAMICS</span><strong class:live={guitarLive}>{guitarLive ? `${Math.round(dynamics * 100)}% · ${Math.round(clarity * 100)}% clear` : 'Waiting for sound'}</strong></div>
+		<div class="slide-status"><span>SLIDE</span><strong class:live={slideLive}>{slideLive ? slide.voices.map(slideSummary).join('  |  ') : 'No pitch movement'}</strong></div>
 	</footer>
 </section>
 
@@ -432,16 +545,19 @@
 	.legend span.live i.harmony { background: var(--harmony-color); }
 	.legend span.live i.canon { background: var(--canon-color); }
 	.legend span.live i.counterpoint { background: var(--counterpoint-color); }
+	.legend span.live i.slide { background: linear-gradient(90deg, var(--player-color), var(--harmony-color)); }
 	.roll-frame { position: relative; min-height: 0; background: #0b0b0d; }
 	canvas { display: block; width: 100%; height: 100%; }
 	.empty { position: absolute; inset: 0; display: grid; place-items: center; padding-left: 50px; color: var(--proto-dim); font-size: 12px; pointer-events: none; }
 	.empty.vertical { padding-top: 42px; padding-left: 0; }
-	footer { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--proto-line); }
+	footer { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--proto-line); }
 	footer > div { min-width: 0; padding: 8px 11px; border-right: 1px solid var(--proto-line); }
 	footer > div:last-child { border-right: 0; }
 	footer span { display: block; margin-bottom: 4px; color: var(--proto-muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; }
 	footer strong { display: block; overflow: hidden; color: var(--proto-dim); font: 500 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 	footer strong.live { color: var(--proto-text); }
+	footer .slide-status { grid-column: 1 / -1; border-top: 1px solid var(--proto-line); border-right: 0; }
+	footer .slide-status strong { overflow: visible; text-overflow: clip; white-space: normal; }
 	@media (max-width: 760px) {
 		header { align-items: flex-start; flex-direction: column; }
 		.legend { justify-content: flex-start; }

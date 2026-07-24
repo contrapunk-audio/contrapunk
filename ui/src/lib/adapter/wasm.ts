@@ -19,6 +19,7 @@ import type {
 	Preset,
 	SlideConfig,
 	SlideRole,
+	SlideVoiceState,
 	TransportState,
 	TuningStyle,
 	VoiceOutputTarget
@@ -288,6 +289,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 			velocity?: number;
 			channel?: number;
 			lane?: string;
+			voice_slot?: number;
 		}>;
 		try {
 			ops = JSON.parse(json);
@@ -312,14 +314,15 @@ export class WasmAdapter implements ContrapunkAdapter {
 							? 3
 							: 1;
 				const slideRole: SlideRole = role === 2 ? 'canon' : role === 3 ? 'counterpoint' : 'harmony';
+				const voiceSlot = Math.max(0, Math.min(7, Math.trunc(op.voice_slot ?? 0)));
 				embedAudio.noteOn(
 					op.note,
 					velocity,
 					undefined,
 					role,
 					undefined,
-					0,
-					resolveSlide(this._slideConfig, { role: slideRole, voice: 0 })
+					voiceSlot,
+					resolveSlide(this._slideConfig, { role: slideRole, voice: voiceSlot })
 				);
 				if (firstOwner) {
 					if (this.activeOutputs.length > 0) {
@@ -335,7 +338,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 						: op.lane === 'counterpoint' || op.lane === 'pattern_counter'
 							? 3
 							: 1;
-				embedAudio.noteOff(op.note, undefined, role);
+				embedAudio.noteOff(op.note, undefined, role, op.voice_slot ?? 0);
 				if (lastOwner) {
 					if (this.activeOutputs.length > 0) {
 						this.activeOutputs[0].send([0x80, op.note, 0]);
@@ -564,6 +567,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 	async setSlideConfig(config: SlideConfig): Promise<void> {
 		this._slideConfig = config;
+	}
+
+	async getSlideVoices(): Promise<SlideVoiceState[]> {
+		return embedAudio.getSlideVoices();
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {
@@ -917,12 +924,18 @@ export class WasmAdapter implements ContrapunkAdapter {
 				} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
 					try {
 						resultNotes = engine.note_off(note);
-						const sorted = self.sortVoices(resultNotes);
-						for (let i = 0; i < sorted.length; i++) {
+						const voices = self.tunedVoices(resultNotes);
+						for (let i = 0; i < voices.length; i++) {
+							const voice = voices[i];
 							if (outs.length > 0) {
-								outs[i % outs.length].send([0x80, sorted[i], 0]);
+								outs[i % outs.length].send([0x80, voice.note, 0]);
 							}
-							embedAudio.noteOff(sorted[i], undefined, sorted[i] === note ? 0 : 1);
+							embedAudio.noteOff(
+								voice.note,
+								undefined,
+								voice.role === 'input' ? 0 : 1,
+								voice.slot
+							);
 						}
 						if (companion) {
 							try {
@@ -1216,12 +1229,18 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			const result = engine.note_off(note);
-			const sorted = this.sortVoices(result ?? [note]);
-			for (let i = 0; i < sorted.length; i++) {
+			const voices = this.tunedVoices(result ?? [note]);
+			for (let i = 0; i < voices.length; i++) {
+				const voice = voices[i];
 				if (this.activeOutputs.length > 0) {
-					this.activeOutputs[i % this.activeOutputs.length].send([0x80, sorted[i], 0]);
+					this.activeOutputs[i % this.activeOutputs.length].send([0x80, voice.note, 0]);
 				}
-				embedAudio.noteOff(sorted[i], undefined, sorted[i] === note ? 0 : 1);
+				embedAudio.noteOff(
+					voice.note,
+					undefined,
+					voice.role === 'input' ? 0 : 1,
+					voice.slot
+				);
 			}
 			if (companion) {
 				try {
@@ -1235,7 +1254,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 					/* ignore */
 				}
 			}
-			return sorted;
+			return voices.map((voice) => voice.note);
 		} catch {
 			return [note];
 		}

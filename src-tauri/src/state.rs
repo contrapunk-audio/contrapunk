@@ -16,7 +16,7 @@ use contrapunk::elixir::{synth_event_channel, SynthEventReceiver, SynthEventSend
 use contrapunk::fx::{DelayParams, ReverbParams};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, RoutingMode};
 use contrapunk::preset::PresetManager;
-use contrapunk::slide::SlideConfig;
+use contrapunk::slide::{SlideConfig, SlideTelemetry};
 use contrapunk::transport::Transport;
 
 /// Maximum number of voices the app exposes. Mirrors the 8 voice slots
@@ -135,6 +135,7 @@ pub struct AppState {
     /// Renderer-neutral Slide defaults and per-generated-voice overrides.
     /// Read only on note/control events, never from the audio callback.
     pub slide_config: Arc<Mutex<SlideConfig>>,
+    pub slide_telemetry: Arc<SlideTelemetry>,
 
     /// Built-in reverb parameters. Read by the audio callback each
     /// buffer; mutated by Tauri command handlers in response to UI
@@ -226,6 +227,7 @@ impl Default for AppState {
             },
             synth_rx: Mutex::new(None),
             slide_config: Arc::new(Mutex::new(SlideConfig::default())),
+            slide_telemetry: Arc::new(SlideTelemetry::new()),
             reverb_params: Arc::new(ReverbParams::default()),
             delay_params: Arc::new(DelayParams::default()),
             chain_commander: Mutex::new(None),

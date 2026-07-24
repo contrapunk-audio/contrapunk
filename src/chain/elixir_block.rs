@@ -10,7 +10,7 @@ use super::block::{AudioBlock, MidiBlockEvent};
 #[cfg(test)]
 use crate::elixir::SynthVoiceId;
 use crate::elixir::{SynthEvent, SynthParams};
-use crate::slide::{SlideRuntime, SlideSettings, SlideSlot};
+use crate::slide::{SlideRuntime, SlideSettings, SlideSlot, SlideTelemetry};
 use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole, MAX_POLYPHONY};
 
 pub const ELIXIR_EVENT_QUEUE_CAPACITY: usize = 1024;
@@ -24,6 +24,7 @@ struct MidiOwner {
     role: VoiceRole,
     id: VoiceId,
     frequency_hz: f32,
+    slide_slot: SlideSlot,
     age: u64,
 }
 
@@ -38,6 +39,7 @@ pub struct ElixirSynthBlock {
     compare_standard: bool,
     sample_rate: u32,
     slide: SlideRuntime,
+    slide_telemetry: Arc<SlideTelemetry>,
 }
 
 fn voice_role(mix_group: u8) -> Option<VoiceRole> {
@@ -59,9 +61,23 @@ impl ElixirSynthBlock {
     }
 
     pub fn new_with_params(sample_rate: u32, params: Arc<SynthParams>) -> Self {
+        Self::new_with_params_and_telemetry(sample_rate, params, Arc::new(SlideTelemetry::new()))
+    }
+
+    pub fn new_with_params_and_telemetry(
+        sample_rate: u32,
+        params: Arc<SynthParams>,
+        slide_telemetry: Arc<SlideTelemetry>,
+    ) -> Self {
         let queue = HeapRb::new(ELIXIR_EVENT_QUEUE_CAPACITY);
         let (_tx, rx) = queue.split();
-        Self::new_with_event_consumer(sample_rate, params, rx, Arc::new(AtomicBool::new(false)))
+        Self::new_with_event_consumer_and_telemetry(
+            sample_rate,
+            params,
+            rx,
+            Arc::new(AtomicBool::new(false)),
+            slide_telemetry,
+        )
     }
 
     pub fn new_with_event_consumer(
@@ -69,6 +85,22 @@ impl ElixirSynthBlock {
         params: Arc<SynthParams>,
         events: HeapCons<SynthEvent>,
         event_fault: Arc<AtomicBool>,
+    ) -> Self {
+        Self::new_with_event_consumer_and_telemetry(
+            sample_rate,
+            params,
+            events,
+            event_fault,
+            Arc::new(SlideTelemetry::new()),
+        )
+    }
+
+    pub fn new_with_event_consumer_and_telemetry(
+        sample_rate: u32,
+        params: Arc<SynthParams>,
+        events: HeapCons<SynthEvent>,
+        event_fault: Arc<AtomicBool>,
+        slide_telemetry: Arc<SlideTelemetry>,
     ) -> Self {
         let mut engine = Engine::new();
         engine.prepare(sample_rate, DEFAULT_MAX_BLOCK);
@@ -82,6 +114,7 @@ impl ElixirSynthBlock {
             compare_standard: false,
             sample_rate,
             slide: SlideRuntime::new(),
+            slide_telemetry,
         }
     }
 
@@ -218,6 +251,7 @@ impl ElixirSynthBlock {
             role,
             id,
             frequency_hz,
+            slide_slot,
             age,
         });
         let sounding_frequency = if self.compare_standard {
@@ -265,12 +299,29 @@ impl ElixirSynthBlock {
     }
 
     pub fn note_off_for_role(&mut self, note: u8, role: VoiceRole) {
+        self.note_off_for_role_and_slot(note, role, None);
+    }
+
+    pub fn note_off_for_slot(&mut self, note: u8, role: VoiceRole, slide_slot: SlideSlot) {
+        self.note_off_for_role_and_slot(note, role, Some(slide_slot));
+    }
+
+    fn note_off_for_role_and_slot(
+        &mut self,
+        note: u8,
+        role: VoiceRole,
+        slide_slot: Option<SlideSlot>,
+    ) {
         let owner = self
             .midi_owners
             .iter()
             .enumerate()
             .filter_map(|(index, owner)| owner.map(|owner| (index, owner)))
-            .filter(|(_, owner)| owner.note == note && owner.role == role)
+            .filter(|(_, owner)| {
+                owner.note == note
+                    && owner.role == role
+                    && slide_slot.is_none_or(|slot| owner.slide_slot == slot)
+            })
             .min_by_key(|(_, owner)| owner.age);
         if let Some((index, owner)) = owner {
             self.midi_owners[index] = None;
@@ -328,6 +379,7 @@ impl AudioBlock for ElixirSynthBlock {
             self.engine.process(buffer, channels);
             buffer.fill(0.0);
         }
+        self.slide_telemetry.publish(&self.slide);
     }
 
     fn midi_event(&mut self, event: MidiBlockEvent) {
@@ -482,6 +534,40 @@ mod tests {
             .iter()
             .all(|sample| sample.abs() < 1.0e-6));
         assert_eq!(block.engine.live_voice_count(), 1);
+    }
+
+    #[test]
+    fn same_pitch_generated_slots_release_exact_owner() {
+        let mut block = ElixirSynthBlock::new(48_000);
+        let first = SlideSlot::new(crate::slide::SlideRole::Canon, 0);
+        let second = SlideSlot::new(crate::slide::SlideRole::Canon, 1);
+        block.note_on_frequency_for_role_with_slide(
+            69,
+            440.0,
+            100,
+            VoiceRole::Canon,
+            first,
+            SlideSettings::default(),
+        );
+        block.note_on_frequency_for_role_with_slide(
+            69,
+            440.0,
+            100,
+            VoiceRole::Canon,
+            second,
+            SlideSettings::default(),
+        );
+        block.note_off_for_slot(69, VoiceRole::Canon, second);
+        assert!(block
+            .midi_owners
+            .iter()
+            .flatten()
+            .any(|owner| owner.slide_slot == first));
+        assert!(!block
+            .midi_owners
+            .iter()
+            .flatten()
+            .any(|owner| owner.slide_slot == second));
     }
 
     #[test]

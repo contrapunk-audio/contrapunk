@@ -10,11 +10,11 @@ use nih_plug_webview::{
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU32, Ordering},
     Arc, Mutex,
 };
 
-use contrapunk::slide::SlideConfig;
+use contrapunk::slide::{SlideConfig, SlideTelemetry};
 use contrapunk_companion::Companion;
 
 use crate::{
@@ -40,11 +40,14 @@ pub struct ContrapunkEditorHandler {
     /// Last `noteUpdate` payload pushed. Used to suppress redundant
     /// sends when nothing changed — keeps the JS bridge quiet.
     last_note_json: String,
+    last_slide_json: String,
     /// Set by UI panic button; drained by plugin process() on audio thread.
     panic_requested: Arc<AtomicBool>,
     /// Momentary, non-persisted Compare state shared with the audio thread.
     compare_standard: Arc<AtomicBool>,
     slide_config: Arc<Mutex<SlideConfig>>,
+    tone_source: Arc<AtomicU32>,
+    slide_telemetry: Arc<SlideTelemetry>,
     /// The dedicated Logic Audio FX always consumes its audio bus.
     guitar_component: bool,
     guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
@@ -88,6 +91,19 @@ impl ContrapunkEditorHandler {
             "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
         })
         .to_string()
+    }
+
+    fn slide_update_json(&mut self) -> Option<String> {
+        let payload = serde_json::json!({
+            "type": "slideUpdate",
+            "voices": self.slide_telemetry.snapshot(),
+        })
+        .to_string();
+        if payload == self.last_slide_json {
+            return None;
+        }
+        self.last_slide_json = payload.clone();
+        Some(payload)
     }
 
     fn guitar_signal_json(&mut self) -> Option<String> {
@@ -154,6 +170,9 @@ impl ContrapunkEditorHandler {
 impl Drop for ContrapunkEditorHandler {
     fn drop(&mut self) {
         self.compare_standard.store(false, Ordering::Release);
+        let current = self.tone_source.load(Ordering::Acquire);
+        self.tone_source
+            .store(current & !(1 << 16), Ordering::Release);
     }
 }
 
@@ -163,6 +182,9 @@ impl EditorHandler for ContrapunkEditorHandler {
             cx.send_message(json);
         }
         if let Some(json) = self.guitar_signal_json() {
+            cx.send_message(json);
+        }
+        if let Some(json) = self.slide_update_json() {
             cx.send_message(json);
         }
     }
@@ -333,7 +355,30 @@ impl EditorHandler for ContrapunkEditorHandler {
                     setter.end_set_parameter(*param);
                 }
             }
+            "injectNoteOn" => {
+                if let (Some(note), Some(velocity)) = (
+                    msg.get("note").and_then(|value| value.as_u64()),
+                    msg.get("velocity").and_then(|value| value.as_u64()),
+                ) {
+                    self.tone_source.store(
+                        crate::pack_tone_source(note as u8, velocity as u8, true),
+                        Ordering::Release,
+                    );
+                }
+            }
+            "injectNoteOff" => {
+                if let Some(note) = msg.get("note").and_then(|value| value.as_u64()) {
+                    let current = self.tone_source.load(Ordering::Acquire);
+                    if current & 0x7f == note.min(127) as u32 {
+                        self.tone_source
+                            .store(current & !(1 << 16), Ordering::Release);
+                    }
+                }
+            }
             "panic" => {
+                let current = self.tone_source.load(Ordering::Acquire);
+                self.tone_source
+                    .store(current & !(1 << 16), Ordering::Release);
                 self.panic_requested.store(true, Ordering::Release);
             }
             // ─── Companion IPC ────────────────────────────────────
@@ -413,6 +458,8 @@ pub fn create_editor(
     panic_requested: Arc<AtomicBool>,
     compare_standard: Arc<AtomicBool>,
     slide_config: Arc<Mutex<SlideConfig>>,
+    tone_source: Arc<AtomicU32>,
+    slide_telemetry: Arc<SlideTelemetry>,
     guitar_component: bool,
     state: &Arc<WebViewState>,
 ) -> WebViewEditor {
@@ -434,9 +481,12 @@ pub fn create_editor(
         note_state,
         companion,
         last_note_json: String::new(),
+        last_slide_json: String::new(),
         panic_requested,
         compare_standard,
         slide_config,
+        tone_source,
+        slide_telemetry,
         guitar_component,
         guitar_signal,
         guitar_was_live: false,

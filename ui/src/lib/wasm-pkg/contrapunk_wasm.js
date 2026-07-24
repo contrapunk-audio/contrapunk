@@ -442,6 +442,20 @@ export class ElixirAudio {
     /**
      * @returns {number}
      */
+    slide_curves_ptr() {
+        const ret = wasm.elixiraudio_slide_curves_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    slide_durations_ptr() {
+        const ret = wasm.elixiraudio_slide_durations_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
     slide_frequencies_ptr() {
         const ret = wasm.elixiraudio_slide_frequencies_ptr(this.__wbg_ptr);
         return ret >>> 0;
@@ -449,8 +463,29 @@ export class ElixirAudio {
     /**
      * @returns {number}
      */
+    slide_progresses_ptr() {
+        const ret = wasm.elixiraudio_slide_progresses_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    slide_slots_ptr() {
+        const ret = wasm.elixiraudio_slide_slots_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
     slide_snapshot_count() {
         const ret = wasm.elixiraudio_slide_snapshot_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    slide_targets_ptr() {
+        const ret = wasm.elixiraudio_slide_targets_ptr(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**

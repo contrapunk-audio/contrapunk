@@ -34,6 +34,7 @@ use contrapunk::chain::{
 };
 use contrapunk::elixir::{synth_event_channel, SynthEventReceiver, SynthParams};
 use contrapunk::fx::{Delay, DelayParams, Reverb, ReverbParams};
+use contrapunk::slide::SlideTelemetry;
 use contrapunk::transport::{BeatCrossing, Transport};
 use ringbuf::traits::{Producer, Split};
 use ringbuf::HeapRb;
@@ -120,6 +121,7 @@ pub fn start(
     metronome_enabled: Arc<AtomicBool>,
     synth_params: Arc<SynthParams>,
     synth_rx: Option<SynthEventReceiver>,
+    slide_telemetry: Arc<SlideTelemetry>,
     reverb_params: Arc<ReverbParams>,
     delay_params: Arc<DelayParams>,
 ) -> Result<Arc<ChainCommander>, String> {
@@ -172,6 +174,7 @@ pub fn start(
                 metronome_enabled,
                 synth_params,
                 synth_rx,
+                slide_telemetry,
                 reverb_params,
                 delay_params,
                 chain_rx,
@@ -210,6 +213,7 @@ fn make_synth_block(
     params: Arc<SynthParams>,
     events: SynthEventReceiver,
     sample_rate: u32,
+    slide_telemetry: Arc<SlideTelemetry>,
 ) -> Box<dyn AudioBlock> {
     let queue = HeapRb::new(ELIXIR_EVENT_QUEUE_CAPACITY);
     let (mut tx, rx) = queue.split();
@@ -229,11 +233,12 @@ fn make_synth_block(
             }
             bridge_fault.store(true, Ordering::Release);
         });
-    Box::new(ElixirSynthBlock::new_with_event_consumer(
+    Box::new(ElixirSynthBlock::new_with_event_consumer_and_telemetry(
         sample_rate,
         params,
         rx,
         event_fault,
+        slide_telemetry,
     ))
 }
 
@@ -242,6 +247,7 @@ fn build_and_run_stream(
     metronome_enabled: Arc<AtomicBool>,
     synth_params: Arc<SynthParams>,
     synth_rx: Option<SynthEventReceiver>,
+    slide_telemetry: Arc<SlideTelemetry>,
     reverb_params: Arc<ReverbParams>,
     delay_params: Arc<DelayParams>,
     chain_rx: ChainCommandConsumer,
@@ -294,7 +300,7 @@ fn build_and_run_stream(
             // blocks that shape its output in place. CLAP / VST3
             // plugin blocks are also pushed here once their hosts
             // exist.
-            let synth = make_synth_block(synth_params, synth_rx, sample_rate);
+            let synth = make_synth_block(synth_params, synth_rx, sample_rate, slide_telemetry);
             let reverb = Reverb::new(reverb_params, sample_rate);
             let delay = Delay::with_transport(delay_params, Arc::clone(&transport), sample_rate);
             let mut chain = Chain::with_queue(sample_rate, chain_rx);

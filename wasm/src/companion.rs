@@ -224,14 +224,14 @@ impl CompanionWasm {
             channel,
         };
         let (tagged, _suppress) = self.inner.on_input_tagged(ev, &self.dummy_engine);
-        serialize_tagged_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
+        serialize_slotted_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen]
     pub fn on_note_off(&mut self, note: u8, channel: u8) -> Result<String, JsValue> {
         let ev = InputEvent::NoteOff { note, channel };
         let (tagged, _suppress) = self.inner.on_input_tagged(ev, &self.dummy_engine);
-        serialize_tagged_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
+        serialize_slotted_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Tick the lanes. Drains pending emissions whose fire_at has
@@ -240,7 +240,7 @@ impl CompanionWasm {
     #[wasm_bindgen]
     pub fn tick(&mut self) -> Result<String, JsValue> {
         let tagged = self.inner.tick_tagged(&self.dummy_engine);
-        serialize_tagged_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
+        serialize_slotted_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Clear delayed/held lane state without changing configuration.
@@ -316,28 +316,18 @@ fn serialize_ops(ops: &[DispatchOp]) -> Result<String, serde_json::Error> {
     serde_json::to_string(&values)
 }
 
-/// Same shape as `serialize_ops` but each entry carries an extra
-/// `lane` field — the `type_id` of the lane that produced it
-/// (e.g. `"canon"` or `"counterpoint"`). Used by the JS adapter to
-/// attribute each emission to a lane so the UI can color piano keys
-/// per-lane.
-fn serialize_tagged_ops(
-    tagged: &[(&'static str, DispatchOp)],
+fn serialize_slotted_ops(
+    tagged: &[(&'static str, u8, DispatchOp)],
 ) -> Result<String, serde_json::Error> {
     let values: Vec<serde_json::Value> = tagged
         .iter()
-        .map(|(lane_id, op)| {
-            let mut v = op_to_json(op);
-            if let serde_json::Value::Object(ref mut map) = v {
-                // serde_json::Value::String requires owned — one
-                // alloc here at JSON-encode time is unavoidable.
-                // Everything else in the dispatch path is alloc-free.
-                map.insert(
-                    "lane".into(),
-                    serde_json::Value::String((*lane_id).to_string()),
-                );
+        .map(|(lane_id, voice_slot, op)| {
+            let mut value = op_to_json(op);
+            if let serde_json::Value::Object(ref mut map) = value {
+                map.insert("lane".into(), (*lane_id).into());
+                map.insert("voice_slot".into(), (*voice_slot).into());
             }
-            v
+            value
         })
         .collect();
     serde_json::to_string(&values)

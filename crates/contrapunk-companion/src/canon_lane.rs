@@ -820,6 +820,44 @@ impl CanonLane {
             None => self.pending_on.push_front(p),
         }
     }
+
+    pub(crate) fn tick_slotted(&mut self, world: &WorldState) -> Vec<(u8, DispatchOp)> {
+        if !self.enabled {
+            return Vec::new();
+        }
+        let now = world.transport.total_beats();
+        let mut ops = Vec::new();
+        while let Some(p) = self.pending_on.front() {
+            if p.fire_at > now {
+                break;
+            }
+            let p = self.pending_on.pop_front().unwrap();
+            ops.push((
+                p.voice_idx.min(7) as u8,
+                DispatchOp::NoteOn {
+                    target: self.target,
+                    note: p.canon_note,
+                    velocity: p.velocity,
+                    channel: p.channel,
+                },
+            ));
+        }
+        self.pending_off.retain(|p| {
+            if p.fire_at > now {
+                return true;
+            }
+            ops.push((
+                p.voice_idx.min(7) as u8,
+                DispatchOp::NoteOff {
+                    target: self.target,
+                    note: p.canon_note,
+                    channel: p.channel,
+                },
+            ));
+            false
+        });
+        ops
+    }
 }
 
 impl Default for CanonLane {
@@ -1093,45 +1131,17 @@ impl Lane for CanonLane {
     }
 
     fn tick(&mut self, world: &WorldState) -> LaneOutput {
-        if !self.enabled {
-            return LaneOutput::default();
-        }
-        let now = world.transport.total_beats();
-        let mut ops: Vec<DispatchOp> = Vec::new();
-
-        // Drain matured NoteOn emissions in fire-order.
-        while let Some(p) = self.pending_on.front() {
-            if p.fire_at <= now {
-                let p = self.pending_on.pop_front().unwrap();
-                ops.push(DispatchOp::NoteOn {
-                    target: self.target,
-                    note: p.canon_note,
-                    velocity: p.velocity,
-                    channel: p.channel,
-                });
-            } else {
-                break;
-            }
-        }
-
-        // Drain matured NoteOff emissions — linear scan + retain.
-        self.pending_off.retain(|p| {
-            if p.fire_at <= now {
-                ops.push(DispatchOp::NoteOff {
-                    target: self.target,
-                    note: p.canon_note,
-                    channel: p.channel,
-                });
-                false
-            } else {
-                true
-            }
-        });
-
         LaneOutput {
-            ops,
+            ops: CanonLane::tick_slotted(self, world)
+                .into_iter()
+                .map(|(_, op)| op)
+                .collect(),
             ..Default::default()
         }
+    }
+
+    fn tick_slotted(&mut self, world: &WorldState) -> Vec<(u8, DispatchOp)> {
+        CanonLane::tick_slotted(self, world)
     }
 
     fn serialize_state(&self) -> serde_json::Value {
@@ -1616,6 +1626,32 @@ mod tests {
         advance_to_beat(&transport, 2.5);
         let out_v2 = lane.tick(&world);
         assert_eq!(out_v2.ops.len(), 1, "voice 2 should have fired");
+    }
+
+    #[test]
+    fn multi_voice_canon_preserves_runtime_slots() {
+        let (mut lane, world, transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_voices(vec![
+            CanonVoice::new(1.0, 0),
+            CanonVoice::new(1.0, 2),
+            CanonVoice::new(1.0, 4),
+        ]);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 1.5);
+        let slots: Vec<u8> = lane
+            .tick_slotted(&world)
+            .into_iter()
+            .map(|(slot, _)| slot)
+            .collect();
+        assert_eq!(slots, vec![0, 1, 2]);
     }
 
     /// Multi-voice with different transposes: 3 voices at (delay, transpose)

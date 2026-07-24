@@ -7,6 +7,9 @@
 	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
+	import { slide } from '$lib/stores/slide.svelte';
+	import { SLIDE_ROLES } from '$lib/slide/config';
+	import type { SlideRole } from '$lib/adapter';
 	import type { VoiceOutputTarget } from '$lib/adapter';
 
 	let { openSetup }: { openSetup: (section: string, focus?: string) => void } = $props();
@@ -19,6 +22,7 @@
 		active: boolean;
 		route: string;
 		color: string;
+		slide: string;
 	};
 
 	let muted = $state([false, false, false, false]);
@@ -48,8 +52,21 @@
 		}
 		if (midi.selectedInput === 999_997) return 'Guitar Audio';
 		if (midi.selectedInput === 999_998) return 'Computer Keys';
+		if (midi.selectedInput === 999_996) return 'Tone';
 		return midi.inputs.find((device) => device.index === midi.selectedInput)?.name ?? 'Choose source';
 	});
+	function slideLabel(role: SlideRole): string {
+		const index = SLIDE_ROLES.indexOf(role);
+		const travel = slide.config.roles[index].travel;
+		const mixed = slide.config.voices[index].some((voice) => voice.travel !== null || voice.trigger !== null || voice.curve !== null);
+		if (mixed) return 'Mixed';
+		return travel.kind === 'off'
+			? 'Off'
+			: travel.kind === 'time'
+				? `${Math.round(travel.milliseconds)} ms`
+				: `${travel.semitones_per_second} st/s`;
+	}
+
 	let roles = $derived<Role[]>([
 		{
 			name: 'Your Voice',
@@ -58,7 +75,8 @@
 			group: 0,
 			active: engine.inputNotes.length > 0,
 			route: inputRoute,
-			color: '#4fe8c3'
+			color: '#4fe8c3',
+			slide: slideLabel('input')
 		},
 		{
 			name: 'Harmonic Support',
@@ -67,7 +85,8 @@
 			group: 1,
 			active: engine.harmonyNotes.length > 0,
 			route: harmonyRoute,
-			color: '#ff2e88'
+			color: '#ff2e88',
+			slide: slideLabel('harmony')
 		},
 		{
 			name: engine.imitativeForm === 'strict_canon' ? 'Strict Canon' : 'Free Imitation',
@@ -76,7 +95,8 @@
 			group: 2,
 			active: engine.canonNotes.length > 0,
 			route: 'Companion',
-			color: '#ffdd44'
+			color: '#ffdd44',
+			slide: slideLabel('canon')
 		},
 		{
 			name: 'Species Counterpoint',
@@ -85,7 +105,8 @@
 			group: 3,
 			active: engine.counterpointNotes.length > 0,
 			route: 'Companion',
-			color: '#a3e635'
+			color: '#a3e635',
+			slide: slideLabel('counterpoint')
 		}
 	]);
 
@@ -206,6 +227,9 @@
 			<output>{Math.round((arrangement.mixLevels[role.group] ?? 1) * 100)}</output>
 		</label>
 	</div>
+	<button class="slide-status" type="button" title={`Configure ${role.name} Slide`} onclick={() => openSetup('harmony', 'harmony-controls')}>
+		<span>Slide</span><strong>{role.slide}</strong>
+	</button>
 	<div class="mix-buttons">
 		<button class:on={muted[role.group]} type="button" title={`Mute ${role.name}`} aria-label={`Mute ${role.name} in built-in synth`} aria-pressed={muted[role.group]} onclick={() => toggleMute(role.group)}>M</button>
 		<button class:on={solo === role.group} type="button" title={`Solo ${role.name}`} aria-label={`Solo ${role.name} in built-in synth`} aria-pressed={solo === role.group} onclick={() => toggleSolo(role.group)}>S</button>
@@ -244,6 +268,9 @@
 	.fader { display: grid; height: 64px; grid-template-rows: 9px 1fr 9px; place-items: center; color: var(--proto-muted); font: 8px var(--font-code); }
 	.fader input { width: 48px; margin: 18px -15px; accent-color: var(--proto-text); transform: rotate(-90deg); }
 	.fader output { color: var(--proto-text); }
+	.slide-status { display: flex; min-height: 20px; align-items: center; justify-content: space-between; padding: 2px 7px; border: 0; border-top: 1px solid var(--proto-line); background: transparent; color: var(--proto-muted); font: 8px var(--font-code); }
+	.slide-status strong { color: var(--proto-text); font-size: 8px; }
+	.slide-status:hover { background: var(--proto-hover); }
 	.mix-buttons { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--proto-line); }
 	.mix-buttons button, .mix-button { min-height: 21px; border: 0; border-right: 1px solid var(--proto-line); background: transparent; color: var(--proto-muted); font: 700 8px var(--font-code); }
 	.mix-buttons button:last-child { border-right: 0; }

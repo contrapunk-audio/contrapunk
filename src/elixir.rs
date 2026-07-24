@@ -111,6 +111,7 @@ struct Owner {
     midi_anchor: u8,
     frequency_hz: f32,
     mix_group: u8,
+    slide_slot: SlideSlot,
 }
 
 struct Owners {
@@ -131,6 +132,7 @@ impl Owners {
         midi_anchor: u8,
         frequency_hz: f32,
         mix_group: u8,
+        slide_slot: SlideSlot,
     ) -> Option<SynthVoiceId> {
         if midi_anchor >= 128 || self.active.len() == self.active.capacity() {
             return None;
@@ -142,14 +144,21 @@ impl Owners {
             midi_anchor,
             frequency_hz,
             mix_group,
+            slide_slot,
         });
         Some(voice_id)
     }
 
-    fn release(&mut self, midi_anchor: u8, mix_group: u8) -> Option<SynthVoiceId> {
+    fn release(
+        &mut self,
+        midi_anchor: u8,
+        mix_group: u8,
+        slide_slot: Option<SlideSlot>,
+    ) -> Option<SynthVoiceId> {
         let index = self.active.iter().position(|owner| {
             owner.midi_anchor == midi_anchor
                 && (mix_group == MIX_GROUP_ALL || owner.mix_group == mix_group)
+                && slide_slot.is_none_or(|slot| owner.slide_slot == slot)
         })?;
         Some(self.active.remove(index).voice_id)
     }
@@ -243,7 +252,8 @@ impl SynthEventSender {
             .owners
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let Some(voice_id) = owners.allocate(midi_anchor, frequency_hz, mix_group) else {
+        let Some(voice_id) = owners.allocate(midi_anchor, frequency_hz, mix_group, slide_slot)
+        else {
             self.fault.store(true, Ordering::Release);
             return Err(mpsc::TrySendError::Full(SynthEvent::AllNotesOff));
         };
@@ -302,7 +312,7 @@ impl SynthEventSender {
             .owners
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        while let Some(voice_id) = owners.release(midi_anchor, mix_group) {
+        while let Some(voice_id) = owners.release(midi_anchor, mix_group, None) {
             if let Err(error) = self.try_send(SynthEvent::note_off(voice_id)) {
                 owners.active.clear();
                 return Err(error);
@@ -310,6 +320,26 @@ impl SynthEventSender {
             if mix_group != MIX_GROUP_ALL {
                 break;
             }
+        }
+        Ok(())
+    }
+
+    pub fn note_off_slot(
+        &self,
+        midi_anchor: u8,
+        mix_group: u8,
+        slide_slot: SlideSlot,
+    ) -> Result<(), mpsc::TrySendError<SynthEvent>> {
+        let mut owners = self
+            .owners
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let Some(voice_id) = owners.release(midi_anchor, mix_group, Some(slide_slot)) else {
+            return Ok(());
+        };
+        if let Err(error) = self.try_send(SynthEvent::note_off(voice_id)) {
+            owners.active.clear();
+            return Err(error);
         }
         Ok(())
     }
@@ -455,6 +485,31 @@ mod tests {
         assert!(matches!(
             rx.try_recv().unwrap(),
             SynthEvent::NoteOff { voice_id } if voice_id == second
+        ));
+    }
+
+    #[test]
+    fn generated_slots_release_equal_pitches_by_exact_owner() {
+        let (tx, rx) = synth_event_channel();
+        let first_slot = SlideSlot::new(SlideRole::Canon, 0);
+        let second_slot = SlideSlot::new(SlideRole::Canon, 1);
+        let first = tx
+            .note_on_exact_with_slide(69, 440.0, 100, 2, first_slot, SlideSettings::default())
+            .unwrap();
+        let second = tx
+            .note_on_exact_with_slide(69, 440.0, 100, 2, second_slot, SlideSettings::default())
+            .unwrap();
+        let _ = rx.try_recv().unwrap();
+        let _ = rx.try_recv().unwrap();
+        tx.note_off_slot(69, 2, second_slot).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOff { voice_id } if voice_id == second
+        ));
+        tx.note_off_slot(69, 2, first_slot).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOff { voice_id } if voice_id == first
         ));
     }
 

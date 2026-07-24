@@ -35,3 +35,9 @@ exactTargets.delete(firstExact);
 const secondExact = takeVoiceOwner(exactOwners, 0, 69);
 assert.equal(secondExact, 21);
 assert.deepEqual(exactTargets.get(secondExact), { anchor: 69, frequency: 445 });
+
+const slotOwners = new Map();
+addVoiceOwner(slotOwners, 16, 60, 30); // Canon slot 0: role * 8 + slot
+addVoiceOwner(slotOwners, 17, 60, 31); // Canon slot 1
+assert.equal(takeVoiceOwner(slotOwners, 17, 60), 31, 'generated slots own equal pitches independently');
+assert.equal(takeVoiceOwner(slotOwners, 16, 60), 30);

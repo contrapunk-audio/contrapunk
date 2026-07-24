@@ -10,8 +10,9 @@
 use nih_plug::prelude::*;
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
+use std::collections::VecDeque;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU32, Ordering},
     Arc, Mutex,
 };
 use std::thread;
@@ -28,7 +29,7 @@ use contrapunk::harmony::{
     HarmonicLimit, HarmonyEngine, HarmonyMode, Key, OctaveMode, TuningConfig, TuningStyle,
     VoiceLeadingStyle,
 };
-use contrapunk::slide::{SlideConfig, SlideRole, SlideSettings, SlideSlot};
+use contrapunk::slide::{SlideConfig, SlideRole, SlideSettings, SlideSlot, SlideTelemetry};
 use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
 use contrapunk_transport::Transport;
 
@@ -38,6 +39,30 @@ const CANON_CHANNEL: u8 = 5;
 const COUNTERPOINT_CHANNEL: u8 = 6;
 const TRACKED_OUTPUT_NOTES: usize = 16 * 128;
 const TRACKED_SYNTH_NOTES: usize = 4 * 128;
+const TONE_GATE_BIT: u32 = 1 << 16;
+type PortMapOwners = [VecDeque<Vec<usize>>; 128];
+
+fn remember_port_map(owners: &mut PortMapOwners, note: u8, port_map: &[usize]) {
+    owners[note as usize].push_back(port_map.to_vec());
+}
+
+fn take_port_map(owners: &mut PortMapOwners, note: u8, fallback: Vec<usize>) -> Vec<usize> {
+    owners[note as usize].pop_front().unwrap_or(fallback)
+}
+
+pub(crate) fn pack_tone_source(note: u8, velocity: u8, gate: bool) -> u32 {
+    u32::from(note.min(127))
+        | (u32::from(velocity.clamp(1, 127)) << 8)
+        | if gate { TONE_GATE_BIT } else { 0 }
+}
+
+fn unpack_tone_source(value: u32) -> (u8, u8, bool) {
+    (
+        (value & 0x7f) as u8,
+        ((value >> 8) & 0x7f) as u8,
+        value & TONE_GATE_BIT != 0,
+    )
+}
 
 fn monitor_role(channel: u8) -> VoiceRole {
     match channel {
@@ -619,6 +644,7 @@ enum WorkerOutput {
         channel: u8,
         note: u8,
         velocity: f32,
+        slide_slot: SlideSlot,
     },
     PitchBend {
         generation: u64,
@@ -762,12 +788,12 @@ fn push_tagged_worker_ops(
     generation: u64,
     block: u64,
     timing: u32,
-    tagged: &[(&'static str, contrapunk_companion::DispatchOp)],
+    tagged: &[(&'static str, u8, contrapunk_companion::DispatchOp)],
     slide_config: &SlideConfig,
 ) {
     use contrapunk_companion::DispatchOp;
 
-    for (lane, op) in tagged {
+    for (lane, voice_slot, op) in tagged {
         let source = worker_note_source(lane);
         let slide_role = match source {
             WorkerNoteSource::Canon => SlideRole::Canon,
@@ -775,7 +801,7 @@ fn push_tagged_worker_ops(
             WorkerNoteSource::Input => SlideRole::Input,
             WorkerNoteSource::Harmony => SlideRole::Harmony,
         };
-        let slide_slot = SlideSlot::new(slide_role, 0);
+        let slide_slot = SlideSlot::new(slide_role, *voice_slot);
         let event = match op {
             DispatchOp::NoteOn {
                 note,
@@ -802,6 +828,7 @@ fn push_tagged_worker_ops(
                 channel: lane_output_channel(lane, *channel),
                 note: *note,
                 velocity: 0.0,
+                slide_slot,
             },
             DispatchOp::AllNotesOff { .. } => WorkerOutput::AllNotesOff { generation },
         };
@@ -823,15 +850,15 @@ fn push_harmony_worker_notes(
     note_on: bool,
 ) {
     for (index, note) in notes.iter().copied().enumerate() {
+        let slide_slot = if index == 0 {
+            SlideSlot::new(SlideRole::Input, 0)
+        } else {
+            SlideSlot::new(
+                SlideRole::Harmony,
+                port_map.get(index).copied().unwrap_or(index) as u8,
+            )
+        };
         let event = if note_on {
-            let slide_slot = if index == 0 {
-                SlideSlot::new(SlideRole::Input, 0)
-            } else {
-                SlideSlot::new(
-                    SlideRole::Harmony,
-                    port_map.get(index).copied().unwrap_or(index) as u8,
-                )
-            };
             WorkerOutput::NoteOn {
                 generation,
                 block,
@@ -866,6 +893,7 @@ fn push_harmony_worker_notes(
                 channel: harmony_output_channel(index),
                 note: u8::from(note),
                 velocity,
+                slide_slot,
             }
         };
         push_worker_output(output, stop, event);
@@ -885,6 +913,7 @@ fn process_worker_note(
     note_on: bool,
     use_companion: bool,
     slide_config: &Arc<Mutex<SlideConfig>>,
+    port_map_owners: &mut PortMapOwners,
 ) {
     let slide_config = *slide_config
         .lock()
@@ -937,9 +966,16 @@ fn process_worker_note(
                     .collect::<Vec<_>>()
             });
             let port_map = engine.last_port_map().to_vec();
+            remember_port_map(port_map_owners, u8::from(note), &port_map);
             (notes, frequencies, port_map)
         } else {
-            (engine.harmonize_note_off(note), None, Vec::new())
+            let notes = engine.harmonize_note_off(note);
+            let port_map = take_port_map(
+                port_map_owners,
+                u8::from(note),
+                engine.last_port_map().to_vec(),
+            );
+            (notes, None, port_map)
         }
     };
     push_harmony_worker_notes(
@@ -1008,6 +1044,7 @@ fn run_music_worker(
     let mut generation = 0;
     let mut guitar = GuitarInput::new(GuitarInputConfig::default());
     let mut audio_block = Vec::new();
+    let mut port_map_owners: PortMapOwners = std::array::from_fn(|_| VecDeque::new());
 
     while !stop.load(Ordering::Acquire) {
         let mut did_work = false;
@@ -1020,6 +1057,9 @@ fn run_music_worker(
                 } => {
                     generation = next_generation;
                     configure_music_worker(&engine, &companion, &mut guitar, params);
+                    for owners in &mut port_map_owners {
+                        owners.clear();
+                    }
                 }
                 WorkerInput::NoteOn {
                     generation: event_generation,
@@ -1040,6 +1080,7 @@ fn run_music_worker(
                     true,
                     true,
                     &slide_config,
+                    &mut port_map_owners,
                 ),
                 WorkerInput::NoteOff {
                     generation: event_generation,
@@ -1060,6 +1101,7 @@ fn run_music_worker(
                     false,
                     true,
                     &slide_config,
+                    &mut port_map_owners,
                 ),
                 WorkerInput::Tick {
                     generation: event_generation,
@@ -1133,6 +1175,7 @@ fn run_music_worker(
                                     true,
                                     false,
                                     &slide_config,
+                                    &mut port_map_owners,
                                 );
                             }
                             CpMidiEvent::NoteOff { note, velocity, .. } if harmonize => {
@@ -1149,6 +1192,7 @@ fn run_music_worker(
                                     false,
                                     false,
                                     &slide_config,
+                                    &mut port_map_owners,
                                 );
                             }
                             CpMidiEvent::NoteOn { note, velocity, .. } => {
@@ -1187,6 +1231,7 @@ fn run_music_worker(
                                     channel: MELODY_CHANNEL,
                                     note,
                                     velocity: velocity as f32 / 127.0,
+                                    slide_slot: SlideSlot::new(SlideRole::Input, 0),
                                 },
                             ),
                             CpMidiEvent::PitchBend { channel, cents } => push_worker_output(
@@ -1249,6 +1294,7 @@ struct ContrapunkPlugin {
     /// is ever taken by the audio callback.
     companion: Arc<Mutex<Companion>>,
     slide_config: Arc<Mutex<SlideConfig>>,
+    slide_telemetry: Arc<SlideTelemetry>,
     worker: MusicWorker,
     #[cfg(target_os = "macos")]
     logic_midi: logic_midi::LogicMidiOutput,
@@ -1298,6 +1344,9 @@ struct ContrapunkPlugin {
     last_harmonic_limit: PluginHarmonicLimit,
     compare_standard: Arc<AtomicBool>,
     last_tuning_compare: bool,
+    tone_source: Arc<AtomicU32>,
+    last_tone_control: u32,
+    active_tone_note: Option<u8>,
     last_input_mode: PluginInputMode,
     last_midi_output_mode: PluginMidiOutputMode,
 }
@@ -1330,7 +1379,12 @@ impl Default for ContrapunkPlugin {
         let world = WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
         let companion = Arc::new(Mutex::new(Companion::new(world)));
         let synth_params = Arc::new(SynthParams::default());
-        let synth = ElixirSynthBlock::new_with_params(48_000, Arc::clone(&synth_params));
+        let slide_telemetry = Arc::new(SlideTelemetry::new());
+        let synth = ElixirSynthBlock::new_with_params_and_telemetry(
+            48_000,
+            Arc::clone(&synth_params),
+            Arc::clone(&slide_telemetry),
+        );
         {
             let mut c = companion
                 .lock()
@@ -1351,6 +1405,7 @@ impl Default for ContrapunkPlugin {
             transport,
             companion,
             slide_config,
+            slide_telemetry,
             worker,
             #[cfg(target_os = "macos")]
             logic_midi: logic_midi::LogicMidiOutput::new(),
@@ -1384,6 +1439,9 @@ impl Default for ContrapunkPlugin {
             last_harmonic_limit: PluginHarmonicLimit::Five,
             compare_standard: Arc::new(AtomicBool::new(false)),
             last_tuning_compare: false,
+            tone_source: Arc::new(AtomicU32::new(pack_tone_source(60, 100, false))),
+            last_tone_control: pack_tone_source(60, 100, false),
+            active_tone_note: None,
             last_input_mode: default_input_mode,
             last_midi_output_mode: PluginMidiOutputMode::Full,
         }
@@ -1520,8 +1578,8 @@ impl ContrapunkPlugin {
         );
     }
 
-    fn synth_note_off(&mut self, note: u8, role: VoiceRole) {
-        self.synth.note_off_for_role(note, role);
+    fn synth_note_off_slot(&mut self, note: u8, role: VoiceRole, slide_slot: SlideSlot) {
+        self.synth.note_off_for_slot(note, role, slide_slot);
     }
 
     fn synth_all_notes_off(&mut self) {
@@ -1628,6 +1686,7 @@ impl ContrapunkPlugin {
         channel: u8,
         note: u8,
         velocity: f32,
+        slide_slot: SlideSlot,
         context: &mut impl ProcessContext<Self>,
     ) {
         let channel = channel.min(15);
@@ -1649,7 +1708,7 @@ impl ContrapunkPlugin {
         }
         let role = monitor_role(channel);
         track_note_off(&mut self.active_synth_notes, monitor_note_index(role, note));
-        self.synth_note_off(note, role);
+        self.synth_note_off_slot(note, role, slide_slot);
     }
 
     fn hard_all_notes_off(&mut self, timing: u32, context: &mut impl ProcessContext<Self>) {
@@ -1685,6 +1744,8 @@ impl ContrapunkPlugin {
         if self.effective_input_mode() == PluginInputMode::Audio {
             self.logic_midi.all_notes_off();
         }
+        self.active_tone_note = None;
+        self.last_tone_control = u32::MAX;
         self.invalidate_worker();
         self.clear_note_state();
     }
@@ -1846,6 +1907,7 @@ impl ContrapunkPlugin {
                     channel,
                     note,
                     velocity,
+                    slide_slot,
                     ..
                 } => {
                     let timing = if block == self.worker_block {
@@ -1853,7 +1915,7 @@ impl ContrapunkPlugin {
                     } else {
                         0
                     };
-                    self.emit_note_off(timing, channel, note, velocity, context);
+                    self.emit_note_off(timing, channel, note, velocity, slide_slot, context);
                     self.update_worker_note_state(source, note, false);
                 }
                 WorkerOutput::PitchBend { channel, value, .. } => {
@@ -1929,6 +1991,37 @@ impl ContrapunkPlugin {
         self.worker.try_push(input)
     }
 
+    fn sync_tone_source(&mut self) -> bool {
+        let control = self.tone_source.load(Ordering::Acquire);
+        if control == self.last_tone_control {
+            return true;
+        }
+        let (note, velocity, gate) = unpack_tone_source(control);
+        let next = gate.then_some(note);
+        let needed = usize::from(next != self.active_tone_note && next.is_some())
+            + usize::from(next != self.active_tone_note && self.active_tone_note.is_some());
+        if self.worker.input.vacant_len() < needed {
+            return false;
+        }
+        if let Some(next_note) = next.filter(|next_note| Some(*next_note) != self.active_tone_note)
+        {
+            if !self.try_enqueue_worker_note(0, next_note, velocity as f32 / 127.0, true) {
+                return false;
+            }
+        }
+        if let Some(previous) = self
+            .active_tone_note
+            .filter(|previous| Some(*previous) != next)
+        {
+            if !self.try_enqueue_worker_note(0, previous, 0.0, false) {
+                return false;
+            }
+        }
+        self.active_tone_note = next;
+        self.last_tone_control = control;
+        true
+    }
+
     fn process_midi_passthrough(&mut self, context: &mut impl ProcessContext<Self>) {
         while let Some(event) = context.next_event() {
             match event {
@@ -1954,7 +2047,14 @@ impl ContrapunkPlugin {
                     if let Ok(mut s) = self.note_state.try_lock() {
                         s.input_notes.remove(&note);
                     }
-                    self.emit_note_off(timing, channel, note, velocity, context);
+                    self.emit_note_off(
+                        timing,
+                        channel,
+                        note,
+                        velocity,
+                        SlideSlot::new(SlideRole::Input, 0),
+                        context,
+                    );
                 }
                 NoteEvent::Choke {
                     timing,
@@ -1965,7 +2065,14 @@ impl ContrapunkPlugin {
                     if let Ok(mut s) = self.note_state.try_lock() {
                         s.input_notes.remove(&note);
                     }
-                    self.emit_note_off(timing, channel, note, 0.0, context);
+                    self.emit_note_off(
+                        timing,
+                        channel,
+                        note,
+                        0.0,
+                        SlideSlot::new(SlideRole::Input, 0),
+                        context,
+                    );
                 }
                 other @ NoteEvent::MidiCC { cc: 64, value, .. } => {
                     self.synth_sustain(value >= 0.5);
@@ -2052,6 +2159,8 @@ impl Plugin for ContrapunkPlugin {
                 Arc::clone(&self.panic_requested),
                 Arc::clone(&self.compare_standard),
                 Arc::clone(&self.slide_config),
+                Arc::clone(&self.tone_source),
+                Arc::clone(&self.slide_telemetry),
                 self.guitar_component,
                 &self.params.webview_state,
             )))
@@ -2126,6 +2235,9 @@ impl Plugin for ContrapunkPlugin {
         }
 
         let worker_ready = self.flush_worker_config();
+        if worker_ready && !self.sync_tone_source() {
+            self.hard_all_notes_off(0, context);
+        }
         self.drain_worker_outputs(frames, context);
 
         match input_mode {
@@ -2260,6 +2372,15 @@ mod tests {
     }
 
     #[test]
+    fn harmony_note_off_reuses_non_identity_attack_port_map() {
+        let mut owners: PortMapOwners = std::array::from_fn(|_| VecDeque::new());
+        remember_port_map(&mut owners, 60, &[0, 3, 1, 2]);
+        remember_port_map(&mut owners, 60, &[0, 2, 3, 1]);
+        assert_eq!(take_port_map(&mut owners, 60, vec![]), vec![0, 3, 1, 2]);
+        assert_eq!(take_port_map(&mut owners, 60, vec![]), vec![0, 2, 3, 1]);
+    }
+
+    #[test]
     fn output_note_tracking_counts_overlaps_without_allocation() {
         let mut active = [0; TRACKED_OUTPUT_NOTES];
         let first = tracked_note_index(5, 64);
@@ -2310,14 +2431,15 @@ mod tests {
         plugin.synth_note_on_frequency(69, 440.0, 1.0, VoiceRole::Input);
         plugin.synth_note_on_frequency(69, 440.0, 0.8, VoiceRole::Input);
         plugin.synth.process(&mut audio, 2);
-        plugin.synth_note_off(69, VoiceRole::Input);
+        let input_slot = SlideSlot::new(SlideRole::Input, 0);
+        plugin.synth_note_off_slot(69, VoiceRole::Input, input_slot);
         plugin.synth.process(&mut audio, 2);
         assert!(audio[audio.len() - 64..]
             .iter()
             .any(|sample| sample.abs() > 1.0e-6));
 
         plugin.synth_sustain(true);
-        plugin.synth_note_off(69, VoiceRole::Input);
+        plugin.synth_note_off_slot(69, VoiceRole::Input, input_slot);
         plugin.synth.process(&mut audio, 2);
         assert!(audio[audio.len() - 64..]
             .iter()

@@ -94,8 +94,13 @@ export class ElixirAudio {
     set_master_gain(gain: number): void;
     set_role_gain(role: number, gain: number): void;
     set_sustain(enabled: boolean): void;
+    slide_curves_ptr(): number;
+    slide_durations_ptr(): number;
     slide_frequencies_ptr(): number;
+    slide_progresses_ptr(): number;
+    slide_slots_ptr(): number;
     slide_snapshot_count(): number;
+    slide_targets_ptr(): number;
     slide_voice_ids_ptr(): number;
 }
 
@@ -396,8 +401,13 @@ export interface InitOutput {
     readonly elixiraudio_set_master_gain: (a: number, b: number) => void;
     readonly elixiraudio_set_role_gain: (a: number, b: number, c: number) => void;
     readonly elixiraudio_set_sustain: (a: number, b: number) => void;
+    readonly elixiraudio_slide_curves_ptr: (a: number) => number;
+    readonly elixiraudio_slide_durations_ptr: (a: number) => number;
     readonly elixiraudio_slide_frequencies_ptr: (a: number) => number;
+    readonly elixiraudio_slide_progresses_ptr: (a: number) => number;
+    readonly elixiraudio_slide_slots_ptr: (a: number) => number;
     readonly elixiraudio_slide_snapshot_count: (a: number) => number;
+    readonly elixiraudio_slide_targets_ptr: (a: number) => number;
     readonly elixiraudio_slide_voice_ids_ptr: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

@@ -29,6 +29,7 @@ import type {
 	Preset,
 	ReverbState,
 	SlideConfig,
+	SlideVoiceState,
 	SynthState,
 	TransportState,
 	TuningStyle,
@@ -293,6 +294,19 @@ export class TauriAdapter implements ContrapunkAdapter {
 
 	async setSlideConfig(config: SlideConfig): Promise<void> {
 		await invoke('set_slide_config', { config });
+	}
+
+	async getSlideVoices(): Promise<SlideVoiceState[]> {
+		const voices = await invoke<Array<Record<string, unknown>>>('get_slide_voices');
+		return voices.map((voice) => ({
+			voiceId: String(voice.voice_id),
+			slot: voice.slot as SlideVoiceState['slot'],
+			currentFrequencyHz: Number(voice.current_frequency_hz),
+			targetFrequencyHz: Number(voice.target_frequency_hz),
+			progress: Number(voice.progress),
+			curve: voice.curve as SlideVoiceState['curve'],
+			durationMs: Number(voice.duration_ms)
+		}));
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {

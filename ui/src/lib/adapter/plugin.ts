@@ -20,6 +20,7 @@ import type {
 	PluginMidiOutputMode,
 	Preset,
 	SlideConfig,
+	SlideVoiceState,
 	TransportState,
 	TuningStyle,
 	VoiceOutputTarget
@@ -118,6 +119,8 @@ export class PluginAdapter implements ContrapunkAdapter {
 					resolveInitialParams?.();
 					resolveInitialParams = null;
 					for (const callback of this.pluginParamsCallbacks) callback();
+				} else if (data.type === 'slideUpdate') {
+					currentParams = { ...currentParams, slideVoices: data.voices ?? [] };
 				} else if (data.type === 'noteUpdate' && this.noteUpdateCallback) {
 					this.noteUpdateCallback({
 						inputNotes: data.inputNotes ?? [],
@@ -144,8 +147,8 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this._isReady = true;
 	}
 
-	private send(type: string, value: unknown): void {
-		window.plugin.send(JSON.stringify({ type, value }));
+	private send(type: string, value?: unknown, extra: Record<string, unknown> = {}): void {
+		window.plugin.send(JSON.stringify({ ...extra, type, value }));
 	}
 
 	async getEngineState(): Promise<EngineState> {
@@ -243,6 +246,20 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async setSlideConfig(config: SlideConfig): Promise<void> {
 		currentParams = { ...currentParams, slideConfig: config };
 		this.send('setSlideConfig', config);
+	}
+
+	async getSlideVoices(): Promise<SlideVoiceState[]> {
+		return ((currentParams.slideVoices as Array<Record<string, unknown>> | undefined) ?? []).map(
+			(voice) => ({
+				voiceId: String(voice.voice_id),
+				slot: voice.slot as SlideVoiceState['slot'],
+				currentFrequencyHz: Number(voice.current_frequency_hz),
+				targetFrequencyHz: Number(voice.target_frequency_hz),
+				progress: Number(voice.progress),
+				curve: voice.curve as SlideVoiceState['curve'],
+				durationMs: Number(voice.duration_ms)
+			})
+		);
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {
@@ -448,11 +465,13 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	// -- Virtual Input (not applicable in plugin mode) --
 
-	async injectNoteOn(note: number, _velocity?: number): Promise<number[]> {
+	async injectNoteOn(note: number, velocity = 100): Promise<number[]> {
+		this.send('injectNoteOn', undefined, { note, velocity });
 		return [note];
 	}
 
 	async injectNoteOff(note: number): Promise<number[]> {
+		this.send('injectNoteOff', undefined, { note });
 		return [note];
 	}
 

@@ -14,7 +14,12 @@ pub struct ElixirAudio {
     sample_rate: u32,
     slide: SlideRuntime,
     slide_voice_ids: [u32; MAX_SLIDE_VOICES],
+    slide_slots: [u8; MAX_SLIDE_VOICES],
     slide_frequencies: [f32; MAX_SLIDE_VOICES],
+    slide_targets: [f32; MAX_SLIDE_VOICES],
+    slide_progresses: [f32; MAX_SLIDE_VOICES],
+    slide_durations: [f32; MAX_SLIDE_VOICES],
+    slide_curves: [u8; MAX_SLIDE_VOICES],
     slide_count: usize,
 }
 
@@ -32,7 +37,12 @@ impl ElixirAudio {
             sample_rate,
             slide: SlideRuntime::new(),
             slide_voice_ids: [0; MAX_SLIDE_VOICES],
+            slide_slots: [0; MAX_SLIDE_VOICES],
             slide_frequencies: [0.0; MAX_SLIDE_VOICES],
+            slide_targets: [0.0; MAX_SLIDE_VOICES],
+            slide_progresses: [0.0; MAX_SLIDE_VOICES],
+            slide_durations: [0.0; MAX_SLIDE_VOICES],
+            slide_curves: [0; MAX_SLIDE_VOICES],
             slide_count: 0,
         }
     }
@@ -176,10 +186,16 @@ impl ElixirAudio {
             self.engine.process(output, channels);
         }
         self.slide_count = 0;
-        self.slide.for_each_moving(|voice_id, frequency_hz| {
+        self.slide.for_each_moving_snapshot(|snapshot| {
             if self.slide_count < MAX_SLIDE_VOICES {
-                self.slide_voice_ids[self.slide_count] = voice_id as u32;
-                self.slide_frequencies[self.slide_count] = frequency_hz;
+                self.slide_voice_ids[self.slide_count] = snapshot.voice_id as u32;
+                self.slide_slots[self.slide_count] =
+                    snapshot.slot.role as u8 | (snapshot.slot.voice << 2);
+                self.slide_frequencies[self.slide_count] = snapshot.current_frequency_hz;
+                self.slide_targets[self.slide_count] = snapshot.target_frequency_hz;
+                self.slide_progresses[self.slide_count] = snapshot.progress;
+                self.slide_durations[self.slide_count] = snapshot.duration_ms;
+                self.slide_curves[self.slide_count] = snapshot.curve as u8;
                 self.slide_count += 1;
             }
         });
@@ -194,8 +210,28 @@ impl ElixirAudio {
         self.slide_voice_ids.as_ptr()
     }
 
+    pub fn slide_slots_ptr(&self) -> *const u8 {
+        self.slide_slots.as_ptr()
+    }
+
     pub fn slide_frequencies_ptr(&self) -> *const f32 {
         self.slide_frequencies.as_ptr()
+    }
+
+    pub fn slide_targets_ptr(&self) -> *const f32 {
+        self.slide_targets.as_ptr()
+    }
+
+    pub fn slide_progresses_ptr(&self) -> *const f32 {
+        self.slide_progresses.as_ptr()
+    }
+
+    pub fn slide_durations_ptr(&self) -> *const f32 {
+        self.slide_durations.as_ptr()
+    }
+
+    pub fn slide_curves_ptr(&self) -> *const u8 {
+        self.slide_curves.as_ptr()
     }
 
     pub fn output_ptr(&self) -> *const f32 {
@@ -231,6 +267,24 @@ mod tests {
         audio.process(128, 2);
         audio.process(128, 2);
         assert!(audio.output[240..256].iter().all(|sample| *sample == 0.0));
+    }
+
+    #[test]
+    fn slide_wrapper_reports_exact_motion_without_core_changes() {
+        let mut audio = ElixirAudio::new(48_000, 128);
+        audio.note_on_slide(1, 0, 69, 440.0, 100, 0, 1, 800.0, 1, 2);
+        audio.process(128, 2);
+        audio.note_off(1);
+        audio.note_on_slide(2, 0, 76, 659.255_1, 100, 0, 1, 800.0, 1, 2);
+        audio.process(128, 2);
+        assert_eq!(audio.slide_snapshot_count(), 1);
+        assert_eq!(audio.slide_voice_ids[0], 2);
+        assert_eq!(audio.slide_slots[0], 0);
+        assert!(audio.slide_frequencies[0] > 440.0);
+        assert!(audio.slide_frequencies[0] < 659.255_1);
+        assert!((audio.slide_targets[0] - 659.255_1).abs() < 0.001);
+        assert_eq!(audio.slide_durations[0], 800.0);
+        assert_eq!(audio.slide_curves[0], SlideCurve::InverseExponential as u8);
     }
 
     #[test]

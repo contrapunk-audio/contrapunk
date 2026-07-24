@@ -73,6 +73,7 @@ export type {
 	SlideSlot,
 	SlideTravel,
 	SlideTrigger,
+	SlideVoiceState,
 	SynthState,
 	TransportState,
 	TuningStyle,

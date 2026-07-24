@@ -7,13 +7,15 @@
 	import PixelSelect from './PixelSelect.svelte';
 	import GuitarInputPanel from './GuitarInputPanel.svelte';
 	import MidiPermissionCard from './MidiPermissionCard.svelte';
+	import ToneSourcePanel from './ToneSourcePanel.svelte';
 
 	// Virtual input sentinel values — must match
 	// src-tauri/src/commands/engine.rs.
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
+	const VIRTUAL_TONE_SOURCE = 999_996;
 
-	type Source = 'midi' | 'keyboard' | 'guitar' | 'voice' | 'none';
+	type Source = 'midi' | 'keyboard' | 'tone' | 'guitar' | 'voice' | 'none';
 
 	/** Keep hardware MIDI and computer typing distinct. Treating both as
 	 *  one "MIDI" source made the virtual keyboard look like the only
@@ -22,6 +24,7 @@
 		if (sel === null) return 'none';
 		if (sel === VIRTUAL_GUITAR_AUDIO) return 'guitar';
 		if (sel === VIRTUAL_COMPUTER_KEYBOARD) return 'keyboard';
+		if (sel === VIRTUAL_TONE_SOURCE) return 'tone';
 		return 'midi';
 	};
 
@@ -37,7 +40,8 @@
 		return (
 			sel !== null &&
 			sel !== VIRTUAL_GUITAR_AUDIO &&
-			sel !== VIRTUAL_COMPUTER_KEYBOARD
+			sel !== VIRTUAL_COMPUTER_KEYBOARD &&
+			sel !== VIRTUAL_TONE_SOURCE
 		);
 	}
 	let lastMidiSelection = $state<number | null>(
@@ -81,6 +85,10 @@
 		}
 		if (next === 'keyboard') {
 			await switchInput(() => midi.selectVirtualInput(VIRTUAL_COMPUTER_KEYBOARD));
+			return;
+		}
+		if (next === 'tone') {
+			await switchInput(() => midi.selectVirtualInput(VIRTUAL_TONE_SOURCE));
 			return;
 		}
 		await midi.refresh();
@@ -244,6 +252,17 @@
 			</button>
 			<button
 				class="source-btn pixel-btn font-ui"
+				class:active={source === 'tone'}
+				role="radio"
+				type="button"
+				aria-checked={source === 'tone'}
+				onclick={() => selectSource('tone')}
+				title="Use one internal known-pitch tone as the input"
+			>
+				Tone
+			</button>
+			<button
+				class="source-btn pixel-btn font-ui"
 				class:active={source === 'guitar'}
 				role="radio"
 				type="button"
@@ -278,9 +297,8 @@
 	     a "DOWNLOAD DESKTOP APP" link for the unsupported-browser
 	     branch (Safari, Firefox without flag) — previously missing
 	     from InputPanel's inline copy. -->
-	<MidiPermissionCard />
-
 	{#if source === 'midi'}
+		<MidiPermissionCard />
 		<div class="midi-section pixel-card">
 			<div class="section-header font-ui">MIDI CONTROLLER</div>
 			<div class="input-row">
@@ -345,6 +363,8 @@
 				</div>
 			{/if}
 		</div>
+	{:else if source === 'tone'}
+		<ToneSourcePanel />
 	{:else if source === 'guitar'}
 		<GuitarInputPanel />
 
@@ -430,7 +450,7 @@
 
 	.radio-row {
 		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: repeat(5, minmax(0, 1fr));
 		gap: 4px;
 	}
 

@@ -260,6 +260,12 @@ pub trait Lane: Send + Sync {
     /// `engine_mutations`; Decide lanes to `ops`.
     fn tick(&mut self, world: &WorldState) -> LaneOutput;
 
+    /// Runtime voice slot paired with each emitted operation. Most lanes have
+    /// one voice; multi-voice lanes override this to preserve UI/settings identity.
+    fn tick_slotted(&mut self, world: &WorldState) -> Vec<(u8, DispatchOp)> {
+        self.tick(world).ops.into_iter().map(|op| (0, op)).collect()
+    }
+
     /// Called when an input matched by `input_filter()` arrives.
     /// Returning `suppress_default = true` skips the default harmonize
     /// path for this event (used by ArpeggiatorLane and any future

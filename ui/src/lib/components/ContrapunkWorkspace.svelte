@@ -13,6 +13,7 @@
 	} from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
+	import { slide } from '$lib/stores/slide.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
 	import { PIANO_KEY_COUNTS, ui } from '$lib/stores/ui.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
@@ -35,6 +36,7 @@
 
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
+	const VIRTUAL_TONE_SOURCE = 999_996;
 	const scaleOptions = SCALE_FAMILIES.flatMap((family) => family.modes);
 
 	let initialized = $state(false);
@@ -54,6 +56,7 @@
 		if (adapter.capabilities.pluginMidiOutputMode) return 'Host MIDI';
 		if (midi.selectedInput === VIRTUAL_GUITAR_AUDIO) return 'Guitar Audio';
 		if (midi.selectedInput === VIRTUAL_COMPUTER_KEYBOARD) return 'Computer Keys';
+		if (midi.selectedInput === VIRTUAL_TONE_SOURCE) return 'Tone';
 		if (midi.selectedInput === null) return 'No input';
 		return midi.inputs.find((device) => device.index === midi.selectedInput)?.name ?? 'MIDI Controller';
 	});
@@ -80,6 +83,7 @@
 				ui.restoreAppearance();
 				await adapter.init();
 				await engine.syncFromBackend();
+				await slide.init();
 				if (adapter.capabilities.pluginMidiOutputMode) await engine.restoreCompanionSettings();
 				else await engine.restoreSettings();
 				await midi.hydratePermission();
