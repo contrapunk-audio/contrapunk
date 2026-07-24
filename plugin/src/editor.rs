@@ -16,7 +16,9 @@ use std::sync::{
 
 use contrapunk_companion::Companion;
 
-use crate::{ContrapunkParams, PluginGuitarSignal, PluginNoteState};
+use crate::{
+    ContrapunkParams, PluginGuitarSignal, PluginHarmonicLimit, PluginNoteState, PluginTuningStyle,
+};
 
 /// Width and height of the plugin editor window.
 const EDITOR_WIDTH: f64 = 1200.0;
@@ -54,6 +56,9 @@ impl ContrapunkEditorHandler {
             "mode": format!("{:?}", self.params.harmony_mode.value()),
             "voiceLeading": self.params.voice_leading.value(),
             "voiceLeadingStyle": format!("{:?}", self.params.voice_leading_style.value()),
+            "tuningStyle": format!("{:?}", self.params.tuning_style.value()),
+            "tuningDepth": self.params.tuning_depth.value(),
+            "harmonicLimit": format!("{:?}", self.params.harmonic_limit.value()),
             "octaveMode": format!("{:?}", self.params.octave_mode.value()),
             "octaveIntensity": self.params.octave_intensity.value(),
             "voicePosition": self.params.voice_position.value(),
@@ -222,6 +227,28 @@ impl EditorHandler for ContrapunkEditorHandler {
                     if let Some(style) = parse_voice_leading_style(style) {
                         let setter = cx.get_param_setter();
                         setter.set_parameter(&self.params.voice_leading_style, style);
+                    }
+                }
+            }
+            "setTuningStyle" => {
+                if let Some(style) = msg.get("value").and_then(|value| value.as_str()) {
+                    if let Some(style) = parse_tuning_style(style) {
+                        cx.get_param_setter()
+                            .set_parameter(&self.params.tuning_style, style);
+                    }
+                }
+            }
+            "setTuningDepth" => {
+                if let Some(depth) = msg.get("value").and_then(|value| value.as_f64()) {
+                    cx.get_param_setter()
+                        .set_parameter(&self.params.tuning_depth, depth as f32);
+                }
+            }
+            "setHarmonicLimit" => {
+                if let Some(limit) = msg.get("value").and_then(|value| value.as_str()) {
+                    if let Some(limit) = parse_harmonic_limit(limit) {
+                        cx.get_param_setter()
+                            .set_parameter(&self.params.harmonic_limit, limit);
                     }
                 }
             }
@@ -503,6 +530,22 @@ fn parse_voice_leading_style(s: &str) -> Option<PluginVoiceLeadingStyle> {
         "Jazz" => Some(PluginVoiceLeadingStyle::Jazz),
         "Palestrina" => Some(PluginVoiceLeadingStyle::Palestrina),
         "BachChorale" => Some(PluginVoiceLeadingStyle::BachChorale),
+        _ => None,
+    }
+}
+
+fn parse_tuning_style(s: &str) -> Option<PluginTuningStyle> {
+    match s {
+        "Standard" | "standard" => Some(PluginTuningStyle::Standard),
+        "Pure" | "pure" => Some(PluginTuningStyle::Pure),
+        _ => None,
+    }
+}
+
+fn parse_harmonic_limit(s: &str) -> Option<PluginHarmonicLimit> {
+    match s {
+        "Five" | "five" | "5" => Some(PluginHarmonicLimit::Five),
+        "Seven" | "seven" | "7" => Some(PluginHarmonicLimit::Seven),
         _ => None,
     }
 }

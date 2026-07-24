@@ -115,7 +115,22 @@ impl ElixirSynthBlock {
     }
 
     pub fn note_on_for_role(&mut self, note: u8, velocity: u8, role: VoiceRole) {
-        if note >= 128 || velocity == 0 {
+        self.note_on_frequency_for_role(
+            note,
+            elixir_core::util::midi_to_freq(note),
+            velocity,
+            role,
+        );
+    }
+
+    pub fn note_on_frequency_for_role(
+        &mut self,
+        note: u8,
+        frequency_hz: f32,
+        velocity: u8,
+        role: VoiceRole,
+    ) {
+        if note >= 128 || velocity == 0 || !frequency_hz.is_finite() || frequency_hz <= 0.0 {
             return;
         }
         let age = self.next_midi_id;
@@ -148,7 +163,7 @@ impl ElixirSynthBlock {
             voice_id: id,
             role,
             midi_anchor: note,
-            frequency_hz: elixir_core::util::midi_to_freq(note),
+            frequency_hz,
             velocity,
         });
     }
@@ -281,6 +296,23 @@ mod tests {
         assert_eq!(block.engine.live_voice_count(), 1);
         block.midi_event(MidiBlockEvent::NoteOff { note: 69 });
         assert_eq!(block.engine.live_voice_count(), 0);
+    }
+
+    #[test]
+    fn exact_frequency_keeps_midi_anchor_release_ownership() {
+        let mut exact = ElixirSynthBlock::new(48_000);
+        exact.note_on_frequency_for_role(69, 432.0, 100, VoiceRole::Input);
+        let mut exact_audio = [0.0; 512];
+        exact.process(&mut exact_audio, 2);
+
+        let mut standard = ElixirSynthBlock::new(48_000);
+        standard.note_on_for_role(69, 100, VoiceRole::Input);
+        let mut standard_audio = [0.0; 512];
+        standard.process(&mut standard_audio, 2);
+        assert_ne!(exact_audio, standard_audio);
+
+        exact.note_off_for_role(69, VoiceRole::Input);
+        assert_eq!(exact.engine.live_voice_count(), 0);
     }
 
     #[test]

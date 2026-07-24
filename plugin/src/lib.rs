@@ -24,7 +24,10 @@ mod logic_midi;
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
 use contrapunk::chain::{AudioBlock, ElixirSynthBlock, MidiBlockEvent};
 use contrapunk::elixir::{SynthParams, VoiceRole};
-use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key, OctaveMode, VoiceLeadingStyle};
+use contrapunk::harmony::{
+    HarmonicLimit, HarmonyEngine, HarmonyMode, Key, OctaveMode, TuningConfig, TuningStyle,
+    VoiceLeadingStyle,
+};
 use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
 use contrapunk_transport::Transport;
 
@@ -316,6 +319,38 @@ impl PluginVoiceLeadingStyle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+enum PluginTuningStyle {
+    Standard,
+    Pure,
+}
+
+impl PluginTuningStyle {
+    fn to_contrapunk(self) -> TuningStyle {
+        match self {
+            Self::Standard => TuningStyle::Standard,
+            Self::Pure => TuningStyle::Pure,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+enum PluginHarmonicLimit {
+    #[name = "Clean Thirds and Fifths"]
+    Five,
+    #[name = "Wider Harmonic Color"]
+    Seven,
+}
+
+impl PluginHarmonicLimit {
+    fn to_contrapunk(self) -> HarmonicLimit {
+        match self {
+            Self::Five => HarmonicLimit::Five,
+            Self::Seven => HarmonicLimit::Seven,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 enum PluginInputMode {
     /// MIDI input — harmonize incoming MIDI notes
     #[name = "MIDI"]
@@ -377,6 +412,15 @@ struct ContrapunkParams {
     #[id = "voice_style"]
     pub voice_leading_style: EnumParam<PluginVoiceLeadingStyle>,
 
+    #[id = "tuning"]
+    pub tuning_style: EnumParam<PluginTuningStyle>,
+
+    #[id = "tuning_depth"]
+    pub tuning_depth: FloatParam,
+
+    #[id = "harmonic_limit"]
+    pub harmonic_limit: EnumParam<PluginHarmonicLimit>,
+
     #[id = "synth"]
     pub synth_enabled: BoolParam,
 
@@ -426,6 +470,15 @@ impl Default for ContrapunkParams {
                 "Voice Leading Style",
                 PluginVoiceLeadingStyle::Free,
             ),
+            tuning_style: EnumParam::new("Tuning", PluginTuningStyle::Standard),
+            tuning_depth: FloatParam::new(
+                "Tuning Depth",
+                0.6,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )
+            .with_unit(" %")
+            .with_value_to_string(formatters::v2s_f32_percentage(0)),
+            harmonic_limit: EnumParam::new("Harmonic Character", PluginHarmonicLimit::Five),
             synth_enabled: BoolParam::new("Built-in Sine", true),
             synth_gain: FloatParam::new(
                 "Sine Gain",
@@ -477,6 +530,9 @@ struct WorkerParams {
     auto_key: bool,
     voice_leading: bool,
     voice_leading_style: PluginVoiceLeadingStyle,
+    tuning_style: PluginTuningStyle,
+    tuning_depth: f32,
+    harmonic_limit: PluginHarmonicLimit,
     sample_rate: f32,
 }
 
@@ -492,6 +548,9 @@ impl Default for WorkerParams {
             auto_key: false,
             voice_leading: false,
             voice_leading_style: PluginVoiceLeadingStyle::Free,
+            tuning_style: PluginTuningStyle::Standard,
+            tuning_depth: 0.6,
+            harmonic_limit: PluginHarmonicLimit::Five,
             sample_rate: 48_000.0,
         }
     }
@@ -546,6 +605,7 @@ enum WorkerOutput {
         source: WorkerNoteSource,
         channel: u8,
         note: u8,
+        frequency_hz: f32,
         velocity: f32,
     },
     NoteOff {
@@ -716,6 +776,7 @@ fn push_tagged_worker_ops(
                 source,
                 channel: lane_output_channel(lane, *channel),
                 note: *note,
+                frequency_hz: contrapunk::harmony::tuning::midi_to_frequency(*note) as f32,
                 velocity: *velocity as f32 / 127.0,
             },
             DispatchOp::NoteOff { note, channel, .. } => WorkerOutput::NoteOff {
@@ -741,6 +802,7 @@ fn push_harmony_worker_notes(
     timing: u32,
     velocity: f32,
     notes: &[wmidi::Note],
+    frequencies: Option<&[f32]>,
     note_on: bool,
 ) {
     for (index, note) in notes.iter().copied().enumerate() {
@@ -756,6 +818,12 @@ fn push_harmony_worker_notes(
                 },
                 channel: harmony_output_channel(index),
                 note: u8::from(note),
+                frequency_hz: frequencies
+                    .and_then(|values| values.get(index))
+                    .copied()
+                    .unwrap_or_else(|| {
+                        contrapunk::harmony::tuning::midi_to_frequency(u8::from(note)) as f32
+                    }),
                 velocity,
             }
         } else {
@@ -816,19 +884,34 @@ fn process_worker_note(
     let Ok(note) = wmidi::Note::try_from(note) else {
         return;
     };
-    let notes = if note_on {
-        engine
+    let (notes, frequencies) = {
+        let mut engine = engine
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .harmonize_note_on(note)
-    } else {
-        engine
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .harmonize_note_off(note)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if note_on {
+            let notes = engine.harmonize_note_on(note);
+            let frequencies = engine.tune_harmony(&notes).ok().map(|frame| {
+                frame
+                    .as_slice()
+                    .iter()
+                    .map(|pitch| pitch.frequency_hz as f32)
+                    .collect::<Vec<_>>()
+            });
+            (notes, frequencies)
+        } else {
+            (engine.harmonize_note_off(note), None)
+        }
     };
     push_harmony_worker_notes(
-        output, stop, generation, block, timing, velocity, &notes, note_on,
+        output,
+        stop,
+        generation,
+        block,
+        timing,
+        velocity,
+        &notes,
+        frequencies.as_deref(),
+        note_on,
     );
 }
 
@@ -851,6 +934,11 @@ fn configure_music_worker(
         engine.set_auto_key(params.auto_key);
         engine.set_voice_leading_enabled(params.voice_leading);
         engine.set_voice_leading_style(params.voice_leading_style.to_contrapunk());
+        let _ = engine.set_tuning_config(TuningConfig {
+            style: params.tuning_style.to_contrapunk(),
+            depth: params.tuning_depth,
+            harmonic_limit: params.harmonic_limit.to_contrapunk(),
+        });
         engine.clear_active_notes();
     }
     companion
@@ -1015,6 +1103,9 @@ fn run_music_worker(
                                     source: WorkerNoteSource::Input,
                                     channel: MELODY_CHANNEL,
                                     note,
+                                    frequency_hz: contrapunk::harmony::tuning::midi_to_frequency(
+                                        note,
+                                    ) as f32,
                                     velocity: velocity as f32 / 127.0,
                                 },
                             ),
@@ -1134,6 +1225,9 @@ struct ContrapunkPlugin {
     last_auto_key: bool,
     last_voice_leading: bool,
     last_voice_leading_style: PluginVoiceLeadingStyle,
+    last_tuning_style: PluginTuningStyle,
+    last_tuning_depth: f32,
+    last_harmonic_limit: PluginHarmonicLimit,
     last_input_mode: PluginInputMode,
     last_midi_output_mode: PluginMidiOutputMode,
 }
@@ -1212,6 +1306,9 @@ impl Default for ContrapunkPlugin {
             last_auto_key: false,
             last_voice_leading: false,
             last_voice_leading_style: PluginVoiceLeadingStyle::Free,
+            last_tuning_style: PluginTuningStyle::Standard,
+            last_tuning_depth: 0.6,
+            last_harmonic_limit: PluginHarmonicLimit::Five,
             last_input_mode: default_input_mode,
             last_midi_output_mode: PluginMidiOutputMode::Full,
         }
@@ -1252,6 +1349,9 @@ impl ContrapunkPlugin {
             auto_key: self.params.auto_key.value(),
             voice_leading: self.params.voice_leading.value(),
             voice_leading_style: self.params.voice_leading_style.value(),
+            tuning_style: self.params.tuning_style.value(),
+            tuning_depth: self.params.tuning_depth.value(),
+            harmonic_limit: self.params.harmonic_limit.value(),
             sample_rate: self.sample_rate,
         };
         if params.key == self.last_key
@@ -1263,6 +1363,9 @@ impl ContrapunkPlugin {
             && params.auto_key == self.last_auto_key
             && params.voice_leading == self.last_voice_leading
             && params.voice_leading_style == self.last_voice_leading_style
+            && params.tuning_style == self.last_tuning_style
+            && (params.tuning_depth - self.last_tuning_depth).abs() < f32::EPSILON
+            && params.harmonic_limit == self.last_harmonic_limit
             && (params.sample_rate - self.worker_params.sample_rate).abs() < f32::EPSILON
         {
             return false;
@@ -1278,6 +1381,9 @@ impl ContrapunkPlugin {
         self.last_auto_key = params.auto_key;
         self.last_voice_leading = params.voice_leading;
         self.last_voice_leading_style = params.voice_leading_style;
+        self.last_tuning_style = params.tuning_style;
+        self.last_tuning_depth = params.tuning_depth;
+        self.last_harmonic_limit = params.harmonic_limit;
         true
     }
 
@@ -1301,9 +1407,16 @@ impl ContrapunkPlugin {
         }
     }
 
-    fn synth_note_on(&mut self, note: u8, velocity: f32, role: VoiceRole) {
+    fn synth_note_on_frequency(
+        &mut self,
+        note: u8,
+        frequency_hz: f32,
+        velocity: f32,
+        role: VoiceRole,
+    ) {
         let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
-        self.synth.note_on_for_role(note, velocity, role);
+        self.synth
+            .note_on_frequency_for_role(note, frequency_hz, velocity, role);
     }
 
     fn synth_note_off(&mut self, note: u8, role: VoiceRole) {
@@ -1326,6 +1439,25 @@ impl ContrapunkPlugin {
         velocity: f32,
         context: &mut impl ProcessContext<Self>,
     ) {
+        self.emit_note_on_frequency(
+            timing,
+            channel,
+            note,
+            contrapunk::harmony::tuning::midi_to_frequency(note) as f32,
+            velocity,
+            context,
+        );
+    }
+
+    fn emit_note_on_frequency(
+        &mut self,
+        timing: u32,
+        channel: u8,
+        note: u8,
+        frequency_hz: f32,
+        velocity: f32,
+        context: &mut impl ProcessContext<Self>,
+    ) {
         let channel = channel.min(15);
         if track_note_on(
             &mut self.active_output_notes,
@@ -1345,7 +1477,7 @@ impl ContrapunkPlugin {
         }
         let role = monitor_role(channel);
         track_note_on(&mut self.active_synth_notes, monitor_note_index(role, note));
-        self.synth_note_on(note, velocity, role);
+        self.synth_note_on_frequency(note, frequency_hz, velocity, role);
     }
 
     fn emit_note_off(
@@ -1542,6 +1674,7 @@ impl ContrapunkPlugin {
                     source,
                     channel,
                     note,
+                    frequency_hz,
                     velocity,
                     ..
                 } => {
@@ -1550,7 +1683,14 @@ impl ContrapunkPlugin {
                     } else {
                         0
                     };
-                    self.emit_note_on(timing, channel, note, velocity, context);
+                    self.emit_note_on_frequency(
+                        timing,
+                        channel,
+                        note,
+                        frequency_hz,
+                        velocity,
+                        context,
+                    );
                     self.update_worker_note_state(source, note, true);
                 }
                 WorkerOutput::NoteOff {
@@ -2019,8 +2159,8 @@ mod tests {
     fn internal_sine_monitor_preserves_repeat_and_sustain_ownership() {
         let mut plugin = ContrapunkPlugin::default();
         let mut audio = [0.0; 1024];
-        plugin.synth_note_on(69, 1.0, VoiceRole::Input);
-        plugin.synth_note_on(69, 0.8, VoiceRole::Input);
+        plugin.synth_note_on_frequency(69, 440.0, 1.0, VoiceRole::Input);
+        plugin.synth_note_on_frequency(69, 440.0, 0.8, VoiceRole::Input);
         plugin.synth.process(&mut audio, 2);
         plugin.synth_note_off(69, VoiceRole::Input);
         plugin.synth.process(&mut audio, 2);
@@ -2141,9 +2281,12 @@ mod tests {
             companion,
             Arc::new(Mutex::new(PluginGuitarSignal::default())),
         );
+        let mut params = WorkerParams::default();
+        params.tuning_style = PluginTuningStyle::Pure;
+        params.tuning_depth = 1.0;
         assert!(worker.try_push(WorkerInput::Configure {
             generation: 7,
-            params: WorkerParams::default(),
+            params,
         }));
         assert!(worker.try_push(WorkerInput::NoteOn {
             generation: 6,
@@ -2162,9 +2305,14 @@ mod tests {
 
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         let mut notes = [false; 128];
+        let mut frequencies = [0.0; 128];
         while std::time::Instant::now() < deadline {
-            if let Some(WorkerOutput::NoteOn { note, .. }) = worker.try_pop() {
+            if let Some(WorkerOutput::NoteOn {
+                note, frequency_hz, ..
+            }) = worker.try_pop()
+            {
                 notes[note as usize] = true;
+                frequencies[note as usize] = frequency_hz;
                 if notes[60] && notes[57] {
                     break;
                 }
@@ -2175,6 +2323,7 @@ mod tests {
         assert!(notes[60], "worker did not return the player note");
         assert!(notes[57], "worker did not return the diatonic third below");
         assert!(!notes[61], "worker emitted a stale generation");
+        assert!((frequencies[57] / frequencies[60] - 5.0 / 6.0).abs() < 1.0e-6);
 
         assert!(worker.try_push(WorkerInput::NoteOff {
             generation: 7,

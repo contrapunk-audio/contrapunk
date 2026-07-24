@@ -88,7 +88,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		pluginMidiOutputMode: true,
 		// The internal Elixir monitor exposes all four role gain buses.
 		roleMix: true,
-		nativeTuning: false,
+		nativeTuning: true,
 		// Plugin guitar path runs through the DAW; calibration profile
 		// persistence isn't wired (would need host file access).
 		calibrationFlow: false
@@ -161,9 +161,9 @@ export class PluginAdapter implements ContrapunkAdapter {
 			voicePosition: (currentParams.voicePosition as number) ?? 0,
 			voiceCount: (currentParams.voiceCount as number) ?? 2,
 			autoKey: (currentParams.autoKey as boolean) ?? false,
-			tuningStyle: 'standard',
-			tuningDepth: 0.6,
-			harmonicLimit: 'five',
+			tuningStyle: currentParams.tuningStyle === 'Pure' ? 'pure' : 'standard',
+			tuningDepth: (currentParams.tuningDepth as number) ?? 0.6,
+			harmonicLimit: currentParams.harmonicLimit === 'Seven' ? 'seven' : 'five',
 			isRunning: true, // Plugin is always "running" — DAW handles routing
 			counterpointSpecies:
 				(currentParams.counterpointSpecies as string) ?? 'Species1',
@@ -213,16 +213,20 @@ export class PluginAdapter implements ContrapunkAdapter {
 		this.send('setAutoKey', enabled);
 	}
 
-	async setTuningStyle(_style: TuningStyle): Promise<void> {
-		throw new Error('Native tuning is unavailable in the plugin build');
+	async setTuningStyle(style: TuningStyle): Promise<void> {
+		currentParams = { ...currentParams, tuningStyle: style === 'pure' ? 'Pure' : 'Standard' };
+		this.send('setTuningStyle', style);
 	}
 
-	async setTuningDepth(_depth: number): Promise<void> {
-		throw new Error('Native tuning is unavailable in the plugin build');
+	async setTuningDepth(depth: number): Promise<void> {
+		const value = Math.max(0, Math.min(1, depth));
+		currentParams = { ...currentParams, tuningDepth: value };
+		this.send('setTuningDepth', value);
 	}
 
-	async setHarmonicLimit(_limit: HarmonicLimit): Promise<void> {
-		throw new Error('Native tuning is unavailable in the plugin build');
+	async setHarmonicLimit(limit: HarmonicLimit): Promise<void> {
+		currentParams = { ...currentParams, harmonicLimit: limit === 'seven' ? 'Seven' : 'Five' };
+		this.send('setHarmonicLimit', limit);
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {
