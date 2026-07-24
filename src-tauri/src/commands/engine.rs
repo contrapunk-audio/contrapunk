@@ -617,7 +617,7 @@ fn run_tauri_router(
             // new parameters. Each replay populates `active_notes` and
             // updates `last_port_map` for the per-voice routing below.
             let mut new_harmonies: HashSet<u8> = HashSet::new();
-            let mut per_input: Vec<(Vec<u8>, Vec<usize>)> = Vec::new();
+            let mut per_input: Vec<(Vec<(u8, f32)>, Vec<usize>)> = Vec::new();
             {
                 let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
                 let inputs = eng.take_reharm_inputs();
@@ -625,19 +625,24 @@ fn run_tauri_router(
                     if let Ok(input_note) = Note::try_from(midi) {
                         let result = eng.harmonize_note_on(input_note);
                         let port_map = eng.last_port_map().to_vec();
-                        // Skip index 0 (the input itself) — only harmonies
-                        // contribute to the diff. Input keeps ringing.
-                        let harm_midis: Vec<u8> =
-                            result.iter().skip(1).map(|n| u8::from(*n)).collect();
-                        for &m in &harm_midis {
-                            new_harmonies.insert(m);
+                        let tuning = eng.tune_harmony(&result).ok();
+                        let voices: Vec<(u8, f32)> = result
+                            .iter()
+                            .enumerate()
+                            .map(|(index, note)| {
+                                let midi = u8::from(*note);
+                                let frequency = tuning
+                                    .as_ref()
+                                    .and_then(|frame| frame.as_slice().get(index))
+                                    .map(|pitch| pitch.frequency_hz as f32)
+                                    .unwrap_or_else(|| standard_frequency(midi));
+                                (midi, frequency)
+                            })
+                            .collect();
+                        for &(midi, _) in voices.iter().skip(1) {
+                            new_harmonies.insert(midi);
                         }
-                        // Keep the input + harmonies + ports together so we
-                        // can route attacks correctly. Index 0 of harm_midis
-                        // is unused (input is at result[0]); we store the
-                        // full result for routing.
-                        let full_midis: Vec<u8> = result.iter().map(|n| u8::from(*n)).collect();
-                        per_input.push((full_midis, port_map));
+                        per_input.push((voices, port_map));
                     }
                 }
             }
@@ -659,14 +664,14 @@ fn run_tauri_router(
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone();
-            for (midis, port_map) in &per_input {
+            for (voices, port_map) in &per_input {
                 // Skip index 0 — that's the user's input note, already
                 // sounding from when they pressed the key. Channel 0
                 // and velocity 100 are reharm-path defaults (engine
                 // doesn't track per-input channel/velocity through
                 // take_reharm_inputs); same as the to_release loop
                 // above.
-                for (i, &n) in midis.iter().enumerate().skip(1) {
+                for (i, &(n, frequency_hz)) in voices.iter().enumerate().skip(1) {
                     if !to_attack.contains(&n) {
                         continue; // already sounding from before
                     }
@@ -678,6 +683,7 @@ fn run_tauri_router(
                         0,
                         VoiceDispatch::NoteOn {
                             note: n,
+                            frequency_hz,
                             velocity: 100,
                         },
                         num_ports,
@@ -1029,6 +1035,7 @@ fn handle_note_on(
     voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
 ) {
     let notes = engine.harmonize_note_on(note);
+    let tuning = engine.tune_harmony(&notes).ok();
     // Drain any harmonies the engine flagged for explicit release —
     // populated when an auto-key change wiped `active_notes` mid-flight.
     // These would otherwise stay sounding under the old key.
@@ -1081,6 +1088,11 @@ fn handle_note_on(
             channel_idx,
             VoiceDispatch::NoteOn {
                 note: u8::from(n),
+                frequency_hz: tuning
+                    .as_ref()
+                    .and_then(|frame| frame.as_slice().get(i))
+                    .map(|pitch| pitch.frequency_hz as f32)
+                    .unwrap_or_else(|| standard_frequency(u8::from(n))),
                 velocity: velocity_byte,
             },
             num_outputs,
@@ -1212,14 +1224,22 @@ fn handle_note_off(
     }
 }
 
+fn standard_frequency(note: u8) -> f32 {
+    contrapunk::harmony::tuning::midi_to_frequency(note) as f32
+}
+
 /// One per-voice dispatch event consumed by `dispatch_voice`. Carries
 /// note + velocity in u8 form (0-127). Channel is passed alongside to
 /// the helper since it's typically uniform across a batch of voices
 /// (one input event → many voices).
 #[derive(Clone, Copy, Debug)]
 enum VoiceDispatch {
-    /// Send a NoteOn at the given velocity.
-    NoteOn { note: u8, velocity: u8 },
+    /// Send a NoteOn at the given exact synth frequency and velocity.
+    NoteOn {
+        note: u8,
+        frequency_hz: f32,
+        velocity: u8,
+    },
     /// Send a NoteOff. `velocity` is the release velocity (0 for most
     /// MIDI consumers; some Yamaha hardware uses non-zero release).
     NoteOff { note: u8, velocity: u8 },
@@ -1251,21 +1271,28 @@ fn dispatch_voice(
     // stream without these. Zero release-build cost.
     debug_assert!(channel < 16, "MIDI channel out of range: {}", channel);
     let (n, v) = match event {
-        VoiceDispatch::NoteOn { note, velocity } => (note, velocity),
+        VoiceDispatch::NoteOn { note, velocity, .. } => (note, velocity),
         VoiceDispatch::NoteOff { note, velocity } => (note, velocity),
     };
     debug_assert!(n < 128, "MIDI note out of range: {}", n);
     debug_assert!(v < 128, "MIDI velocity out of range: {}", v);
 
     match (target, event) {
-        (VoiceOutputTarget::Synth, VoiceDispatch::NoteOn { note, velocity }) => {
-            let _ = synth_tx.note_on(note, velocity, mix_group);
+        (
+            VoiceOutputTarget::Synth,
+            VoiceDispatch::NoteOn {
+                note,
+                frequency_hz,
+                velocity,
+            },
+        ) => {
+            let _ = synth_tx.note_on_exact(note, frequency_hz, velocity, mix_group);
         }
         (VoiceOutputTarget::Synth, VoiceDispatch::NoteOff { note, .. }) => {
             let _ = synth_tx.note_off(note, mix_group);
         }
         (VoiceOutputTarget::MidiPort { port }, _) if port >= num_ports => {}
-        (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOn { note, velocity }) => {
+        (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOn { note, velocity, .. }) => {
             let msg = [0x90 | (channel & 0x0F), note, velocity];
             let _ = output.send_to_port(port, &msg);
         }
@@ -1419,6 +1446,7 @@ fn dispatch_companion_ops(
                         *channel,
                         VoiceDispatch::NoteOn {
                             note: *note,
+                            frequency_hz: standard_frequency(*note),
                             velocity: *velocity,
                         },
                         num_ports,

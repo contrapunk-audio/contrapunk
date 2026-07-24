@@ -6,7 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const MAX_TUNING_VOICES: usize = 8;
+/// Eight structural voices plus up/down duplicates from Mirror mode.
+pub const MAX_TUNING_VOICES: usize = 22;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +40,18 @@ impl Default for TuningConfig {
             depth: 0.6,
             harmonic_limit: HarmonicLimit::Five,
         }
+    }
+}
+
+impl TuningConfig {
+    pub fn validate(self) -> Result<(), TuningError> {
+        if !self.depth.is_finite() {
+            return Err(TuningError::NonFiniteDepth);
+        }
+        if !(0.0..=1.0).contains(&self.depth) {
+            return Err(TuningError::DepthOutOfRange);
+        }
+        Ok(())
     }
 }
 
@@ -126,6 +139,7 @@ pub fn tune_notes(
     config: TuningConfig,
 ) -> Result<TuningFrame, TuningError> {
     let len = notes.len();
+    config.validate()?;
     if len > MAX_TUNING_VOICES {
         return Err(TuningError::TooManyVoices {
             len,
@@ -137,12 +151,6 @@ pub fn tune_notes(
     }
     if melody_index >= len {
         return Err(TuningError::MelodyIndexOutOfRange { melody_index, len });
-    }
-    if !config.depth.is_finite() {
-        return Err(TuningError::NonFiniteDepth);
-    }
-    if !(0.0..=1.0).contains(&config.depth) {
-        return Err(TuningError::DepthOutOfRange);
     }
 
     let mut frame = TuningFrame::empty();
@@ -449,7 +457,7 @@ mod tests {
             pure(1.0, HarmonicLimit::Seven),
         )
         .unwrap();
-        assert_eq!(frame.len(), MAX_TUNING_VOICES);
+        assert_eq!(frame.len(), 8);
         assert!(frame.as_slice().iter().all(|pitch| {
             pitch.frequency_hz.is_finite()
                 && pitch.frequency_hz > 0.0
@@ -468,14 +476,11 @@ mod tests {
 
     #[test]
     fn invalid_voice_bounds_are_rejected() {
+        let notes = [60; MAX_TUNING_VOICES + 1];
         assert_eq!(
-            tune_notes(
-                &[48, 49, 50, 51, 52, 53, 54, 55, 56],
-                0,
-                pure(1.0, HarmonicLimit::Five),
-            ),
+            tune_notes(&notes, 0, pure(1.0, HarmonicLimit::Five)),
             Err(TuningError::TooManyVoices {
-                len: 9,
+                len: MAX_TUNING_VOICES + 1,
                 max: MAX_TUNING_VOICES,
             })
         );

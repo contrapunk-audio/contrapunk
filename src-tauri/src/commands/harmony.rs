@@ -9,8 +9,8 @@ use serde::Serialize;
 use tauri::State;
 
 use contrapunk::harmony::{
-    CounterpointSpecies, CounterpointStrictness, ExplicitIntervalMap, HarmonyMode, Key, OctaveMode,
-    ScaleMode, VoiceLeadingStyle,
+    CounterpointSpecies, CounterpointStrictness, ExplicitIntervalMap, HarmonicLimit, HarmonyMode,
+    Key, OctaveMode, ScaleMode, TuningConfig, TuningStyle, VoiceLeadingStyle,
 };
 
 use crate::state::AppState;
@@ -24,6 +24,13 @@ fn raise_panic(state: &State<AppState>) {
 }
 
 /// Serializable snapshot of the harmony engine state.
+#[derive(Serialize)]
+pub struct TuningStateResponse {
+    pub tuning_style: TuningStyle,
+    pub tuning_depth: f32,
+    pub harmonic_limit: HarmonicLimit,
+}
+
 #[derive(Serialize)]
 pub struct EngineStateResponse {
     pub key: String,
@@ -42,6 +49,8 @@ pub struct EngineStateResponse {
     pub counterpoint_species: String,
     pub counterpoint_strictness: String,
     pub explicit_interval_map: ExplicitIntervalMap,
+    #[serde(flatten)]
+    pub tuning: TuningStateResponse,
 }
 
 /// Returns a snapshot of the current engine configuration.
@@ -68,7 +77,53 @@ pub fn get_engine_state(state: State<AppState>) -> Result<EngineStateResponse, S
         counterpoint_species: format!("{:?}", engine.counterpoint_species()),
         counterpoint_strictness: format!("{:?}", engine.counterpoint_strictness()),
         explicit_interval_map: engine.explicit_interval_map().clone(),
+        tuning: tuning_state_response(engine.tuning_config()),
     })
+}
+
+fn tuning_state_response(config: TuningConfig) -> TuningStateResponse {
+    TuningStateResponse {
+        tuning_style: config.style,
+        tuning_depth: config.depth,
+        harmonic_limit: config.harmonic_limit,
+    }
+}
+
+fn update_tuning(
+    state: &State<AppState>,
+    update: impl FnOnce(&mut TuningConfig),
+) -> Result<(), String> {
+    let needs_reharm = {
+        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+        let previous = engine.tuning_config();
+        let mut next = previous;
+        update(&mut next);
+        engine
+            .set_tuning_config(next)
+            .map_err(|error| format!("Invalid tuning configuration: {error:?}"))?;
+        previous != next && (previous.style == TuningStyle::Pure || next.style == TuningStyle::Pure)
+    };
+    if needs_reharm {
+        raise_panic(state);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_tuning_style(style: String, state: State<AppState>) -> Result<(), String> {
+    let style = parse_tuning_style(&style)?;
+    update_tuning(&state, |config| config.style = style)
+}
+
+#[tauri::command]
+pub fn set_tuning_depth(depth: f32, state: State<AppState>) -> Result<(), String> {
+    update_tuning(&state, |config| config.depth = depth)
+}
+
+#[tauri::command]
+pub fn set_harmonic_limit(limit: String, state: State<AppState>) -> Result<(), String> {
+    let limit = parse_harmonic_limit(&limit)?;
+    update_tuning(&state, |config| config.harmonic_limit = limit)
 }
 
 /// Returns the engine's current port-map: for each result-index `i`
@@ -317,6 +372,22 @@ pub fn get_detune(state: State<AppState>) -> i32 {
 // Parsing helpers
 // ============================================================================
 
+fn parse_tuning_style(s: &str) -> Result<TuningStyle, String> {
+    match s {
+        "Standard" | "standard" => Ok(TuningStyle::Standard),
+        "Pure" | "pure" => Ok(TuningStyle::Pure),
+        other => Err(format!("Unknown tuning style: {other}")),
+    }
+}
+
+fn parse_harmonic_limit(s: &str) -> Result<HarmonicLimit, String> {
+    match s {
+        "Five" | "five" | "5" => Ok(HarmonicLimit::Five),
+        "Seven" | "seven" | "7" => Ok(HarmonicLimit::Seven),
+        other => Err(format!("Unknown harmonic limit: {other}")),
+    }
+}
+
 fn parse_key(s: &str) -> Result<Key, String> {
     match s {
         "C" => Ok(Key::C),
@@ -405,5 +476,29 @@ fn parse_counterpoint_strictness(s: &str) -> Result<CounterpointStrictness, Stri
         "Relaxed" | "relaxed" => Ok(CounterpointStrictness::Relaxed),
         "Strict" | "strict" => Ok(CounterpointStrictness::Strict),
         other => Err(format!("Unknown counterpoint strictness: {}", other)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tuning_state_serializes_for_tauri() {
+        let value = serde_json::to_value(tuning_state_response(TuningConfig {
+            style: TuningStyle::Pure,
+            depth: 0.75,
+            harmonic_limit: HarmonicLimit::Seven,
+        }))
+        .unwrap();
+        assert_eq!(value["tuning_style"], "pure");
+        assert_eq!(value["tuning_depth"], 0.75);
+        assert_eq!(value["harmonic_limit"], "seven");
+    }
+
+    #[test]
+    fn tuning_controls_reject_unknown_values() {
+        assert!(parse_tuning_style("Color").is_err());
+        assert!(parse_harmonic_limit("Eleven").is_err());
     }
 }

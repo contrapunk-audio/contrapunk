@@ -38,6 +38,9 @@ use crate::scale::Scale;
 use crate::stateful::{
     ContraryMotionState, CounterpointSpecies, CounterpointState, CounterpointStrictness,
 };
+use crate::tuning::{
+    tune_notes, TuningConfig, TuningError, TuningFrame, TuningStyle, MAX_TUNING_VOICES,
+};
 use crate::voice_leading::{
     revoice_chord, StyleRules, VoiceAnchor, VoiceLeadingStyle, VoiceRegister,
 };
@@ -237,6 +240,8 @@ pub struct HarmonyEngine {
     last_borrowed_from: Option<ScaleMode>,
     /// Number of output voices (1 = melody only, 2 = melody + harmony, etc.)
     voice_count: usize,
+    /// Exact-frequency tuning applied after ordinary MIDI harmony generation.
+    tuning_config: TuningConfig,
     /// Voice position: which voice slot the user plays (0 = top/soprano, voice_count-1 = bass).
     /// Harmonies are generated outward from this position in both directions.
     voice_position: usize,
@@ -333,6 +338,7 @@ impl HarmonyEngine {
             borrowing_range: 3,
             last_borrowed_from: None,
             voice_count,
+            tuning_config: TuningConfig::default(),
             voice_position: voice_count.saturating_sub(1),
             contrary_motion_states: (0..harmony_voices)
                 .map(|_| ContraryMotionState::new())
@@ -392,6 +398,43 @@ impl HarmonyEngine {
     /// against the live key.
     pub fn scale_mut(&mut self) -> &mut Scale {
         &mut self.scale
+    }
+
+    /// Returns the exact-frequency tuning configuration.
+    pub fn tuning_config(&self) -> TuningConfig {
+        self.tuning_config
+    }
+
+    /// Updates exact-frequency tuning. Changes involving Pure tuning replay
+    /// held harmonies through the existing safe parameter-change path.
+    pub fn set_tuning_config(&mut self, config: TuningConfig) -> Result<(), TuningError> {
+        config.validate()?;
+        if config == self.tuning_config {
+            return Ok(());
+        }
+        let needs_reharm =
+            self.tuning_config.style == TuningStyle::Pure || config.style == TuningStyle::Pure;
+        self.tuning_config = config;
+        if needs_reharm {
+            self.clear_active_for_reharm();
+        }
+        Ok(())
+    }
+
+    /// Tunes a harmony result whose melody is at index 0 into a bounded,
+    /// allocation-free frequency frame. Structural MIDI notes are unchanged.
+    pub fn tune_harmony(&self, notes: &[Note]) -> Result<TuningFrame, TuningError> {
+        if notes.len() > MAX_TUNING_VOICES {
+            return Err(TuningError::TooManyVoices {
+                len: notes.len(),
+                max: MAX_TUNING_VOICES,
+            });
+        }
+        let mut midi = [0; MAX_TUNING_VOICES];
+        for (target, note) in midi.iter_mut().zip(notes) {
+            *target = u8::from(*note);
+        }
+        tune_notes(&midi[..notes.len()], 0, self.tuning_config)
     }
 
     /// Returns the current explicit source-degree interval map.
@@ -1551,6 +1594,68 @@ mod tests {
         let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::PassThrough);
         let result = engine.harmonize(Note::C4);
         assert_eq!(result, vec![Note::C4]);
+    }
+
+    #[test]
+    fn standard_tuning_preserves_existing_frequencies() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        let notes = engine.harmonize_note_on(Note::C4);
+        let frame = engine.tune_harmony(&notes).unwrap();
+        for pitch in frame.as_slice() {
+            assert_eq!(
+                pitch.frequency_hz,
+                crate::tuning::midi_to_frequency(pitch.midi_note)
+            );
+        }
+    }
+
+    #[test]
+    fn pure_c_major_tunes_through_harmony_engine() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        engine
+            .set_tuning_config(TuningConfig {
+                style: TuningStyle::Pure,
+                depth: 1.0,
+                harmonic_limit: crate::tuning::HarmonicLimit::Five,
+            })
+            .unwrap();
+        let notes = engine.harmonize_note_on(Note::C4);
+        assert_eq!(notes, vec![Note::C4, Note::E4, Note::G4]);
+        let frame = engine.tune_harmony(&notes).unwrap();
+        let pitches = frame.as_slice();
+        assert!((pitches[1].frequency_hz / pitches[0].frequency_hz - 5.0 / 4.0).abs() < 1e-10);
+        assert!((pitches[2].frequency_hz / pitches[0].frequency_hz - 3.0 / 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn pure_tuning_supports_max_voice_mirror_output() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 8);
+        engine.set_octave_mode(OctaveMode::Mirror);
+        engine
+            .set_tuning_config(TuningConfig {
+                style: TuningStyle::Pure,
+                depth: 1.0,
+                harmonic_limit: crate::tuning::HarmonicLimit::Five,
+            })
+            .unwrap();
+        let notes = engine.harmonize_note_on(Note::C4);
+        assert!(notes.len() <= MAX_TUNING_VOICES);
+        assert_eq!(engine.tune_harmony(&notes).unwrap().len(), notes.len());
+    }
+
+    #[test]
+    fn tuning_config_setter_rejects_invalid_depth() {
+        let mut engine = HarmonyEngine::default();
+        let original = engine.tuning_config();
+        let invalid = TuningConfig {
+            depth: f32::NAN,
+            ..original
+        };
+        assert_eq!(
+            engine.set_tuning_config(invalid),
+            Err(TuningError::NonFiniteDepth)
+        );
+        assert_eq!(engine.tuning_config(), original);
     }
 
     #[test]

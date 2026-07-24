@@ -149,6 +149,25 @@ impl SynthEventSender {
         velocity: u8,
         mix_group: u8,
     ) -> Result<SynthVoiceId, mpsc::TrySendError<SynthEvent>> {
+        self.note_on_exact(
+            midi_anchor,
+            elixir_core::util::midi_to_freq(midi_anchor),
+            velocity,
+            mix_group,
+        )
+    }
+
+    pub fn note_on_exact(
+        &self,
+        midi_anchor: u8,
+        frequency_hz: f32,
+        velocity: u8,
+        mix_group: u8,
+    ) -> Result<SynthVoiceId, mpsc::TrySendError<SynthEvent>> {
+        if midi_anchor >= 128 || velocity == 0 || !frequency_hz.is_finite() || frequency_hz <= 0.0 {
+            self.fault.store(true, Ordering::Release);
+            return Err(mpsc::TrySendError::Full(SynthEvent::AllNotesOff));
+        }
         let mut owners = self
             .owners
             .lock()
@@ -157,13 +176,7 @@ impl SynthEventSender {
             self.fault.store(true, Ordering::Release);
             return Err(mpsc::TrySendError::Full(SynthEvent::AllNotesOff));
         };
-        let event = SynthEvent::note_on(
-            voice_id,
-            midi_anchor,
-            elixir_core::util::midi_to_freq(midi_anchor),
-            velocity,
-            mix_group,
-        );
+        let event = SynthEvent::note_on(voice_id, midi_anchor, frequency_hz, velocity, mix_group);
         if let Err(error) = self.try_send(event) {
             owners.active.clear();
             return Err(error);
@@ -285,6 +298,53 @@ mod tests {
         assert!(matches!(
             rx.try_recv().unwrap(),
             SynthEvent::NoteOff { voice_id } if voice_id == first
+        ));
+    }
+
+    #[test]
+    fn exact_note_on_preserves_frequency() {
+        let (tx, rx) = synth_event_channel();
+        let voice_id = tx.note_on_exact(69, 432.0, 100, 0).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOn {
+                voice_id: received_id,
+                midi_anchor: 69,
+                frequency_hz: 432.0,
+                velocity: 100,
+                mix_group: 0,
+            } if received_id == voice_id
+        ));
+    }
+
+    #[test]
+    fn invalid_exact_frequency_faults_without_adding_ownership() {
+        let (tx, rx) = synth_event_channel();
+        assert!(matches!(
+            tx.note_on_exact(69, f32::NAN, 100, 0),
+            Err(mpsc::TrySendError::Full(SynthEvent::AllNotesOff))
+        ));
+        assert!(rx.fault_flag().load(Ordering::Acquire));
+        tx.note_off(69, 0).unwrap();
+        assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn different_exact_frequencies_keep_anchor_fifo_release() {
+        let (tx, rx) = synth_event_channel();
+        let first = tx.note_on_exact(69, 432.0, 100, 0).unwrap();
+        let second = tx.note_on_exact(69, 444.0, 100, 0).unwrap();
+        let _ = rx.try_recv().unwrap();
+        let _ = rx.try_recv().unwrap();
+        tx.note_off(69, 0).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOff { voice_id } if voice_id == first
+        ));
+        tx.note_off(69, 0).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::NoteOff { voice_id } if voice_id == second
         ));
     }
 
