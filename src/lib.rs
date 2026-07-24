@@ -64,6 +64,8 @@ pub use contrapunk_harmony as harmony;
 pub use contrapunk_midi as midi;
 /// Preset save/load — extracted to its own crate.
 pub use contrapunk_preset as preset;
+/// Renderer-neutral exact-frequency motion used by Slide-capable surfaces.
+pub mod slide;
 /// Sample-accurate transport / clock — extracted to its own crate.
 /// Re-exported here so `contrapunk::transport::*` paths keep working.
 pub use contrapunk_transport as transport;
