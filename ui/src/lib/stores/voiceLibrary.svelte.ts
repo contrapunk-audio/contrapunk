@@ -43,6 +43,20 @@ export interface VoicePreset {
 /** Built-in SATB chorale roles + a few solo voices. */
 const BUILTIN_PRESETS: VoicePreset[] = [
 	{
+		id: 'builtin-echo',
+		name: 'Pass-Through Echo',
+		builtIn: true,
+		harmony_mode: 'PassThrough',
+		scale_mode: 'Ionian',
+		voice_leading_enabled: false,
+		voice_leading_style: 'Free',
+		octave_mode: 'None',
+		counterpoint_species: 'Species1',
+		counterpoint_strictness: 'Strict',
+		voice_count: 1,
+		voice_position: 0
+	},
+	{
 		id: 'builtin-soprano',
 		name: 'Soprano',
 		builtIn: true,
@@ -110,20 +124,6 @@ const BUILTIN_PRESETS: VoicePreset[] = [
 		counterpoint_species: 'Species1',
 		counterpoint_strictness: 'Strict',
 		voice_count: 2,
-		voice_position: 0
-	},
-	{
-		id: 'builtin-echo',
-		name: 'Pass-Through Echo',
-		builtIn: true,
-		harmony_mode: 'PassThrough',
-		scale_mode: 'Ionian',
-		voice_leading_enabled: false,
-		voice_leading_style: 'Free',
-		octave_mode: 'None',
-		counterpoint_species: 'Species1',
-		counterpoint_strictness: 'Strict',
-		voice_count: 1,
 		voice_position: 0
 	},
 	{
