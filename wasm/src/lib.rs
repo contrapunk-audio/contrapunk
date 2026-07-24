@@ -13,9 +13,11 @@ use contrapunk::harmony::{ExplicitIntervalMap, HarmonyEngine, HarmonyMode, Key};
 use contrapunk::preset::PresetManager;
 
 mod companion;
+mod elixir_audio;
 mod enum_strings;
 #[allow(unused_imports)]
 pub use companion::CompanionWasm;
+pub use elixir_audio::ElixirAudio;
 use enum_strings::*;
 
 /// Log to browser console from Rust WASM. Debug-only — release builds

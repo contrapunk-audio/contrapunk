@@ -73,6 +73,27 @@ export class CompanionWasm {
     tick(): string;
 }
 
+/**
+ * Preallocated browser-audio wrapper for use inside an AudioWorklet.
+ */
+export class ElixirAudio {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor(sample_rate: number, max_frames: number);
+    note_off(voice_id: number): void;
+    note_on(voice_id: number, role: number, midi_anchor: number, frequency_hz: number, velocity: number): void;
+    output_capacity(): number;
+    output_ptr(): number;
+    panic(): void;
+    /**
+     * Render at most the preallocated frame bound and return the frame count.
+     */
+    process(frames: number, channels: number): number;
+    set_master_gain(gain: number): void;
+    set_role_gain(role: number, gain: number): void;
+    set_sustain(enabled: boolean): void;
+}
+
 export class Engine {
     free(): void;
     [Symbol.dispose](): void;
@@ -332,6 +353,17 @@ export interface InitOutput {
     readonly companionwasm_set_global_interval_map: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_set_global_state: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
     readonly companionwasm_tick: (a: number, b: number) => void;
+    readonly __wbg_elixiraudio_free: (a: number, b: number) => void;
+    readonly elixiraudio_new: (a: number, b: number) => number;
+    readonly elixiraudio_note_off: (a: number, b: number) => void;
+    readonly elixiraudio_note_on: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly elixiraudio_output_capacity: (a: number) => number;
+    readonly elixiraudio_output_ptr: (a: number) => number;
+    readonly elixiraudio_panic: (a: number) => void;
+    readonly elixiraudio_process: (a: number, b: number, c: number) => number;
+    readonly elixiraudio_set_master_gain: (a: number, b: number) => void;
+    readonly elixiraudio_set_role_gain: (a: number, b: number, c: number) => void;
+    readonly elixiraudio_set_sustain: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number, b: number, c: number) => void;

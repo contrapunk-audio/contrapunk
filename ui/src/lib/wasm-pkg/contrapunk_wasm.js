@@ -331,6 +331,95 @@ export class CompanionWasm {
 }
 if (Symbol.dispose) CompanionWasm.prototype[Symbol.dispose] = CompanionWasm.prototype.free;
 
+/**
+ * Preallocated browser-audio wrapper for use inside an AudioWorklet.
+ */
+export class ElixirAudio {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        ElixirAudioFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_elixiraudio_free(ptr, 0);
+    }
+    /**
+     * @param {number} sample_rate
+     * @param {number} max_frames
+     */
+    constructor(sample_rate, max_frames) {
+        const ret = wasm.elixiraudio_new(sample_rate, max_frames);
+        this.__wbg_ptr = ret >>> 0;
+        ElixirAudioFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {number} voice_id
+     */
+    note_off(voice_id) {
+        wasm.elixiraudio_note_off(this.__wbg_ptr, voice_id);
+    }
+    /**
+     * @param {number} voice_id
+     * @param {number} role
+     * @param {number} midi_anchor
+     * @param {number} frequency_hz
+     * @param {number} velocity
+     */
+    note_on(voice_id, role, midi_anchor, frequency_hz, velocity) {
+        wasm.elixiraudio_note_on(this.__wbg_ptr, voice_id, role, midi_anchor, frequency_hz, velocity);
+    }
+    /**
+     * @returns {number}
+     */
+    output_capacity() {
+        const ret = wasm.elixiraudio_output_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    output_ptr() {
+        const ret = wasm.elixiraudio_output_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    panic() {
+        wasm.elixiraudio_panic(this.__wbg_ptr);
+    }
+    /**
+     * Render at most the preallocated frame bound and return the frame count.
+     * @param {number} frames
+     * @param {number} channels
+     * @returns {number}
+     */
+    process(frames, channels) {
+        const ret = wasm.elixiraudio_process(this.__wbg_ptr, frames, channels);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} gain
+     */
+    set_master_gain(gain) {
+        wasm.elixiraudio_set_master_gain(this.__wbg_ptr, gain);
+    }
+    /**
+     * @param {number} role
+     * @param {number} gain
+     */
+    set_role_gain(role, gain) {
+        wasm.elixiraudio_set_role_gain(this.__wbg_ptr, role, gain);
+    }
+    /**
+     * @param {boolean} enabled
+     */
+    set_sustain(enabled) {
+        wasm.elixiraudio_set_sustain(this.__wbg_ptr, enabled);
+    }
+}
+if (Symbol.dispose) ElixirAudio.prototype[Symbol.dispose] = ElixirAudio.prototype.free;
+
 export class Engine {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -1064,6 +1153,9 @@ function __wbg_get_imports() {
 const CompanionWasmFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_companionwasm_free(ptr >>> 0, 1));
+const ElixirAudioFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_elixiraudio_free(ptr >>> 0, 1));
 const EngineFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_engine_free(ptr >>> 0, 1));

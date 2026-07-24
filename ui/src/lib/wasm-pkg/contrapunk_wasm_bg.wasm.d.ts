@@ -62,6 +62,17 @@ export const companionwasm_set_global_hold_mode: (a: number, b: number, c: numbe
 export const companionwasm_set_global_interval_map: (a: number, b: number, c: number, d: number) => void;
 export const companionwasm_set_global_state: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
 export const companionwasm_tick: (a: number, b: number) => void;
+export const __wbg_elixiraudio_free: (a: number, b: number) => void;
+export const elixiraudio_new: (a: number, b: number) => number;
+export const elixiraudio_note_off: (a: number, b: number) => void;
+export const elixiraudio_note_on: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const elixiraudio_output_capacity: (a: number) => number;
+export const elixiraudio_output_ptr: (a: number) => number;
+export const elixiraudio_panic: (a: number) => void;
+export const elixiraudio_process: (a: number, b: number, c: number) => number;
+export const elixiraudio_set_master_gain: (a: number, b: number) => void;
+export const elixiraudio_set_role_gain: (a: number, b: number, c: number) => void;
+export const elixiraudio_set_sustain: (a: number, b: number) => void;
 export const __wbindgen_export: (a: number, b: number) => number;
 export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_export3: (a: number, b: number, c: number) => void;
