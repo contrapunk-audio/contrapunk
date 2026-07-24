@@ -7,7 +7,7 @@
  */
 
 import { adapter } from '$lib/adapter';
-import type { NoteState } from '$lib/adapter';
+import type { HarmonicLimit, NoteState, TuningStyle } from '$lib/adapter';
 
 /** Compare two note arrays (order-independent) to avoid unnecessary Svelte re-renders.
  *  HashSet iteration order is non-deterministic, so we must sort before comparing. */
@@ -550,6 +550,9 @@ interface PersistedSettings {
 	voicePosition: number;
 	voiceCount: number;
 	detuneCents: number;
+	tuningStyle: TuningStyle;
+	tuningDepth: number;
+	harmonicLimit: HarmonicLimit;
 	counterpointSpecies: CounterpointSpeciesName;
 	counterpointStrictness: CounterpointStrictnessName;
 	explicitIntervalMap: ExplicitIntervalMapConfig;
@@ -630,6 +633,9 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 	voiceCount: 4,
 	voicePosition: 3,
 	detuneCents: 0,
+	tuningStyle: 'standard',
+	tuningDepth: 0.6,
+	harmonicLimit: 'five',
 	counterpointSpecies: 'Species1',
 	counterpointStrictness: 'Strict',
 	explicitIntervalMap: {
@@ -793,6 +799,14 @@ function loadSettings(): PersistedSettings | null {
 				parsed.detuneCents <= 100
 					? parsed.detuneCents
 					: SETTINGS_DEFAULTS.detuneCents,
+			tuningStyle: parsed.tuningStyle === 'pure' ? 'pure' : 'standard',
+			tuningDepth:
+				typeof parsed.tuningDepth === 'number' &&
+				parsed.tuningDepth >= 0 &&
+				parsed.tuningDepth <= 1
+					? parsed.tuningDepth
+					: SETTINGS_DEFAULTS.tuningDepth,
+			harmonicLimit: parsed.harmonicLimit === 'seven' ? 'seven' : 'five',
 			counterpointSpecies: VALID_CP_SPECIES.has(parsed.counterpointSpecies)
 				? parsed.counterpointSpecies
 				: SETTINGS_DEFAULTS.counterpointSpecies,
@@ -939,6 +953,11 @@ class EngineStore {
 	voicePosition = $state(0);
 	voiceCount = $state(2);
 
+	// -- Native exact-frequency tuning --
+	tuningStyle = $state<TuningStyle>('standard');
+	tuningDepth = $state(0.6);
+	harmonicLimit = $state<HarmonicLimit>('five');
+
 	// -- Auto-key detection --
 	autoKey = $state(false);
 
@@ -1067,6 +1086,9 @@ class EngineStore {
 			voicePosition: this.voicePosition,
 			voiceCount: this.voiceCount,
 			detuneCents: this.detuneCents,
+			tuningStyle: this.tuningStyle,
+			tuningDepth: this.tuningDepth,
+			harmonicLimit: this.harmonicLimit,
 			counterpointSpecies: this.counterpointSpecies,
 			counterpointStrictness: this.counterpointStrictness,
 			explicitIntervalMap: cloneExplicitIntervalMap(this.explicitIntervalMap),
@@ -1168,6 +1190,24 @@ class EngineStore {
 			['voicePosition', () => adapter.setVoicePosition(saved.voicePosition)],
 			['detune', () => { adapter.setDetune(saved.detuneCents); return Promise.resolve(); }],
 			[
+				'tuningStyle',
+				() => adapter.capabilities.nativeTuning
+					? adapter.setTuningStyle(saved.tuningStyle)
+					: Promise.resolve()
+			],
+			[
+				'tuningDepth',
+				() => adapter.capabilities.nativeTuning
+					? adapter.setTuningDepth(saved.tuningDepth)
+					: Promise.resolve()
+			],
+			[
+				'harmonicLimit',
+				() => adapter.capabilities.nativeTuning
+					? adapter.setHarmonicLimit(saved.harmonicLimit)
+					: Promise.resolve()
+			],
+			[
 				'counterpointSpecies',
 				() => adapter.setCounterpointSpecies(saved.counterpointSpecies)
 			],
@@ -1225,6 +1265,9 @@ class EngineStore {
 		this.voicePosition = saved.voicePosition;
 		this.voiceCount = saved.voiceCount;
 		this.detuneCents = saved.detuneCents;
+		this.tuningStyle = saved.tuningStyle;
+		this.tuningDepth = saved.tuningDepth;
+		this.harmonicLimit = saved.harmonicLimit;
 		this.counterpointSpecies = saved.counterpointSpecies;
 		this.counterpointStrictness = saved.counterpointStrictness;
 		this.explicitIntervalMap = cloneExplicitIntervalMap(saved.explicitIntervalMap);
@@ -1385,6 +1428,42 @@ class EngineStore {
 		} catch (e) {
 			this.autoKey = !enabled;
 			throw e;
+		}
+	}
+
+	async setTuningStyle(style: TuningStyle) {
+		const previous = this.tuningStyle;
+		this.tuningStyle = style;
+		try {
+			await adapter.setTuningStyle(style);
+			this.persist();
+		} catch (error) {
+			this.tuningStyle = previous;
+			throw error;
+		}
+	}
+
+	async setTuningDepth(depth: number) {
+		const previous = this.tuningDepth;
+		this.tuningDepth = Math.max(0, Math.min(1, depth));
+		try {
+			await adapter.setTuningDepth(this.tuningDepth);
+			this.persist();
+		} catch (error) {
+			this.tuningDepth = previous;
+			throw error;
+		}
+	}
+
+	async setHarmonicLimit(limit: HarmonicLimit) {
+		const previous = this.harmonicLimit;
+		this.harmonicLimit = limit;
+		try {
+			await adapter.setHarmonicLimit(limit);
+			this.persist();
+		} catch (error) {
+			this.harmonicLimit = previous;
+			throw error;
 		}
 	}
 
@@ -1792,6 +1871,9 @@ class EngineStore {
 		this.voicePosition = state.voicePosition;
 		this.voiceCount = state.voiceCount;
 		this.autoKey = state.autoKey;
+		this.tuningStyle = state.tuningStyle;
+		this.tuningDepth = Math.max(0, Math.min(1, state.tuningDepth));
+		this.harmonicLimit = state.harmonicLimit;
 		this.isRunning = state.isRunning;
 		if (this.isRunning && adapter.capabilities.noteUpdates) {
 			this.startNoteUpdates();

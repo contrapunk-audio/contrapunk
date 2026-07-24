@@ -22,6 +22,7 @@
 	import { adapter } from '$lib/adapter';
 	import { knobMidiMap, type KnobIndex } from '$lib/stores/knobMidiMap.svelte';
 	import Knob from './Knob.svelte';
+	import TuningPanel from './TuningPanel.svelte';
 
 	let { midiLearnEnabled = true }: { midiLearnEnabled?: boolean } = $props();
 
@@ -420,6 +421,10 @@
 			</div>
 		</div>
 	</div>
+
+	{#if adapter.capabilities.nativeTuning}
+		<TuningPanel />
+	{/if}
 
 	<div class="midi-learn-footer">
 		<button type="button" class="reset-btn font-ui" onclick={resetMidiMap}

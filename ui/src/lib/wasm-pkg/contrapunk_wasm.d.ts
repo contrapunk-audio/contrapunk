@@ -186,6 +186,10 @@ export class Engine {
      */
     set_explicit_interval_map(json: string): void;
     /**
+     * Select the five- or seven-limit interval target set.
+     */
+    set_harmonic_limit(limit: string): void;
+    /**
      * Configure modal interchange (enabled flag + borrowing range 1-5).
      */
     set_interchange(enabled: boolean, range: number): void;
@@ -217,6 +221,14 @@ export class Engine {
      */
     set_suppress_bass_register(enabled: boolean): void;
     /**
+     * Set the Standard-to-Pure blend. Range 0..=1.
+     */
+    set_tuning_depth(depth: number): void;
+    /**
+     * Select Standard or Adaptive Pure tuning for Contrapunk-owned audio.
+     */
+    set_tuning_style(style: string): void;
+    /**
      * Set the number of output voices (1 = melody only, 2+ = melody + harmonies).
      */
     set_voice_count(count: number): void;
@@ -232,6 +244,10 @@ export class Engine {
      * Returns whether bass-register suppression is active. Issue #100.
      */
     suppress_bass_register(): boolean;
+    /**
+     * Return exact frequencies for a harmony result whose melody is first.
+     */
+    tuned_frequencies(notes: Uint8Array): Float32Array;
 }
 
 export class WasmGuitarInput {
@@ -313,6 +329,7 @@ export interface InitOutput {
     readonly engine_set_counterpoint_species: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_counterpoint_strictness: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_explicit_interval_map: (a: number, b: number, c: number, d: number) => void;
+    readonly engine_set_harmonic_limit: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_interchange: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_key: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_mode: (a: number, b: number, c: number, d: number) => void;
@@ -320,10 +337,13 @@ export interface InitOutput {
     readonly engine_set_octave_mode: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_scale_mode: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_suppress_bass_register: (a: number, b: number) => void;
+    readonly engine_set_tuning_depth: (a: number, b: number, c: number) => void;
+    readonly engine_set_tuning_style: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_voice_count: (a: number, b: number, c: number) => void;
     readonly engine_set_voice_leading: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly engine_set_voice_position: (a: number, b: number, c: number) => void;
     readonly engine_suppress_bass_register: (a: number) => number;
+    readonly engine_tuned_frequencies: (a: number, b: number, c: number, d: number) => void;
     readonly init_panic_hook: () => void;
     readonly midi_to_name: (a: number, b: number) => void;
     readonly wasmguitarinput_free: (a: number) => void;

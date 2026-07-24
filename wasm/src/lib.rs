@@ -9,7 +9,9 @@ use wasm_bindgen::prelude::*;
 use std::collections::HashSet;
 
 use contrapunk::chord::chord_display_with_analysis;
-use contrapunk::harmony::{ExplicitIntervalMap, HarmonyEngine, HarmonyMode, Key};
+use contrapunk::harmony::{
+    ExplicitIntervalMap, HarmonicLimit, HarmonyEngine, HarmonyMode, Key, TuningStyle,
+};
 use contrapunk::preset::PresetManager;
 
 mod companion;
@@ -68,6 +70,9 @@ struct EngineStateJs {
     voice_count: usize,
     counterpoint_species: &'static str,
     counterpoint_strictness: &'static str,
+    tuning_style: TuningStyle,
+    tuning_depth: f32,
+    harmonic_limit: HarmonicLimit,
     explicit_interval_map: ExplicitIntervalMap,
 }
 
@@ -190,6 +195,72 @@ impl Engine {
     pub fn set_auto_key(&mut self, enabled: bool) -> Result<(), JsValue> {
         self.inner.set_auto_key(enabled);
         Ok(())
+    }
+
+    /// Select Standard or Adaptive Pure tuning for Contrapunk-owned audio.
+    pub fn set_tuning_style(&mut self, style: &str) -> Result<(), JsValue> {
+        let style = match style {
+            "Standard" | "standard" => TuningStyle::Standard,
+            "Pure" | "pure" => TuningStyle::Pure,
+            other => return Err(JsValue::from_str(&format!("Unknown tuning style: {other}"))),
+        };
+        let mut config = self.inner.tuning_config();
+        config.style = style;
+        self.inner
+            .set_tuning_config(config)
+            .map_err(|error| JsValue::from_str(&format!("Invalid tuning: {error:?}")))?;
+        self.clear_notes();
+        Ok(())
+    }
+
+    /// Set the Standard-to-Pure blend. Range 0..=1.
+    pub fn set_tuning_depth(&mut self, depth: f32) -> Result<(), JsValue> {
+        let mut config = self.inner.tuning_config();
+        config.depth = depth;
+        self.inner
+            .set_tuning_config(config)
+            .map_err(|error| JsValue::from_str(&format!("Invalid tuning: {error:?}")))?;
+        self.clear_notes();
+        Ok(())
+    }
+
+    /// Select the five- or seven-limit interval target set.
+    pub fn set_harmonic_limit(&mut self, limit: &str) -> Result<(), JsValue> {
+        let limit = match limit {
+            "Five" | "five" | "5" => HarmonicLimit::Five,
+            "Seven" | "seven" | "7" => HarmonicLimit::Seven,
+            other => {
+                return Err(JsValue::from_str(&format!(
+                    "Unknown harmonic limit: {other}"
+                )))
+            }
+        };
+        let mut config = self.inner.tuning_config();
+        config.harmonic_limit = limit;
+        self.inner
+            .set_tuning_config(config)
+            .map_err(|error| JsValue::from_str(&format!("Invalid tuning: {error:?}")))?;
+        self.clear_notes();
+        Ok(())
+    }
+
+    /// Return exact frequencies for a harmony result whose melody is first.
+    pub fn tuned_frequencies(&self, notes: &[u8]) -> Result<Vec<f32>, JsValue> {
+        let notes: Vec<wmidi::Note> = notes
+            .iter()
+            .copied()
+            .map(wmidi::Note::from_u8_lossy)
+            .collect();
+        self.inner
+            .tune_harmony(&notes)
+            .map(|frame| {
+                frame
+                    .as_slice()
+                    .iter()
+                    .map(|pitch| pitch.frequency_hz as f32)
+                    .collect()
+            })
+            .map_err(|error| JsValue::from_str(&format!("Tuning failed: {error:?}")))
     }
 
     /// Replace the source-degree-to-semitone explicit interval map.
@@ -326,6 +397,9 @@ impl Engine {
             counterpoint_strictness: counterpoint_strictness_to_string(
                 self.inner.counterpoint_strictness(),
             ),
+            tuning_style: self.inner.tuning_config().style,
+            tuning_depth: self.inner.tuning_config().depth,
+            harmonic_limit: self.inner.tuning_config().harmonic_limit,
             explicit_interval_map: self.inner.explicit_interval_map().clone(),
         };
 
@@ -717,5 +791,15 @@ mod tests {
         e.set_counterpoint_beat_phase(Some(2.5));
         e.set_counterpoint_beat_phase(None);
         // If the above didn't panic, the wiring is intact.
+    }
+
+    #[test]
+    fn adaptive_pure_frequencies_cross_the_wasm_boundary() {
+        let mut engine = Engine::new();
+        engine.set_tuning_style("Pure").unwrap();
+        engine.set_tuning_depth(1.0).unwrap();
+        let frequencies = engine.tuned_frequencies(&[60, 64, 67]).unwrap();
+        assert!((frequencies[1] / frequencies[0] - 5.0 / 4.0).abs() < 1.0e-6);
+        assert!((frequencies[2] / frequencies[0] - 3.0 / 2.0).abs() < 1.0e-6);
     }
 }

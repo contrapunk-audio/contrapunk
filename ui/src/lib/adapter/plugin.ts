@@ -11,6 +11,7 @@ import type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
+	HarmonicLimit,
 	HoldMode,
 	MidiDevice,
 	MidiPermissionState,
@@ -19,6 +20,7 @@ import type {
 	PluginMidiOutputMode,
 	Preset,
 	TransportState,
+	TuningStyle,
 	VoiceOutputTarget
 } from './types';
 import { MAX_VOICES } from './types';
@@ -86,6 +88,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		pluginMidiOutputMode: true,
 		// The internal Elixir monitor exposes all four role gain buses.
 		roleMix: true,
+		nativeTuning: false,
 		// Plugin guitar path runs through the DAW; calibration profile
 		// persistence isn't wired (would need host file access).
 		calibrationFlow: false
@@ -158,6 +161,9 @@ export class PluginAdapter implements ContrapunkAdapter {
 			voicePosition: (currentParams.voicePosition as number) ?? 0,
 			voiceCount: (currentParams.voiceCount as number) ?? 2,
 			autoKey: (currentParams.autoKey as boolean) ?? false,
+			tuningStyle: 'standard',
+			tuningDepth: 0.6,
+			harmonicLimit: 'five',
 			isRunning: true, // Plugin is always "running" — DAW handles routing
 			counterpointSpecies:
 				(currentParams.counterpointSpecies as string) ?? 'Species1',
@@ -205,6 +211,18 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async setAutoKey(enabled: boolean): Promise<void> {
 		this.send('setAutoKey', enabled);
+	}
+
+	async setTuningStyle(_style: TuningStyle): Promise<void> {
+		throw new Error('Native tuning is unavailable in the plugin build');
+	}
+
+	async setTuningDepth(_depth: number): Promise<void> {
+		throw new Error('Native tuning is unavailable in the plugin build');
+	}
+
+	async setHarmonicLimit(_limit: HarmonicLimit): Promise<void> {
+		throw new Error('Native tuning is unavailable in the plugin build');
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {

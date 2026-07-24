@@ -9,6 +9,7 @@ import type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
+	HarmonicLimit,
 	HoldMode,
 	MidiDevice,
 	MidiPermissionState,
@@ -17,6 +18,7 @@ import type {
 	PluginMidiOutputMode,
 	Preset,
 	TransportState,
+	TuningStyle,
 	VoiceOutputTarget
 } from './types';
 import { MAX_VOICES } from './types';
@@ -146,6 +148,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		pluginMidiOutputMode: false,
 		// Elixir AudioWorklet exposes the same four role buses as native.
 		roleMix: true,
+		nativeTuning: true,
 		// No persistence layer for the calibration profile on web yet
 		// — hide the Calibrate button + status badge.
 		calibrationFlow: false
@@ -378,6 +381,9 @@ export class WasmAdapter implements ContrapunkAdapter {
 				voicePosition: raw.voice_position ?? 0,
 				voiceCount: raw.voice_count ?? 2,
 				autoKey: raw.auto_key ?? false,
+				tuningStyle: raw.tuning_style === 'pure' ? 'pure' : 'standard',
+				tuningDepth: typeof raw.tuning_depth === 'number' ? raw.tuning_depth : 0.6,
+				harmonicLimit: raw.harmonic_limit === 'seven' ? 'seven' : 'five',
 				isRunning: this._isRunning,
 				counterpointSpecies: raw.counterpoint_species ?? 'Species1',
 				counterpointStrictness: raw.counterpoint_strictness ?? 'Strict',
@@ -515,6 +521,24 @@ export class WasmAdapter implements ContrapunkAdapter {
 		} catch (e) {
 			throw new Error(`Failed to set auto key: ${e}`);
 		}
+	}
+
+	async setTuningStyle(style: TuningStyle): Promise<void> {
+		this.ensureInit();
+		await this.panicAllNotesOff();
+		engine.set_tuning_style(style);
+	}
+
+	async setTuningDepth(depth: number): Promise<void> {
+		this.ensureInit();
+		await this.panicAllNotesOff();
+		engine.set_tuning_depth(depth);
+	}
+
+	async setHarmonicLimit(limit: HarmonicLimit): Promise<void> {
+		this.ensureInit();
+		await this.panicAllNotesOff();
+		engine.set_harmonic_limit(limit);
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {
@@ -825,14 +849,21 @@ export class WasmAdapter implements ContrapunkAdapter {
 				if (status === 0x90 && velocity > 0) {
 					try {
 						resultNotes = engine.note_on(note);
-						const sorted = self.sortVoices(resultNotes);
-						for (let i = 0; i < sorted.length; i++) {
+						const voices = self.tunedVoices(resultNotes);
+						for (let i = 0; i < voices.length; i++) {
+							const voice = voices[i];
 							if (outs.length > 0) {
-								outs[i % outs.length].send([0x90, sorted[i], velocity]);
+								outs[i % outs.length].send([0x90, voice.note, velocity]);
 							}
-							// WebAudio synth so the engine harmonies are
-							// audible even without an external MIDI out.
-							embedAudio.noteOn(sorted[i], velocity, undefined, sorted[i] === note ? 0 : 1);
+							// External MIDI remains ordinary note bytes; Contrapunk's
+							// AudioWorklet receives the exact native tuning frequency.
+							embedAudio.noteOn(
+								voice.note,
+								velocity,
+								undefined,
+								voice.note === note ? 0 : 1,
+								voice.frequencyHz
+							);
 						}
 						// Feed the player input to the Companion so canon +
 						// counterpoint lanes fire delayed / subdivided
@@ -1106,16 +1137,20 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.ensureInit();
 		try {
 			const result = engine.note_on(note);
-			const sorted = this.sortVoices(result ?? [note]);
+			const voices = this.tunedVoices(result ?? [note]);
 			const vel = velocity ?? 100;
-			for (let i = 0; i < sorted.length; i++) {
+			for (let i = 0; i < voices.length; i++) {
+				const voice = voices[i];
 				if (this.activeOutputs.length > 0) {
-					this.activeOutputs[i % this.activeOutputs.length].send([0x90, sorted[i], vel]);
+					this.activeOutputs[i % this.activeOutputs.length].send([0x90, voice.note, vel]);
 				}
-				// Web Audio synth — gives the browser path audible
-				// playback even without a connected MIDI output device
-				// (the desktop Tauri side has its own Rust synth).
-				embedAudio.noteOn(sorted[i], vel, undefined, sorted[i] === note ? 0 : 1);
+				embedAudio.noteOn(
+					voice.note,
+					vel,
+					undefined,
+					voice.note === note ? 0 : 1,
+					voice.frequencyHz
+				);
 			}
 			// Feed the player input to the Companion so the Canon and
 			// Counterpoint lanes can fire delayed / subdivided
@@ -1134,7 +1169,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 					/* ignore — companion is best-effort in browser */
 				}
 			}
-			return sorted;
+			return voices.map((voice) => voice.note);
 		} catch {
 			return [note];
 		}
@@ -1248,6 +1283,24 @@ export class WasmAdapter implements ContrapunkAdapter {
 		};
 
 		this.pollingHandle = requestAnimationFrame(poll);
+	}
+
+	private tunedVoices(notes: ArrayLike<number>): Array<{ note: number; frequencyHz: number }> {
+		const midiNotes = Array.from(notes);
+		let frequencies: number[] = [];
+		try {
+			frequencies = Array.from(
+				engine.tuned_frequencies(new Uint8Array(midiNotes)) as Float32Array
+			);
+		} catch {
+			// The Rust bridge validates every frame; Standard is the safe fallback.
+		}
+		return midiNotes
+			.map((note, index) => ({
+				note,
+				frequencyHz: frequencies[index] ?? 440 * 2 ** ((note - 69) / 12)
+			}))
+			.sort((a, b) => a.note - b.note);
 	}
 
 	/**

@@ -26,6 +26,8 @@ export type VoiceOutputTarget =
 
 export type PluginInputMode = 'midi' | 'audio';
 export type PluginMidiOutputMode = 'full' | 'pass_through';
+export type TuningStyle = 'standard' | 'pure';
+export type HarmonicLimit = 'five' | 'seven';
 
 /** What lanes do with pending emissions when the player releases the
  *  NoteOn that seeded them (#11). Shape mirrors the Rust `HoldMode`
@@ -78,6 +80,9 @@ export interface EngineState {
 	voicePosition: number;
 	voiceCount: number;
 	autoKey: boolean;
+	tuningStyle: TuningStyle;
+	tuningDepth: number;
+	harmonicLimit: HarmonicLimit;
 	isRunning: boolean;
 	counterpointSpecies: string;
 	counterpointStrictness: string;
@@ -249,6 +254,8 @@ export interface AdapterCapabilities {
 	pluginMidiOutputMode: boolean;
 	/** Whether per-role Input/Harmony/Canon/Counterpoint synth gains are real. */
 	roleMix: boolean;
+	/** Whether Contrapunk-owned audio accepts exact Adaptive Pure frequencies. */
+	nativeTuning: boolean;
 	/** Whether the surface supports loading + saving the per-string
 	 *  calibration profile to disk and applying it to the live guitar
 	 *  pipeline. Tauri only for v1 — uses `app_data_dir()`. WASM /
@@ -313,6 +320,10 @@ export interface ContrapunkAdapter {
 
 	/** Enable or disable auto-key detection. */
 	setAutoKey(enabled: boolean): Promise<void>;
+
+	setTuningStyle(style: TuningStyle): Promise<void>;
+	setTuningDepth(depth: number): Promise<void>;
+	setHarmonicLimit(limit: HarmonicLimit): Promise<void>;
 
 	/**
 	 * Set the counterpoint species (1-4) used when the harmony mode is

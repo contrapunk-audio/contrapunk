@@ -20,6 +20,10 @@ declare module 'contrapunk-wasm' {
 		set_voice_position(position: number): void;
 		set_voice_count(count: number): void;
 		set_auto_key(enabled: boolean): void;
+		set_tuning_style(style: string): void;
+		set_tuning_depth(depth: number): void;
+		set_harmonic_limit(limit: string): void;
+		tuned_frequencies(notes: Uint8Array): Float32Array;
 		set_explicit_interval_map(json: string): void;
 		current_key(): string;
 		harmonize(note: number): Uint8Array;

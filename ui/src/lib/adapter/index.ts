@@ -59,6 +59,7 @@ export type {
 	ContrapunkAdapter,
 	EngineState,
 	GuitarConfig,
+	HarmonicLimit,
 	HoldMode,
 	MidiDevice,
 	MidiPermissionState,
@@ -66,6 +67,7 @@ export type {
 	Preset,
 	SynthState,
 	TransportState,
+	TuningStyle,
 	VoiceOutputTarget
 } from './types';
 export { MAX_VOICES } from './types';

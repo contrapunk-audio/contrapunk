@@ -19,6 +19,7 @@ import type {
 	DelaySubdivision,
 	EngineState,
 	GuitarConfig,
+	HarmonicLimit,
 	HoldMode,
 	MidiDevice,
 	MidiPermissionState,
@@ -29,6 +30,7 @@ import type {
 	ReverbState,
 	SynthState,
 	TransportState,
+	TuningStyle,
 	VoiceOutputTarget
 } from './types';
 
@@ -62,6 +64,9 @@ function mapEngineState(raw: Record<string, unknown>, isRunning: boolean): Engin
 		voicePosition: raw.voice_position as number,
 		voiceCount: raw.voice_count as number,
 		autoKey: raw.auto_key as boolean,
+		tuningStyle: raw.tuning_style === 'pure' ? 'pure' : 'standard',
+		tuningDepth: typeof raw.tuning_depth === 'number' ? raw.tuning_depth : 0.6,
+		harmonicLimit: raw.harmonic_limit === 'seven' ? 'seven' : 'five',
 		isRunning,
 		counterpointSpecies: (raw.counterpoint_species as string) ?? 'Species1',
 		counterpointStrictness: (raw.counterpoint_strictness as string) ?? 'Strict',
@@ -130,6 +135,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		// Plugin-only host MIDI mode selector.
 		pluginMidiOutputMode: false,
 		roleMix: true,
+		nativeTuning: true,
 		// Calibration profile persists to app_data_dir() and applies on
 		// next routing start via GuitarBridge -> GuitarInput.
 		calibrationFlow: true
@@ -262,6 +268,18 @@ export class TauriAdapter implements ContrapunkAdapter {
 		} catch (e) {
 			throw new Error(`Failed to set auto key: ${e}`);
 		}
+	}
+
+	async setTuningStyle(style: TuningStyle): Promise<void> {
+		await invoke('set_tuning_style', { style });
+	}
+
+	async setTuningDepth(depth: number): Promise<void> {
+		await invoke('set_tuning_depth', { depth });
+	}
+
+	async setHarmonicLimit(limit: HarmonicLimit): Promise<void> {
+		await invoke('set_harmonic_limit', { limit });
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {
