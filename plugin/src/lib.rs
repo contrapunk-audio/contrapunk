@@ -383,6 +383,18 @@ struct ContrapunkParams {
     #[id = "synth_gain"]
     pub synth_gain: FloatParam,
 
+    #[id = "synth_input_gain"]
+    pub synth_input_gain: FloatParam,
+
+    #[id = "synth_harmony_gain"]
+    pub synth_harmony_gain: FloatParam,
+
+    #[id = "synth_canon_gain"]
+    pub synth_canon_gain: FloatParam,
+
+    #[id = "synth_counterpoint_gain"]
+    pub synth_counterpoint_gain: FloatParam,
+
     #[id = "midi_output"]
     pub midi_output_mode: EnumParam<PluginMidiOutputMode>,
 
@@ -422,10 +434,20 @@ impl Default for ContrapunkParams {
             )
             .with_unit(" %")
             .with_value_to_string(formatters::v2s_f32_percentage(0)),
+            synth_input_gain: role_gain_param("Sine Input Gain"),
+            synth_harmony_gain: role_gain_param("Sine Harmony Gain"),
+            synth_canon_gain: role_gain_param("Sine Canon Gain"),
+            synth_counterpoint_gain: role_gain_param("Sine Counterpoint Gain"),
             midi_output_mode: EnumParam::new("MIDI Output", PluginMidiOutputMode::Full),
             webview_state: editor::default_webview_state(),
         }
     }
+}
+
+fn role_gain_param(name: &'static str) -> FloatParam {
+    FloatParam::new(name, 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
+        .with_unit(" %")
+        .with_value_to_string(formatters::v2s_f32_percentage(0))
 }
 
 impl ContrapunkParams {
@@ -1208,6 +1230,17 @@ impl ContrapunkPlugin {
             .set_enabled(self.params.synth_enabled.value());
         self.synth_params
             .set_master_gain(self.params.synth_gain.value());
+        for (group, gain) in [
+            self.params.synth_input_gain.value(),
+            self.params.synth_harmony_gain.value(),
+            self.params.synth_canon_gain.value(),
+            self.params.synth_counterpoint_gain.value(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            self.synth_params.set_mix_gain(group, gain);
+        }
 
         let params = WorkerParams {
             key: self.params.key.value(),
@@ -1974,7 +2007,12 @@ mod tests {
             PluginVoiceLeadingStyle::Palestrina.to_contrapunk(),
             VoiceLeadingStyle::Palestrina
         );
-        assert_eq!(ContrapunkParams::default().synth_gain.value(), 0.25);
+        let params = ContrapunkParams::default();
+        assert_eq!(params.synth_gain.value(), 0.25);
+        assert_eq!(params.synth_input_gain.value(), 1.0);
+        assert_eq!(params.synth_harmony_gain.value(), 1.0);
+        assert_eq!(params.synth_canon_gain.value(), 1.0);
+        assert_eq!(params.synth_counterpoint_gain.value(), 1.0);
     }
 
     #[test]

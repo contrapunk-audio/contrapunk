@@ -68,6 +68,12 @@ impl ContrapunkEditorHandler {
             ),
             "synthEnabled": self.params.synth_enabled.value(),
             "synthGain": self.params.synth_gain.value(),
+            "mixGains": [
+                self.params.synth_input_gain.value(),
+                self.params.synth_harmony_gain.value(),
+                self.params.synth_canon_gain.value(),
+                self.params.synth_counterpoint_gain.value(),
+            ],
             "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
         })
         .to_string()
@@ -247,7 +253,28 @@ impl EditorHandler for ContrapunkEditorHandler {
             "setSynthGain" => {
                 if let Some(gain) = msg.get("value").and_then(|v| v.as_f64()) {
                     let setter = cx.get_param_setter();
+                    setter.begin_set_parameter(&self.params.synth_gain);
                     setter.set_parameter(&self.params.synth_gain, gain as f32);
+                    setter.end_set_parameter(&self.params.synth_gain);
+                }
+            }
+            "setSynthMixGain" => {
+                let group = msg
+                    .get("group")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(u64::MAX);
+                let gain = msg.get("value").and_then(|v| v.as_f64());
+                let params = [
+                    &self.params.synth_input_gain,
+                    &self.params.synth_harmony_gain,
+                    &self.params.synth_canon_gain,
+                    &self.params.synth_counterpoint_gain,
+                ];
+                if let (Some(param), Some(gain)) = (params.get(group as usize), gain) {
+                    let setter = cx.get_param_setter();
+                    setter.begin_set_parameter(*param);
+                    setter.set_parameter(*param, gain as f32);
+                    setter.end_set_parameter(*param);
                 }
             }
             "panic" => {

@@ -84,8 +84,8 @@ export class PluginAdapter implements ContrapunkAdapter {
 		perVoicePortRouting: false,
 		// Plugin-only host MIDI mode selector.
 		pluginMidiOutputMode: true,
-		// Plugin emits MIDI only; there are no internal role gain buses.
-		roleMix: false,
+		// The internal Elixir monitor exposes all four role gain buses.
+		roleMix: true,
 		// Plugin guitar path runs through the DAW; calibration profile
 		// persistence isn't wired (would need host file access).
 		calibrationFlow: false
@@ -494,7 +494,10 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async getSynthState() {
 		return {
 			enabled: (currentParams.synthEnabled as boolean) ?? true,
-			masterGain: (currentParams.synthGain as number) ?? 0.25
+			masterGain: (currentParams.synthGain as number) ?? 0.25,
+			mixGains: Array.isArray(currentParams.mixGains)
+				? (currentParams.mixGains as number[])
+				: undefined
 		};
 	}
 	async setSynthEnabled(enabled: boolean): Promise<void> {
@@ -506,7 +509,15 @@ export class PluginAdapter implements ContrapunkAdapter {
 		currentParams = { ...currentParams, synthGain: gain };
 		this.send('setSynthGain', gain);
 	}
-	async setSynthMixGain(_group: number, _value: number): Promise<void> {}
+	async setSynthMixGain(group: number, value: number): Promise<void> {
+		if (group < 0 || group > 3) return;
+		const gains = Array.isArray(currentParams.mixGains)
+			? [...(currentParams.mixGains as number[])]
+			: [1, 1, 1, 1];
+		gains[group] = Math.max(0, Math.min(1, value));
+		currentParams = { ...currentParams, mixGains: gains };
+		window.plugin.send(JSON.stringify({ type: 'setSynthMixGain', group, value: gains[group] }));
+	}
 
 	// -- FX (DAW hosts FX in plugin mode) --
 
