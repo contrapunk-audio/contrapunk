@@ -14,6 +14,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use contrapunk::slide::SlideConfig;
 use contrapunk_companion::Companion;
 
 use crate::{
@@ -43,6 +44,7 @@ pub struct ContrapunkEditorHandler {
     panic_requested: Arc<AtomicBool>,
     /// Momentary, non-persisted Compare state shared with the audio thread.
     compare_standard: Arc<AtomicBool>,
+    slide_config: Arc<Mutex<SlideConfig>>,
     /// The dedicated Logic Audio FX always consumes its audio bus.
     guitar_component: bool,
     guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
@@ -62,6 +64,7 @@ impl ContrapunkEditorHandler {
             "tuningDepth": self.params.tuning_depth.value(),
             "harmonicLimit": format!("{:?}", self.params.harmonic_limit.value()),
             "tuningCompare": self.compare_standard.load(Ordering::Acquire),
+            "slideConfig": *self.slide_config.lock().unwrap_or_else(|error| error.into_inner()),
             "octaveMode": format!("{:?}", self.params.octave_mode.value()),
             "octaveIntensity": self.params.octave_intensity.value(),
             "voicePosition": self.params.voice_position.value(),
@@ -266,6 +269,18 @@ impl EditorHandler for ContrapunkEditorHandler {
                     self.compare_standard.store(enabled, Ordering::Release);
                 }
             }
+            "setSlideConfig" => {
+                if let Some(value) = msg.get("value") {
+                    if let Ok(config) = serde_json::from_value::<SlideConfig>(value.clone()) {
+                        if config.validate() {
+                            *self
+                                .slide_config
+                                .lock()
+                                .unwrap_or_else(|error| error.into_inner()) = config;
+                        }
+                    }
+                }
+            }
             "setInputMode" => {
                 if let Some(mode_str) = msg.get("value").and_then(|v| v.as_str()) {
                     if let Some(input_variant) = parse_input_mode(mode_str) {
@@ -397,6 +412,7 @@ pub fn create_editor(
     companion: Arc<Mutex<Companion>>,
     panic_requested: Arc<AtomicBool>,
     compare_standard: Arc<AtomicBool>,
+    slide_config: Arc<Mutex<SlideConfig>>,
     guitar_component: bool,
     state: &Arc<WebViewState>,
 ) -> WebViewEditor {
@@ -420,6 +436,7 @@ pub fn create_editor(
         last_note_json: String::new(),
         panic_requested,
         compare_standard,
+        slide_config,
         guitar_component,
         guitar_signal,
         guitar_was_live: false,

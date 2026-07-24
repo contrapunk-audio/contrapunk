@@ -1,5 +1,5 @@
 // Fixed-capacity, allocation-free storage used by the AudioWorklet callback.
-/** @typedef {{ kind: number, atFrame: number, seq: number, voiceId?: number, role?: number, anchor?: number, frequency?: number, velocity?: number, value?: number }} ElixirEvent */
+/** @typedef {{ kind: number, atFrame: number, seq: number, voiceId?: number, role?: number, anchor?: number, frequency?: number, velocity?: number, value?: number, slideVoice?: number, travelKind?: number, travelValue?: number, trigger?: number, curve?: number }} ElixirEvent */
 export class ElixirEventQueue {
 	constructor(capacity = 1024) {
 		this.capacity = capacity;
@@ -12,6 +12,11 @@ export class ElixirEventQueue {
 		this.frequency = new Float32Array(capacity);
 		this.velocity = new Uint8Array(capacity);
 		this.value = new Float32Array(capacity);
+		this.slideVoice = new Uint8Array(capacity);
+		this.travelKind = new Uint8Array(capacity);
+		this.travelValue = new Float32Array(capacity);
+		this.trigger = new Uint8Array(capacity);
+		this.curve = new Uint8Array(capacity);
 		this.seq = new Uint32Array(capacity);
 	}
 
@@ -31,6 +36,11 @@ export class ElixirEventQueue {
 		this.frequency[index] = event.frequency ?? 0;
 		this.velocity[index] = event.velocity ?? 0;
 		this.value[index] = event.value ?? 0;
+		this.slideVoice[index] = event.slideVoice ?? 0;
+		this.travelKind[index] = event.travelKind ?? 0;
+		this.travelValue[index] = event.travelValue ?? 0;
+		this.trigger[index] = event.trigger ?? 0;
+		this.curve[index] = event.curve ?? 0;
 		this.seq[index] = event.seq;
 		this.length++;
 		return true;
@@ -56,6 +66,11 @@ export class ElixirEventQueue {
 		this.frequency[to] = this.frequency[from];
 		this.velocity[to] = this.velocity[from];
 		this.value[to] = this.value[from];
+		this.slideVoice[to] = this.slideVoice[from];
+		this.travelKind[to] = this.travelKind[from];
+		this.travelValue[to] = this.travelValue[from];
+		this.trigger[to] = this.trigger[from];
+		this.curve[to] = this.curve[from];
 		this.seq[to] = this.seq[from];
 	}
 }

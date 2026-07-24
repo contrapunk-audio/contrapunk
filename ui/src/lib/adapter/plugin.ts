@@ -19,11 +19,13 @@ import type {
 	PluginInputMode,
 	PluginMidiOutputMode,
 	Preset,
+	SlideConfig,
 	TransportState,
 	TuningStyle,
 	VoiceOutputTarget
 } from './types';
 import { MAX_VOICES } from './types';
+import { defaultSlideConfig } from '$lib/slide/config';
 
 declare global {
 	interface Window {
@@ -232,6 +234,15 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async setTuningCompare(enabled: boolean): Promise<void> {
 		currentParams = { ...currentParams, tuningCompare: enabled };
 		this.send('setTuningCompare', enabled);
+	}
+
+	async getSlideConfig(): Promise<SlideConfig> {
+		return (currentParams.slideConfig as SlideConfig | undefined) ?? defaultSlideConfig();
+	}
+
+	async setSlideConfig(config: SlideConfig): Promise<void> {
+		currentParams = { ...currentParams, slideConfig: config };
+		this.send('setSlideConfig', config);
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {

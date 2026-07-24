@@ -363,6 +363,15 @@ impl Engine {
         Ok(result_u8)
     }
 
+    /// Stable arrangement slot for each note returned by the latest harmony call.
+    pub fn last_port_map(&self) -> Vec<u8> {
+        self.inner
+            .last_port_map()
+            .iter()
+            .map(|slot| (*slot).min(u8::MAX as usize) as u8)
+            .collect()
+    }
+
     /// Process a MIDI Note-Off event.
     /// Returns a JS array of MIDI note numbers to release.
     pub fn note_off(&mut self, note: u8) -> Result<Vec<u8>, JsValue> {

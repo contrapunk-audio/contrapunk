@@ -29,6 +29,32 @@ export type PluginMidiOutputMode = 'full' | 'pass_through';
 export type TuningStyle = 'standard' | 'pure';
 export type HarmonicLimit = 'five' | 'seven';
 
+export type SlideRole = 'input' | 'harmony' | 'canon' | 'counterpoint';
+export type SlideTrigger = 'legato' | 'always';
+export type SlideCurve = 'linear' | 'exponential' | 'inverse_exponential';
+export type SlideTravel =
+	| { kind: 'off' }
+	| { kind: 'time'; milliseconds: number }
+	| { kind: 'rate'; semitones_per_second: number };
+export interface SlideSettings {
+	travel: SlideTravel;
+	trigger: SlideTrigger;
+	curve: SlideCurve;
+}
+export interface SlideOverride {
+	travel: SlideTravel | null;
+	trigger: SlideTrigger | null;
+	curve: SlideCurve | null;
+}
+export interface SlideSlot {
+	role: SlideRole;
+	voice: number;
+}
+export interface SlideConfig {
+	roles: [SlideSettings, SlideSettings, SlideSettings, SlideSettings];
+	voices: [SlideOverride[], SlideOverride[], SlideOverride[], SlideOverride[]];
+}
+
 /** What lanes do with pending emissions when the player releases the
  *  NoteOn that seeded them (#11). Shape mirrors the Rust `HoldMode`
  *  enum's JSON serialization (`hold_mode_to_json` in
@@ -325,6 +351,8 @@ export interface ContrapunkAdapter {
 	setTuningDepth(depth: number): Promise<void>;
 	setHarmonicLimit(limit: HarmonicLimit): Promise<void>;
 	setTuningCompare(enabled: boolean): Promise<void>;
+	getSlideConfig(): Promise<SlideConfig>;
+	setSlideConfig(config: SlideConfig): Promise<void>;
 
 	/**
 	 * Set the counterpoint species (1-4) used when the harmony mode is

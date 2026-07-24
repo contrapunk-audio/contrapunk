@@ -372,6 +372,21 @@ export class ElixirAudio {
         wasm.elixiraudio_note_on(this.__wbg_ptr, voice_id, role, midi_anchor, frequency_hz, velocity);
     }
     /**
+     * @param {number} voice_id
+     * @param {number} role
+     * @param {number} midi_anchor
+     * @param {number} frequency_hz
+     * @param {number} velocity
+     * @param {number} slide_voice
+     * @param {number} travel_kind
+     * @param {number} travel_value
+     * @param {number} trigger
+     * @param {number} curve
+     */
+    note_on_slide(voice_id, role, midi_anchor, frequency_hz, velocity, slide_voice, travel_kind, travel_value, trigger, curve) {
+        wasm.elixiraudio_note_on_slide(this.__wbg_ptr, voice_id, role, midi_anchor, frequency_hz, velocity, slide_voice, travel_kind, travel_value, trigger, curve);
+    }
+    /**
      * @returns {number}
      */
     output_capacity() {
@@ -423,6 +438,27 @@ export class ElixirAudio {
      */
     set_sustain(enabled) {
         wasm.elixiraudio_set_sustain(this.__wbg_ptr, enabled);
+    }
+    /**
+     * @returns {number}
+     */
+    slide_frequencies_ptr() {
+        const ret = wasm.elixiraudio_slide_frequencies_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    slide_snapshot_count() {
+        const ret = wasm.elixiraudio_slide_snapshot_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    slide_voice_ids_ptr() {
+        const ret = wasm.elixiraudio_slide_voice_ids_ptr(this.__wbg_ptr);
+        return ret >>> 0;
     }
 }
 if (Symbol.dispose) ElixirAudio.prototype[Symbol.dispose] = ElixirAudio.prototype.free;
@@ -546,6 +582,23 @@ export class Engine {
             if (r3) {
                 throw takeObject(r2);
             }
+            var v1 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export3(r0, r1 * 1, 1);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Stable arrangement slot for each note returned by the latest harmony call.
+     * @returns {Uint8Array}
+     */
+    last_port_map() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.engine_last_port_map(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             var v1 = getArrayU8FromWasm0(r0, r1).slice();
             wasm.__wbindgen_export3(r0, r1 * 1, 1);
             return v1;

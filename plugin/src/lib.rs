@@ -28,6 +28,7 @@ use contrapunk::harmony::{
     HarmonicLimit, HarmonyEngine, HarmonyMode, Key, OctaveMode, TuningConfig, TuningStyle,
     VoiceLeadingStyle,
 };
+use contrapunk::slide::{SlideConfig, SlideRole, SlideSettings, SlideSlot};
 use contrapunk_companion::{CanonLane, Companion, CounterpointLane, WorldState};
 use contrapunk_transport::Transport;
 
@@ -607,6 +608,8 @@ enum WorkerOutput {
         note: u8,
         frequency_hz: f32,
         velocity: f32,
+        slide_slot: SlideSlot,
+        slide: SlideSettings,
     },
     NoteOff {
         generation: u64,
@@ -663,6 +666,7 @@ impl MusicWorker {
         engine: Arc<Mutex<HarmonyEngine>>,
         companion: Arc<Mutex<Companion>>,
         guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
+        slide_config: Arc<Mutex<SlideConfig>>,
     ) -> Self {
         let input_rb = HeapRb::new(WORKER_INPUT_CAPACITY);
         let (input, input_rx) = input_rb.split();
@@ -682,6 +686,7 @@ impl MusicWorker {
                     output_tx,
                     audio_rx,
                     guitar_signal,
+                    slide_config,
                     worker_stop,
                 )
             })
@@ -758,11 +763,19 @@ fn push_tagged_worker_ops(
     block: u64,
     timing: u32,
     tagged: &[(&'static str, contrapunk_companion::DispatchOp)],
+    slide_config: &SlideConfig,
 ) {
     use contrapunk_companion::DispatchOp;
 
     for (lane, op) in tagged {
         let source = worker_note_source(lane);
+        let slide_role = match source {
+            WorkerNoteSource::Canon => SlideRole::Canon,
+            WorkerNoteSource::Counterpoint => SlideRole::Counterpoint,
+            WorkerNoteSource::Input => SlideRole::Input,
+            WorkerNoteSource::Harmony => SlideRole::Harmony,
+        };
+        let slide_slot = SlideSlot::new(slide_role, 0);
         let event = match op {
             DispatchOp::NoteOn {
                 note,
@@ -778,6 +791,8 @@ fn push_tagged_worker_ops(
                 note: *note,
                 frequency_hz: contrapunk::harmony::tuning::midi_to_frequency(*note) as f32,
                 velocity: *velocity as f32 / 127.0,
+                slide_slot,
+                slide: slide_config.resolve(slide_slot).unwrap_or_default(),
             },
             DispatchOp::NoteOff { note, channel, .. } => WorkerOutput::NoteOff {
                 generation,
@@ -803,10 +818,20 @@ fn push_harmony_worker_notes(
     velocity: f32,
     notes: &[wmidi::Note],
     frequencies: Option<&[f32]>,
+    port_map: &[usize],
+    slide_config: &SlideConfig,
     note_on: bool,
 ) {
     for (index, note) in notes.iter().copied().enumerate() {
         let event = if note_on {
+            let slide_slot = if index == 0 {
+                SlideSlot::new(SlideRole::Input, 0)
+            } else {
+                SlideSlot::new(
+                    SlideRole::Harmony,
+                    port_map.get(index).copied().unwrap_or(index) as u8,
+                )
+            };
             WorkerOutput::NoteOn {
                 generation,
                 block,
@@ -825,6 +850,8 @@ fn push_harmony_worker_notes(
                         contrapunk::harmony::tuning::midi_to_frequency(u8::from(note)) as f32
                     }),
                 velocity,
+                slide_slot,
+                slide: slide_config.resolve(slide_slot).unwrap_or_default(),
             }
         } else {
             WorkerOutput::NoteOff {
@@ -857,7 +884,11 @@ fn process_worker_note(
     velocity: f32,
     note_on: bool,
     use_companion: bool,
+    slide_config: &Arc<Mutex<SlideConfig>>,
 ) {
+    let slide_config = *slide_config
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let suppress_default = if use_companion {
         let input = if note_on {
             contrapunk_companion::InputEvent::NoteOn {
@@ -872,7 +903,15 @@ fn process_worker_note(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .on_input_tagged(input, engine);
-        push_tagged_worker_ops(output, stop, generation, block, timing, &tagged);
+        push_tagged_worker_ops(
+            output,
+            stop,
+            generation,
+            block,
+            timing,
+            &tagged,
+            &slide_config,
+        );
         suppress
     } else {
         false
@@ -884,7 +923,7 @@ fn process_worker_note(
     let Ok(note) = wmidi::Note::try_from(note) else {
         return;
     };
-    let (notes, frequencies) = {
+    let (notes, frequencies, port_map) = {
         let mut engine = engine
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -897,9 +936,10 @@ fn process_worker_note(
                     .map(|pitch| pitch.frequency_hz as f32)
                     .collect::<Vec<_>>()
             });
-            (notes, frequencies)
+            let port_map = engine.last_port_map().to_vec();
+            (notes, frequencies, port_map)
         } else {
-            (engine.harmonize_note_off(note), None)
+            (engine.harmonize_note_off(note), None, Vec::new())
         }
     };
     push_harmony_worker_notes(
@@ -911,6 +951,8 @@ fn process_worker_note(
         velocity,
         &notes,
         frequencies.as_deref(),
+        &port_map,
+        &slide_config,
         note_on,
     );
 }
@@ -960,6 +1002,7 @@ fn run_music_worker(
     mut output: HeapProd<WorkerOutput>,
     mut audio: HeapCons<f32>,
     guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
+    slide_config: Arc<Mutex<SlideConfig>>,
     stop: Arc<AtomicBool>,
 ) {
     let mut generation = 0;
@@ -996,6 +1039,7 @@ fn run_music_worker(
                     velocity,
                     true,
                     true,
+                    &slide_config,
                 ),
                 WorkerInput::NoteOff {
                     generation: event_generation,
@@ -1015,6 +1059,7 @@ fn run_music_worker(
                     velocity,
                     false,
                     true,
+                    &slide_config,
                 ),
                 WorkerInput::Tick {
                     generation: event_generation,
@@ -1024,7 +1069,18 @@ fn run_music_worker(
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
                         .tick_tagged(&engine);
-                    push_tagged_worker_ops(&mut output, &stop, generation, block, 0, &tagged);
+                    let slide = *slide_config
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    push_tagged_worker_ops(
+                        &mut output,
+                        &stop,
+                        generation,
+                        block,
+                        0,
+                        &tagged,
+                        &slide,
+                    );
                 }
                 WorkerInput::AudioBlock {
                     generation: event_generation,
@@ -1076,6 +1132,7 @@ fn run_music_worker(
                                     velocity as f32 / 127.0,
                                     true,
                                     false,
+                                    &slide_config,
                                 );
                             }
                             CpMidiEvent::NoteOff { note, velocity, .. } if harmonize => {
@@ -1091,24 +1148,34 @@ fn run_music_worker(
                                     velocity as f32 / 127.0,
                                     false,
                                     false,
+                                    &slide_config,
                                 );
                             }
-                            CpMidiEvent::NoteOn { note, velocity, .. } => push_worker_output(
-                                &mut output,
-                                &stop,
-                                WorkerOutput::NoteOn {
-                                    generation,
-                                    block,
-                                    timing: 0,
-                                    source: WorkerNoteSource::Input,
-                                    channel: MELODY_CHANNEL,
-                                    note,
-                                    frequency_hz: contrapunk::harmony::tuning::midi_to_frequency(
+                            CpMidiEvent::NoteOn { note, velocity, .. } => {
+                                let slide_config = *slide_config
+                                    .lock()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                                let slide_slot = SlideSlot::new(SlideRole::Input, 0);
+                                push_worker_output(
+                                    &mut output,
+                                    &stop,
+                                    WorkerOutput::NoteOn {
+                                        generation,
+                                        block,
+                                        timing: 0,
+                                        source: WorkerNoteSource::Input,
+                                        channel: MELODY_CHANNEL,
                                         note,
-                                    ) as f32,
-                                    velocity: velocity as f32 / 127.0,
-                                },
-                            ),
+                                        frequency_hz: contrapunk::harmony::tuning::midi_to_frequency(
+                                            note,
+                                        )
+                                            as f32,
+                                        velocity: velocity as f32 / 127.0,
+                                        slide_slot,
+                                        slide: slide_config.resolve(slide_slot).unwrap_or_default(),
+                                    },
+                                );
+                            }
                             CpMidiEvent::NoteOff { note, velocity, .. } => push_worker_output(
                                 &mut output,
                                 &stop,
@@ -1181,6 +1248,7 @@ struct ContrapunkPlugin {
     /// Shared by the editor and non-real-time music worker; neither lock
     /// is ever taken by the audio callback.
     companion: Arc<Mutex<Companion>>,
+    slide_config: Arc<Mutex<SlideConfig>>,
     worker: MusicWorker,
     #[cfg(target_os = "macos")]
     logic_midi: logic_midi::LogicMidiOutput,
@@ -1271,15 +1339,18 @@ impl Default for ContrapunkPlugin {
             c.lanes.push(Box::new(CounterpointLane::new()));
         }
         let guitar_signal = Arc::new(Mutex::new(PluginGuitarSignal::default()));
+        let slide_config = Arc::new(Mutex::new(SlideConfig::default()));
         let worker = MusicWorker::new(
             Arc::clone(&engine),
             Arc::clone(&companion),
             Arc::clone(&guitar_signal),
+            Arc::clone(&slide_config),
         );
         Self {
             params: Arc::new(ContrapunkParams::with_input_mode(default_input_mode)),
             transport,
             companion,
+            slide_config,
             worker,
             #[cfg(target_os = "macos")]
             logic_midi: logic_midi::LogicMidiOutput::new(),
@@ -1428,6 +1499,27 @@ impl ContrapunkPlugin {
             .note_on_frequency_for_role(note, frequency_hz, velocity, role);
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn synth_note_on_frequency_with_slide(
+        &mut self,
+        note: u8,
+        frequency_hz: f32,
+        velocity: f32,
+        role: VoiceRole,
+        slide_slot: SlideSlot,
+        slide: SlideSettings,
+    ) {
+        let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
+        self.synth.note_on_frequency_for_role_with_slide(
+            note,
+            frequency_hz,
+            velocity,
+            role,
+            slide_slot,
+            slide,
+        );
+    }
+
     fn synth_note_off(&mut self, note: u8, role: VoiceRole) {
         self.synth.note_off_for_role(note, role);
     }
@@ -1487,6 +1579,47 @@ impl ContrapunkPlugin {
         let role = monitor_role(channel);
         track_note_on(&mut self.active_synth_notes, monitor_note_index(role, note));
         self.synth_note_on_frequency(note, frequency_hz, velocity, role);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_note_on_frequency_with_slide(
+        &mut self,
+        timing: u32,
+        channel: u8,
+        note: u8,
+        frequency_hz: f32,
+        velocity: f32,
+        slide_slot: SlideSlot,
+        slide: SlideSettings,
+        context: &mut impl ProcessContext<Self>,
+    ) {
+        let channel = channel.min(15);
+        if track_note_on(
+            &mut self.active_output_notes,
+            tracked_note_index(channel, note),
+        ) {
+            context.send_event(NoteEvent::NoteOn {
+                timing,
+                voice_id: None,
+                channel,
+                note,
+                velocity,
+            });
+            #[cfg(target_os = "macos")]
+            if self.effective_input_mode() == PluginInputMode::Audio {
+                self.logic_midi.note_on(channel, note, velocity);
+            }
+        }
+        let role = monitor_role(channel);
+        track_note_on(&mut self.active_synth_notes, monitor_note_index(role, note));
+        self.synth_note_on_frequency_with_slide(
+            note,
+            frequency_hz,
+            velocity,
+            role,
+            slide_slot,
+            slide,
+        );
     }
 
     fn emit_note_off(
@@ -1685,6 +1818,8 @@ impl ContrapunkPlugin {
                     note,
                     frequency_hz,
                     velocity,
+                    slide_slot,
+                    slide,
                     ..
                 } => {
                     let timing = if block == self.worker_block {
@@ -1692,12 +1827,14 @@ impl ContrapunkPlugin {
                     } else {
                         0
                     };
-                    self.emit_note_on_frequency(
+                    self.emit_note_on_frequency_with_slide(
                         timing,
                         channel,
                         note,
                         frequency_hz,
                         velocity,
+                        slide_slot,
+                        slide,
                         context,
                     );
                     self.update_worker_note_state(source, note, true);
@@ -1914,6 +2051,7 @@ impl Plugin for ContrapunkPlugin {
                 Arc::clone(&self.companion),
                 Arc::clone(&self.panic_requested),
                 Arc::clone(&self.compare_standard),
+                Arc::clone(&self.slide_config),
                 self.guitar_component,
                 &self.params.webview_state,
             )))
@@ -2242,7 +2380,12 @@ mod tests {
             Arc::clone(&engine),
         ))));
         let signal = Arc::new(Mutex::new(PluginGuitarSignal::default()));
-        let mut worker = MusicWorker::new(engine, companion, Arc::clone(&signal));
+        let mut worker = MusicWorker::new(
+            engine,
+            companion,
+            Arc::clone(&signal),
+            Arc::new(Mutex::new(SlideConfig::default())),
+        );
         assert!(worker.try_push(WorkerInput::Configure {
             generation: 9,
             params: WorkerParams::default(),
@@ -2290,6 +2433,7 @@ mod tests {
             engine,
             companion,
             Arc::new(Mutex::new(PluginGuitarSignal::default())),
+            Arc::new(Mutex::new(SlideConfig::default())),
         );
         let mut params = WorkerParams::default();
         params.tuning_style = PluginTuningStyle::Pure;

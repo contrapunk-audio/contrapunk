@@ -28,6 +28,7 @@ import type {
 	PluginMidiOutputMode,
 	Preset,
 	ReverbState,
+	SlideConfig,
 	SynthState,
 	TransportState,
 	TuningStyle,
@@ -284,6 +285,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 
 	async setTuningCompare(enabled: boolean): Promise<void> {
 		await invoke('set_tuning_compare', { enabled });
+	}
+
+	async getSlideConfig(): Promise<SlideConfig> {
+		return invoke<SlideConfig>('get_slide_config');
+	}
+
+	async setSlideConfig(config: SlideConfig): Promise<void> {
+		await invoke('set_slide_config', { config });
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {

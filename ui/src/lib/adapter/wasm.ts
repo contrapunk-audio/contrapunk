@@ -17,6 +17,8 @@ import type {
 	PluginInputMode,
 	PluginMidiOutputMode,
 	Preset,
+	SlideConfig,
+	SlideRole,
 	TransportState,
 	TuningStyle,
 	VoiceOutputTarget
@@ -29,6 +31,7 @@ import {
 import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
 import * as embedAudio from '$lib/embed/audio';
+import { defaultSlideConfig, resolveSlide } from '$lib/slide/config';
 
 /**
  * Dynamically imported WASM module.
@@ -166,6 +169,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private _synthEnabled = true;
 	private _synthMasterGain = 0.25;
 	private _synthMixGains = [1, 1, 1, 1];
+	private _slideConfig = defaultSlideConfig();
 	/** Pitch bend range in semitones (standard MIDI default). */
 	private pitchBendRangeSemitones = 2;
 	/** Guitar audio capture instance for browser-based pitch detection. */
@@ -307,7 +311,16 @@ export class WasmAdapter implements ContrapunkAdapter {
 						: op.lane === 'counterpoint' || op.lane === 'pattern_counter'
 							? 3
 							: 1;
-				embedAudio.noteOn(op.note, velocity, undefined, role);
+				const slideRole: SlideRole = role === 2 ? 'canon' : role === 3 ? 'counterpoint' : 'harmony';
+				embedAudio.noteOn(
+					op.note,
+					velocity,
+					undefined,
+					role,
+					undefined,
+					0,
+					resolveSlide(this._slideConfig, { role: slideRole, voice: 0 })
+				);
 				if (firstOwner) {
 					if (this.activeOutputs.length > 0) {
 						this.activeOutputs[0].send([0x90, op.note, velocity]);
@@ -543,6 +556,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 	async setTuningCompare(enabled: boolean): Promise<void> {
 		embedAudio.setCompareStandard(enabled);
+	}
+
+	async getSlideConfig(): Promise<SlideConfig> {
+		return this._slideConfig;
+	}
+
+	async setSlideConfig(config: SlideConfig): Promise<void> {
+		this._slideConfig = config;
 	}
 
 	async setCounterpointSpecies(species: string): Promise<void> {
@@ -865,8 +886,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 								voice.note,
 								velocity,
 								undefined,
-								voice.note === note ? 0 : 1,
-								voice.frequencyHz
+								voice.role === 'input' ? 0 : 1,
+								voice.frequencyHz,
+								voice.slot,
+								resolveSlide(self._slideConfig, { role: voice.role, voice: voice.slot })
 							);
 						}
 						// Feed the player input to the Companion so canon +
@@ -1152,8 +1175,10 @@ export class WasmAdapter implements ContrapunkAdapter {
 					voice.note,
 					vel,
 					undefined,
-					voice.note === note ? 0 : 1,
-					voice.frequencyHz
+					voice.role === 'input' ? 0 : 1,
+					voice.frequencyHz,
+					voice.slot,
+					resolveSlide(this._slideConfig, { role: voice.role, voice: voice.slot })
 				);
 			}
 			// Feed the player input to the Companion so the Canon and
@@ -1289,20 +1314,26 @@ export class WasmAdapter implements ContrapunkAdapter {
 		this.pollingHandle = requestAnimationFrame(poll);
 	}
 
-	private tunedVoices(notes: ArrayLike<number>): Array<{ note: number; frequencyHz: number }> {
+	private tunedVoices(
+		notes: ArrayLike<number>
+	): Array<{ note: number; frequencyHz: number; role: SlideRole; slot: number }> {
 		const midiNotes = Array.from(notes);
 		let frequencies: number[] = [];
+		let portMap: number[] = [];
 		try {
 			frequencies = Array.from(
 				engine.tuned_frequencies(new Uint8Array(midiNotes)) as Float32Array
 			);
+			portMap = Array.from(engine.last_port_map?.() ?? []);
 		} catch {
 			// The Rust bridge validates every frame; Standard is the safe fallback.
 		}
 		return midiNotes
 			.map((note, index) => ({
 				note,
-				frequencyHz: frequencies[index] ?? 440 * 2 ** ((note - 69) / 12)
+				frequencyHz: frequencies[index] ?? 440 * 2 ** ((note - 69) / 12),
+				role: index === 0 ? ('input' as const) : ('harmony' as const),
+				slot: index === 0 ? 0 : (portMap[index] ?? index)
 			}))
 			.sort((a, b) => a.note - b.note);
 	}
@@ -1398,9 +1429,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 	}
 
 	async getLastPortMap(): Promise<number[]> {
-		// WASM engine doesn't expose its internal port_map yet; VGC
-		// falls back to voicePosition-derived mapping when empty.
-		return [];
+		this.ensureInit();
+		return Array.from(engine.last_port_map?.() ?? []);
 	}
 
 	/**

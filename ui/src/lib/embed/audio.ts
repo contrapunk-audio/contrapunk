@@ -1,3 +1,4 @@
+import type { SlideSettings } from '$lib/adapter/types';
 import workletUrl from './elixir-audio-processor.ts?worker&url';
 import { addVoiceOwner, takeVoiceOwner } from './elixir-ownership.js';
 
@@ -13,6 +14,11 @@ interface AudioEvent {
 	frequency?: number;
 	velocity?: number;
 	value?: number;
+	slideVoice?: number;
+	travelKind?: number;
+	travelValue?: number;
+	trigger?: number;
+	curve?: number;
 	seq?: number;
 }
 
@@ -143,7 +149,9 @@ export function noteOn(
 	velocity = 100,
 	scheduleAt?: number,
 	role = 0,
-	frequencyHz = midiFrequency(midi)
+	frequencyHz = midiFrequency(midi),
+	slideVoice = 0,
+	slide?: SlideSettings
 ) {
 	const audio = ensureAudio();
 	if (
@@ -167,6 +175,13 @@ export function noteOn(
 	addVoiceOwner(voices, role, midi, voiceId);
 	const anchor = Math.max(0, Math.min(127, Math.trunc(midi)));
 	voiceTargets.set(voiceId, { anchor, frequency: frequencyHz });
+	const travelKind = slide?.travel.kind === 'time' ? 1 : slide?.travel.kind === 'rate' ? 2 : 0;
+	const travelValue =
+		slide?.travel.kind === 'time'
+			? slide.travel.milliseconds
+			: slide?.travel.kind === 'rate'
+				? slide.travel.semitones_per_second
+				: 0;
 	enqueue({
 		kind: 0,
 		atFrame: eventFrame(audio, scheduleAt),
@@ -174,7 +189,12 @@ export function noteOn(
 		role,
 		anchor,
 		frequency: compareStandard ? midiFrequency(anchor) : frequencyHz,
-		velocity: Math.max(0, Math.min(127, Math.trunc(velocity)))
+		velocity: Math.max(0, Math.min(127, Math.trunc(velocity))),
+		slideVoice: Math.max(0, Math.min(7, Math.trunc(slideVoice))),
+		travelKind: compareStandard ? 0 : travelKind,
+		travelValue,
+		trigger: slide?.trigger === 'always' ? 1 : 0,
+		curve: slide?.curve === 'exponential' ? 1 : slide?.curve === 'inverse_exponential' ? 2 : 0
 	});
 }
 

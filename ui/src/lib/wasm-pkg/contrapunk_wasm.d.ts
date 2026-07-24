@@ -82,6 +82,7 @@ export class ElixirAudio {
     constructor(sample_rate: number, max_frames: number);
     note_off(voice_id: number): void;
     note_on(voice_id: number, role: number, midi_anchor: number, frequency_hz: number, velocity: number): void;
+    note_on_slide(voice_id: number, role: number, midi_anchor: number, frequency_hz: number, velocity: number, slide_voice: number, travel_kind: number, travel_value: number, trigger: number, curve: number): void;
     output_capacity(): number;
     output_ptr(): number;
     panic(): void;
@@ -93,6 +94,9 @@ export class ElixirAudio {
     set_master_gain(gain: number): void;
     set_role_gain(role: number, gain: number): void;
     set_sustain(enabled: boolean): void;
+    slide_frequencies_ptr(): number;
+    slide_snapshot_count(): number;
+    slide_voice_ids_ptr(): number;
 }
 
 export class Engine {
@@ -127,6 +131,10 @@ export class Engine {
      * Returns a JS array of MIDI note numbers (u8).
      */
     harmonize(note: number): Uint8Array;
+    /**
+     * Stable arrangement slot for each note returned by the latest harmony call.
+     */
+    last_port_map(): Uint8Array;
     /**
      * List all available presets (builtins + custom).
      */
@@ -318,6 +326,7 @@ export interface InitOutput {
     readonly engine_get_note_state: (a: number, b: number) => void;
     readonly engine_get_state: (a: number, b: number) => void;
     readonly engine_harmonize: (a: number, b: number, c: number) => void;
+    readonly engine_last_port_map: (a: number, b: number) => void;
     readonly engine_list_presets: (a: number, b: number) => void;
     readonly engine_load_preset: (a: number, b: number, c: number, d: number) => void;
     readonly engine_new: () => number;
@@ -378,6 +387,7 @@ export interface InitOutput {
     readonly elixiraudio_new: (a: number, b: number) => number;
     readonly elixiraudio_note_off: (a: number, b: number) => void;
     readonly elixiraudio_note_on: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly elixiraudio_note_on_slide: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly elixiraudio_output_capacity: (a: number) => number;
     readonly elixiraudio_output_ptr: (a: number) => number;
     readonly elixiraudio_panic: (a: number) => void;
@@ -386,6 +396,9 @@ export interface InitOutput {
     readonly elixiraudio_set_master_gain: (a: number, b: number) => void;
     readonly elixiraudio_set_role_gain: (a: number, b: number, c: number) => void;
     readonly elixiraudio_set_sustain: (a: number, b: number) => void;
+    readonly elixiraudio_slide_frequencies_ptr: (a: number) => number;
+    readonly elixiraudio_slide_snapshot_count: (a: number) => number;
+    readonly elixiraudio_slide_voice_ids_ptr: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number, b: number, c: number) => void;

@@ -77,12 +77,17 @@ class ElixirAudioProcessor extends AudioWorkletProcessor {
 	private applyFirstEvent() {
 		switch (this.events.kind[0]) {
 			case 0:
-				this.engine.note_on(
+				this.engine.note_on_slide(
 					this.events.voiceId[0],
 					this.events.role[0],
 					this.events.anchor[0],
 					this.events.frequency[0],
-					this.events.velocity[0]
+					this.events.velocity[0],
+					this.events.slideVoice[0],
+					this.events.travelKind[0],
+					this.events.travelValue[0],
+					this.events.trigger[0],
+					this.events.curve[0]
 				);
 				break;
 			case 1:
