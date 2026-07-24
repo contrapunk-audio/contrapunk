@@ -201,6 +201,7 @@ mod key_detect;
 mod modes;
 mod scale;
 mod stateful;
+pub mod tuning;
 pub mod voice_leading;
 
 pub use barry_harris::{BhScaleGuard, Parity};
@@ -213,5 +214,9 @@ pub use key_detect::KeyDetector;
 pub use scale::Scale;
 pub use stateful::{
     ContraryMotionState, CounterpointSpecies, CounterpointState, CounterpointStrictness,
+};
+pub use tuning::{
+    tune_notes, HarmonicLimit, Ratio, TunedPitch, TuningConfig, TuningError, TuningFrame,
+    TuningStyle, MAX_TUNING_VOICES,
 };
 pub use voice_leading::VoiceLeadingStyle;

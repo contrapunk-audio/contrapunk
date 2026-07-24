@@ -686,6 +686,7 @@ dependencies = [
 name = "contrapunk-harmony"
 version = "1.1.0"
 dependencies = [
+ "contrapunk-dsp",
  "rand 0.10.2",
  "serde",
  "serde_json",
