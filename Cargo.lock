@@ -1712,6 +1712,7 @@ dependencies = [
 name = "elixir-preset"
 version = "0.0.1"
 dependencies = [
+ "elixir-core",
  "serde",
  "serde_json",
  "zip",

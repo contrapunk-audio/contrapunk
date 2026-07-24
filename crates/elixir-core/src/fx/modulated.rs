@@ -48,6 +48,9 @@ impl Chorus {
     pub fn set_mix(&mut self, mix: f32) {
         set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
     }
+    pub fn params(&self) -> (f32, f32, f32) {
+        (self.rate_hz, self.depth_ms, self.mix)
+    }
 
     pub fn process_inplace(&mut self, buf: &mut [f32], channels: usize) {
         if channels == 0 {
@@ -111,6 +114,9 @@ impl Flanger {
     }
     pub fn set_mix(&mut self, mix: f32) {
         set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
+    }
+    pub fn params(&self) -> (f32, f32, f32, f32) {
+        (self.rate_hz, self.depth_ms, self.feedback, self.mix)
     }
 
     pub fn process_inplace(&mut self, buf: &mut [f32], channels: usize) {
@@ -176,6 +182,9 @@ impl Phaser {
     }
     pub fn set_mix(&mut self, mix: f32) {
         set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
+    }
+    pub fn params(&self) -> (f32, f32, f32, f32) {
+        (self.rate_hz, self.depth, self.feedback, self.mix)
     }
 
     pub fn process_inplace(&mut self, buf: &mut [f32], channels: usize) {
@@ -253,6 +262,16 @@ impl Compressor {
     }
     pub fn set_mix(&mut self, mix: f32) {
         set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
+    }
+    pub fn params(&self) -> (f32, f32, f32, f32, f32, f32) {
+        (
+            self.threshold_db,
+            self.ratio,
+            self.attack_ms,
+            self.release_ms,
+            self.makeup_db,
+            self.mix,
+        )
     }
 
     pub fn process_inplace(&mut self, buf: &mut [f32], channels: usize) {

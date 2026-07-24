@@ -143,6 +143,10 @@ impl ModMatrix {
         self.routes.iter().filter(|r| r.is_some()).count()
     }
 
+    pub fn routes(&self) -> impl Iterator<Item = ModRoute> + '_ {
+        self.routes.iter().flatten().copied()
+    }
+
     /// Reset destination accumulators. Called by the engine at the
     /// start of each block.
     pub fn reset_destinations(&mut self) {

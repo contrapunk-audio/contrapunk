@@ -8,6 +8,13 @@ use std::fmt;
 use std::io::{Read, Seek};
 use std::path::Path;
 
+use elixir_core::filter::FilterKind;
+use elixir_core::fx::{
+    Chorus, Compressor, Delay, Drive, FdnReverb, Flanger, FxSlot, Phaser, Reverb,
+};
+use elixir_core::modulation::{ModDest, ModRoute, ModSrc};
+use elixir_core::osc::{PhaseDistortionMode, SpectralMorph, UnisonStyle};
+use elixir_core::{Engine, VoiceRole};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use zip::ZipArchive;
@@ -722,6 +729,377 @@ pub fn parse_preset_str(json: &str) -> Result<ElixirPreset, PresetStateError> {
         .migrate()
 }
 
+impl ElixirState {
+    /// Build all allocating DSP state, then atomically replace a prepared
+    /// engine from a non-audio control thread.
+    pub fn apply_to_engine(&self, engine: &mut Engine) -> Result<(), PresetStateError> {
+        self.validate()?;
+        let sample_rate = engine.sample_rate();
+        if sample_rate == 0 {
+            return Err(PresetStateError::Invalid(
+                "engine must be prepared before preset application".into(),
+            ));
+        }
+        let slots = build_fx_slots(self, sample_rate as f32);
+
+        engine.panic();
+        engine.set_master_gain(self.master_gain);
+        for (role, gain) in VoiceRole::ALL.into_iter().zip(self.role_gains) {
+            engine.set_role_gain(role, gain);
+        }
+        engine.set_amp_attack_secs(self.amp_envelope.attack_secs);
+        engine.set_amp_decay_secs(self.amp_envelope.decay_secs);
+        engine.set_amp_sustain(self.amp_envelope.sustain);
+        engine.set_amp_release_secs(self.amp_envelope.release_secs);
+        engine.set_spectral_morph(self.oscillator.spectral_morph.into());
+        engine.set_morph_amount(self.oscillator.morph_amount);
+        engine.set_phase_distortion(self.oscillator.phase_distortion.into());
+        engine.set_phase_amount(self.oscillator.phase_amount);
+        engine.set_unison_style(self.oscillator.unison_style.into());
+        engine.set_unison_voices(self.oscillator.unison_voices);
+        engine.set_unison_detune_cents(self.oscillator.unison_detune_cents);
+        engine.set_filter_kind(self.filter.kind.into());
+        engine.set_filter_cutoff_hz(self.filter.cutoff_hz);
+        engine.set_filter_resonance(self.filter.resonance);
+        engine.set_filter_drive(self.filter.drive);
+        engine.set_filter_gain(self.filter.gain);
+        engine.set_filter_morph(self.filter.morph_x, self.filter.morph_y);
+        for (index, lfo) in self.lfos.iter().enumerate() {
+            engine.lfo_mut(index).unwrap().set_rate_hz(lfo.rate_hz);
+        }
+        engine.clear_mod_routes();
+        for route in &self.modulation_routes {
+            let added = engine.add_mod_route(ModRoute {
+                src: route.source.into(),
+                dst: route.destination.into(),
+                amount: route.amount,
+                bipolar: route.bipolar,
+            });
+            debug_assert!(added.is_some(), "validated route must fit");
+        }
+        engine.clear_fx_chain();
+        for (index, (slot, state)) in slots.into_iter().zip(&self.fx_slots).enumerate() {
+            engine.set_fx_slot(index, slot);
+            engine.set_fx_enabled(index, state.enabled);
+        }
+        Ok(())
+    }
+
+    /// Capture the complete presettable state. This allocates and is not an
+    /// audio-callback operation.
+    pub fn snapshot_engine(engine: &Engine) -> Result<Self, PresetStateError> {
+        let sample_rate = engine.sample_rate();
+        if sample_rate == 0 {
+            return Err(PresetStateError::Invalid(
+                "engine must be prepared before snapshot".into(),
+            ));
+        }
+        let osc = engine.osc_params();
+        let (morph_x, morph_y) = engine.filter_morph();
+        let lfos = core::array::from_fn(|index| LfoState {
+            rate_hz: engine.lfo(index).unwrap().base_rate_hz(),
+        });
+        let modulation_routes = engine
+            .matrix
+            .routes()
+            .map(|route| ModRouteState {
+                source: route.src.into(),
+                destination: route.dst.into(),
+                amount: route.amount,
+                bipolar: route.bipolar,
+            })
+            .collect();
+        let fx_slots = snapshot_fx_slots(engine, sample_rate as f32)?;
+        let state = Self {
+            master_gain: engine.master_gain(),
+            role_gains: engine.role_gains(),
+            oscillator: OscillatorState {
+                spectral_morph: osc.spectral_morph.into(),
+                morph_amount: osc.morph_amount,
+                phase_distortion: osc.phase_distortion.into(),
+                phase_amount: osc.phase_amount,
+                unison_style: osc.unison_style.into(),
+                unison_voices: osc.unison_voices,
+                unison_detune_cents: osc.unison_detune_cents,
+            },
+            amp_envelope: EnvelopeState {
+                attack_secs: engine.amp_attack_secs(),
+                decay_secs: engine.amp_decay_secs(),
+                sustain: engine.amp_sustain(),
+                release_secs: engine.amp_release_secs(),
+            },
+            filter: FilterState {
+                kind: engine.filter_kind().into(),
+                cutoff_hz: engine.filter_cutoff_hz(),
+                resonance: engine.filter_resonance(),
+                drive: engine.filter_drive(),
+                gain: engine.filter_gain(),
+                morph_x,
+                morph_y,
+            },
+            lfos,
+            modulation_routes,
+            fx_slots,
+        };
+        state.validate()?;
+        Ok(state)
+    }
+}
+
+fn build_fx_slots(state: &ElixirState, sample_rate: f32) -> Vec<FxSlot> {
+    state
+        .fx_slots
+        .iter()
+        .map(|slot| match slot.effect {
+            FxState::Drive { drive, mix } => {
+                let mut effect = Drive::new();
+                effect.set_drive(drive);
+                effect.set_mix(mix);
+                FxSlot::Drive(effect)
+            }
+            FxState::Delay {
+                time_secs,
+                feedback,
+                mix,
+            } => {
+                let mut effect = Delay::new((sample_rate * 2.0) as usize + 1);
+                effect.set_delay_secs(time_secs, sample_rate);
+                effect.set_feedback(feedback);
+                effect.set_mix(mix);
+                FxSlot::Delay(effect)
+            }
+            FxState::Reverb {
+                decay,
+                damping,
+                mix,
+            } => {
+                let mut effect = Reverb::new(sample_rate);
+                effect.set_decay(decay);
+                effect.set_damping(damping);
+                effect.set_mix(mix);
+                FxSlot::Reverb(effect)
+            }
+            FxState::FdnReverb {
+                decay_secs,
+                damping,
+                mix,
+            } => {
+                let mut effect = FdnReverb::new(sample_rate);
+                effect.set_decay_seconds(decay_secs);
+                effect.set_damping(damping);
+                effect.set_mix(mix);
+                FxSlot::FdnReverb(effect)
+            }
+            FxState::Chorus {
+                rate_hz,
+                depth_ms,
+                mix,
+            } => {
+                let mut effect = Chorus::new(sample_rate);
+                effect.set_rate_hz(rate_hz);
+                effect.set_depth_ms(depth_ms);
+                effect.set_mix(mix);
+                FxSlot::Chorus(effect)
+            }
+            FxState::Flanger {
+                rate_hz,
+                depth_ms,
+                feedback,
+                mix,
+            } => {
+                let mut effect = Flanger::new(sample_rate);
+                effect.set_rate_hz(rate_hz);
+                effect.set_depth_ms(depth_ms);
+                effect.set_feedback(feedback);
+                effect.set_mix(mix);
+                FxSlot::Flanger(effect)
+            }
+            FxState::Phaser {
+                rate_hz,
+                depth,
+                feedback,
+                mix,
+            } => {
+                let mut effect = Phaser::new(sample_rate);
+                effect.set_rate_hz(rate_hz);
+                effect.set_depth(depth);
+                effect.set_feedback(feedback);
+                effect.set_mix(mix);
+                FxSlot::Phaser(effect)
+            }
+            FxState::Compressor {
+                threshold_db,
+                ratio,
+                attack_ms,
+                release_ms,
+                makeup_db,
+                mix,
+            } => {
+                let mut effect = Compressor::new(sample_rate);
+                effect.set_threshold_db(threshold_db);
+                effect.set_ratio(ratio);
+                effect.set_attack_ms(attack_ms);
+                effect.set_release_ms(release_ms);
+                effect.set_makeup_db(makeup_db);
+                effect.set_mix(mix);
+                FxSlot::Compressor(effect)
+            }
+        })
+        .collect()
+}
+
+fn snapshot_fx_slots(
+    engine: &Engine,
+    sample_rate: f32,
+) -> Result<Vec<FxSlotState>, PresetStateError> {
+    engine
+        .fx_chain
+        .iter()
+        .enumerate()
+        .map(|(index, slot)| {
+            let effect = match slot {
+                FxSlot::Drive(effect) if index == 0 => FxState::Drive {
+                    drive: effect.drive,
+                    mix: effect.mix,
+                },
+                FxSlot::Delay(effect) if index == 1 => FxState::Delay {
+                    time_secs: effect.delay_samples() as f32 / sample_rate,
+                    feedback: effect.feedback(),
+                    mix: effect.mix(),
+                },
+                FxSlot::Reverb(effect) if index == 2 => FxState::Reverb {
+                    decay: effect.decay(),
+                    damping: effect.damping(),
+                    mix: effect.mix(),
+                },
+                FxSlot::FdnReverb(effect) if index == 3 => {
+                    let (decay_secs, damping, mix) = effect.params();
+                    FxState::FdnReverb {
+                        decay_secs,
+                        damping,
+                        mix,
+                    }
+                }
+                FxSlot::Chorus(effect) if index == 4 => {
+                    let (rate_hz, depth_ms, mix) = effect.params();
+                    FxState::Chorus {
+                        rate_hz,
+                        depth_ms,
+                        mix,
+                    }
+                }
+                FxSlot::Flanger(effect) if index == 5 => {
+                    let (rate_hz, depth_ms, feedback, mix) = effect.params();
+                    FxState::Flanger {
+                        rate_hz,
+                        depth_ms,
+                        feedback,
+                        mix,
+                    }
+                }
+                FxSlot::Phaser(effect) if index == 6 => {
+                    let (rate_hz, depth, feedback, mix) = effect.params();
+                    FxState::Phaser {
+                        rate_hz,
+                        depth,
+                        feedback,
+                        mix,
+                    }
+                }
+                FxSlot::Compressor(effect) if index == 7 => {
+                    let (threshold_db, ratio, attack_ms, release_ms, makeup_db, mix) =
+                        effect.params();
+                    FxState::Compressor {
+                        threshold_db,
+                        ratio,
+                        attack_ms,
+                        release_ms,
+                        makeup_db,
+                        mix,
+                    }
+                }
+                _ => {
+                    return Err(PresetStateError::Invalid(format!(
+                        "engine FX slot {index} is not canonical"
+                    )))
+                }
+            };
+            Ok(FxSlotState {
+                enabled: engine.fx_enabled(index),
+                effect,
+            })
+        })
+        .collect()
+}
+
+macro_rules! enum_conversion {
+    ($state:ty, $core:ty, { $($variant:ident),+ $(,)? }) => {
+        impl From<$state> for $core {
+            fn from(value: $state) -> Self {
+                match value { $(<$state>::$variant => <$core>::$variant,)+ }
+            }
+        }
+        impl From<$core> for $state {
+            fn from(value: $core) -> Self {
+                match value { $(<$core>::$variant => <$state>::$variant,)+ }
+            }
+        }
+    };
+}
+
+enum_conversion!(SpectralMorphState, SpectralMorph, {
+    Passthrough, Vocode, FormScale, HarmonicScale, InharmonicScale, Smear,
+    RandomAmplitudes, LowPass, HighPass, PhaseDisperse, ShepardTone, Skew,
+});
+enum_conversion!(PhaseDistortionState, PhaseDistortionMode, {
+    Off, Quantize, Bend, Squeeze, Sync, PulseWidth, FmOscillatorA, FmOscillatorB,
+    FmSample, RmOscillatorA, RmOscillatorB, RmSample,
+});
+enum_conversion!(UnisonStyleState, UnisonStyle, {
+    Centered, Octaves, Fifths, PowerChord, HarmonicSeries, Wide, Narrow, Organ,
+    Suspended, Cluster, Alternating,
+});
+enum_conversion!(FilterKindState, FilterKind, {
+    DigitalSvf, Diode, Dirty, Formant, Phaser,
+});
+
+impl From<ModSourceState> for ModSrc {
+    fn from(value: ModSourceState) -> Self {
+        match value {
+            ModSourceState::Constant => Self::Constant,
+            ModSourceState::Lfo(index) => Self::Lfo(index),
+            ModSourceState::AmpEnv => Self::AmpEnv,
+        }
+    }
+}
+impl From<ModSrc> for ModSourceState {
+    fn from(value: ModSrc) -> Self {
+        match value {
+            ModSrc::Constant => Self::Constant,
+            ModSrc::Lfo(index) => Self::Lfo(index),
+            ModSrc::AmpEnv => Self::AmpEnv,
+        }
+    }
+}
+impl From<ModDestinationState> for ModDest {
+    fn from(value: ModDestinationState) -> Self {
+        match value {
+            ModDestinationState::MasterGain => Self::MasterGain,
+            ModDestinationState::LfoRate(index) => Self::LfoRate(index),
+            ModDestinationState::FilterCutoff => Self::FilterCutoff,
+        }
+    }
+}
+impl From<ModDest> for ModDestinationState {
+    fn from(value: ModDest) -> Self {
+        match value {
+            ModDest::MasterGain => Self::MasterGain,
+            ModDest::LfoRate(index) => Self::LfoRate(index),
+            ModDest::FilterCutoff => Self::FilterCutoff,
+        }
+    }
+}
+
 /// Import one `.vital` JSON document. `name_hint` is used when the file
 /// omits `preset_name` (several community presets do this).
 pub fn import_vital_str(
@@ -986,6 +1364,74 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn complete_state_applies_and_snapshots_without_losing_disabled_fx_mix() {
+        let mut state = ElixirState {
+            master_gain: 0.4,
+            role_gains: [0.8, 0.7, 0.6, 0.5],
+            ..Default::default()
+        };
+        state.lfos[1].rate_hz = 3.25;
+        state.modulation_routes.push(ModRouteState {
+            source: ModSourceState::Lfo(1),
+            destination: ModDestinationState::MasterGain,
+            amount: 0.1,
+            bipolar: true,
+        });
+        state.fx_slots[0].enabled = true;
+        state.fx_slots[1].enabled = false;
+
+        let mut engine = Engine::new();
+        engine.prepare(48_000, 512);
+        state.apply_to_engine(&mut engine).unwrap();
+        assert_eq!(ElixirState::snapshot_engine(&engine).unwrap(), state);
+    }
+
+    #[test]
+    fn independently_applied_engines_render_identically() {
+        let mut state = ElixirState::default();
+        for slot in &mut state.fx_slots {
+            slot.enabled = true;
+        }
+        let mut first = Engine::new();
+        let mut second = Engine::new();
+        first.prepare(48_000, 512);
+        second.prepare(48_000, 512);
+        state.apply_to_engine(&mut first).unwrap();
+        state.apply_to_engine(&mut second).unwrap();
+        let event = elixir_core::VoiceEvent::NoteOn {
+            voice_id: elixir_core::VoiceId::new(1),
+            role: VoiceRole::Harmony,
+            midi_anchor: 69,
+            frequency_hz: 442.0,
+            velocity: 100,
+        };
+        first.handle_voice_event(event);
+        second.handle_voice_event(event);
+        let mut first_audio = [0.0; 1024];
+        let mut second_audio = [0.0; 1024];
+        first.process(&mut first_audio, 2);
+        second.process(&mut second_audio, 2);
+        assert_eq!(first_audio, second_audio);
+        assert!(first_audio.iter().all(|sample| sample.is_finite()));
+        assert!(first_audio.iter().any(|sample| sample.abs() > 1.0e-6));
+    }
+
+    #[test]
+    fn invalid_state_does_not_mutate_engine() {
+        let state = ElixirState::default();
+        let mut engine = Engine::new();
+        engine.prepare(48_000, 512);
+        state.apply_to_engine(&mut engine).unwrap();
+        let before = ElixirState::snapshot_engine(&engine).unwrap();
+        let invalid = ElixirState {
+            master_gain: f32::NAN,
+            ..state
+        };
+        assert!(invalid.apply_to_engine(&mut engine).is_err());
+        assert_eq!(ElixirState::snapshot_engine(&engine).unwrap(), before);
     }
 
     #[test]

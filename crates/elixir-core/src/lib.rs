@@ -143,6 +143,7 @@ pub struct Engine {
     /// Post-voice FX chain. Slots are processed in order; `FxSlot::Empty`
     /// is skipped. Reorder by swapping slots.
     pub fx_chain: [FxSlot; FX_SLOTS],
+    fx_enabled: [bool; FX_SLOTS],
     /// A non-finite FX result quarantines the chain without dropping its
     /// preallocated state on the audio thread.
     fx_quarantined: bool,
@@ -180,6 +181,7 @@ impl Engine {
             filter_morph_x: 0.0,
             filter_morph_y: 0.0,
             fx_chain: core::array::from_fn(|_| FxSlot::Empty),
+            fx_enabled: [true; FX_SLOTS],
             fx_quarantined: false,
             amp_attack_secs: 0.005,
             amp_decay_secs: 0.120,
@@ -251,6 +253,9 @@ impl Engine {
             self.role_gains[role.index()] = gain.clamp(0.0, 1.0);
         }
     }
+    pub fn role_gains(&self) -> [f32; VoiceRole::ALL.len()] {
+        self.role_gains
+    }
     pub fn role_gain(&self, role: VoiceRole) -> f32 {
         self.role_gains[role.index()]
     }
@@ -291,19 +296,30 @@ impl Engine {
     /// Replace the FX in slot `idx`. Returns the previous slot.
     pub fn set_fx_slot(&mut self, idx: usize, slot: FxSlot) -> FxSlot {
         if idx < FX_SLOTS {
+            self.fx_enabled[idx] = true;
             core::mem::replace(&mut self.fx_chain[idx], slot)
         } else {
             slot
         }
     }
+    pub fn set_fx_enabled(&mut self, idx: usize, enabled: bool) {
+        if idx < FX_SLOTS {
+            self.fx_enabled[idx] = enabled;
+        }
+    }
+    pub fn fx_enabled(&self, idx: usize) -> bool {
+        self.fx_enabled.get(idx).copied().unwrap_or(false)
+    }
     pub fn clear_fx_slot(&mut self, idx: usize) {
         if idx < FX_SLOTS {
             self.fx_chain[idx] = FxSlot::Empty;
+            self.fx_enabled[idx] = false;
         }
     }
     pub fn clear_fx_chain(&mut self) {
-        for slot in self.fx_chain.iter_mut() {
+        for (slot, enabled) in self.fx_chain.iter_mut().zip(self.fx_enabled.iter_mut()) {
             *slot = FxSlot::Empty;
+            *enabled = false;
         }
         self.fx_quarantined = false;
     }
@@ -655,8 +671,10 @@ impl Engine {
         // (8) FX chain in declared slot order. A poisoned chain remains
         // allocated but bypassed until a non-audio control clears it.
         if !self.fx_quarantined {
-            for slot in self.fx_chain.iter_mut() {
-                slot.process_inplace(buffer, channels);
+            for (slot, enabled) in self.fx_chain.iter_mut().zip(self.fx_enabled) {
+                if enabled {
+                    slot.process_inplace(buffer, channels);
+                }
             }
         }
 
@@ -1048,6 +1066,27 @@ mod tests {
     }
 
     // ─── A5 FX chain tests ──────────────────────────────────────────
+
+    #[test]
+    fn disabled_fx_slot_is_a_true_bypass() {
+        use crate::fx::{Drive, FxSlot};
+
+        let mut disabled = Engine::new();
+        disabled.prepare(48_000, 256);
+        disabled.set_fx_slot(0, FxSlot::Drive(Drive::with_drive(20.0)));
+        disabled.set_fx_enabled(0, false);
+        disabled.note_on(69, 100);
+
+        let mut clean = Engine::new();
+        clean.prepare(48_000, 256);
+        clean.note_on(69, 100);
+
+        let mut disabled_audio = [0.0; 1024];
+        let mut clean_audio = [0.0; 1024];
+        disabled.process(&mut disabled_audio, 2);
+        clean.process(&mut clean_audio, 2);
+        assert_eq!(disabled_audio, clean_audio);
+    }
 
     #[test]
     fn fx_slot_set_and_clear() {

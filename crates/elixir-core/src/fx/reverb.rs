@@ -164,6 +164,9 @@ impl FdnReverb {
     pub fn set_mix(&mut self, mix: f32) {
         set_finite_clamped(&mut self.mix, mix, 0.0, 1.0);
     }
+    pub fn params(&self) -> (f32, f32, f32) {
+        (self.decay_seconds, self.damping, self.mix)
+    }
 
     fn recompute_feedback(&mut self, sr: f32) {
         for (i, line) in self.lines.iter().enumerate() {
