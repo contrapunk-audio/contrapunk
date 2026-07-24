@@ -25,8 +25,6 @@
 	let prevRms = 0;
 
 	// Sound output
-	let soundEnabled = $state(true);
-	let soundVolume = $state(0.15);
 	let midiOutputEnabled = $state(false);
 	let selectedMidiOutputId = $state('');
 	let midiOutputs: { id: string; name: string }[] = $state([]);
@@ -81,8 +79,6 @@
 	let audioCtx: AudioContext | null = null;
 	let stream: MediaStream | null = null;
 	let processor: ScriptProcessorNode | null = null;
-	let oscillator: OscillatorNode | null = null;
-	let gainNode: GainNode | null = null;
 	let midiAccess: MIDIAccess | null = null;
 	let animFrame: number | null = null;
 
@@ -316,17 +312,6 @@
 			processor.channelCountMode = 'explicit';
 			processor.channelInterpretation = 'discrete';
 
-			// Set up sound output (oscillator synth)
-			gainNode = audioCtx.createGain();
-			gainNode.gain.value = 0;
-			gainNode.connect(audioCtx.destination);
-
-			oscillator = audioCtx.createOscillator();
-			oscillator.type = 'triangle';
-			oscillator.frequency.value = 0;
-			oscillator.connect(gainNode);
-			oscillator.start();
-
 			processor.onaudioprocess = (event) => {
 				const input = event.inputBuffer;
 				const ch = Math.min(selectedChannel, input.numberOfChannels - 1);
@@ -442,12 +427,6 @@
 						detectedCents = midi.cents;
 						detectedNote = midiToNoteName(midi.note);
 
-						// Sound output — set oscillator to detected frequency
-						if (soundEnabled && oscillator && gainNode) {
-							oscillator.frequency.setTargetAtTime(result.frequency, audioCtx!.currentTime, 0.01);
-							gainNode.gain.setTargetAtTime(soundVolume * result.clarity, audioCtx!.currentTime, 0.02);
-						}
-
 						// MIDI output
 						if (midiOutputEnabled && midiAccess && selectedMidiOutputId) {
 							const output = midiAccess.outputs.get(selectedMidiOutputId);
@@ -470,10 +449,7 @@
 						}
 					}
 				} else {
-					// Silence — ramp down
-					if (soundEnabled && gainNode) {
-						gainNode.gain.setTargetAtTime(0, audioCtx!.currentTime, 0.05);
-					}
+					// Silence — release the active MIDI note.
 					if (lastNoteOnMidi >= 0 && rms < 0.003) {
 						if (midiOutputEnabled && midiAccess && selectedMidiOutputId) {
 							const output = midiAccess.outputs.get(selectedMidiOutputId);
@@ -508,8 +484,6 @@
 	// ── Stop capture ─────────────────────────────────────────
 	function stop() {
 		if (processor) { processor.disconnect(); processor = null; }
-		if (oscillator) { oscillator.stop(); oscillator = null; }
-		if (gainNode) { gainNode.disconnect(); gainNode = null; }
 		if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
 		if (audioCtx) { audioCtx.close(); audioCtx = null; }
 		if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
@@ -922,16 +896,9 @@
 		</div>
 	</section>
 
-	<!-- ── Sound output ──────────────────────────────── -->
+	<!-- ── MIDI output ───────────────────────────────── -->
 	<section class="output-section">
-		<h2>Sound Output</h2>
-		<div class="output-row">
-			<label class="toggle">
-				<input type="checkbox" bind:checked={soundEnabled} />
-				Oscillator Synth (hear what detector sees)
-			</label>
-			<label>Vol <input type="range" min="0" max="0.5" step="0.01" bind:value={soundVolume} disabled={!soundEnabled} /></label>
-		</div>
+		<h2>MIDI Output</h2>
 		<div class="output-row">
 			<label class="toggle">
 				<input type="checkbox" bind:checked={midiOutputEnabled} />
@@ -1154,11 +1121,6 @@
 		font-size: 11px;
 		border-radius: 3px;
 		font-family: inherit;
-	}
-
-	.output-row input[type="range"] {
-		width: 80px;
-		accent-color: #6366f1;
 	}
 
 	.dim { color: #555; font-size: 11px; }
