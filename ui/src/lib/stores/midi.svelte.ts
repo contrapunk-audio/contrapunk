@@ -250,12 +250,14 @@ class MidiStore {
 	private static readonly VIRTUAL_NAMES: Record<number, string> = {
 		999_998: '__virtual_computer_keyboard__',
 		999_997: '__virtual_guitar_audio__',
+		999_996: '__virtual_tone_source__',
 	};
 
 	/** Reverse lookup: persistent name → sentinel value. */
 	private static readonly VIRTUAL_IDS: Record<string, number> = {
 		'__virtual_computer_keyboard__': 999_998,
 		'__virtual_guitar_audio__': 999_997,
+		'__virtual_tone_source__': 999_996,
 	};
 
 	/**

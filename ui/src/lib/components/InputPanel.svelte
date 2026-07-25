@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { engine } from '$lib/stores/engine.svelte';
+	import { tone } from '$lib/stores/tone.svelte';
 	import { adapter } from '$lib/adapter';
 	import type { CalibrationStatus } from '$lib/adapter/types';
 	import PixelSelect from './PixelSelect.svelte';
@@ -77,6 +78,7 @@
 			voiceUnavailableHint = true;
 			return;
 		}
+		if (next !== 'tone') await tone.stop();
 		requestedSource = next;
 		voiceUnavailableHint = false;
 		if (next === 'guitar') {

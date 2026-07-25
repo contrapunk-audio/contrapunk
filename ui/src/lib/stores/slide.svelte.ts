@@ -48,6 +48,10 @@ class SlideStore {
 		} catch {
 			this.config = defaultSlideConfig();
 		}
+		const serialized = JSON.stringify(this.config);
+		this.selectedPreset = SLIDE_PRESETS.find(
+			(preset) => JSON.stringify(preset.config) === serialized
+		)?.id ?? 'custom';
 		this.loaded = true;
 		await this.push();
 		this.startTelemetry();

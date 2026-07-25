@@ -14,6 +14,7 @@
 	import { midi } from '$lib/stores/midi.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import { slide } from '$lib/stores/slide.svelte';
+	import { tone } from '$lib/stores/tone.svelte';
 	import { transport } from '$lib/stores/transport.svelte';
 	import { PIANO_KEY_COUNTS, ui } from '$lib/stores/ui.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
@@ -108,6 +109,7 @@
 		})();
 		return () => {
 			cancelled = true;
+			void tone.stop();
 		};
 	});
 
@@ -125,7 +127,7 @@
 	}
 
 	async function panic() {
-		await adapter.panicAllNotesOff();
+		await tone.panic();
 		panicSent = true;
 		window.setTimeout(() => (panicSent = false), 700);
 	}
@@ -150,7 +152,7 @@
 		if (!setupDialog?.open) setupDialog?.showModal();
 		await tick();
 		const targetSection = section === 'counterpoint' ? 'canon' : section;
-		const target = document.getElementById(`setup-${targetSection}`) ?? (focus ? document.getElementById(focus) : null);
+		const target = (focus ? document.getElementById(focus) : null) ?? document.getElementById(`setup-${targetSection}`);
 		target?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 		target?.focus({ preventScroll: true });
 	}
@@ -315,7 +317,7 @@
 	.tempo input { width: 39px; border: 0; background: transparent; color: var(--proto-text); font: 10px var(--font-code); }
 	.synth-body { height: calc(100vh - 52px); overflow: hidden; }
 	.synth-body > :global(*) { height: 100%; }
-	.performance-body { box-sizing: border-box; display: grid; width: min(1480px, calc(100% - 20px)); height: calc(100vh - 52px); grid-template-rows: auto minmax(0, 1fr) 220px; margin: 0 auto; gap: 8px; overflow: hidden; padding: 8px 0; }
+	.performance-body { box-sizing: border-box; display: grid; width: min(1480px, calc(100% - 20px)); height: calc(100vh - 52px); grid-template-rows: auto minmax(0, 1fr) 146px; margin: 0 auto; gap: 8px; overflow: hidden; padding: 8px 0; }
 	.quick-controls { display: grid; grid-template-columns: .7fr 1.2fr 1.3fr .55fr .9fr 1fr; border: 1px solid var(--proto-line); background: var(--proto-panel); }
 	.quick-controls label { display: grid; min-width: 0; gap: 3px; padding: 6px 10px; border-right: 1px solid var(--proto-line); }
 	.quick-controls label:last-child { border-right: 0; }
@@ -368,6 +370,9 @@
 		.quick-controls label:nth-child(-n+3) { border-bottom: 1px solid var(--proto-line); }
 		.dialog-body { grid-template-columns: 140px 1fr; }
 		.preset-grid { grid-template-columns: 1fr; }
+	}
+	@media (max-width: 820px) {
+		.performance-body { grid-template-rows: auto minmax(0, 1fr) 230px; }
 	}
 	@media (max-width: 680px) {
 		.app-header { position: static; grid-template-columns: 1fr; padding: 8px; }

@@ -79,7 +79,7 @@
 	}
 </script>
 
-<section class="slide-panel" aria-labelledby="slide-heading">
+<section id="slide-controls" class="slide-panel" aria-labelledby="slide-heading" tabindex="-1">
 	<header>
 		<div>
 			<h3 id="slide-heading">Slide</h3>

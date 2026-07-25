@@ -1,6 +1,7 @@
 import { adapter } from '$lib/adapter';
 import type { CounterpointSpeciesName } from './engine.svelte';
 import { DEFAULT_EXPLICIT_INTERVAL_MAP, engine } from './engine.svelte';
+import { tone } from './tone.svelte';
 import {
 	validateArrangementConfig,
 	type ArrangementCapability,
@@ -42,7 +43,10 @@ class ArrangementStore {
 	counterpoint = $state<CounterpointLaneState>({ ...DEFAULT_COUNTERPOINT });
 	patterns = $state<ArrangementPatternConfig>(emptyPatterns());
 	mixLevels = $state([1, 1, 1, 1]);
+	muted = $state([false, false, false, false]);
+	solo = $state<number | null>(null);
 	mixLoaded = $state(false);
+	mixError = $state<string | null>(null);
 	applying = $state(false);
 
 	get availableCapabilities(): ReadonlySet<ArrangementCapability> {
@@ -91,7 +95,7 @@ class ArrangementStore {
 		if (adapter.capabilities.roleMix) {
 			try {
 				const state = await adapter.getSynthState();
-				if (state.mixGains?.length === 4) {
+				if (state.mixGains?.length === 4 && this.solo === null && !this.muted.some(Boolean)) {
 					this.mixLevels = state.mixGains.map((value) => clamp01(value));
 				}
 			} catch {
@@ -150,9 +154,62 @@ class ArrangementStore {
 		this.mixLevels = [...this.mixLevels];
 	}
 
-	async pushMixLevel(group: number, value = this.mixLevels[group] ?? 1) {
+	appliedMixLevel(group: number) {
+		if (this.muted[group]) return 0;
+		if (this.solo !== null && this.solo !== group) return 0;
+		return this.mixLevels[group] ?? 1;
+	}
+
+	async pushMixLevel(group: number, value = this.appliedMixLevel(group)) {
 		if (!adapter.capabilities.roleMix || group < 0 || group >= 4) return;
 		await adapter.setSynthMixGain(group, clamp01(value));
+	}
+
+	async setAndPushMixLevel(group: number, value: number) {
+		if (!adapter.capabilities.roleMix || group < 0 || group >= 4) return;
+		const previous = this.mixLevels[group] ?? 1;
+		this.setMixLevel(group, value);
+		try {
+			await this.pushMixLevel(group);
+			this.mixError = null;
+		} catch (error) {
+			this.setMixLevel(group, previous);
+			try { await this.pushMixLevel(group); } catch { /* Preserve the original error. */ }
+			this.mixError = `Could not change mix level: ${error}`;
+		}
+	}
+
+	async toggleMute(group: number) {
+		if (!adapter.capabilities.roleMix || group < 0 || group >= 4) return;
+		const previous = [...this.muted];
+		this.muted[group] = !this.muted[group];
+		this.muted = [...this.muted];
+		try {
+			await this.pushMixLevel(group);
+			this.mixError = null;
+		} catch (error) {
+			this.muted = previous;
+			try { await this.pushMixLevel(group); } catch { /* Preserve the original error. */ }
+			this.mixError = `Could not change mute: ${error}`;
+		}
+	}
+
+	async toggleSolo(group: number) {
+		if (!adapter.capabilities.roleMix || group < 0 || group >= 4) return;
+		const previous = this.solo;
+		this.solo = this.solo === group ? null : group;
+		try {
+			await this.pushAllMixLevels();
+			this.mixError = null;
+		} catch (error) {
+			this.solo = previous;
+			try { await this.pushAllMixLevels(); } catch { /* Preserve the original error. */ }
+			this.mixError = `Could not change solo: ${error}`;
+		}
+	}
+
+	private async pushAllMixLevels() {
+		for (let group = 0; group < 4; group++) await this.pushMixLevel(group);
 	}
 
 	async apply(config: ArrangementConfig) {
@@ -164,6 +221,7 @@ class ArrangementStore {
 		const previous = this.snapshot();
 		this.applying = true;
 		try {
+			await tone.stop();
 			await adapter.panicAllNotesOff();
 			await this.applyUnchecked(config);
 		} catch (cause) {
