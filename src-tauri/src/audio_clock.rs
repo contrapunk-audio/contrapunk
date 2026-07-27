@@ -32,6 +32,7 @@ use contrapunk::chain::{
     AudioBlock, BlockDescriptor, Chain, ChainCommandConsumer, ChainCommander, ElixirSynthBlock,
     ELIXIR_EVENT_QUEUE_CAPACITY,
 };
+use contrapunk::cpal_io::preferred_output_config;
 use contrapunk::elixir::{synth_event_channel, SynthEventReceiver, SynthParams};
 use contrapunk::fx::{Delay, DelayParams, Reverb, ReverbParams};
 use contrapunk::slide::SlideTelemetry;
@@ -258,9 +259,8 @@ fn build_and_run_stream(
         .default_output_device()
         .ok_or_else(|| "No default audio output device".to_string())?;
 
-    let config = device
-        .default_output_config()
-        .map_err(|e| format!("Default output config error: {}", e))?;
+    let config = preferred_output_config(&device, &[SampleFormat::F32])
+        .map_err(|e| format!("Output config error: {e}"))?;
     let sample_rate = config.sample_rate();
     let channels = config.channels();
 
@@ -272,11 +272,10 @@ fn build_and_run_stream(
         config.sample_format()
     );
 
-    let sample_format = config.sample_format();
     let stream_config: cpal::StreamConfig = config.into();
     let click_total_samples = (sample_rate as f32 * CLICK_SECS) as u32;
 
-    // Build the synth-event receiver — only wired on the F32 path below.
+    // Build the synth-event receiver for the F32 synth path.
     // If no rx was provided (non-default AppState), we still run with an
     // empty one.
     let synth_rx = synth_rx.unwrap_or_else(|| {
@@ -284,107 +283,63 @@ fn build_and_run_stream(
         rx
     });
 
-    let err_fn = |err: cpal::StreamError| {
+    let err_fn = |err: cpal::Error| {
         eprintln!("[audio-clock] stream error: {}", err);
     };
 
-    let stream = match sample_format {
-        SampleFormat::F32 => {
-            let transport = Arc::clone(&transport);
-            let metronome_enabled = Arc::clone(&metronome_enabled);
-            let crossing_tx = crossing_tx.clone();
-            let mut click = Click::new(click_total_samples);
-            let sr_f = sample_rate as f32;
+    let transport = Arc::clone(&transport);
+    let metronome_enabled = Arc::clone(&metronome_enabled);
+    let mut click = Click::new(click_total_samples);
+    let sr_f = sample_rate as f32;
 
-            // Build the audio chain. Order: synth first, then FX
-            // blocks that shape its output in place. CLAP / VST3
-            // plugin blocks are also pushed here once their hosts
-            // exist.
-            let synth = make_synth_block(synth_params, synth_rx, sample_rate, slide_telemetry);
-            let reverb = Reverb::new(reverb_params, sample_rate);
-            let delay = Delay::with_transport(delay_params, Arc::clone(&transport), sample_rate);
-            let mut chain = Chain::with_queue(sample_rate, chain_rx);
-            chain.push(synth);
-            chain.push(Box::new(delay));
-            chain.push(Box::new(reverb));
+    // Build the audio chain. Order: synth first, then FX
+    // blocks that shape its output in place. CLAP / VST3
+    // plugin blocks are also pushed here once their hosts exist.
+    let synth = make_synth_block(synth_params, synth_rx, sample_rate, slide_telemetry);
+    let reverb = Reverb::new(reverb_params, sample_rate);
+    let delay = Delay::with_transport(delay_params, Arc::clone(&transport), sample_rate);
+    let mut chain = Chain::with_queue(sample_rate, chain_rx);
+    chain.push(synth);
+    chain.push(Box::new(delay));
+    chain.push(Box::new(reverb));
 
-            device.build_output_stream(
-                &stream_config,
-                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    let frames = data.len() as u32 / channels as u32;
+    let stream = device
+        .build_output_stream(
+            stream_config,
+            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                let frames = data.len() as u32 / channels as u32;
 
-                    if let Some(crossing) = transport.advance(frames) {
-                        let _ = crossing_tx.send(crossing);
-                        if metronome_enabled.load(Ordering::Relaxed) {
-                            let freq = if crossing.beat_in_bar == 0 {
-                                CLICK_FREQ_DOWNBEAT
-                            } else {
-                                CLICK_FREQ_OFFBEAT
-                            };
-                            click.trigger(freq);
+                if let Some(crossing) = transport.advance(frames) {
+                    let _ = crossing_tx.send(crossing);
+                    if metronome_enabled.load(Ordering::Relaxed) {
+                        let freq = if crossing.beat_in_bar == 0 {
+                            CLICK_FREQ_DOWNBEAT
+                        } else {
+                            CLICK_FREQ_OFFBEAT
+                        };
+                        click.trigger(freq);
+                    }
+                }
+
+                // Chain runs every block in order on the shared buffer.
+                // Synth (first block) writes audio; future FX blocks
+                // shape it in place.
+                chain.process(data, channels as usize);
+
+                // Metronome click mixes on top of the whole chain.
+                for frame in data.chunks_mut(channels as usize) {
+                    let v = click.next_sample(sr_f);
+                    if v != 0.0 {
+                        for sample in frame.iter_mut() {
+                            *sample += v;
                         }
                     }
-
-                    // Chain runs every block in order on the shared buffer.
-                    // Synth (first block) writes audio; future FX blocks
-                    // shape it in place.
-                    chain.process(data, channels as usize);
-
-                    // Metronome click mixes on top of the whole chain.
-                    for frame in data.chunks_mut(channels as usize) {
-                        let v = click.next_sample(sr_f);
-                        if v != 0.0 {
-                            for s in frame.iter_mut() {
-                                *s += v;
-                            }
-                        }
-                    }
-                },
-                err_fn,
-                None,
-            )
-        }
-        SampleFormat::I16 => {
-            // Clicks not implemented for non-F32 formats. Transport
-            // still ticks; stream outputs silence.
-            let transport = Arc::clone(&transport);
-            let crossing_tx = crossing_tx.clone();
-            device.build_output_stream(
-                &stream_config,
-                move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    let frames = data.len() as u32 / channels as u32;
-                    if let Some(crossing) = transport.advance(frames) {
-                        let _ = crossing_tx.send(crossing);
-                    }
-                    for s in data.iter_mut() {
-                        *s = 0;
-                    }
-                },
-                err_fn,
-                None,
-            )
-        }
-        SampleFormat::U16 => {
-            let transport = Arc::clone(&transport);
-            let crossing_tx = crossing_tx.clone();
-            device.build_output_stream(
-                &stream_config,
-                move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
-                    let frames = data.len() as u32 / channels as u32;
-                    if let Some(crossing) = transport.advance(frames) {
-                        let _ = crossing_tx.send(crossing);
-                    }
-                    for s in data.iter_mut() {
-                        *s = u16::MAX / 2;
-                    }
-                },
-                err_fn,
-                None,
-            )
-        }
-        other => return Err(format!("Unsupported sample format: {:?}", other)),
-    }
-    .map_err(|e| format!("Failed to build output stream: {}", e))?;
+                }
+            },
+            err_fn,
+            None,
+        )
+        .map_err(|e| format!("Failed to build output stream: {e}"))?;
 
     stream
         .play()

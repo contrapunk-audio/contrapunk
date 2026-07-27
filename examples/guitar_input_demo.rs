@@ -23,6 +23,7 @@ use contrapunk::audio::guitar_input::{
 };
 use contrapunk::audio::onset::PluckDetector;
 use contrapunk::audio::pitch::freq_to_midi;
+use contrapunk::cpal_io::{device_name, preferred_input_config};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use pitch_detection::detector::mcleod::McLeodDetector;
@@ -88,21 +89,21 @@ fn main() {
 
     println!("Audio Inputs:");
     for (i, d) in devices.iter().enumerate() {
-        println!("  [{}] {}", i, d.name().unwrap_or_default());
+        println!("  [{}] {}", i, device_name(d));
     }
     println!();
 
     let dev_idx = prompt_usize("Select", devices.len() - 1);
     let device = &devices[dev_idx];
-    let device_name = device.name().unwrap_or_default();
+    let selected_device_name = device_name(device);
 
-    let input_config = device
-        .default_input_config()
-        .expect("No default input config");
+    let input_config =
+        preferred_input_config(device, &[cpal::SampleFormat::F32, cpal::SampleFormat::I16])
+            .expect("No compatible input config");
     let sample_rate = input_config.sample_rate() as usize;
     let channels = input_config.channels() as usize;
 
-    println!("  Using: {}", device_name);
+    println!("  Using: {}", selected_device_name);
     println!("  Channels: {}, Sample Rate: {}", channels, sample_rate);
 
     let channel = if channels > 1 {
@@ -203,10 +204,10 @@ fn main() {
     let n_ch = channels;
     let sr = sample_rate;
 
-    let stream_config: cpal::StreamConfig = input_config.clone().into();
+    let stream_config: cpal::StreamConfig = input_config.into();
     let stream = match input_config.sample_format() {
         cpal::SampleFormat::F32 => device.build_input_stream(
-            &stream_config,
+            stream_config,
             move |data: &[f32], _| {
                 audio_process(data, n_ch, ch, sr, &oc, &pc, &gc, &state_c);
                 feed_pipeline(data, n_ch, ch, &pipeline_c, &events_c);
@@ -222,7 +223,7 @@ fn main() {
             let pipeline_c2 = Arc::clone(&pipeline);
             let events_c2 = Arc::clone(&events_queue);
             device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[i16], _| {
                     let f: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
                     audio_process(&f, n_ch, ch, sr, &oc2, &pc2, &gc2, &state_c2);

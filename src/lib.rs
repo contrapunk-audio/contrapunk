@@ -74,6 +74,10 @@ pub use contrapunk_transport as transport;
 // Native-only modules (require midir, networking, etc.)
 // =============================================================================
 
+/// CPAL device/configuration helpers shared by native surfaces.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod cpal_io;
+
 /// MIDI routing module (native-only, requires midir).
 #[cfg(not(target_arch = "wasm32"))]
 pub mod router;
