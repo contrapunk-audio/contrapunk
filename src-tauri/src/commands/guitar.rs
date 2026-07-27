@@ -4,12 +4,13 @@
 //! guitar input device/channel, and configure the DSP pipeline
 //! parameters before starting routing.
 
-use cpal::traits::{DeviceTrait, HostTrait};
+use cpal::traits::HostTrait;
 use serde::Serialize;
 use tauri::{Manager, State};
 
 use contrapunk::audio::guitar::GuitarCalibrationProfile;
 use contrapunk::audio::guitar_input::GuitarInputConfig;
+use contrapunk::cpal_io::device_name;
 
 use crate::state::AppState;
 
@@ -125,7 +126,7 @@ pub fn list_audio_devices() -> Result<Vec<String>, String> {
     let devices = host
         .input_devices()
         .map_err(|e| format!("Failed to enumerate audio devices: {}", e))?;
-    Ok(devices.map(|d| d.name().unwrap_or_default()).collect())
+    Ok(devices.map(|device| device_name(&device)).collect())
 }
 
 /// Inner load helper — does the disk read + AppState mutation. Shared

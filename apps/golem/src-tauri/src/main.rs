@@ -407,15 +407,14 @@ fn run_audio_thread(
     let output_device = host
         .default_output_device()
         .ok_or_else(|| "No default audio output device".to_string())?;
-    let output_config = output_device
-        .default_output_config()
-        .map_err(|e| format!("Default output config error: {e}"))?;
+    let output_config = preferred_output_config(&output_device)
+        .map_err(|e| format!("Compatible output config error: {e}"))?;
 
     let sample_rate = output_config.sample_rate();
     let channels = output_config.channels() as usize;
     let sample_format = output_config.sample_format();
     let stream_config: cpal::StreamConfig = output_config.into();
-    let err_fn = |err: cpal::StreamError| eprintln!("[golem] audio stream error: {err}");
+    let err_fn = |err: cpal::Error| eprintln!("[golem] audio stream error: {err}");
 
     eprintln!(
         "[golem] output device='{}' sample_rate={}Hz channels={} format={:?}",
@@ -428,7 +427,7 @@ fn run_audio_thread(
     let output_stream = match sample_format {
         SampleFormat::F32 => build_output_stream_f32(
             &output_device,
-            &stream_config,
+            stream_config,
             channels,
             sample_rate,
             Arc::clone(&params),
@@ -437,7 +436,7 @@ fn run_audio_thread(
         ),
         SampleFormat::I16 => build_output_stream_i16(
             &output_device,
-            &stream_config,
+            stream_config,
             channels,
             sample_rate,
             Arc::clone(&params),
@@ -446,7 +445,7 @@ fn run_audio_thread(
         ),
         SampleFormat::U16 => build_output_stream_u16(
             &output_device,
-            &stream_config,
+            stream_config,
             channels,
             sample_rate,
             Arc::clone(&params),
@@ -524,13 +523,13 @@ fn render_f32_block(
 
 fn build_output_stream_f32(
     device: &cpal::Device,
-    config: &cpal::StreamConfig,
+    config: cpal::StreamConfig,
     channels: usize,
     sample_rate: u32,
     params: Arc<SharedParams>,
     follow: Arc<FollowAtomics>,
-    err_fn: fn(cpal::StreamError),
-) -> Result<Stream, cpal::BuildStreamError> {
+    err_fn: fn(cpal::Error),
+) -> Result<Stream, cpal::Error> {
     let mut engine = Engine::new();
     engine.prepare(sample_rate, 1024);
     let mut sample_pos = 0u64;
@@ -554,13 +553,13 @@ fn build_output_stream_f32(
 
 fn build_output_stream_i16(
     device: &cpal::Device,
-    config: &cpal::StreamConfig,
+    config: cpal::StreamConfig,
     channels: usize,
     sample_rate: u32,
     params: Arc<SharedParams>,
     follow: Arc<FollowAtomics>,
-    err_fn: fn(cpal::StreamError),
-) -> Result<Stream, cpal::BuildStreamError> {
+    err_fn: fn(cpal::Error),
+) -> Result<Stream, cpal::Error> {
     let mut engine = Engine::new();
     engine.prepare(sample_rate, 1024);
     let mut sample_pos = 0u64;
@@ -593,13 +592,13 @@ fn build_output_stream_i16(
 
 fn build_output_stream_u16(
     device: &cpal::Device,
-    config: &cpal::StreamConfig,
+    config: cpal::StreamConfig,
     channels: usize,
     sample_rate: u32,
     params: Arc<SharedParams>,
     follow: Arc<FollowAtomics>,
-    err_fn: fn(cpal::StreamError),
-) -> Result<Stream, cpal::BuildStreamError> {
+    err_fn: fn(cpal::Error),
+) -> Result<Stream, cpal::Error> {
     let mut engine = Engine::new();
     engine.prepare(sample_rate, 1024);
     let mut sample_pos = 0u64;
@@ -638,6 +637,70 @@ fn device_label(device: &cpal::Device) -> String {
         .unwrap_or_default()
 }
 
+fn device_matches(device: &cpal::Device, selection: &str) -> bool {
+    device_label(device) == selection
+        || device
+            .id()
+            .is_ok_and(|id| id.id() == selection || id.to_string() == selection)
+}
+
+const HANDLED_SAMPLE_FORMATS: &[SampleFormat] =
+    &[SampleFormat::F32, SampleFormat::I16, SampleFormat::U16];
+
+fn preferred_input_config(
+    device: &cpal::Device,
+) -> Result<cpal::SupportedStreamConfig, cpal::Error> {
+    let default = device.default_input_config()?;
+    if HANDLED_SAMPLE_FORMATS.contains(&default.sample_format()) {
+        return Ok(default);
+    }
+    preferred_config(default, device.supported_input_configs()?)
+}
+
+fn preferred_output_config(
+    device: &cpal::Device,
+) -> Result<cpal::SupportedStreamConfig, cpal::Error> {
+    let default = device.default_output_config()?;
+    if HANDLED_SAMPLE_FORMATS.contains(&default.sample_format()) {
+        return Ok(default);
+    }
+    preferred_config(default, device.supported_output_configs()?)
+}
+
+fn preferred_config(
+    default: cpal::SupportedStreamConfig,
+    supported: impl Iterator<Item = cpal::SupportedStreamConfigRange>,
+) -> Result<cpal::SupportedStreamConfig, cpal::Error> {
+    let range = supported
+        .filter(|range| HANDLED_SAMPLE_FORMATS.contains(&range.sample_format()))
+        .max_by(|a, b| {
+            let a_rank = HANDLED_SAMPLE_FORMATS
+                .iter()
+                .position(|format| *format == a.sample_format())
+                .unwrap_or(HANDLED_SAMPLE_FORMATS.len());
+            let b_rank = HANDLED_SAMPLE_FORMATS
+                .iter()
+                .position(|format| *format == b.sample_format())
+                .unwrap_or(HANDLED_SAMPLE_FORMATS.len());
+            b_rank
+                .cmp(&a_rank)
+                .then_with(|| a.cmp_default_heuristics(b))
+        })
+        .ok_or_else(|| {
+            cpal::Error::with_message(
+                cpal::ErrorKind::UnsupportedConfig,
+                format!(
+                    "device does not support any handled sample format: {HANDLED_SAMPLE_FORMATS:?}"
+                ),
+            )
+        })?;
+
+    Ok(range
+        .try_with_sample_rate(default.sample_rate())
+        .or_else(|| range.try_with_standard_sample_rate())
+        .unwrap_or_else(|| range.with_max_sample_rate()))
+}
+
 fn build_input_stream(
     host: &cpal::Host,
     config: StartConfig,
@@ -648,11 +711,12 @@ fn build_input_stream(
         .as_deref()
         .filter(|s| !s.trim().is_empty())
     {
-        Some(name) => host
-            .input_devices()
-            .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
-            .find(|device| device_label(device) == name)
-            .or_else(|| host.default_input_device()),
+        Some(name) => Some(
+            host.input_devices()
+                .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
+                .find(|device| device_matches(device, name))
+                .ok_or_else(|| format!("Audio input device not found: {name}"))?,
+        ),
         None => host.default_input_device(),
     };
 
@@ -661,9 +725,8 @@ fn build_input_stream(
         return Ok(None);
     };
 
-    let input_config = input_device
-        .default_input_config()
-        .map_err(|e| format!("Default input config error: {e}"))?;
+    let input_config = preferred_input_config(&input_device)
+        .map_err(|e| format!("Compatible input config error: {e}"))?;
 
     let input_sample_rate = input_config.sample_rate();
     let input_channels = input_config.channels() as usize;
@@ -691,7 +754,7 @@ fn build_input_stream(
         SampleFormat::F32 => {
             let mut extractor = GuitarFeatureExtractor::new(input_sample_rate);
             input_device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     let channel = follow
                         .input_channel
@@ -707,7 +770,7 @@ fn build_input_stream(
         SampleFormat::I16 => {
             let mut extractor = GuitarFeatureExtractor::new(input_sample_rate);
             input_device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
                     let channel = follow
                         .input_channel
@@ -723,7 +786,7 @@ fn build_input_stream(
         SampleFormat::U16 => {
             let mut extractor = GuitarFeatureExtractor::new(input_sample_rate);
             input_device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
                     let channel = follow
                         .input_channel
@@ -925,4 +988,31 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Golem");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cpal::SupportedBufferSize;
+
+    fn range(format: SampleFormat) -> cpal::SupportedStreamConfigRange {
+        cpal::SupportedStreamConfigRange::new(
+            2,
+            44_100,
+            48_000,
+            SupportedBufferSize::Unknown,
+            format,
+        )
+    }
+
+    #[test]
+    fn preferred_config_avoids_new_unhandled_integer_defaults() {
+        let default = range(SampleFormat::I32)
+            .try_with_sample_rate(48_000)
+            .unwrap();
+        let selected = preferred_config(default, [range(SampleFormat::F32)].into_iter()).unwrap();
+
+        assert_eq!(selected.sample_format(), SampleFormat::F32);
+        assert_eq!(selected.sample_rate(), 48_000);
+    }
 }

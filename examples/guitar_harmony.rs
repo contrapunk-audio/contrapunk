@@ -12,6 +12,7 @@ use contrapunk::audio::detectors::GoertzelBank;
 use contrapunk::audio::guitar::*;
 use contrapunk::audio::onset::PluckDetector;
 use contrapunk::audio::pitch::freq_to_midi;
+use contrapunk::cpal_io::{device_name, preferred_input_config};
 use contrapunk::harmony::{HarmonyEngine, HarmonyMode, Key};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -481,14 +482,14 @@ fn main() {
 
     println!("Audio Input Devices:");
     for (i, d) in devices.iter().enumerate() {
-        println!("  [{}] {}", i, d.name().unwrap_or_default());
+        println!("  [{}] {}", i, device_name(d));
     }
     let audio_idx = prompt_selection(
         &format!("\nSelect [0-{}]: ", devices.len() - 1),
         devices.len() - 1,
     );
     let audio_device = &devices[audio_idx];
-    println!("  Using: {}\n", audio_device.name().unwrap_or_default());
+    println!("  Using: {}\n", device_name(audio_device));
 
     // ── MIDI Output ──────────────────────────────────────
     let midi_outputs = list_midi_outputs();
@@ -549,9 +550,11 @@ fn main() {
     let mut engine = HarmonyEngine::new(keys[key_idx].2.clone(), harmony_mode.clone());
 
     // ── Audio Stream ─────────────────────────────────────
-    let config = audio_device
-        .default_input_config()
-        .expect("No input config");
+    let config = preferred_input_config(
+        audio_device,
+        &[cpal::SampleFormat::F32, cpal::SampleFormat::I16],
+    )
+    .expect("No compatible input config");
     let sample_rate = config.sample_rate() as usize;
     let channels = config.channels() as usize;
 
@@ -590,10 +593,10 @@ fn main() {
     let state_c = Arc::clone(&state);
     let pipeline_c = Arc::clone(&pipeline);
 
-    let stream_config: cpal::StreamConfig = config.clone().into();
+    let stream_config: cpal::StreamConfig = config.into();
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => audio_device.build_input_stream(
-            &stream_config,
+            stream_config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 let mut pipe = pipeline_c.lock().unwrap();
                 let (events, display) = pipe.process(data);
@@ -614,7 +617,7 @@ fn main() {
             let state_c2 = Arc::clone(&state);
             let pipeline_c2 = Arc::clone(&pipeline);
             audio_device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
                     let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
                     let mut pipe = pipeline_c2.lock().unwrap();

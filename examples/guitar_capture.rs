@@ -25,6 +25,7 @@
 use contrapunk::audio::detectors::GoertzelBank;
 use contrapunk::audio::guitar::*;
 use contrapunk::audio::pitch::freq_to_midi;
+use contrapunk::cpal_io::{device_name, preferred_input_config, preferred_output_config};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use pitch_detection::detector::mcleod::McLeodDetector;
@@ -174,17 +175,19 @@ fn main() {
 
     println!("Audio Inputs:");
     for (i, d) in devices.iter().enumerate() {
-        println!("  [{}] {}", i, d.name().unwrap_or_default());
+        println!("  [{}] {}", i, device_name(d));
     }
     let dev_idx = prompt_usize(
         &format!("\nSelect [0-{}]: ", devices.len() - 1),
         devices.len() - 1,
     );
     let device = &devices[dev_idx];
-    let device_name = device.name().unwrap_or_default();
-    println!("  Using: {}", device_name);
+    let selected_device_name = device_name(device);
+    println!("  Using: {}", selected_device_name);
 
-    let config = device.default_input_config().expect("No input config");
+    let config =
+        preferred_input_config(device, &[cpal::SampleFormat::F32, cpal::SampleFormat::I16])
+            .expect("No compatible input config");
     let sr = config.sample_rate() as usize;
     let ch = config.channels() as usize;
     println!("  {}ch {}Hz", ch, sr);
@@ -212,10 +215,10 @@ fn main() {
     let state_c = Arc::clone(&state);
     let buffer_c = Arc::clone(&buffer);
 
-    let stream_config: cpal::StreamConfig = config.clone().into();
+    let stream_config: cpal::StreamConfig = config.into();
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => device.build_input_stream(
-            &stream_config,
+            stream_config,
             move |data: &[f32], _| {
                 audio_process(data, ch, tch, sr, &buffer_c, &state_c);
             },
@@ -226,7 +229,7 @@ fn main() {
             let sc2 = Arc::clone(&state);
             let bc2 = Arc::clone(&buffer);
             device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[i16], _| {
                     let f: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
                     audio_process(&f, ch, tch, sr, &bc2, &sc2);
@@ -273,7 +276,7 @@ fn main() {
             plucks_per_position: PLUCKS_PER_POSITION as u8,
             sample_rate: sr as u32,
             sample_duration_secs: SAMPLE_DURATION_SECS,
-            device_name: device_name.clone(),
+            device_name: selected_device_name.clone(),
             channel: tch as u8,
             capture_date: chrono_now(),
             noise_categories: noise_categories.clone(),
@@ -1034,9 +1037,8 @@ fn playback_samples(plucks: &[PluckData], sample_rate: usize, note_name: String)
         }
     };
 
-    let output_config = output_device
-        .default_output_config()
-        .expect("No output config");
+    let output_config = preferred_output_config(&output_device, &[cpal::SampleFormat::F32])
+        .expect("No compatible output config");
 
     println!(
         "  Playing back {} plucks for {}...",
@@ -1056,12 +1058,12 @@ fn playback_samples(plucks: &[PluckData], sample_rate: usize, note_name: String)
         let audio_data = Arc::new(Mutex::new((audio.clone(), 0usize)));
         let ad = Arc::clone(&audio_data);
 
-        let config: cpal::StreamConfig = output_config.clone().into();
+        let config: cpal::StreamConfig = output_config.into();
         let out_channels = config.channels as usize;
 
         let stream = output_device
             .build_output_stream(
-                &config,
+                config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                     let mut ad = ad.lock().unwrap();
                     let (ref audio, ref mut pos) = *ad;

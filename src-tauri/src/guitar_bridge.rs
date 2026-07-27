@@ -6,6 +6,9 @@
 
 use contrapunk::audio::guitar::GuitarCalibrationProfile;
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent};
+use contrapunk::cpal_io::{
+    device_matches, device_name as cpal_device_name, preferred_input_config,
+};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::HeapRb;
@@ -100,13 +103,11 @@ impl GuitarBridge {
         } else {
             host.input_devices()
                 .map_err(|e| format!("Failed to enumerate audio devices: {e}"))?
-                .find(|device| device.name().unwrap_or_default().contains(device_name))
-                .or_else(|| host.default_input_device())
-                .ok_or("No default audio input device")?
+                .find(|device| device_matches(device, device_name))
+                .ok_or_else(|| format!("Audio input device not found: {device_name}"))?
         };
-        let supported_config = device
-            .default_input_config()
-            .map_err(|e| format!("No input config: {e}"))?;
+        let supported_config = preferred_input_config(&device, &[cpal::SampleFormat::F32])
+            .map_err(|e| format!("No compatible input config: {e}"))?;
         let sample_rate = supported_config.sample_rate() as usize;
         let channels = supported_config.channels() as usize;
         if channel >= channels {
@@ -119,7 +120,7 @@ impl GuitarBridge {
 
         eprintln!(
             "[guitar_bridge] Found device: {} ({}ch {}Hz)",
-            device.name().unwrap_or_default(),
+            cpal_device_name(&device),
             channels,
             sample_rate
         );
@@ -241,7 +242,7 @@ impl GuitarBridge {
             buffer_size: cpal::BufferSize::Fixed(128),
         };
         let stream = match device.build_input_stream(
-            &stream_config,
+            stream_config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 for frame in data.chunks_exact(channels) {
                     if audio_tx.try_push(frame[channel]).is_err() {

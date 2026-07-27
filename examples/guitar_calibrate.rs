@@ -9,6 +9,7 @@
 
 use contrapunk::audio::guitar::*;
 use contrapunk::audio::pitch::freq_to_midi;
+use contrapunk::cpal_io::{device_name, preferred_input_config};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use pitch_detection::detector::mcleod::McLeodDetector;
@@ -200,18 +201,20 @@ fn main() {
 
     println!("Audio Input Devices:");
     for (i, d) in devices.iter().enumerate() {
-        println!("  [{}] {}", i, d.name().unwrap_or_default());
+        println!("  [{}] {}", i, device_name(d));
     }
     let audio_idx = prompt_select(
         &format!("\nSelect [0-{}]: ", devices.len() - 1),
         devices.len() - 1,
     );
     let audio_device = &devices[audio_idx];
-    println!("  Using: {}", audio_device.name().unwrap_or_default());
+    println!("  Using: {}", device_name(audio_device));
 
-    let config = audio_device
-        .default_input_config()
-        .expect("No input config");
+    let config = preferred_input_config(
+        audio_device,
+        &[cpal::SampleFormat::F32, cpal::SampleFormat::I16],
+    )
+    .expect("No compatible input config");
     let sample_rate = config.sample_rate() as usize;
     let channels = config.channels() as usize;
 
@@ -241,10 +244,10 @@ fn main() {
     let buffer_c = Arc::clone(&buffer);
     let (sr, ch, tch) = (sample_rate, channels, target_channel);
 
-    let stream_config: cpal::StreamConfig = config.clone().into();
+    let stream_config: cpal::StreamConfig = config.into();
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => audio_device.build_input_stream(
-            &stream_config,
+            stream_config,
             move |data: &[f32], _| {
                 audio_process(data, ch, tch, sr, &buffer_c, &state_c);
             },
@@ -255,7 +258,7 @@ fn main() {
             let sc2 = Arc::clone(&state);
             let bc2 = Arc::clone(&buffer);
             audio_device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[i16], _| {
                     let f: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
                     audio_process(&f, ch, tch, sr, &bc2, &sc2);

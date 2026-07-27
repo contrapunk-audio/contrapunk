@@ -9,7 +9,7 @@ authors = ["Contrapunk Team"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-cpal = "0.17"
+cpal = "0.18"
 contrapunk-audio = { path = "../../../crates/contrapunk-audio" }
 golem-core = { path = "../../../crates/golem-core" }
 serde = { version = "1.0", features = ["derive"] }
