@@ -15,7 +15,7 @@ anyhow = "1.0"
 contrapunk = { path = ".." }
 contrapunk-companion = { path = "../crates/contrapunk-companion" }
 midir = "0.11"
-cpal = "0.17"
+cpal = "0.18"
 wmidi = "4.0"
 rand = "0.10"
 ringbuf = "0.5"
