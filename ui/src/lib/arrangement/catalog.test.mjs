@@ -533,10 +533,14 @@ test('Crystal Chorale combines a four-part harmonic-minor shadow with one delaye
 	}
 });
 
-test('Pixel Trio uses two independent declarative pattern roles', () => {
+test('Pixel Trio anchors its bass to the phrase and each gap answer to the latest note', () => {
 	assert.equal(PIXEL_TRIO_PRESET.researchStatus, 'approved');
 	assert.equal(PIXEL_TRIO_PRESET.play.transportRequired, true);
-	assert.deepEqual(PIXEL_TRIO_PRESET.requirements, ['pattern_lane', 'stable_lane_groups']);
+	assert.deepEqual(PIXEL_TRIO_PRESET.requirements, [
+		'pattern_lane',
+		'stable_lane_groups',
+		'role_mix'
+	]);
 	assert.equal(PIXEL_TRIO_PRESET.config.harmony.mode, 'PassThrough');
 	assert.equal(PIXEL_TRIO_PRESET.config.harmony.voiceCount, 1);
 	assert.equal(PIXEL_TRIO_PRESET.config.companion.canon.enabled, false);
@@ -546,35 +550,51 @@ test('Pixel Trio uses two independent declarative pattern roles', () => {
 			enabled: true,
 			cycleBeats: 4,
 			tailBeats: 4,
+			pitchAnchor: 'phrase_start',
+			onlyWhenInputIdle: false,
 			events: [
-				{ beat: 0, degree: 0, octave: -2, durationBeats: 1.25, velocity: 78 },
-				{ beat: 2.5, degree: 4, octave: -2, durationBeats: 0.75, velocity: 72 }
+				{ beat: 0, degree: 0, octave: -2, durationBeats: 0.5, velocity: 72 },
+				{ beat: 1, degree: 4, octave: -2, durationBeats: 0.375, velocity: 64 },
+				{ beat: 2, degree: 2, octave: -2, durationBeats: 0.5, velocity: 68 },
+				{ beat: 3, degree: 4, octave: -2, durationBeats: 0.375, velocity: 62 }
 			]
 		},
 		counterline: {
 			enabled: true,
 			cycleBeats: 4,
 			tailBeats: 4,
+			pitchAnchor: 'latest_input',
+			onlyWhenInputIdle: true,
 			events: [
-				{ beat: 1, degree: 4, octave: 0, durationBeats: 0.75, velocity: 70 },
-				{ beat: 3, degree: 2, octave: 0, durationBeats: 0.75, velocity: 68 }
+				{ beat: 0.5, degree: 4, octave: 0, durationBeats: 1, velocity: 60 },
+				{ beat: 1.5, degree: 2, octave: 0, durationBeats: 1, velocity: 56 },
+				{ beat: 2.5, degree: 5, octave: 0, durationBeats: 1, velocity: 58 },
+				{ beat: 3.5, degree: 4, octave: 0, durationBeats: 1, velocity: 54 }
 			]
 		}
+	});
+	assert.deepEqual(PIXEL_TRIO_PRESET.config.mix, {
+		input: 1,
+		harmony: 1,
+		canon: 0.52,
+		counterpoint: 0.42
 	});
 	assert.deepEqual(
 		missingArrangementCapabilities(
 			PIXEL_TRIO_PRESET,
-			new Set(['pattern_lane', 'stable_lane_groups'])
+			new Set(['pattern_lane', 'stable_lane_groups', 'role_mix'])
 		),
 		[]
 	);
 	assert.deepEqual(arrangementConfigCapabilities(PIXEL_TRIO_PRESET.config), [
 		'harmony',
 		'pattern_lane',
-		'stable_lane_groups'
+		'stable_lane_groups',
+		'role_mix'
 	]);
-	assert.match(PIXEL_TRIO_PRESET.result, /independent low support/i);
-	assert.match(PIXEL_TRIO_PRESET.approximation, /shared declarative pattern lanes/i);
+	assert.match(PIXEL_TRIO_PRESET.result, /phrase-relative bass/i);
+	assert.match(PIXEL_TRIO_PRESET.approximation, /phrase opening/i);
+	assert.match(PIXEL_TRIO_PRESET.approximation, /latest player attack/i);
 	assert.match(PIXEL_TRIO_PRESET.approximation, /does not emulate NES hardware/i);
 	assert.deepEqual(validateArrangementPreset(PIXEL_TRIO_PRESET), []);
 

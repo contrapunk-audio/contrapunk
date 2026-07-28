@@ -3,7 +3,8 @@
 	import type {
 		ArrangementPatternEventConfig,
 		ArrangementPatternLaneConfig,
-		ArrangementPatternLaneId
+		ArrangementPatternLaneId,
+		ArrangementPatternPitchAnchor
 	} from '$lib/arrangement/presets';
 	import { arrangement } from '$lib/stores/arrangement.svelte';
 
@@ -129,7 +130,7 @@
 			<p>PATTERN ROLES</p>
 			<h3>Low support + counterline</h3>
 		</div>
-		<span>Transport-synced · scale-relative</span>
+		<span>Transport-synced · key-, phrase-, or note-relative</span>
 	</header>
 
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -170,6 +171,18 @@
 							{/each}
 						</select>
 					</label>
+					<label title="Key follows the tonic; phrase follows the opening; latest follows your most recent attack">
+						<span>Pitch anchor</span>
+						<select value={pattern.pitchAnchor ?? 'key'} disabled={saving === definition.role} onchange={(event) => void update(definition.role, definition.laneId, (config) => (config.pitchAnchor = event.currentTarget.value as ArrangementPatternPitchAnchor))}>
+							<option value="key">Current key</option>
+							<option value="phrase_start">Phrase opening</option>
+							<option value="latest_input">Latest note</option>
+						</select>
+					</label>
+					<label class="idle-only" title="Skip scheduled attacks while the player holds a note, and yield immediately to a new attack">
+						<span>Player space</span>
+						<span class="check-row"><input type="checkbox" checked={pattern.onlyWhenInputIdle ?? false} disabled={saving === definition.role} onchange={(event) => void update(definition.role, definition.laneId, (config) => (config.onlyWhenInputIdle = event.currentTarget.checked))} /><output>Gaps only</output></span>
+					</label>
 				</div>
 
 				<div class="step-heading"><span>STEPS</span><span>BEAT</span><span>DEGREE</span><span>LENGTH</span><span>VELOCITY</span><span></span></div>
@@ -190,7 +203,7 @@
 			</article>
 		{/each}
 	</div>
-	<p class="hint">Degree follows the current key and scale. Register shifts every step in the role together. Role volume, mute, and solo stay in the Arrangement mixer.</p>
+	<p class="hint">Degree follows the chosen key or phrase-opening anchor through the current scale. “Gaps only” makes a role yield while you play. Role volume, mute, and solo stay in the Arrangement mixer.</p>
 </div>
 
 <style>
@@ -209,11 +222,13 @@
 	.lane-heading p { margin: 0; color: var(--proto-muted); font-size: 9px; }
 	.enable { display: flex; align-items: center; gap: 6px; color: var(--proto-text); font: 700 9px var(--font-code); }
 	.enable input { accent-color: var(--lane-accent); }
-	.lane-controls { display: grid; grid-template-columns: 1fr 1fr .8fr; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--proto-line); }
+	.lane-controls { display: grid; grid-template-columns: 1fr 1fr .8fr 1fr .8fr; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--proto-line); }
 	.lane-controls label { display: grid; min-width: 0; gap: 5px; }
 	.lane-controls label > span { color: var(--proto-muted); font: 700 8px var(--font-code); letter-spacing: .08em; }
 	.lane-controls input[type='range'] { width: 100%; accent-color: var(--lane-accent); }
 	.lane-controls output { color: var(--proto-text); font: 9px var(--font-code); }
+	.check-row { display: flex; min-height: 26px; align-items: center; gap: 6px; }
+	.check-row input { accent-color: var(--lane-accent); }
 	select, input[type='number'] { box-sizing: border-box; width: 100%; min-width: 0; height: 26px; border: 1px solid var(--proto-line-strong); background: var(--proto-surface); color: var(--proto-text); font: 10px var(--font-code); }
 	.step-heading, .step { display: grid; grid-template-columns: 30px .7fr .75fr .8fr 1.15fr 26px; align-items: center; gap: 6px; }
 	.step-heading { padding: 7px 12px; border-bottom: 1px solid var(--proto-line); color: var(--proto-dim); font: 700 7px var(--font-code); letter-spacing: .08em; }

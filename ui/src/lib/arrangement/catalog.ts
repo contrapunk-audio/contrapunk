@@ -720,17 +720,16 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 	tags: ['famicom-nes', 'three-pitched-roles', 'pattern-lane', 'stable-role-groups'],
 	builtIn: true,
 	result:
-		'A compact live hook stays foreground while independent low support and one answering tonal line alternate under a three-pitched-role ceiling.',
+		'A live hook leads a phrase-relative bass arpeggio while a compact counterpulse answers your latest note in the spaces you leave.',
 	approximation:
-		'A modern deterministic MIDI pattern informed by three-pitched-role economy in selected 1985–87 Famicom/NES practice. Two shared declarative pattern lanes supply tonic/fifth low support and a sparse upper answer while the player authors the hook and form. It does not emulate NES hardware, reproduce game music, simulate Koji Kondo or Manami Matsumae, or add noise, DMC, percussion, chip timbre, sound effects, motif recognition, or game-state logic.',
+		'A modern deterministic MIDI trio informed by three-pitched-role economy in selected 1985–87 Famicom/NES practice. The low pattern takes its pitch center from the phrase opening and moves through a compact four-step arpeggio. The counter pattern retunes from the latest player attack and yields to held notes, so contour changes its answer without adding another voice. It does not emulate NES hardware, reproduce game music, simulate Koji Kondo or Manami Matsumae, or add noise, DMC, percussion, chip timbre, sound effects, motif recognition, or game-state logic.',
 	play: {
 		prompt:
-			'Play a catchy two-bar single-note hook, repeat it exactly, change one ending, then leave a full bar for role separation and cleanup.',
+			'Play a short single-note hook with clear holes. Change direction inside the hook and hear each gap answer follow your latest note; start the next phrase elsewhere to move the bass.',
 		input: 'motif',
-		articulation:
-			'Clean, separated single notes; keyboard sustain and chord mode off, guitar strings muted with no bends, slides, double-stops, or ringing releases.',
-		density: 'Four to eight source attacks per two-bar hook; exactly one physical source note at a time.',
-		space: 'Include at least one beat of rest in the hook and one full bar after each variation.',
+		articulation: 'Use crisp attacks and short gaps, then hold one arrival to make the counterpulse yield.',
+		density: 'Three to six source attacks per phrase; two voices are normal and the full trio is brief.',
+		space: 'Leave one short opening inside the hook, then release long enough for the pattern window to close.',
 		tempo: '100–150 BPM in 4/4; transport is required for the two stable pattern roles.',
 		transportRequired: true
 	},
@@ -742,7 +741,7 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 		}
 	],
 	researchStatus: 'approved',
-	requirements: ['pattern_lane', 'stable_lane_groups'],
+	requirements: ['pattern_lane', 'stable_lane_groups', 'role_mix'],
 	config: {
 		harmony: {
 			scaleMode: 'Ionian',
@@ -774,23 +773,31 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 					enabled: true,
 					cycleBeats: 4,
 					tailBeats: 4,
+					pitchAnchor: 'phrase_start',
+					onlyWhenInputIdle: false,
 					events: [
-						{ beat: 0, degree: 0, octave: -2, durationBeats: 1.25, velocity: 78 },
-						{ beat: 2.5, degree: 4, octave: -2, durationBeats: 0.75, velocity: 72 }
+						{ beat: 0, degree: 0, octave: -2, durationBeats: 0.5, velocity: 72 },
+						{ beat: 1, degree: 4, octave: -2, durationBeats: 0.375, velocity: 64 },
+						{ beat: 2, degree: 2, octave: -2, durationBeats: 0.5, velocity: 68 },
+						{ beat: 3, degree: 4, octave: -2, durationBeats: 0.375, velocity: 62 }
 					]
 				},
 				counterline: {
 					enabled: true,
 					cycleBeats: 4,
 					tailBeats: 4,
+					pitchAnchor: 'latest_input',
+					onlyWhenInputIdle: true,
 					events: [
-						{ beat: 1, degree: 4, octave: 0, durationBeats: 0.75, velocity: 70 },
-						{ beat: 3, degree: 2, octave: 0, durationBeats: 0.75, velocity: 68 }
+						{ beat: 0.5, degree: 4, octave: 0, durationBeats: 1, velocity: 60 },
+						{ beat: 1.5, degree: 2, octave: 0, durationBeats: 1, velocity: 56 },
+						{ beat: 2.5, degree: 5, octave: 0, durationBeats: 1, velocity: 58 },
+						{ beat: 3.5, degree: 4, octave: 0, durationBeats: 1, velocity: 54 }
 					]
 				}
 			}
 		},
-		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+		mix: { input: 1, harmony: 1, canon: 0.52, counterpoint: 0.42 }
 	}
 };
 
@@ -959,7 +966,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 33, name: 'Metric Labyrinth', family: 'jazz', result: 'Percussive counterpoint crosses uneven groupings.', prompt: 'Repeat an exact accented figure in 5, 7, or grouped 4/4.', references: ['Tigran Hamasyan', 'Vijay Iyer'], requirements: ['odd_meter', 'pattern_lane'], input: 'motif', transportRequired: true },
 	{ number: 34, name: 'Chamber Sky', family: 'jazz', result: 'Lyrical voices expand into airy ensemble harmony.', prompt: 'Play breath-shaped arcs with wide expressive intervals and long releases.', references: ['Maria Schneider', 'Kenny Wheeler'], requirements: ['stable_lane_groups'] },
 	{ number: 35, name: 'Elastic Counter-Groove', family: 'jazz', result: 'Syncopated harmony alternates with contrapuntal answers.', prompt: 'Play concise one- or two-bar riffs with deliberate holes.', references: ['Esperanza Spalding', 'Brad Mehldau', 'Robert Glasper'], requirements: ['pattern_lane'], input: 'motif', transportRequired: true },
-	{ number: 36, name: 'Pixel Trio', family: 'game', result: PIXEL_TRIO_PRESET.result, prompt: PIXEL_TRIO_PRESET.play.prompt, references: ['Selected early Famicom/NES practice'], requirements: ['pattern_lane', 'stable_lane_groups'], input: 'motif', transportRequired: true },
+	{ number: 36, name: 'Pixel Trio', family: 'game', result: PIXEL_TRIO_PRESET.result, prompt: PIXEL_TRIO_PRESET.play.prompt, references: ['Selected early Famicom/NES practice'], requirements: ['pattern_lane', 'stable_lane_groups', 'role_mix'], input: 'motif', transportRequired: true },
 	{ number: 37, name: 'Fractured Crystal', family: 'game', result: 'A tiny motif fractures into limited-voice ostinatos and modal echoes.', prompt: 'Repeat a three-to-five-note motif slowly, alter one note, and leave substantial air.', references: ['Disasterpeace — FEZ'], requirements: ['motif_memory', 'pattern_lane', 'probability_density'], input: 'motif', transportRequired: true },
 	{ number: 38, name: 'Summit Pulse', family: 'game', result: 'An intimate line grows into rhythmic upper layers.', prompt: 'Begin softly with hesitant fragments, then increase register, velocity, and repetition.', references: ['Lena Raine'], requirements: ['adaptive_scenes'], input: 'motif' },
 	{ number: 39, name: 'Adaptive Pilgrim', family: 'game', result: 'The arrangement follows an emotional intensity arc.', prompt: 'Play isolated sustained notes, then longer and louder phrases, then withdraw.', references: ['Austin Wintory', 'Jessica Curry', 'Gareth Coker'], requirements: ['adaptive_scenes'] },

@@ -29,6 +29,8 @@ const EMPTY_PATTERN_LANE: ArrangementPatternLaneConfig = {
 	enabled: false,
 	cycleBeats: 4,
 	tailBeats: 4,
+	pitchAnchor: 'key',
+	onlyWhenInputIdle: false,
 	events: []
 };
 
@@ -117,6 +119,8 @@ class ArrangementStore {
 				enabled: config.enabled,
 				cycle_beats: config.cycleBeats,
 				tail_beats: config.tailBeats,
+				pitch_anchor: config.pitchAnchor ?? 'key',
+				only_when_input_idle: config.onlyWhenInputIdle ?? false,
 				events: config.events.map((event) => ({
 					beat: event.beat,
 					degree: event.degree,
@@ -371,6 +375,11 @@ function patternFromWire(state: Record<string, unknown>): ArrangementPatternLane
 		enabled: state.enabled === true,
 		cycleBeats: typeof state.cycle_beats === 'number' ? state.cycle_beats : 4,
 		tailBeats: typeof state.tail_beats === 'number' ? state.tail_beats : 4,
+		pitchAnchor:
+			state.pitch_anchor === 'phrase_start' || state.pitch_anchor === 'latest_input'
+				? state.pitch_anchor
+				: 'key',
+		onlyWhenInputIdle: state.only_when_input_idle === true,
 		events: Array.isArray(state.events)
 			? state.events.flatMap((value) => {
 					if (typeof value !== 'object' || value === null) return [];

@@ -115,6 +115,7 @@ export interface ArrangementCounterpointConfig {
 }
 
 export type ArrangementPatternLaneId = 'pattern_low' | 'pattern_counter';
+export type ArrangementPatternPitchAnchor = 'key' | 'phrase_start' | 'latest_input';
 
 export interface ArrangementPatternEventConfig {
 	beat: number;
@@ -128,6 +129,10 @@ export interface ArrangementPatternLaneConfig {
 	enabled: boolean;
 	cycleBeats: number;
 	tailBeats: number;
+	/** Optional for backward-compatible schema-v2 user presets. */
+	pitchAnchor?: ArrangementPatternPitchAnchor;
+	/** Optional for backward-compatible schema-v2 user presets. */
+	onlyWhenInputIdle?: boolean;
 	events: ArrangementPatternEventConfig[];
 }
 
@@ -268,6 +273,12 @@ export function validateArrangementConfig(config: ArrangementConfig): string[] {
 	}
 	if (config.companion.patterns) {
 		for (const [role, pattern] of Object.entries(config.companion.patterns)) {
+			if (pattern.pitchAnchor !== undefined && !['key', 'phrase_start', 'latest_input'].includes(pattern.pitchAnchor)) {
+				errors.push(`${role} pitchAnchor must be key, phrase_start, or latest_input`);
+			}
+			if (pattern.onlyWhenInputIdle !== undefined && typeof pattern.onlyWhenInputIdle !== 'boolean') {
+				errors.push(`${role} onlyWhenInputIdle must be boolean`);
+			}
 			if (!Number.isFinite(pattern.cycleBeats) || pattern.cycleBeats < 0.25 || pattern.cycleBeats > 32) {
 				errors.push(`${role} cycleBeats must be between 0.25 and 32`);
 			}

@@ -5,7 +5,8 @@
 //! configured scale-degree events then run independently of the input rhythm.
 //! Presets provide the data. The shared lane contains no preset-specific music.
 
-use contrapunk_harmony::{Key, ScaleMode};
+use contrapunk_harmony::{Key, Scale, ScaleMode};
+use wmidi::Note;
 
 use super::lane::{InputEvent, InputFilter, Lane, LaneOutput, LanePhase};
 use super::voice_output::VoiceOutputTarget;
@@ -13,6 +14,35 @@ use super::world::WorldState;
 use super::DispatchOp;
 
 const MAX_EVENTS: usize = 16;
+const MIDI_NOTE_COUNT: usize = 128;
+const MIDI_CHANNEL_COUNT: usize = 16;
+const INPUT_OWNERS: usize = MIDI_NOTE_COUNT * MIDI_CHANNEL_COUNT;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PatternPitchAnchor {
+    Key,
+    PhraseStart,
+    LatestInput,
+}
+
+impl PatternPitchAnchor {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Key => "key",
+            Self::PhraseStart => "phrase_start",
+            Self::LatestInput => "latest_input",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "key" => Ok(Self::Key),
+            "phrase_start" => Ok(Self::PhraseStart),
+            "latest_input" => Ok(Self::LatestInput),
+            _ => Err("pattern pitch_anchor must be key, phrase_start, or latest_input".into()),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PatternEvent {
@@ -38,12 +68,16 @@ pub struct PatternLane {
     tail_beats: f64,
     events: Vec<PatternEvent>,
     target: VoiceOutputTarget,
+    pitch_anchor: PatternPitchAnchor,
+    only_when_input_idle: bool,
     anchor: Option<f64>,
+    phrase_pitch_class: Option<u8>,
     cycle_start: f64,
     next_event: usize,
     active_until: f64,
     channel: u8,
     active: Option<ActiveNote>,
+    active_inputs: [u16; INPUT_OWNERS],
     last_tick_beat: Option<f64>,
 }
 
@@ -57,22 +91,36 @@ impl PatternLane {
             tail_beats: 4.0,
             events: Vec::new(),
             target: VoiceOutputTarget::Synth,
+            pitch_anchor: PatternPitchAnchor::Key,
+            only_when_input_idle: false,
             anchor: None,
+            phrase_pitch_class: None,
             cycle_start: 0.0,
             next_event: 0,
             active_until: 0.0,
             channel: 0,
             active: None,
+            active_inputs: [0; INPUT_OWNERS],
             last_tick_beat: None,
         }
     }
 
     fn clear_schedule(&mut self) {
         self.anchor = None;
+        self.phrase_pitch_class = None;
         self.cycle_start = 0.0;
         self.next_event = 0;
         self.active_until = 0.0;
         self.last_tick_beat = None;
+    }
+
+    fn input_is_idle(&self) -> bool {
+        !self.active_inputs.iter().any(|active| *active > 0)
+    }
+
+    fn input_owner(note: u8, channel: u8) -> Option<usize> {
+        (note < MIDI_NOTE_COUNT as u8 && channel < MIDI_CHANNEL_COUNT as u8)
+            .then_some(channel as usize * MIDI_NOTE_COUNT + note as usize)
     }
 
     fn release_active(&mut self, ops: &mut Vec<DispatchOp>) {
@@ -93,15 +141,30 @@ impl PatternLane {
         }
     }
 
-    fn resolve_note(world: &WorldState, event: PatternEvent) -> Option<u8> {
+    fn resolve_note(&self, world: &WorldState, event: PatternEvent) -> Option<u8> {
         let (key, mode) = world
             .engine_snapshot
             .lock()
             .map(|engine| (engine.key(), engine.scale_mode()))
             .unwrap_or((Key::C, ScaleMode::Ionian));
         let offsets = mode.intervals();
-        let offset = *offsets.get(event.degree as usize)? as i16;
-        let midi = 60i16 + key.semitones_from_c() as i16 + offset + 12 * event.octave as i16;
+        let tonic = key.semitones_from_c() as usize;
+        let degree = event.degree as usize;
+        let midi = match self.pitch_anchor {
+            PatternPitchAnchor::Key => {
+                60 + tonic as i16 + *offsets.get(degree)? as i16 + 12 * event.octave as i16
+            }
+            PatternPitchAnchor::PhraseStart | PatternPitchAnchor::LatestInput => {
+                let phrase_pitch_class = self.phrase_pitch_class.unwrap_or(tonic as u8);
+                let scale = Scale::new(tonic as u8, mode);
+                let anchor = scale.snap_to_scale(Note::try_from(60u8 + phrase_pitch_class).ok()?);
+                let anchor_degree = scale.degree_of(anchor)?;
+                let target_degree = anchor_degree + degree;
+                60 + tonic as i16
+                    + offsets[target_degree % offsets.len()] as i16
+                    + 12 * (event.octave as i16 + (target_degree / offsets.len()) as i16)
+            }
+        };
         u8::try_from(midi).ok().filter(|midi| *midi <= 127)
     }
 
@@ -181,24 +244,49 @@ impl Lane for PatternLane {
 
     fn reset_runtime(&mut self) {
         self.active = None;
+        self.active_inputs.fill(0);
         self.clear_schedule();
     }
 
     fn on_input(&mut self, ev: InputEvent, world: &WorldState) -> LaneOutput {
-        let InputEvent::NoteOn { channel, .. } = ev else {
+        let (note, channel) = match ev {
+            InputEvent::NoteOn { note, channel, .. } => (note, channel),
+            InputEvent::NoteOff { note, channel } => {
+                if let Some(owner) = Self::input_owner(note, channel) {
+                    self.active_inputs[owner] = self.active_inputs[owner].saturating_sub(1);
+                }
+                return LaneOutput::default();
+            }
+            InputEvent::Cc { .. } => return LaneOutput::default(),
+        };
+        if !self.enabled {
+            return LaneOutput::default();
+        }
+        let Some(owner) = Self::input_owner(note, channel) else {
             return LaneOutput::default();
         };
-        if !self.enabled || self.events.is_empty() || !world.transport.is_running() {
-            return LaneOutput::default();
+
+        self.active_inputs[owner] = self.active_inputs[owner].saturating_add(1);
+        let mut ops = Vec::new();
+        if self.only_when_input_idle {
+            self.release_active(&mut ops);
+        }
+        if self.events.is_empty() || !world.transport.is_running() {
+            return LaneOutput {
+                ops,
+                ..Default::default()
+            };
         }
 
         let now = world.transport.total_beats();
-        let mut ops = Vec::new();
-        if self.anchor.is_none() || (now >= self.active_until && self.active.is_none()) {
+        if self.anchor.is_none() || now >= self.active_until {
             self.release_active(&mut ops);
             self.anchor = Some(now);
+            self.phrase_pitch_class = Some(note % 12);
             self.cycle_start = now;
             self.next_event = 0;
+        } else if self.pitch_anchor == PatternPitchAnchor::LatestInput {
+            self.phrase_pitch_class = Some(note % 12);
         }
         self.active_until = now + self.tail_beats;
         self.channel = channel;
@@ -219,6 +307,7 @@ impl Lane for PatternLane {
         self.last_tick_beat = Some(now);
         if !self.enabled || !world.transport.is_running() || rewound {
             self.release_active(&mut ops);
+            self.active_inputs.fill(0);
             self.clear_schedule();
             return LaneOutput {
                 ops,
@@ -229,6 +318,14 @@ impl Lane for PatternLane {
         if self.active.map(|note| note.off_at <= now).unwrap_or(false) {
             self.release_active(&mut ops);
         }
+        if self.anchor.is_some() && now >= self.active_until {
+            self.release_active(&mut ops);
+            self.clear_schedule();
+            return LaneOutput {
+                ops,
+                ..Default::default()
+            };
+        }
 
         while self.anchor.is_some() && !self.events.is_empty() {
             let event = self.events[self.next_event];
@@ -238,9 +335,9 @@ impl Lane for PatternLane {
             }
 
             let off_at = fire_at + event.duration_beats;
-            if off_at > now {
+            if off_at > now && (!self.only_when_input_idle || self.input_is_idle()) {
                 self.release_active(&mut ops);
-                if let Some(note) = Self::resolve_note(world, event) {
+                if let Some(note) = self.resolve_note(world, event) {
                     ops.push(DispatchOp::NoteOn {
                         target: self.target,
                         note,
@@ -255,10 +352,6 @@ impl Lane for PatternLane {
                 }
             }
             self.advance_event();
-        }
-
-        if now >= self.active_until && self.active.is_none() {
-            self.clear_schedule();
         }
 
         LaneOutput {
@@ -285,6 +378,8 @@ impl Lane for PatternLane {
             "enabled": self.enabled,
             "cycle_beats": self.cycle_beats,
             "tail_beats": self.tail_beats,
+            "pitch_anchor": self.pitch_anchor.as_str(),
+            "only_when_input_idle": self.only_when_input_idle,
             "events": events,
         })
     }
@@ -309,18 +404,35 @@ impl Lane for PatternLane {
             .map(|value| Self::parse_events(value, cycle_beats))
             .transpose()?;
         let enabled = state.get("enabled").and_then(|value| value.as_bool());
+        let pitch_anchor = state
+            .get("pitch_anchor")
+            .and_then(|value| value.as_str())
+            .map(PatternPitchAnchor::parse)
+            .transpose()?
+            .unwrap_or(self.pitch_anchor);
+        let only_when_input_idle = state
+            .get("only_when_input_idle")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(self.only_when_input_idle);
         let schedule_changed = state.get("cycle_beats").is_some()
             || state.get("tail_beats").is_some()
+            || state.get("pitch_anchor").is_some()
+            || state.get("only_when_input_idle").is_some()
             || events.is_some()
             || enabled.map(|value| value != self.enabled).unwrap_or(false);
 
         self.cycle_beats = cycle_beats;
         self.tail_beats = tail_beats;
+        self.pitch_anchor = pitch_anchor;
+        self.only_when_input_idle = only_when_input_idle;
         if let Some(events) = events {
             self.events = events;
         }
         if let Some(enabled) = enabled {
             self.enabled = enabled;
+            if !enabled {
+                self.active_inputs.fill(0);
+            }
         }
         if schedule_changed {
             // Configuration cannot emit cleanup itself. Preserve a sounding
@@ -423,16 +535,19 @@ mod tests {
     }
 
     #[test]
-    fn pixel_trio_cycle_has_sparse_overlapping_roles_and_clean_tail() {
+    fn pixel_trio_cycle_tracks_latest_input_and_has_a_clean_tail() {
         let (mut low, world, transport) = fixture("pattern_low");
         let mut counter = PatternLane::new("Counter", "pattern_counter");
         low.deserialize_state(serde_json::json!({
             "enabled": true,
             "cycle_beats": 4,
             "tail_beats": 4,
+            "pitch_anchor": "phrase_start",
             "events": [
-                {"beat": 0, "degree": 0, "octave": -2, "duration_beats": 1.25, "velocity": 78},
-                {"beat": 2.5, "degree": 4, "octave": -2, "duration_beats": 0.75, "velocity": 72}
+                {"beat": 0, "degree": 0, "octave": -2, "duration_beats": 0.5, "velocity": 72},
+                {"beat": 1, "degree": 4, "octave": -2, "duration_beats": 0.375, "velocity": 64},
+                {"beat": 2, "degree": 2, "octave": -2, "duration_beats": 0.5, "velocity": 68},
+                {"beat": 3, "degree": 4, "octave": -2, "duration_beats": 0.375, "velocity": 62}
             ]
         }))
         .unwrap();
@@ -441,9 +556,13 @@ mod tests {
                 "enabled": true,
                 "cycle_beats": 4,
                 "tail_beats": 4,
+                "pitch_anchor": "latest_input",
+                "only_when_input_idle": true,
                 "events": [
-                    {"beat": 1, "degree": 4, "octave": 0, "duration_beats": 0.75, "velocity": 70},
-                    {"beat": 3, "degree": 2, "octave": 0, "duration_beats": 0.75, "velocity": 68}
+                    {"beat": 0.5, "degree": 4, "octave": 0, "duration_beats": 1, "velocity": 60},
+                    {"beat": 1.5, "degree": 2, "octave": 0, "duration_beats": 1, "velocity": 56},
+                    {"beat": 2.5, "degree": 5, "octave": 0, "duration_beats": 1, "velocity": 58},
+                    {"beat": 3.5, "degree": 4, "octave": 0, "duration_beats": 1, "velocity": 54}
                 ]
             }))
             .unwrap();
@@ -460,97 +579,103 @@ mod tests {
             );
         }
 
-        let mut events = Vec::new();
-        for beat in [0.01, 1.01, 1.26, 1.76, 2.51, 3.01, 3.26, 3.76, 4.01] {
+        let mut note_ons = Vec::new();
+        for beat in [0.01, 0.51] {
             advance_to_beat(&transport, beat);
             for (lane_id, lane) in [("pattern_low", &mut low), ("pattern_counter", &mut counter)] {
                 for op in lane.tick(&world).ops {
-                    events.push((lane_id, op));
+                    if let DispatchOp::NoteOn { note, velocity, .. } = op {
+                        note_ons.push((lane_id, note, velocity));
+                    }
+                }
+            }
+            if beat == 0.01 {
+                for lane in [&mut low, &mut counter] {
+                    lane.on_input(
+                        InputEvent::NoteOff {
+                            note: 60,
+                            channel: 0,
+                        },
+                        &world,
+                    );
+                }
+            }
+        }
+
+        advance_to_beat(&transport, 0.75);
+        for lane in [&mut low, &mut counter] {
+            lane.on_input(
+                InputEvent::NoteOn {
+                    note: 62,
+                    velocity: 100,
+                    channel: 0,
+                },
+                &world,
+            );
+            lane.on_input(
+                InputEvent::NoteOff {
+                    note: 62,
+                    channel: 0,
+                },
+                &world,
+            );
+        }
+        for beat in [1.01, 1.51, 2.01, 2.51, 3.01, 3.51] {
+            advance_to_beat(&transport, beat);
+            for (lane_id, lane) in [("pattern_low", &mut low), ("pattern_counter", &mut counter)] {
+                let ops = lane.tick(&world).ops;
+                if lane_id == "pattern_counter" && beat == 2.51 {
+                    assert_eq!(
+                        ops,
+                        vec![
+                            DispatchOp::NoteOff {
+                                target: VoiceOutputTarget::Synth,
+                                note: 65,
+                                channel: 0,
+                            },
+                            DispatchOp::NoteOn {
+                                target: VoiceOutputTarget::Synth,
+                                note: 71,
+                                velocity: 58,
+                                channel: 0,
+                            },
+                        ]
+                    );
+                }
+                for op in ops {
+                    if let DispatchOp::NoteOn { note, velocity, .. } = op {
+                        note_ons.push((lane_id, note, velocity));
+                    }
                 }
             }
         }
 
         assert_eq!(
-            events,
+            note_ons,
             vec![
-                (
-                    "pattern_low",
-                    DispatchOp::NoteOn {
-                        target: VoiceOutputTarget::Synth,
-                        note: 36,
-                        velocity: 78,
-                        channel: 0
-                    }
-                ),
-                (
-                    "pattern_counter",
-                    DispatchOp::NoteOn {
-                        target: VoiceOutputTarget::Synth,
-                        note: 67,
-                        velocity: 70,
-                        channel: 0
-                    }
-                ),
-                (
-                    "pattern_low",
-                    DispatchOp::NoteOff {
-                        target: VoiceOutputTarget::Synth,
-                        note: 36,
-                        channel: 0
-                    }
-                ),
-                (
-                    "pattern_counter",
-                    DispatchOp::NoteOff {
-                        target: VoiceOutputTarget::Synth,
-                        note: 67,
-                        channel: 0
-                    }
-                ),
-                (
-                    "pattern_low",
-                    DispatchOp::NoteOn {
-                        target: VoiceOutputTarget::Synth,
-                        note: 43,
-                        velocity: 72,
-                        channel: 0
-                    }
-                ),
-                (
-                    "pattern_counter",
-                    DispatchOp::NoteOn {
-                        target: VoiceOutputTarget::Synth,
-                        note: 64,
-                        velocity: 68,
-                        channel: 0
-                    }
-                ),
-                (
-                    "pattern_low",
-                    DispatchOp::NoteOff {
-                        target: VoiceOutputTarget::Synth,
-                        note: 43,
-                        channel: 0
-                    }
-                ),
-                (
-                    "pattern_counter",
-                    DispatchOp::NoteOff {
-                        target: VoiceOutputTarget::Synth,
-                        note: 64,
-                        channel: 0
-                    }
-                ),
+                ("pattern_low", 36, 72),
+                ("pattern_counter", 67, 60),
+                ("pattern_low", 43, 64),
+                ("pattern_counter", 65, 56),
+                ("pattern_low", 40, 68),
+                ("pattern_counter", 71, 58),
+                ("pattern_low", 43, 62),
+                ("pattern_counter", 69, 54),
             ]
         );
-        assert!(low.active.is_none() && counter.active.is_none());
-        assert!(low.anchor.is_none() && counter.anchor.is_none());
+
+        advance_to_beat(&transport, 4.76);
+        for lane in [&mut low, &mut counter] {
+            lane.tick(&world);
+            assert!(lane.active.is_none());
+            assert!(lane.anchor.is_none());
+        }
     }
 
     #[test]
     fn tail_stops_and_releases_without_resurrection() {
         let (mut lane, world, transport) = fixture("pattern_low");
-        configure(&mut lane, 0.0, 0, -2, 1.0);
+        configure(&mut lane, 0.0, 0, -2, 5.0);
         advance_to_beat(&transport, 0.0);
         lane.on_input(
             InputEvent::NoteOn {
@@ -565,18 +690,78 @@ mod tests {
             lane.tick(&world).ops.as_slice(),
             [DispatchOp::NoteOn { .. }]
         ));
-        advance_to_beat(&transport, 1.01);
+        advance_to_beat(&transport, 4.01);
         assert!(matches!(
             lane.tick(&world).ops.as_slice(),
             [DispatchOp::NoteOff { .. }]
         ));
-        advance_to_beat(&transport, 4.01);
-        assert!(lane.tick(&world).ops.is_empty());
         assert!(lane.anchor.is_none());
         assert!(lane.active.is_none());
         lane.reset_runtime();
         advance_to_beat(&transport, 8.0);
         assert!(lane.tick(&world).ops.is_empty());
+    }
+
+    #[test]
+    fn new_phrase_reanchors_and_releases_a_note_crossing_the_old_tail() {
+        let (mut lane, world, transport) = fixture("pattern_low");
+        lane.deserialize_state(serde_json::json!({
+            "enabled": true,
+            "cycle_beats": 4,
+            "tail_beats": 4,
+            "pitch_anchor": "phrase_start",
+            "events": [
+                {"beat": 0, "degree": 0, "octave": 0, "duration_beats": 5, "velocity": 72}
+            ]
+        }))
+        .unwrap();
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.01);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOn {
+                target: VoiceOutputTarget::Synth,
+                note: 60,
+                velocity: 72,
+                channel: 0,
+            }]
+        );
+
+        advance_to_beat(&transport, 4.1);
+        assert_eq!(
+            lane.on_input(
+                InputEvent::NoteOn {
+                    note: 67,
+                    velocity: 100,
+                    channel: 0,
+                },
+                &world,
+            )
+            .ops,
+            vec![DispatchOp::NoteOff {
+                target: VoiceOutputTarget::Synth,
+                note: 60,
+                channel: 0,
+            }]
+        );
+        advance_to_beat(&transport, 4.11);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOn {
+                target: VoiceOutputTarget::Synth,
+                note: 67,
+                velocity: 72,
+                channel: 0,
+            }]
+        );
     }
 
     #[test]
@@ -654,6 +839,182 @@ mod tests {
     }
 
     #[test]
+    fn phrase_start_anchor_moves_the_pattern_diatonically_from_the_opening_pitch() {
+        let (mut lane, world, transport) = fixture("pattern_low");
+        lane.deserialize_state(serde_json::json!({
+            "enabled": true,
+            "cycle_beats": 4,
+            "tail_beats": 4,
+            "pitch_anchor": "phrase_start",
+            "events": [
+                {"beat": 0, "degree": 2, "octave": -2, "duration_beats": 1, "velocity": 72}
+            ]
+        }))
+        .unwrap();
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 64,
+                velocity: 100,
+                channel: 1,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.01);
+
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOn {
+                target: VoiceOutputTarget::Synth,
+                note: 43,
+                velocity: 72,
+                channel: 1,
+            }]
+        );
+        let state = lane.serialize_state();
+        assert_eq!(state["pitch_anchor"], "phrase_start");
+        assert_eq!(state["only_when_input_idle"], false);
+    }
+
+    #[test]
+    fn chromatic_anchor_snaps_to_the_scale_before_transposing() {
+        let (mut lane, world, transport) = fixture("pattern_counter");
+        lane.deserialize_state(serde_json::json!({
+            "enabled": true,
+            "cycle_beats": 4,
+            "tail_beats": 4,
+            "pitch_anchor": "latest_input",
+            "events": [
+                {"beat": 0, "degree": 4, "octave": 0, "duration_beats": 1, "velocity": 60}
+            ]
+        }))
+        .unwrap();
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 61,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.01);
+
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOn {
+                target: VoiceOutputTarget::Synth,
+                note: 67,
+                velocity: 60,
+                channel: 0,
+            }]
+        );
+    }
+
+    #[test]
+    fn gap_only_pattern_skips_held_input_and_yields_to_a_new_attack() {
+        let (mut lane, world, transport) = fixture("pattern_counter");
+        lane.deserialize_state(serde_json::json!({
+            "enabled": true,
+            "cycle_beats": 4,
+            "tail_beats": 4,
+            "only_when_input_idle": true,
+            "events": [
+                {"beat": 0, "degree": 0, "octave": -1, "duration_beats": 0.5, "velocity": 70},
+                {"beat": 1, "degree": 4, "octave": -1, "duration_beats": 1, "velocity": 68}
+            ]
+        }))
+        .unwrap();
+
+        advance_to_beat(&transport, 0.0);
+        lane.on_input(
+            InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 0.01);
+        assert!(lane.tick(&world).ops.is_empty());
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        advance_to_beat(&transport, 1.01);
+        assert_eq!(
+            lane.tick(&world).ops,
+            vec![DispatchOp::NoteOn {
+                target: VoiceOutputTarget::Synth,
+                note: 55,
+                velocity: 68,
+                channel: 0,
+            }]
+        );
+
+        let yielded = lane.on_input(
+            InputEvent::NoteOn {
+                note: 64,
+                velocity: 100,
+                channel: 0,
+            },
+            &world,
+        );
+        assert_eq!(
+            yielded.ops,
+            vec![DispatchOp::NoteOff {
+                target: VoiceOutputTarget::Synth,
+                note: 55,
+                channel: 0,
+            }]
+        );
+    }
+
+    #[test]
+    fn repeated_input_note_keeps_the_gap_closed_until_every_release() {
+        let (mut lane, world, transport) = fixture("pattern_counter");
+        configure(&mut lane, 1.0, 4, 0, 0.5);
+        advance_to_beat(&transport, 0.0);
+        let note_on = InputEvent::NoteOn {
+            note: 60,
+            velocity: 100,
+            channel: 0,
+        };
+        lane.on_input(note_on, &world);
+        lane.on_input(note_on, &world);
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 1,
+            },
+            &world,
+        );
+        assert!(!lane.input_is_idle());
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(!lane.input_is_idle());
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+            &world,
+        );
+        assert!(lane.input_is_idle());
+    }
+
+    #[test]
     fn rejects_invalid_event_data() {
         let (mut lane, _world, _transport) = fixture("pattern_low");
         assert!(lane
@@ -661,6 +1022,9 @@ mod tests {
                 "cycle_beats": 4.0,
                 "events": [{"beat": 4.0, "degree": 0, "octave": -2, "duration_beats": 1, "velocity": 80}]
             }))
+            .is_err());
+        assert!(lane
+            .deserialize_state(serde_json::json!({ "pitch_anchor": "random" }))
             .is_err());
     }
 }
