@@ -37,24 +37,14 @@ pub fn save_preset_to_file(payload: &ContrapunkPresetPayload, file_path: &Path) 
     Ok(())
 }
 
-
-
-
-
-
-
-
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{StylePreset, ContrapunkPresetPayload};
+    use crate::{ContrapunkPresetPayload, StylePreset};
     use contrapunk_harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
     use serde_json::json;
-    use std::fs;
     use std::env;
+    use std::fs;
 
     fn get_dummy_payload() -> ContrapunkPresetPayload {
         ContrapunkPresetPayload {
@@ -64,11 +54,11 @@ mod tests {
                 persona: "Test".into(),
                 genre: "Test".into(),
                 harmony_mode: HarmonyMode::PassThrough, // Fixed based on config.rs
-                key: Key::C, // Valid Key
+                key: Key::C,                            // Valid Key
                 voice_leading_enabled: false,
                 voice_leading_style: Default::default(), // Auto-fetch the default style
-                octave_mode: OctaveMode::None, // Fixed based on config.rs
-                scale_mode: ScaleMode::Ionian, // Valid ScaleMode
+                octave_mode: OctaveMode::None,           // Fixed based on config.rs
+                scale_mode: ScaleMode::Ionian,           // Valid ScaleMode
                 interchange_enabled: false,
                 borrowing_range: 3,
                 is_builtin: false,
@@ -85,7 +75,7 @@ mod tests {
     #[test]
     fn test_cpk_extension_enforcement() {
         let payload = get_dummy_payload();
-        
+
         // Create a path with a WRONG extension
         let mut temp_path = env::temp_dir();
         temp_path.push("wrong_name.txt");
@@ -104,13 +94,14 @@ mod tests {
     #[test]
     fn test_json_round_trip() {
         let payload = get_dummy_payload();
-        
+
         // Serialize
         let json_str = serde_json::to_string(&payload).expect("Failed to serialize");
-        
+
         // Deserialize back
-        let decoded: ContrapunkPresetPayload = serde_json::from_str(&json_str).expect("Failed to deserialize");
-        
+        let decoded: ContrapunkPresetPayload =
+            serde_json::from_str(&json_str).expect("Failed to deserialize");
+
         // Verify data integrity
         assert_eq!(payload.version, decoded.version);
         assert_eq!(payload.style.name, decoded.style.name);
