@@ -88,12 +88,12 @@ Do not add adaptive scenes, probability, motif recognition, or a general preset 
 
 ### 08 — Suspension Garland
 
-- **Identity:** tension-and-resolution counter-singing duo.
-- **Player role:** free melodic partner, not operator of a prescribed exercise.
-- **Immediate signature:** the companion enters consonantly, holds across a compatible change, and resolves by step.
-- **Deep behavior:** it waits for stable opportunities, rests after resolving, and may choose the open register opposite the player.
-- **Density ceiling:** 2.
-- **Never:** require one exact interval sequence merely to demonstrate Species IV.
+- **Identity:** one coordinated tension-and-resolution trio, not two independent accompaniment patterns.
+- **Player role:** free melodic partner whose attacks advance the harmonic state, not operator of a prescribed exercise.
+- **Immediate signature:** bass and inner voice establish consonance; the bass then moves beneath the tied inner voice, which resolves downward by step.
+- **Deep behavior:** the pair waits for a valid three-note sonority, breathes after resolving, allows at most two gestures, and then rests until the next phrase.
+- **Density ceiling:** 3.
+- **Never:** imitate the player like a canon, run a repeating bass like Pixel Trio, or require one exact interval sequence merely to demonstrate Species IV.
 
 ### 12 — Planed Cathedral
 
