@@ -576,7 +576,7 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 10.3-01-PLAN.md — Continuous transport beats and deterministic one-slot MIDI looper core
+- [x] 10.3-01-PLAN.md — Continuous transport beats and deterministic one-slot MIDI looper core
 - [ ] 10.3-02-PLAN.md — Isolated full-arrangement replay, exact ownership, Tauri routing, and cleanup
 - [ ] 10.3-03-PLAN.md — Capability-gated desktop controls, automated gate, and user performance checkpoint
 
