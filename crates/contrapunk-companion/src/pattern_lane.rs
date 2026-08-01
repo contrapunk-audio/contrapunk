@@ -14,9 +14,6 @@ use super::world::WorldState;
 use super::DispatchOp;
 
 const MAX_EVENTS: usize = 16;
-const MIDI_NOTE_COUNT: usize = 128;
-const MIDI_CHANNEL_COUNT: usize = 16;
-const INPUT_OWNERS: usize = MIDI_NOTE_COUNT * MIDI_CHANNEL_COUNT;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PatternPitchAnchor {
@@ -77,7 +74,7 @@ pub struct PatternLane {
     active_until: f64,
     channel: u8,
     active: Option<ActiveNote>,
-    active_inputs: [u16; INPUT_OWNERS],
+    phrase_id: Option<u64>,
     last_tick_beat: Option<f64>,
 }
 
@@ -100,7 +97,7 @@ impl PatternLane {
             active_until: 0.0,
             channel: 0,
             active: None,
-            active_inputs: [0; INPUT_OWNERS],
+            phrase_id: None,
             last_tick_beat: None,
         }
     }
@@ -111,16 +108,8 @@ impl PatternLane {
         self.cycle_start = 0.0;
         self.next_event = 0;
         self.active_until = 0.0;
+        self.phrase_id = None;
         self.last_tick_beat = None;
-    }
-
-    fn input_is_idle(&self) -> bool {
-        !self.active_inputs.iter().any(|active| *active > 0)
-    }
-
-    fn input_owner(note: u8, channel: u8) -> Option<usize> {
-        (note < MIDI_NOTE_COUNT as u8 && channel < MIDI_CHANNEL_COUNT as u8)
-            .then_some(channel as usize * MIDI_NOTE_COUNT + note as usize)
     }
 
     fn release_active(&mut self, ops: &mut Vec<DispatchOp>) {
@@ -244,29 +233,20 @@ impl Lane for PatternLane {
 
     fn reset_runtime(&mut self) {
         self.active = None;
-        self.active_inputs.fill(0);
         self.clear_schedule();
     }
 
     fn on_input(&mut self, ev: InputEvent, world: &WorldState) -> LaneOutput {
         let (note, channel) = match ev {
             InputEvent::NoteOn { note, channel, .. } => (note, channel),
-            InputEvent::NoteOff { note, channel } => {
-                if let Some(owner) = Self::input_owner(note, channel) {
-                    self.active_inputs[owner] = self.active_inputs[owner].saturating_sub(1);
-                }
+            InputEvent::NoteOff { .. } | InputEvent::Cc { .. } => {
                 return LaneOutput::default();
             }
-            InputEvent::Cc { .. } => return LaneOutput::default(),
         };
         if !self.enabled {
             return LaneOutput::default();
         }
-        let Some(owner) = Self::input_owner(note, channel) else {
-            return LaneOutput::default();
-        };
 
-        self.active_inputs[owner] = self.active_inputs[owner].saturating_add(1);
         let mut ops = Vec::new();
         if self.only_when_input_idle {
             self.release_active(&mut ops);
@@ -279,17 +259,27 @@ impl Lane for PatternLane {
         }
 
         let now = world.transport.total_beats();
-        if self.anchor.is_none() || now >= self.active_until {
+        let phrase = world.phrase_snapshot();
+        let phrase_relative = self.pitch_anchor != PatternPitchAnchor::Key;
+        let new_phrase = phrase_relative && phrase.id != self.phrase_id;
+        if new_phrase || self.anchor.is_none() || now >= self.active_until {
             self.release_active(&mut ops);
             self.anchor = Some(now);
-            self.phrase_pitch_class = Some(note % 12);
+            self.phrase_pitch_class = Some(
+                match self.pitch_anchor {
+                    PatternPitchAnchor::PhraseStart => phrase.opening_note.unwrap_or(note),
+                    PatternPitchAnchor::LatestInput => phrase.latest_note.unwrap_or(note),
+                    PatternPitchAnchor::Key => note,
+                } % 12,
+            );
             self.cycle_start = now;
             self.next_event = 0;
         } else if self.pitch_anchor == PatternPitchAnchor::LatestInput {
-            self.phrase_pitch_class = Some(note % 12);
+            self.phrase_pitch_class = Some(phrase.latest_note.unwrap_or(note) % 12);
         }
+        self.phrase_id = phrase.id;
         self.active_until = now + self.tail_beats;
-        self.channel = channel;
+        self.channel = phrase.latest_channel.unwrap_or(channel);
         LaneOutput {
             ops,
             ..Default::default()
@@ -307,7 +297,6 @@ impl Lane for PatternLane {
         self.last_tick_beat = Some(now);
         if !self.enabled || !world.transport.is_running() || rewound {
             self.release_active(&mut ops);
-            self.active_inputs.fill(0);
             self.clear_schedule();
             return LaneOutput {
                 ops,
@@ -335,7 +324,7 @@ impl Lane for PatternLane {
             }
 
             let off_at = fire_at + event.duration_beats;
-            if off_at > now && (!self.only_when_input_idle || self.input_is_idle()) {
+            if off_at > now && (!self.only_when_input_idle || world.phrase_snapshot().input_idle) {
                 self.release_active(&mut ops);
                 if let Some(note) = self.resolve_note(world, event) {
                     ops.push(DispatchOp::NoteOn {
@@ -430,9 +419,6 @@ impl Lane for PatternLane {
         }
         if let Some(enabled) = enabled {
             self.enabled = enabled;
-            if !enabled {
-                self.active_inputs.fill(0);
-            }
         }
         if schedule_changed {
             // Configuration cannot emit cleanup itself. Preserve a sounding
@@ -497,15 +483,14 @@ mod tests {
         configure(&mut counter, 1.0, 4, 0, 0.75);
 
         advance_to_beat(&transport, 0.0);
+        let opening = InputEvent::NoteOn {
+            note: 67,
+            velocity: 110,
+            channel: 2,
+        };
+        world.observe_phrase_input(opening);
         for lane in [&mut low, &mut counter] {
-            lane.on_input(
-                InputEvent::NoteOn {
-                    note: 67,
-                    velocity: 110,
-                    channel: 2,
-                },
-                &world,
-            );
+            lane.on_input(opening, &world);
         }
 
         advance_to_beat(&transport, 0.01);
@@ -568,15 +553,14 @@ mod tests {
             .unwrap();
 
         advance_to_beat(&transport, 0.0);
+        let opening = InputEvent::NoteOn {
+            note: 60,
+            velocity: 100,
+            channel: 0,
+        };
+        world.observe_phrase_input(opening);
         for lane in [&mut low, &mut counter] {
-            lane.on_input(
-                InputEvent::NoteOn {
-                    note: 60,
-                    velocity: 100,
-                    channel: 0,
-                },
-                &world,
-            );
+            lane.on_input(opening, &world);
         }
 
         let mut note_ons = Vec::new();
@@ -590,35 +574,34 @@ mod tests {
                 }
             }
             if beat == 0.01 {
+                let release = InputEvent::NoteOff {
+                    note: 60,
+                    channel: 0,
+                };
+                world.observe_phrase_input(release);
                 for lane in [&mut low, &mut counter] {
-                    lane.on_input(
-                        InputEvent::NoteOff {
-                            note: 60,
-                            channel: 0,
-                        },
-                        &world,
-                    );
+                    lane.on_input(release, &world);
                 }
             }
         }
 
         advance_to_beat(&transport, 0.75);
+        let next = InputEvent::NoteOn {
+            note: 62,
+            velocity: 100,
+            channel: 0,
+        };
+        world.observe_phrase_input(next);
         for lane in [&mut low, &mut counter] {
-            lane.on_input(
-                InputEvent::NoteOn {
-                    note: 62,
-                    velocity: 100,
-                    channel: 0,
-                },
-                &world,
-            );
-            lane.on_input(
-                InputEvent::NoteOff {
-                    note: 62,
-                    channel: 0,
-                },
-                &world,
-            );
+            lane.on_input(next, &world);
+        }
+        let release = InputEvent::NoteOff {
+            note: 62,
+            channel: 0,
+        };
+        world.observe_phrase_input(release);
+        for lane in [&mut low, &mut counter] {
+            lane.on_input(release, &world);
         }
         for beat in [1.01, 1.51, 2.01, 2.51, 3.01, 3.51] {
             advance_to_beat(&transport, beat);
@@ -703,8 +686,9 @@ mod tests {
     }
 
     #[test]
-    fn new_phrase_reanchors_and_releases_a_note_crossing_the_old_tail() {
+    fn configured_phrase_gap_reanchors_before_the_old_pattern_tail() {
         let (mut lane, world, transport) = fixture("pattern_low");
+        world.set_phrase_gap_beats(0.5).unwrap();
         lane.deserialize_state(serde_json::json!({
             "enabled": true,
             "cycle_beats": 4,
@@ -716,14 +700,13 @@ mod tests {
         }))
         .unwrap();
         advance_to_beat(&transport, 0.0);
-        lane.on_input(
-            InputEvent::NoteOn {
-                note: 60,
-                velocity: 100,
-                channel: 0,
-            },
-            &world,
-        );
+        let opening = InputEvent::NoteOn {
+            note: 60,
+            velocity: 100,
+            channel: 0,
+        };
+        world.observe_phrase_input(opening);
+        lane.on_input(opening, &world);
         advance_to_beat(&transport, 0.01);
         assert_eq!(
             lane.tick(&world).ops,
@@ -734,25 +717,27 @@ mod tests {
                 channel: 0,
             }]
         );
+        world.observe_phrase_input(InputEvent::NoteOff {
+            note: 60,
+            channel: 0,
+        });
 
-        advance_to_beat(&transport, 4.1);
+        advance_to_beat(&transport, 1.0);
+        let next_phrase = InputEvent::NoteOn {
+            note: 67,
+            velocity: 100,
+            channel: 0,
+        };
+        world.observe_phrase_input(next_phrase);
         assert_eq!(
-            lane.on_input(
-                InputEvent::NoteOn {
-                    note: 67,
-                    velocity: 100,
-                    channel: 0,
-                },
-                &world,
-            )
-            .ops,
+            lane.on_input(next_phrase, &world).ops,
             vec![DispatchOp::NoteOff {
                 target: VoiceOutputTarget::Synth,
                 note: 60,
                 channel: 0,
             }]
         );
-        advance_to_beat(&transport, 4.11);
+        advance_to_beat(&transport, 1.01);
         assert_eq!(
             lane.tick(&world).ops,
             vec![DispatchOp::NoteOn {
@@ -853,14 +838,13 @@ mod tests {
         .unwrap();
 
         advance_to_beat(&transport, 0.0);
-        lane.on_input(
-            InputEvent::NoteOn {
-                note: 64,
-                velocity: 100,
-                channel: 1,
-            },
-            &world,
-        );
+        let opening = InputEvent::NoteOn {
+            note: 64,
+            velocity: 100,
+            channel: 1,
+        };
+        world.observe_phrase_input(opening);
+        lane.on_input(opening, &world);
         advance_to_beat(&transport, 0.01);
 
         assert_eq!(
@@ -892,14 +876,13 @@ mod tests {
         .unwrap();
 
         advance_to_beat(&transport, 0.0);
-        lane.on_input(
-            InputEvent::NoteOn {
-                note: 61,
-                velocity: 100,
-                channel: 0,
-            },
-            &world,
-        );
+        let opening = InputEvent::NoteOn {
+            note: 61,
+            velocity: 100,
+            channel: 0,
+        };
+        world.observe_phrase_input(opening);
+        lane.on_input(opening, &world);
         advance_to_beat(&transport, 0.01);
 
         assert_eq!(
@@ -929,24 +912,22 @@ mod tests {
         .unwrap();
 
         advance_to_beat(&transport, 0.0);
-        lane.on_input(
-            InputEvent::NoteOn {
-                note: 60,
-                velocity: 100,
-                channel: 0,
-            },
-            &world,
-        );
+        let opening = InputEvent::NoteOn {
+            note: 60,
+            velocity: 100,
+            channel: 0,
+        };
+        world.observe_phrase_input(opening);
+        lane.on_input(opening, &world);
         advance_to_beat(&transport, 0.01);
         assert!(lane.tick(&world).ops.is_empty());
 
-        lane.on_input(
-            InputEvent::NoteOff {
-                note: 60,
-                channel: 0,
-            },
-            &world,
-        );
+        let release = InputEvent::NoteOff {
+            note: 60,
+            channel: 0,
+        };
+        world.observe_phrase_input(release);
+        lane.on_input(release, &world);
         advance_to_beat(&transport, 1.01);
         assert_eq!(
             lane.tick(&world).ops,
@@ -958,14 +939,13 @@ mod tests {
             }]
         );
 
-        let yielded = lane.on_input(
-            InputEvent::NoteOn {
-                note: 64,
-                velocity: 100,
-                channel: 0,
-            },
-            &world,
-        );
+        let attack = InputEvent::NoteOn {
+            note: 64,
+            velocity: 100,
+            channel: 0,
+        };
+        world.observe_phrase_input(attack);
+        let yielded = lane.on_input(attack, &world);
         assert_eq!(
             yielded.ops,
             vec![DispatchOp::NoteOff {
@@ -978,40 +958,30 @@ mod tests {
 
     #[test]
     fn repeated_input_note_keeps_the_gap_closed_until_every_release() {
-        let (mut lane, world, transport) = fixture("pattern_counter");
-        configure(&mut lane, 1.0, 4, 0, 0.5);
+        let (_lane, world, transport) = fixture("pattern_counter");
         advance_to_beat(&transport, 0.0);
         let note_on = InputEvent::NoteOn {
             note: 60,
             velocity: 100,
             channel: 0,
         };
-        lane.on_input(note_on, &world);
-        lane.on_input(note_on, &world);
-        lane.on_input(
-            InputEvent::NoteOff {
-                note: 60,
-                channel: 1,
-            },
-            &world,
-        );
-        assert!(!lane.input_is_idle());
-        lane.on_input(
-            InputEvent::NoteOff {
-                note: 60,
-                channel: 0,
-            },
-            &world,
-        );
-        assert!(!lane.input_is_idle());
-        lane.on_input(
-            InputEvent::NoteOff {
-                note: 60,
-                channel: 0,
-            },
-            &world,
-        );
-        assert!(lane.input_is_idle());
+        world.observe_phrase_input(note_on);
+        world.observe_phrase_input(note_on);
+        world.observe_phrase_input(InputEvent::NoteOff {
+            note: 60,
+            channel: 1,
+        });
+        assert!(!world.phrase_snapshot().input_idle);
+        world.observe_phrase_input(InputEvent::NoteOff {
+            note: 60,
+            channel: 0,
+        });
+        assert!(!world.phrase_snapshot().input_idle);
+        world.observe_phrase_input(InputEvent::NoteOff {
+            note: 60,
+            channel: 0,
+        });
+        assert!(world.phrase_snapshot().input_idle);
     }
 
     #[test]

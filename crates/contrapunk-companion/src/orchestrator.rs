@@ -37,10 +37,26 @@ pub struct CompanionInputResult {
 /// Persisted snapshot of the whole companion. Written into the rig
 /// JSON; restored on rig load. Lane order is preserved so phase
 /// ordering is stable across save/load.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompanionState {
     pub enabled: bool,
+    #[serde(default = "default_phrase_gap_beats")]
+    pub phrase_gap_beats: f64,
     pub lanes: Vec<LaneState>,
+}
+
+fn default_phrase_gap_beats() -> f64 {
+    crate::phrase::DEFAULT_PHRASE_GAP_BEATS
+}
+
+impl Default for CompanionState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            phrase_gap_beats: default_phrase_gap_beats(),
+            lanes: Vec::new(),
+        }
+    }
 }
 
 /// The companion. Owned by the router thread; UI commands flow in
@@ -94,10 +110,29 @@ impl Companion {
         }
     }
 
+    pub fn set_phrase_gap_beats(&self, beats: f64) -> Result<(), String> {
+        self.world.set_phrase_gap_beats(beats)
+    }
+
+    pub fn phrase_snapshot(&self) -> crate::phrase::PhraseSnapshot {
+        self.world.phrase_snapshot()
+    }
+
+    /// Update phrase ownership without running arrangement lanes.
+    pub fn observe_phrase_input(&self, event: InputEvent) {
+        self.world.observe_phrase_input(event);
+    }
+
+    /// Advance phrase timeout state without running arrangement lanes.
+    pub fn advance_phrase(&self) {
+        self.world.advance_phrase();
+    }
+
     /// Clear every lane's in-flight runtime state while preserving its
     /// configuration. This is allocation-free and safe for panic/stop
     /// handling on the processing thread.
     pub fn reset_runtime(&mut self) {
+        self.world.reset_phrase_runtime();
         for lane in &mut self.lanes {
             lane.reset_runtime();
         }
@@ -110,6 +145,7 @@ impl Companion {
     /// `world.engine_snapshot`) so tests can pass an isolated engine
     /// without standing up a full `WorldState::new` wiring.
     pub fn tick(&mut self, engine: &Mutex<HarmonyEngine>) -> Vec<DispatchOp> {
+        self.world.advance_phrase();
         if !self.enabled.load(Ordering::Acquire) {
             return Vec::new();
         }
@@ -158,6 +194,7 @@ impl Companion {
         &mut self,
         engine: &Mutex<HarmonyEngine>,
     ) -> Vec<(&'static str, u8, DispatchOp)> {
+        self.world.advance_phrase();
         if !self.enabled.load(Ordering::Acquire) {
             return Vec::new();
         }
@@ -200,16 +237,15 @@ impl Companion {
         tagged
     }
 
-    /// Dispatch one input event to filter-matching Lanes. Returns the
-    /// concatenated ops + `suppress_default` flag for the input
-    /// pipeline. Callers handle their own `WorldState.held_inputs`
-    /// updates *before* calling this so all Lanes see the post-event
-    /// world (mirrors the arch doc § "Input pipeline").
+    /// Dispatch one input event to filter-matching Lanes. Shared phrase
+    /// ownership is updated exactly once before lane fan-out so every lane
+    /// observes the same post-event state.
     pub fn on_input(
         &mut self,
         ev: InputEvent,
         engine: &Mutex<HarmonyEngine>,
     ) -> CompanionInputResult {
+        self.world.observe_phrase_input(ev);
         if !self.enabled.load(Ordering::Acquire) {
             return CompanionInputResult {
                 ops: Vec::new(),
@@ -252,6 +288,7 @@ impl Companion {
         ev: InputEvent,
         engine: &Mutex<HarmonyEngine>,
     ) -> (Vec<(&'static str, u8, DispatchOp)>, bool) {
+        self.world.observe_phrase_input(ev);
         if !self.enabled.load(Ordering::Acquire) {
             return (Vec::new(), false);
         }
@@ -316,6 +353,7 @@ impl Companion {
     pub fn save(&self) -> CompanionState {
         CompanionState {
             enabled: self.enabled.load(Ordering::Acquire),
+            phrase_gap_beats: self.phrase_snapshot().gap_beats,
             lanes: self
                 .lanes
                 .iter()
@@ -332,6 +370,7 @@ impl Companion {
     /// must match what was saved. Returns the first restoration
     /// error if any Lane refuses its state.
     pub fn restore(&mut self, state: CompanionState) -> Result<(), String> {
+        self.set_phrase_gap_beats(state.phrase_gap_beats)?;
         self.enabled.store(state.enabled, Ordering::Release);
 
         if state.lanes.len() != self.lanes.len() {
@@ -729,6 +768,7 @@ mod tests {
     fn save_restore_round_trips_lane_state() {
         let (mut c, _engine) = fixture();
         c.enabled.store(true, Ordering::Release);
+        c.set_phrase_gap_beats(7.25).unwrap();
         let trace = Arc::new(Mutex::new(Vec::new()));
         let lane = TestLane::new("counter", LanePhase::Decide, trace.clone());
         lane.tick_count.store(7, Ordering::Relaxed);
@@ -736,6 +776,7 @@ mod tests {
 
         let saved = c.save();
         assert!(saved.enabled);
+        assert_eq!(saved.phrase_gap_beats, 7.25);
         assert_eq!(saved.lanes.len(), 1);
 
         // Build a fresh companion with a same-shape Lane and restore.
@@ -745,6 +786,7 @@ mod tests {
         c2.restore(saved).expect("restore");
 
         assert!(c2.enabled.load(Ordering::Acquire));
+        assert_eq!(c2.phrase_snapshot().gap_beats, 7.25);
         // Roundtrip preserved the tick_count via TestLane's
         // serialize/deserialize.
         assert_eq!(c2.lanes[0].serialize_state()["tick_count"], 7);
@@ -789,7 +831,20 @@ mod tests {
     }
 
     #[test]
-    fn on_input_disabled_short_circuits() {
+    fn old_companion_state_defaults_phrase_gap() {
+        let state: CompanionState = serde_json::from_value(serde_json::json!({
+            "enabled": false,
+            "lanes": []
+        }))
+        .unwrap();
+        assert_eq!(
+            state.phrase_gap_beats,
+            crate::phrase::DEFAULT_PHRASE_GAP_BEATS
+        );
+    }
+
+    #[test]
+    fn on_input_disabled_short_circuits_but_tracks_phrase_input() {
         let (mut c, engine) = fixture();
         // enabled stays false.
         let trace = Arc::new(Mutex::new(Vec::new()));
@@ -807,5 +862,6 @@ mod tests {
         assert!(result.ops.is_empty());
         assert!(!result.suppress_default);
         assert!(trace.lock().unwrap().is_empty());
+        assert_eq!(c.phrase_snapshot().latest_note, Some(60));
     }
 }
