@@ -9,6 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
+import { mapPhraseState } from './phrase';
 import type {
 	AddedPlugin,
 	CalibrationStatus,
@@ -24,6 +25,7 @@ import type {
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
+	PhraseState,
 	PluginInputMode,
 	PluginMidiOutputMode,
 	Preset,
@@ -112,7 +114,8 @@ function mapNoteState(raw: Record<string, unknown>): NoteState {
 		lastBorrowedFrom: raw.last_borrowed_from as string,
 		currentKey: normalizeKey((raw.current_key as string) ?? 'C'),
 		canonNotes: (raw.canon_notes as number[]) ?? [],
-		counterpointNotes: (raw.counterpoint_notes as number[]) ?? []
+		counterpointNotes: (raw.counterpoint_notes as number[]) ?? [],
+		phrase: mapPhraseState(raw.phrase)
 	};
 }
 
@@ -128,6 +131,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		companionLanes: true,
 		intervalMaps: true,
 		patternLanes: true,
+		phraseContext: true,
 		// Tauri renders the full I/O Input subtab source radio —
 		// MIDI / Guitar Audio (cpal backend) / Voice (disabled).
 		inputSourcePicker: true,
@@ -360,6 +364,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async setPhraseGapBeats(beats: number): Promise<void> {
+		await invoke('companion_set_phrase_gap', { beats });
+	}
+
+	async getPhraseState(): Promise<PhraseState> {
+		return mapPhraseState(await invoke('companion_phrase_state'));
+	}
+
 	async canonSetEnabled(enabled: boolean): Promise<void> {
 		try {
 			await invoke('canon_set_enabled', { enabled });
@@ -412,6 +424,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		species?: string;
 		transpose_degrees?: number;
 		prefer_above?: boolean;
+		phrase_aware?: boolean;
 	}): Promise<void> {
 		try {
 			await invoke('counterpoint_set_config', config);
@@ -465,6 +478,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		species: string;
 		transpose_degrees: number;
 		prefer_above: boolean;
+		phrase_aware?: boolean;
 	} | null> {
 		try {
 			const s = await invoke('counterpoint_state');
@@ -474,6 +488,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 				species: string;
 				transpose_degrees: number;
 				prefer_above: boolean;
+				phrase_aware?: boolean;
 			};
 		} catch (e) {
 			throw new Error(`Failed to read counterpoint state: ${e}`);

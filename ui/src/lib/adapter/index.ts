@@ -64,6 +64,8 @@ export type {
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
+	PhrasePhase,
+	PhraseState,
 	Preset,
 	SlideConfig,
 	SlideCurve,

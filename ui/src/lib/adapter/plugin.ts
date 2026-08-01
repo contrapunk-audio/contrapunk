@@ -16,6 +16,7 @@ import type {
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
+	PhraseState,
 	PluginInputMode,
 	PluginMidiOutputMode,
 	Preset,
@@ -27,6 +28,7 @@ import type {
 } from './types';
 import { MAX_VOICES } from './types';
 import { defaultSlideConfig } from '$lib/slide/config';
+import { mapPhraseState } from './phrase';
 
 declare global {
 	interface Window {
@@ -79,6 +81,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		companionLanes: true,
 		intervalMaps: false,
 		patternLanes: false,
+		phraseContext: true,
 		// DAW owns audio + MIDI routing into the plugin. The source
 		// radio (MIDI / Guitar / Voice) doesn't apply — the host bus
 		// is the source. Hide the InputPanel entirely in plugin mode.
@@ -132,7 +135,8 @@ export class PluginAdapter implements ContrapunkAdapter {
 						counterpointNotes: data.counterpointNotes ?? [],
 						chordName: data.chordName ?? '',
 						lastBorrowedFrom: data.lastBorrowedFrom ?? '',
-						currentKey: data.currentKey ?? 'C'
+						currentKey: data.currentKey ?? 'C',
+						phrase: mapPhraseState(data.phrase)
 					});
 				}
 			} catch {
@@ -287,6 +291,15 @@ export class PluginAdapter implements ContrapunkAdapter {
 	async companionSetGlobalHoldMode(holdMode: HoldMode): Promise<void> {
 		this.send('companionSetGlobalHoldMode', holdMode);
 	}
+	async setPhraseGapBeats(beats: number): Promise<void> {
+		const previous = currentParams.phrase;
+		const phrase = previous !== null && typeof previous === 'object' ? previous : {};
+		currentParams = { ...currentParams, phrase: { ...phrase, gap_beats: beats } };
+		this.send('companionSetPhraseGap', beats);
+	}
+	async getPhraseState(): Promise<PhraseState> {
+		return mapPhraseState(currentParams.phrase);
+	}
 	async canonSetEnabled(enabled: boolean): Promise<void> {
 		this.send('canonConfigure', { enabled });
 	}
@@ -319,6 +332,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		species?: string;
 		transpose_degrees?: number;
 		prefer_above?: boolean;
+		phrase_aware?: boolean;
 	}): Promise<void> {
 		this.send('counterpointConfigure', config);
 	}
@@ -350,6 +364,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		species: string;
 		transpose_degrees: number;
 		prefer_above: boolean;
+		phrase_aware?: boolean;
 	} | null> {
 		return null;
 	}

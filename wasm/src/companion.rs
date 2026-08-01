@@ -86,6 +86,18 @@ impl CompanionWasm {
             .load(std::sync::atomic::Ordering::Acquire)
     }
 
+    #[wasm_bindgen]
+    pub fn set_phrase_gap(&self, beats: f64) -> Result<(), JsValue> {
+        self.inner
+            .set_phrase_gap_beats(beats)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen]
+    pub fn phrase_state(&self) -> String {
+        serde_json::to_string(&self.inner.phrase_snapshot()).unwrap_or_else(|_| "null".into())
+    }
+
     /// Mirror the global engine's key/scale/mode/voice_count etc.
     /// into the snapshot the Companion's mini-engines read. Called by
     /// JS whenever the Harmony tab changes these.
@@ -155,6 +167,14 @@ impl CompanionWasm {
         self.inner
             .configure_lane("counterpoint", value)
             .map_err(|e| JsValue::from_str(&e))
+    }
+
+    #[wasm_bindgen]
+    pub fn counterpoint_state(&self) -> String {
+        self.inner
+            .lane_state("counterpoint")
+            .unwrap_or(serde_json::Value::Null)
+            .to_string()
     }
 
     #[wasm_bindgen]
@@ -234,6 +254,17 @@ impl CompanionWasm {
         serialize_slotted_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    #[wasm_bindgen]
+    pub fn on_cc(&mut self, number: u8, value: u8, channel: u8) -> Result<String, JsValue> {
+        let ev = InputEvent::Cc {
+            number,
+            value,
+            channel,
+        };
+        let (tagged, _suppress) = self.inner.on_input_tagged(ev, &self.dummy_engine);
+        serialize_slotted_ops(&tagged).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Tick the lanes. Drains pending emissions whose fire_at has
     /// elapsed. Returns a JSON array of dispatch ops to schedule on
     /// the WebAudio synth. Each op carries its originating `lane`.
@@ -294,6 +325,7 @@ impl CompanionWasm {
             "counterpoint": counterpoint,
             "pattern_low": pattern_low,
             "pattern_counter": pattern_counter,
+            "phrase": self.inner.phrase_snapshot(),
             "companion_enabled": self.inner.enabled.load(std::sync::atomic::Ordering::Acquire),
             "transport_beats": self.world.transport.total_beats(),
         })

@@ -83,6 +83,22 @@ export type HoldMode =
 	| { kind: 'phrase_end' }
 	| { kind: 'forever' };
 
+export type PhrasePhase = 'idle' | 'opening' | 'active' | 'releasing';
+export interface PhraseState {
+	id: number | null;
+	phase: PhrasePhase;
+	gapBeats: number;
+	startedAt: number | null;
+	releaseStartedAt: number | null;
+	attackCount: number;
+	openingNote: number | null;
+	previousNote: number | null;
+	latestNote: number | null;
+	latestVelocity: number | null;
+	latestChannel: number | null;
+	inputIdle: boolean;
+}
+
 export interface MidiDevice {
 	index: number;
 	name: string;
@@ -140,6 +156,7 @@ export interface NoteState {
 	 *  voices remain visible independently across all surfaces. */
 	canonNotes?: number[];
 	counterpointNotes?: number[];
+	phrase?: PhraseState;
 }
 
 /** Guitar DSP pipeline configuration sent to the backend. */
@@ -274,6 +291,8 @@ export interface AdapterCapabilities {
 	/** Whether the reusable declarative PatternLane roles are wired on
 	 *  this surface. Kept separate from legacy Canon/Counterpoint support. */
 	patternLanes: boolean;
+	/** Whether exact shared phrase tracking, configuration, and telemetry work. */
+	phraseContext: boolean;
 	/** Whether the InputPanel renders the three-way source picker
 	 *  (MIDI / Guitar Audio / Voice). False in plugin mode — the DAW
 	 *  routes audio in and chooses the input bus itself, so the picker
@@ -398,6 +417,8 @@ export interface ContrapunkAdapter {
 	 *    {"kind":"forever"}
 	 */
 	companionSetGlobalHoldMode(holdMode: HoldMode): Promise<void>;
+	setPhraseGapBeats(beats: number): Promise<void>;
+	getPhraseState(): Promise<PhraseState>;
 
 	/** Enable / disable the Canon voice (#3). Requires the Companion
 	 *  master to be enabled too — this is the per-lane gate. */
@@ -444,6 +465,7 @@ export interface ContrapunkAdapter {
 		species?: string;
 		transpose_degrees?: number;
 		prefer_above?: boolean;
+		phrase_aware?: boolean;
 	}): Promise<void>;
 
 	/** Generic lane-level configure for CounterpointLane (#11 override
@@ -463,6 +485,7 @@ export interface ContrapunkAdapter {
 		species: string;
 		transpose_degrees: number;
 		prefer_above: boolean;
+		phrase_aware?: boolean;
 	} | null>;
 
 	/** Read the canon lane's full config snapshot. */

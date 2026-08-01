@@ -18,6 +18,7 @@ export class CompanionWasm {
     configure_canon(json: string): void;
     configure_counterpoint(json: string): void;
     configure_pattern(lane_id: string, json: string): void;
+    counterpoint_state(): string;
     /**
      * Debug snapshot — JSON dump of the global engine snapshot + each
      * canon-lane voice's mini-engine state (mode, key, scale_mode,
@@ -29,6 +30,7 @@ export class CompanionWasm {
     debug_snapshot(): string;
     is_enabled(): boolean;
     constructor();
+    on_cc(number: number, value: number, channel: number): string;
     on_note_off(note: number, channel: number): string;
     /**
      * Feed a player NoteOn into the Companion. Returns a JSON array
@@ -49,6 +51,7 @@ export class CompanionWasm {
      * each accept a `hold_mode` field with the same shape).
      */
     pattern_state(lane_id: string): string;
+    phrase_state(): string;
     /**
      * Clear delayed/held lane state without changing configuration.
      */
@@ -65,6 +68,7 @@ export class CompanionWasm {
      * JS whenever the Harmony tab changes these.
      */
     set_global_state(key: string, mode: string, scale_mode: string, voice_count: number, voice_position: number): void;
+    set_phrase_gap(beats: number): void;
     /**
      * Tick the lanes. Drains pending emissions whose fire_at has
      * elapsed. Returns a JSON array of dispatch ops to schedule on
@@ -376,17 +380,21 @@ export interface InitOutput {
     readonly companionwasm_configure_canon: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_configure_counterpoint: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_configure_pattern: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly companionwasm_counterpoint_state: (a: number, b: number) => void;
     readonly companionwasm_debug_snapshot: (a: number, b: number) => void;
     readonly companionwasm_is_enabled: (a: number) => number;
     readonly companionwasm_new: () => number;
+    readonly companionwasm_on_cc: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly companionwasm_on_note_off: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_on_note_on: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly companionwasm_pattern_state: (a: number, b: number, c: number, d: number) => void;
+    readonly companionwasm_phrase_state: (a: number, b: number) => void;
     readonly companionwasm_reset_runtime: (a: number) => void;
     readonly companionwasm_set_enabled: (a: number, b: number) => void;
     readonly companionwasm_set_global_hold_mode: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_set_global_interval_map: (a: number, b: number, c: number, d: number) => void;
     readonly companionwasm_set_global_state: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
+    readonly companionwasm_set_phrase_gap: (a: number, b: number, c: number) => void;
     readonly companionwasm_tick: (a: number, b: number) => void;
     readonly __wbg_elixiraudio_free: (a: number, b: number) => void;
     readonly elixiraudio_new: (a: number, b: number) => number;

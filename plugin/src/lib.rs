@@ -592,6 +592,7 @@ enum WorkerInput {
         generation: u64,
         block: u64,
         timing: u32,
+        channel: u8,
         note: u8,
         velocity: f32,
     },
@@ -599,8 +600,24 @@ enum WorkerInput {
         generation: u64,
         block: u64,
         timing: u32,
+        channel: u8,
         note: u8,
         velocity: f32,
+    },
+    Cc {
+        generation: u64,
+        block: u64,
+        timing: u32,
+        channel: u8,
+        number: u8,
+        value: u8,
+    },
+    PhraseInput {
+        generation: u64,
+        event: contrapunk_companion::InputEvent,
+    },
+    PhraseTick {
+        generation: u64,
     },
     Tick {
         generation: u64,
@@ -908,6 +925,7 @@ fn process_worker_note(
     generation: u64,
     block: u64,
     timing: u32,
+    channel: u8,
     note: u8,
     velocity: f32,
     note_on: bool,
@@ -923,10 +941,10 @@ fn process_worker_note(
             contrapunk_companion::InputEvent::NoteOn {
                 note,
                 velocity: (velocity * 127.0).round().clamp(1.0, 127.0) as u8,
-                channel: 0,
+                channel,
             }
         } else {
-            contrapunk_companion::InputEvent::NoteOff { note, channel: 0 }
+            contrapunk_companion::InputEvent::NoteOff { note, channel }
         };
         let (tagged, suppress) = companion
             .lock()
@@ -1065,6 +1083,7 @@ fn run_music_worker(
                     generation: event_generation,
                     block,
                     timing,
+                    channel,
                     note,
                     velocity,
                 } if event_generation == generation => process_worker_note(
@@ -1075,6 +1094,7 @@ fn run_music_worker(
                     generation,
                     block,
                     timing,
+                    channel,
                     note,
                     velocity,
                     true,
@@ -1086,6 +1106,7 @@ fn run_music_worker(
                     generation: event_generation,
                     block,
                     timing,
+                    channel,
                     note,
                     velocity,
                 } if event_generation == generation => process_worker_note(
@@ -1096,6 +1117,7 @@ fn run_music_worker(
                     generation,
                     block,
                     timing,
+                    channel,
                     note,
                     velocity,
                     false,
@@ -1103,6 +1125,51 @@ fn run_music_worker(
                     &slide_config,
                     &mut port_map_owners,
                 ),
+                WorkerInput::Cc {
+                    generation: event_generation,
+                    block,
+                    timing,
+                    channel,
+                    number,
+                    value,
+                } if event_generation == generation => {
+                    let (tagged, _) = companion
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .on_input_tagged(
+                            contrapunk_companion::InputEvent::Cc {
+                                number,
+                                value,
+                                channel,
+                            },
+                            &engine,
+                        );
+                    let slide = *slide_config
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    push_tagged_worker_ops(
+                        &mut output,
+                        &stop,
+                        generation,
+                        block,
+                        timing,
+                        &tagged,
+                        &slide,
+                    );
+                }
+                WorkerInput::PhraseInput {
+                    generation: event_generation,
+                    event,
+                } if event_generation == generation => companion
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .observe_phrase_input(event),
+                WorkerInput::PhraseTick {
+                    generation: event_generation,
+                } if event_generation == generation => companion
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .advance_phrase(),
                 WorkerInput::Tick {
                     generation: event_generation,
                     block,
@@ -1170,10 +1237,11 @@ fn run_music_worker(
                                     generation,
                                     block,
                                     0,
+                                    0,
                                     note,
                                     velocity as f32 / 127.0,
                                     true,
-                                    false,
+                                    true,
                                     &slide_config,
                                     &mut port_map_owners,
                                 );
@@ -1187,15 +1255,31 @@ fn run_music_worker(
                                     generation,
                                     block,
                                     0,
+                                    0,
                                     note,
                                     velocity as f32 / 127.0,
                                     false,
-                                    false,
+                                    true,
                                     &slide_config,
                                     &mut port_map_owners,
                                 );
                             }
-                            CpMidiEvent::NoteOn { note, velocity, .. } => {
+                            CpMidiEvent::NoteOn {
+                                channel,
+                                note,
+                                velocity,
+                                ..
+                            } => {
+                                companion
+                                    .lock()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                    .observe_phrase_input(
+                                        contrapunk_companion::InputEvent::NoteOn {
+                                            note,
+                                            velocity,
+                                            channel,
+                                        },
+                                    );
                                 let slide_config = *slide_config
                                     .lock()
                                     .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -1220,20 +1304,33 @@ fn run_music_worker(
                                     },
                                 );
                             }
-                            CpMidiEvent::NoteOff { note, velocity, .. } => push_worker_output(
-                                &mut output,
-                                &stop,
-                                WorkerOutput::NoteOff {
-                                    generation,
-                                    block,
-                                    timing: 0,
-                                    source: WorkerNoteSource::Input,
-                                    channel: MELODY_CHANNEL,
-                                    note,
-                                    velocity: velocity as f32 / 127.0,
-                                    slide_slot: SlideSlot::new(SlideRole::Input, 0),
-                                },
-                            ),
+                            CpMidiEvent::NoteOff {
+                                channel,
+                                note,
+                                velocity,
+                                ..
+                            } => {
+                                companion
+                                    .lock()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                    .observe_phrase_input(
+                                        contrapunk_companion::InputEvent::NoteOff { note, channel },
+                                    );
+                                push_worker_output(
+                                    &mut output,
+                                    &stop,
+                                    WorkerOutput::NoteOff {
+                                        generation,
+                                        block,
+                                        timing: 0,
+                                        source: WorkerNoteSource::Input,
+                                        channel: MELODY_CHANNEL,
+                                        note,
+                                        velocity: velocity as f32 / 127.0,
+                                        slide_slot: SlideSlot::new(SlideRole::Input, 0),
+                                    },
+                                );
+                            }
                             CpMidiEvent::PitchBend { channel, cents } => push_worker_output(
                                 &mut output,
                                 &stop,
@@ -1270,6 +1367,29 @@ fn run_music_worker(
                             ),
                             _ => {}
                         }
+                    }
+                    if harmonize {
+                        let tagged = companion
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .tick_tagged(&engine);
+                        let slide = *slide_config
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        push_tagged_worker_ops(
+                            &mut output,
+                            &stop,
+                            generation,
+                            block,
+                            0,
+                            &tagged,
+                            &slide,
+                        );
+                    } else {
+                        companion
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .advance_phrase();
                     }
                 }
                 _ => {}
@@ -1967,6 +2087,7 @@ impl ContrapunkPlugin {
     fn try_enqueue_worker_note(
         &mut self,
         timing: u32,
+        channel: u8,
         note: u8,
         velocity: f32,
         note_on: bool,
@@ -1976,6 +2097,7 @@ impl ContrapunkPlugin {
                 generation: self.worker_generation,
                 block: self.worker_block,
                 timing,
+                channel,
                 note,
                 velocity,
             }
@@ -1984,11 +2106,36 @@ impl ContrapunkPlugin {
                 generation: self.worker_generation,
                 block: self.worker_block,
                 timing,
+                channel,
                 note,
                 velocity,
             }
         };
         self.worker.try_push(input)
+    }
+
+    fn try_enqueue_worker_cc(&mut self, timing: u32, channel: u8, number: u8, value: f32) -> bool {
+        self.worker.try_push(WorkerInput::Cc {
+            generation: self.worker_generation,
+            block: self.worker_block,
+            timing,
+            channel,
+            number,
+            value: (value * 127.0).round().clamp(0.0, 127.0) as u8,
+        })
+    }
+
+    fn try_enqueue_phrase_input(&mut self, event: contrapunk_companion::InputEvent) -> bool {
+        self.worker.try_push(WorkerInput::PhraseInput {
+            generation: self.worker_generation,
+            event,
+        })
+    }
+
+    fn try_enqueue_phrase_tick(&mut self) -> bool {
+        self.worker.try_push(WorkerInput::PhraseTick {
+            generation: self.worker_generation,
+        })
     }
 
     fn sync_tone_source(&mut self) -> bool {
@@ -2005,7 +2152,7 @@ impl ContrapunkPlugin {
         }
         if let Some(next_note) = next.filter(|next_note| Some(*next_note) != self.active_tone_note)
         {
-            if !self.try_enqueue_worker_note(0, next_note, velocity as f32 / 127.0, true) {
+            if !self.try_enqueue_worker_note(0, 0, next_note, velocity as f32 / 127.0, true) {
                 return false;
             }
         }
@@ -2013,7 +2160,7 @@ impl ContrapunkPlugin {
             .active_tone_note
             .filter(|previous| Some(*previous) != next)
         {
-            if !self.try_enqueue_worker_note(0, previous, 0.0, false) {
+            if !self.try_enqueue_worker_note(0, 0, previous, 0.0, false) {
                 return false;
             }
         }
@@ -2022,7 +2169,13 @@ impl ContrapunkPlugin {
         true
     }
 
-    fn process_midi_passthrough(&mut self, context: &mut impl ProcessContext<Self>) {
+    fn process_midi_passthrough(
+        &mut self,
+        context: &mut impl ProcessContext<Self>,
+        worker_ready: bool,
+    ) {
+        let mut queue_ok = worker_ready;
+        let mut queue_overflow = false;
         while let Some(event) = context.next_event() {
             match event {
                 NoteEvent::NoteOn {
@@ -2032,6 +2185,16 @@ impl ContrapunkPlugin {
                     velocity,
                     ..
                 } => {
+                    if queue_ok {
+                        queue_ok = self.try_enqueue_phrase_input(
+                            contrapunk_companion::InputEvent::NoteOn {
+                                note,
+                                velocity: (velocity * 127.0).round().clamp(1.0, 127.0) as u8,
+                                channel,
+                            },
+                        );
+                        queue_overflow |= !queue_ok;
+                    }
                     if let Ok(mut s) = self.note_state.try_lock() {
                         s.input_notes.insert(note);
                     }
@@ -2044,6 +2207,12 @@ impl ContrapunkPlugin {
                     velocity,
                     ..
                 } => {
+                    if queue_ok {
+                        queue_ok = self.try_enqueue_phrase_input(
+                            contrapunk_companion::InputEvent::NoteOff { note, channel },
+                        );
+                        queue_overflow |= !queue_ok;
+                    }
                     if let Ok(mut s) = self.note_state.try_lock() {
                         s.input_notes.remove(&note);
                     }
@@ -2062,6 +2231,12 @@ impl ContrapunkPlugin {
                     note,
                     ..
                 } => {
+                    if queue_ok {
+                        queue_ok = self.try_enqueue_phrase_input(
+                            contrapunk_companion::InputEvent::NoteOff { note, channel },
+                        );
+                        queue_overflow |= !queue_ok;
+                    }
                     if let Ok(mut s) = self.note_state.try_lock() {
                         s.input_notes.remove(&note);
                     }
@@ -2074,16 +2249,37 @@ impl ContrapunkPlugin {
                         context,
                     );
                 }
-                other @ NoteEvent::MidiCC { cc: 64, value, .. } => {
+                other @ NoteEvent::MidiCC {
+                    channel,
+                    cc: 64,
+                    value,
+                    ..
+                } => {
+                    if queue_ok {
+                        queue_ok =
+                            self.try_enqueue_phrase_input(contrapunk_companion::InputEvent::Cc {
+                                number: 64,
+                                value: (value * 127.0).round().clamp(0.0, 127.0) as u8,
+                                channel,
+                            });
+                        queue_overflow |= !queue_ok;
+                    }
                     self.synth_sustain(value >= 0.5);
                     context.send_event(other);
                 }
                 other @ NoteEvent::MidiCC { timing, cc, .. } if is_all_notes_off_cc(cc) => {
                     self.hard_all_notes_off(timing, context);
                     context.send_event(other);
+                    queue_ok = false;
                 }
                 other => context.send_event(other),
             }
+        }
+        if queue_ok && !self.try_enqueue_phrase_tick() {
+            queue_overflow = true;
+        }
+        if queue_overflow {
+            self.hard_all_notes_off(0, context);
         }
     }
 
@@ -2242,7 +2438,7 @@ impl Plugin for ContrapunkPlugin {
 
         match input_mode {
             PluginInputMode::Midi if output_mode == PluginMidiOutputMode::PassThrough => {
-                self.process_midi_passthrough(context);
+                self.process_midi_passthrough(context, worker_ready);
             }
             PluginInputMode::Midi => {
                 let mut queue_ok = worker_ready;
@@ -2251,27 +2447,47 @@ impl Plugin for ContrapunkPlugin {
                     match event {
                         NoteEvent::NoteOn {
                             timing,
+                            channel,
                             note,
                             velocity,
                             ..
                         } if queue_ok => {
-                            queue_ok = self.try_enqueue_worker_note(timing, note, velocity, true);
+                            queue_ok =
+                                self.try_enqueue_worker_note(timing, channel, note, velocity, true);
                             queue_overflow |= !queue_ok;
                         }
                         NoteEvent::NoteOff {
                             timing,
+                            channel,
                             note,
                             velocity,
                             ..
                         } if queue_ok => {
-                            queue_ok = self.try_enqueue_worker_note(timing, note, velocity, false);
+                            queue_ok = self
+                                .try_enqueue_worker_note(timing, channel, note, velocity, false);
                             queue_overflow |= !queue_ok;
                         }
-                        NoteEvent::Choke { timing, note, .. } if queue_ok => {
-                            queue_ok = self.try_enqueue_worker_note(timing, note, 0.0, false);
+                        NoteEvent::Choke {
+                            timing,
+                            channel,
+                            note,
+                            ..
+                        } if queue_ok => {
+                            queue_ok =
+                                self.try_enqueue_worker_note(timing, channel, note, 0.0, false);
                             queue_overflow |= !queue_ok;
                         }
-                        other @ NoteEvent::MidiCC { cc: 64, value, .. } => {
+                        other @ NoteEvent::MidiCC {
+                            timing,
+                            channel,
+                            cc: 64,
+                            value,
+                            ..
+                        } => {
+                            if queue_ok {
+                                queue_ok = self.try_enqueue_worker_cc(timing, channel, 64, value);
+                                queue_overflow |= !queue_ok;
+                            }
                             self.synth_sustain(value >= 0.5);
                             context.send_event(other);
                         }
@@ -2541,6 +2757,88 @@ mod tests {
     }
 
     #[test]
+    fn music_worker_tracks_and_expires_pass_through_phrase() {
+        let engine = Arc::new(Mutex::new(HarmonyEngine::new(
+            Key::C,
+            HarmonyMode::DiatonicThirds,
+        )));
+        let transport = Transport::new(48_000);
+        let companion = Arc::new(Mutex::new(Companion::new(WorldState::new(
+            Arc::clone(&transport),
+            Arc::clone(&engine),
+        ))));
+        let mut worker = MusicWorker::new(
+            engine,
+            Arc::clone(&companion),
+            Arc::new(Mutex::new(PluginGuitarSignal::default())),
+            Arc::new(Mutex::new(SlideConfig::default())),
+        );
+        assert!(worker.try_push(WorkerInput::Configure {
+            generation: 3,
+            params: WorkerParams::default(),
+        }));
+        for event in [
+            contrapunk_companion::InputEvent::NoteOn {
+                note: 60,
+                velocity: 100,
+                channel: 0,
+            },
+            contrapunk_companion::InputEvent::NoteOff {
+                note: 60,
+                channel: 0,
+            },
+        ] {
+            assert!(worker.try_push(WorkerInput::PhraseInput {
+                generation: 3,
+                event,
+            }));
+        }
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline
+            && companion
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phrase_snapshot()
+                .phase
+                != contrapunk_companion::PhrasePhase::Releasing
+        {
+            thread::yield_now();
+        }
+        assert_eq!(
+            companion
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phrase_snapshot()
+                .phase,
+            contrapunk_companion::PhrasePhase::Releasing
+        );
+
+        transport.play();
+        transport.advance(48_001);
+        assert!(worker.try_push(WorkerInput::PhraseTick { generation: 3 }));
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline
+            && companion
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phrase_snapshot()
+                .phase
+                != contrapunk_companion::PhrasePhase::Idle
+        {
+            thread::yield_now();
+        }
+        assert_eq!(
+            companion
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phrase_snapshot()
+                .phase,
+            contrapunk_companion::PhrasePhase::Idle
+        );
+    }
+
+    #[test]
     fn music_worker_returns_harmony_without_audio_thread_engine_access() {
         let engine = Arc::new(Mutex::new(HarmonyEngine::new(
             Key::C,
@@ -2551,6 +2849,7 @@ mod tests {
             transport,
             Arc::clone(&engine),
         ))));
+        let companion_probe = Arc::clone(&companion);
         let mut worker = MusicWorker::new(
             engine,
             companion,
@@ -2568,6 +2867,7 @@ mod tests {
             generation: 6,
             block: 1,
             timing: 0,
+            channel: 1,
             note: 61,
             velocity: 1.0,
         }));
@@ -2575,6 +2875,7 @@ mod tests {
             generation: 7,
             block: 1,
             timing: 12,
+            channel: 3,
             note: 60,
             velocity: 1.0,
         }));
@@ -2600,11 +2901,28 @@ mod tests {
         assert!(notes[57], "worker did not return the diatonic third below");
         assert!(!notes[61], "worker emitted a stale generation");
         assert!((frequencies[57] / frequencies[60] - 5.0 / 6.0).abs() < 1.0e-6);
+        assert_eq!(
+            companion_probe
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phrase_snapshot()
+                .latest_channel,
+            Some(3)
+        );
 
+        assert!(worker.try_push(WorkerInput::Cc {
+            generation: 7,
+            block: 2,
+            timing: 0,
+            channel: 3,
+            number: 64,
+            value: 127,
+        }));
         assert!(worker.try_push(WorkerInput::NoteOff {
             generation: 7,
             block: 2,
             timing: 0,
+            channel: 3,
             note: 60,
             velocity: 0.0,
         }));
@@ -2621,5 +2939,35 @@ mod tests {
             }
         }
         assert!(released[60] && released[57], "worker lost note ownership");
+        assert!(
+            !companion_probe
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phrase_snapshot()
+                .input_idle,
+            "pedal-held input must keep the phrase active"
+        );
+
+        assert!(worker.try_push(WorkerInput::Cc {
+            generation: 7,
+            block: 2,
+            timing: 0,
+            channel: 3,
+            number: 64,
+            value: 0,
+        }));
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if companion_probe
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phrase_snapshot()
+                .input_idle
+            {
+                return;
+            }
+            thread::yield_now();
+        }
+        panic!("music worker did not release phrase ownership on pedal up");
     }
 }

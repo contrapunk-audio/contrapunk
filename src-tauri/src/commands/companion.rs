@@ -46,6 +46,20 @@ pub fn companion_is_enabled(state: State<AppState>) -> Result<bool, String> {
     Ok(companion.enabled.load(Ordering::Acquire))
 }
 
+#[tauri::command]
+pub fn companion_set_phrase_gap(beats: f64, state: State<AppState>) -> Result<(), String> {
+    let companion = state.companion.lock().map_err(|e| e.to_string())?;
+    companion.set_phrase_gap_beats(beats)
+}
+
+#[tauri::command]
+pub fn companion_phrase_state(
+    state: State<AppState>,
+) -> Result<contrapunk_companion::PhraseSnapshot, String> {
+    let companion = state.companion.lock().map_err(|e| e.to_string())?;
+    Ok(companion.phrase_snapshot())
+}
+
 /// Set the Companion's global default `HoldMode`. Lanes / voices can
 /// still override per-slot via the existing canon / counterpoint
 /// configure commands (each lane's JSON state accepts a `hold_mode`
@@ -210,6 +224,7 @@ pub fn counterpoint_set_config(
     species: Option<String>,
     transpose_degrees: Option<i8>,
     prefer_above: Option<bool>,
+    phrase_aware: Option<bool>,
     state: State<AppState>,
 ) -> Result<(), String> {
     let mut payload = serde_json::Map::new();
@@ -224,6 +239,9 @@ pub fn counterpoint_set_config(
     }
     if let Some(p) = prefer_above {
         payload.insert("prefer_above".into(), serde_json::json!(p));
+    }
+    if let Some(p) = phrase_aware {
+        payload.insert("phrase_aware".into(), serde_json::json!(p));
     }
     let mut companion = state.companion.lock().map_err(|e| e.to_string())?;
     companion.configure_lane("counterpoint", serde_json::Value::Object(payload))
