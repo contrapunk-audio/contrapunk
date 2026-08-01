@@ -573,10 +573,12 @@ Plans:
 
 **Explicit non-goals:** audio looping, multiple slots, overdub/undo, output capture, arbitrary CC/pitch/aftertouch capture, cross-boundary ties, persistence, Ableton Link, WASM/plugin/Daisy parity, and hardware control mapping.
 
-**Plans:** TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD — Phrase/Arrangement prerequisite checkpointed; run `/gsd-plan-phase 10.3`
+- [ ] 10.3-01-PLAN.md — Continuous transport beats and deterministic one-slot MIDI looper core
+- [ ] 10.3-02-PLAN.md — Isolated full-arrangement replay, exact ownership, Tauri routing, and cleanup
+- [ ] 10.3-03-PLAN.md — Capability-gated desktop controls, automated gate, and user performance checkpoint
 
 ### Phase 14: openDAW Device Integration
 
