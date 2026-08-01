@@ -26,6 +26,7 @@ export const ARRANGEMENT_CAPABILITIES = [
 	'bounded_clusters',
 	'spectral_voicing',
 	'phrase_capture',
+	'phrase_context',
 	'phrase_reverse',
 	'motif_transform',
 	'motif_memory',
@@ -67,7 +68,8 @@ export interface PresetPlayGuide {
 }
 
 export interface ArrangementHarmonyConfig {
-	scaleMode: ScaleModeName;
+	/** Legacy/reference value only; arrangement application never changes the player's scale. */
+	scaleMode?: ScaleModeName;
 	mode: HarmonyModeName;
 	voiceCount: number;
 	voicePosition: number;
@@ -111,6 +113,8 @@ export interface ArrangementCounterpointConfig {
 	species: CounterpointSpeciesName;
 	transposeDegrees: number;
 	preferAbove: boolean;
+	/** Optional for backward-compatible schema-v2 user presets. */
+	phraseAware?: boolean;
 	holdMode: HoldMode | null;
 }
 
@@ -160,10 +164,9 @@ export interface ArrangementConfig {
 }
 
 /**
- * Musical arrangement only. The absence of tonic, tempo, devices,
- * routing, sound, master level, mute/solo, plugins, and transport state
- * is intentional: applying a preset must preserve the performance
- * environment.
+ * Musical arrangement only. Tonic, scale mode, phrase gap, tempo, devices,
+ * routing, sound, master level, mute/solo, plugins, and transport state belong
+ * to the player: applying a preset must preserve that performance environment.
  */
 export interface ArrangementPresetV2 {
 	schemaVersion: typeof ARRANGEMENT_PRESET_SCHEMA_VERSION;
@@ -198,10 +201,17 @@ export function arrangementConfigCapabilities(config: ArrangementConfig): Arrang
 	}
 	if (config.companion.enabled && config.companion.counterpoint.enabled) {
 		capabilities.add('species_counterpoint');
+		if (config.companion.counterpoint.phraseAware) capabilities.add('phrase_context');
 	}
 	const patterns = config.companion.patterns;
 	if (config.companion.enabled && patterns && (patterns.lowSupport.enabled || patterns.counterline.enabled)) {
 		capabilities.add('pattern_lane');
+		if (
+			patterns.lowSupport.pitchAnchor !== 'key' ||
+			patterns.counterline.pitchAnchor !== 'key' ||
+			patterns.lowSupport.onlyWhenInputIdle ||
+			patterns.counterline.onlyWhenInputIdle
+		) capabilities.add('phrase_context');
 		if (patterns.lowSupport.enabled && patterns.counterline.enabled) {
 			capabilities.add('stable_lane_groups');
 		}

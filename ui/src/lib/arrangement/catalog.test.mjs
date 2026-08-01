@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
 	BEBOP_CHASE_PRESET,
@@ -62,6 +63,26 @@ test('catalog exposes 50 unique immutable built-ins and only approved baselines'
 		OPERATIONAL_BUILT_IN_ARRANGEMENT_PRESETS.map((preset) => preset.id),
 		approvedIds
 	);
+});
+
+test('arrangement application preserves the player key and scale mode', () => {
+	const source = readFileSync(new URL('../stores/arrangement.svelte.ts', import.meta.url), 'utf8');
+	const applyStart = source.indexOf('private async applyUnchecked');
+	const snapshotStart = source.indexOf('/** Capture only musical arrangement state', applyStart);
+	const applySource = source.slice(applyStart, snapshotStart);
+	assert.ok(applyStart >= 0 && snapshotStart > applyStart);
+	assert.doesNotMatch(applySource, /setKey|setScaleMode/);
+	assert.doesNotMatch(source.slice(snapshotStart), /scaleMode:\s*engine\.scaleMode/);
+});
+
+test('Phrase Gap is configurable player state and absent from arrangements', () => {
+	const source = readFileSync(new URL('../components/PhraseControl.svelte', import.meta.url), 'utf8');
+	assert.match(source, /min="0\.5"/);
+	assert.match(source, /max="16"/);
+	assert.match(source, /step="0\.25"/);
+	for (const preset of BUILT_IN_ARRANGEMENT_PRESETS) {
+		assert.doesNotMatch(JSON.stringify(preset.config), /phraseGapBeats|phrase_gap_beats/);
+	}
 });
 
 test('Cloister Organum uses one direct degree-mapped perfect interval', () => {
@@ -164,9 +185,13 @@ test('Mensuration Web uses causal single-line proportional followers', () => {
 	]);
 });
 
-test('Suspension Garland uses one bounded transport-scheduled Species IV line', () => {
+test('Suspension Garland coordinates a quiet bass and tied Species IV voice', () => {
 	assert.equal(SUSPENSION_GARLAND_PRESET.play.transportRequired, true);
-	assert.deepEqual(SUSPENSION_GARLAND_PRESET.requirements, ['species_counterpoint']);
+	assert.deepEqual(SUSPENSION_GARLAND_PRESET.requirements, [
+		'species_counterpoint',
+		'phrase_context',
+		'role_mix'
+	]);
 	assert.equal(SUSPENSION_GARLAND_PRESET.config.harmony.mode, 'PassThrough');
 	assert.equal(SUSPENSION_GARLAND_PRESET.config.harmony.voiceCount, 1);
 	assert.equal(SUSPENSION_GARLAND_PRESET.config.companion.enabled, true);
@@ -174,15 +199,28 @@ test('Suspension Garland uses one bounded transport-scheduled Species IV line', 
 	assert.deepEqual(SUSPENSION_GARLAND_PRESET.config.companion.counterpoint, {
 		enabled: true,
 		species: 'Species4',
-		transposeDegrees: 2,
-		preferAbove: true,
+		transposeDegrees: -2,
+		preferAbove: false,
+		phraseAware: true,
 		holdMode: { kind: 'near_future', tail_beats: 2 }
 	});
-	assert.match(SUSPENSION_GARLAND_PRESET.approximation, /cannot predict your next note/);
+	assert.deepEqual(SUSPENSION_GARLAND_PRESET.config.mix, {
+		input: 1,
+		harmony: 1,
+		canon: 1,
+		counterpoint: 0.55
+	});
+	assert.match(SUSPENSION_GARLAND_PRESET.result, /quiet bass and tied inner voice/i);
+	assert.match(SUSPENSION_GARLAND_PRESET.approximation, /opening attack stays exposed/i);
+	assert.match(SUSPENSION_GARLAND_PRESET.approximation, /moves the bass while retaining the inner voice/i);
+	assert.match(SUSPENSION_GARLAND_PRESET.play.density, /three-note ceiling/i);
+	assert.match(SUSPENSION_GARLAND_PRESET.approximation, /current key, scale, and Phrase Gap/i);
 	assert.deepEqual(validateArrangementPreset(SUSPENSION_GARLAND_PRESET), []);
 	assert.deepEqual(arrangementConfigCapabilities(SUSPENSION_GARLAND_PRESET.config), [
 		'harmony',
-		'species_counterpoint'
+		'species_counterpoint',
+		'phrase_context',
+		'role_mix'
 	]);
 	for (const preserved of [
 		'key',
@@ -202,7 +240,7 @@ test('Suspension Garland uses one bounded transport-scheduled Species IV line', 
 	}
 });
 
-test('Planed Cathedral fixes one exact whole-tone three-note plane', () => {
+test('Planed Cathedral applies one scale-relative three-note plane', () => {
 	assert.deepEqual(PLANED_CATHEDRAL_PRESET.requirements, ['harmony']);
 	assert.equal(PLANED_CATHEDRAL_PRESET.play.transportRequired, false);
 	assert.deepEqual(PLANED_CATHEDRAL_PRESET.config.harmony, {
@@ -242,7 +280,7 @@ test('Planed Cathedral fixes one exact whole-tone three-note plane', () => {
 	}
 });
 
-test('Color-Mode Windows fixes one exact Mode-2 diminished-seventh plane', () => {
+test('Color-Mode Windows applies one scale-relative four-note window', () => {
 	assert.deepEqual(COLOR_MODE_WINDOWS_PRESET.requirements, ['harmony']);
 	assert.equal(COLOR_MODE_WINDOWS_PRESET.play.transportRequired, false);
 	assert.deepEqual(COLOR_MODE_WINDOWS_PRESET.config.harmony, {
@@ -382,7 +420,7 @@ test('Bebop Chase is one bounded complete delayed octave answer', () => {
 	}
 });
 
-test('Quartal Colossus is one bounded Dorian fourth-derived block', () => {
+test('Quartal Colossus is one bounded scale-relative fourth-derived block', () => {
 	assert.deepEqual(QUARTAL_COLOSSUS_PRESET.requirements, ['harmony']);
 	assert.equal(QUARTAL_COLOSSUS_PRESET.play.transportRequired, false);
 	assert.deepEqual(QUARTAL_COLOSSUS_PRESET.config.harmony, {
@@ -400,8 +438,8 @@ test('Quartal Colossus is one bounded Dorian fourth-derived block', () => {
 		counterpointStrictness: 'Strict'
 	});
 	assert.equal(QUARTAL_COLOSSUS_PRESET.config.companion.enabled, false);
-	assert.match(QUARTAL_COLOSSUS_PRESET.result, /degrees 1, 2, 5, and 6/i);
-	assert.match(QUARTAL_COLOSSUS_PRESET.approximation, /contain one augmented fourth/i);
+	assert.match(QUARTAL_COLOSSUS_PRESET.result, /selected scale/i);
+	assert.match(QUARTAL_COLOSSUS_PRESET.approximation, /Dorian is the reference profile/i);
 	assert.match(QUARTAL_COLOSSUS_PRESET.approximation, /does not generate/i);
 	assert.deepEqual(validateArrangementPreset(QUARTAL_COLOSSUS_PRESET), []);
 	assert.deepEqual(arrangementConfigCapabilities(QUARTAL_COLOSSUS_PRESET.config), ['harmony']);
@@ -424,7 +462,7 @@ test('Quartal Colossus is one bounded Dorian fourth-derived block', () => {
 	}
 });
 
-test('Hollow Choir is one bounded Aeolian SATB-style harmonic shadow', () => {
+test('Hollow Choir is one bounded scale-preserving SATB-style shadow', () => {
 	assert.deepEqual(HOLLOW_CHOIR_PRESET.requirements, ['harmony']);
 	assert.equal(HOLLOW_CHOIR_PRESET.play.transportRequired, false);
 	assert.deepEqual(HOLLOW_CHOIR_PRESET.config.harmony, {
@@ -442,7 +480,7 @@ test('Hollow Choir is one bounded Aeolian SATB-style harmonic shadow', () => {
 		counterpointStrictness: 'Strict'
 	});
 	assert.equal(HOLLOW_CHOIR_PRESET.config.companion.enabled, false);
-	assert.match(HOLLOW_CHOIR_PRESET.result, /SATB-style minor harmonic shadow/i);
+	assert.match(HOLLOW_CHOIR_PRESET.result, /SATB-style shadow/i);
 	assert.match(HOLLOW_CHOIR_PRESET.approximation, /does not generate a literal choir/i);
 	assert.match(HOLLOW_CHOIR_PRESET.approximation, /independent counterline/i);
 	assert.match(HOLLOW_CHOIR_PRESET.approximation, /adaptive game scenes/i);
@@ -538,6 +576,7 @@ test('Pixel Trio anchors its bass to the phrase and each gap answer to the lates
 	assert.equal(PIXEL_TRIO_PRESET.play.transportRequired, true);
 	assert.deepEqual(PIXEL_TRIO_PRESET.requirements, [
 		'pattern_lane',
+		'phrase_context',
 		'stable_lane_groups',
 		'role_mix'
 	]);
@@ -582,17 +621,18 @@ test('Pixel Trio anchors its bass to the phrase and each gap answer to the lates
 	assert.deepEqual(
 		missingArrangementCapabilities(
 			PIXEL_TRIO_PRESET,
-			new Set(['pattern_lane', 'stable_lane_groups', 'role_mix'])
+			new Set(['pattern_lane', 'phrase_context', 'stable_lane_groups', 'role_mix'])
 		),
 		[]
 	);
 	assert.deepEqual(arrangementConfigCapabilities(PIXEL_TRIO_PRESET.config), [
 		'harmony',
 		'pattern_lane',
+		'phrase_context',
 		'stable_lane_groups',
 		'role_mix'
 	]);
-	assert.match(PIXEL_TRIO_PRESET.result, /phrase-relative bass/i);
+	assert.match(PIXEL_TRIO_PRESET.result, /phrase-opening bass/i);
 	assert.match(PIXEL_TRIO_PRESET.approximation, /phrase opening/i);
 	assert.match(PIXEL_TRIO_PRESET.approximation, /latest player attack/i);
 	assert.match(PIXEL_TRIO_PRESET.approximation, /does not emulate NES hardware/i);

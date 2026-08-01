@@ -16,13 +16,15 @@ export interface CounterpointLaneState {
 	species: CounterpointSpeciesName;
 	transposeDegrees: number;
 	preferAbove: boolean;
+	phraseAware: boolean;
 }
 
 const DEFAULT_COUNTERPOINT: CounterpointLaneState = {
 	enabled: false,
 	species: 'Species1',
 	transposeDegrees: 2,
-	preferAbove: true
+	preferAbove: true,
+	phraseAware: false
 };
 
 const EMPTY_PATTERN_LANE: ArrangementPatternLaneConfig = {
@@ -63,6 +65,7 @@ class ArrangementStore {
 			capabilities.add('pattern_lane');
 			capabilities.add('stable_lane_groups');
 		}
+		if (adapter.capabilities.phraseContext) capabilities.add('phrase_context');
 		if (adapter.capabilities.roleMix) capabilities.add('role_mix');
 		return capabilities;
 	}
@@ -75,7 +78,8 @@ class ArrangementStore {
 					enabled: state.enabled,
 					species: state.species as CounterpointSpeciesName,
 					transposeDegrees: state.transpose_degrees,
-					preferAbove: state.prefer_above
+					preferAbove: state.prefer_above,
+					phraseAware: state.phrase_aware === true
 				};
 			}
 		} catch {
@@ -144,7 +148,8 @@ class ArrangementStore {
 				enabled: patch.enabled,
 				species: patch.species,
 				transpose_degrees: patch.transposeDegrees,
-				prefer_above: patch.preferAbove
+				prefer_above: patch.preferAbove,
+				phrase_aware: patch.phraseAware
 			});
 		} catch (error) {
 			this.counterpoint = previous;
@@ -243,7 +248,6 @@ class ArrangementStore {
 
 	private async applyUnchecked(config: ArrangementConfig) {
 		const harmony = config.harmony;
-		await engine.setScaleMode(harmony.scaleMode);
 		if (adapter.capabilities.intervalMaps) {
 			await engine.setExplicitIntervalMap(
 				harmony.explicitIntervalMap ?? DEFAULT_EXPLICIT_INTERVAL_MAP
@@ -285,7 +289,8 @@ class ArrangementStore {
 			enabled: companion.counterpoint.enabled,
 			species: companion.counterpoint.species,
 			transposeDegrees: companion.counterpoint.transposeDegrees,
-			preferAbove: companion.counterpoint.preferAbove
+			preferAbove: companion.counterpoint.preferAbove,
+			phraseAware: companion.counterpoint.phraseAware ?? false
 		});
 		await engine.setCounterpointLaneHoldMode(companion.counterpoint.holdMode);
 		const patterns = companion.patterns ?? emptyPatterns();
@@ -304,7 +309,6 @@ class ArrangementStore {
 	snapshot(): ArrangementConfig {
 		return {
 			harmony: {
-				scaleMode: engine.scaleMode,
 				mode: engine.mode,
 				voiceCount: engine.voiceCount,
 				voicePosition: engine.voicePosition,
@@ -349,6 +353,7 @@ class ArrangementStore {
 					species: this.counterpoint.species,
 					transposeDegrees: this.counterpoint.transposeDegrees,
 					preferAbove: this.counterpoint.preferAbove,
+					phraseAware: this.counterpoint.phraseAware,
 					holdMode: engine.counterpointLaneHoldMode
 				},
 				patterns: {

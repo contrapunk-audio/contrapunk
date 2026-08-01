@@ -329,21 +329,21 @@ export const SUSPENSION_GARLAND_PRESET: ArrangementPresetV2 = {
 	id: '08-suspension-garland',
 	name: 'Suspension Garland',
 	family: 'classical',
-	tags: ['renaissance', 'fourth-species', 'prepared-suspension', 'transport'],
+	tags: ['renaissance', 'fourth-species', 'moving-bass', 'prepared-suspension'],
 	builtIn: true,
 	result:
-		'A consonant counterline enters between beats; compatible on-beat motion holds it into tension, then resolves it down one diatonic step.',
+		'After an exposed opening, a quiet bass and tied inner voice form consonance with you; your next compatible attack moves the bass beneath the held tone, creating tension that resolves downward.',
 	approximation:
-		"A live, opportunistic fourth-species study inspired by Fux's pedagogy and recurrent suspension practice in selected Palestrina sources. It uses a simple beat/half-beat grid independent of bar meter. Because Contrapunk cannot predict your next note, incompatible motion becomes consonant syncopation or is released before the new attack. It does not reproduce Palestrina's text setting, ficta, mensural rhythm, changing vocal density, suspension statistics, cadence planning, or historical tuning.",
+		"A bounded phrase-shaped suspension trio inspired by Fux's pedagogy and recurrent suspension practice in selected Palestrina sources. The opening attack stays exposed. A later attack prepares a consonant three-note sonority; the next compatible attack moves the bass while retaining the inner voice, then that voice resolves down by one scale step. The pair breathes before one final opportunity and then rests. The player's current key, scale, and Phrase Gap define the environment. Incompatible motion releases and prepares a new consonance instead of forcing a dissonance. It does not reproduce Palestrina's text setting, ficta, mensural rhythm, changing vocal density, suspension statistics, cadence planning, or historical tuning.",
 	play: {
 		prompt:
-			'At 60–72 BPM, play one note on a transport beat, then a note a perfect fourth above on the next beat; listen for the counterline to enter between them, hold without retriggering, and fall by step.',
+			'Play a slow connected melody in the key and scale you know, mostly by step. Let the opening speak alone, then hear two quiet voices establish harmony, stretch it across your next move, resolve, and breathe.',
 		input: 'single_notes',
 		articulation:
-			'Connected single notes with a clean legato handoff at each beat; keyboard pedal up, guitar strings actively muted, no bends or slides.',
-		density: 'One attack per beat for two to four notes; no chords, repeated-note overlaps, or fast runs.',
-		space: 'After each two-to-four-note chain, release and leave one full bar silent.',
-		tempo: '60–72 BPM; 64 BPM is the test default.',
+			'Connected single notes with enough room to hear the prepared harmony; keyboard pedal up, guitar strings actively muted, no bends or slides.',
+		density: 'Three to six source notes per phrase; player, bass, and tied inner voice are the absolute three-note ceiling.',
+		space: 'Release fully between phrases; your Phrase Gap setting decides when the next phrase begins.',
+		tempo: '60–84 BPM in 4/4; 72 BPM is the test default.',
 		transportRequired: true
 	},
 	references: [
@@ -359,7 +359,7 @@ export const SUSPENSION_GARLAND_PRESET: ArrangementPresetV2 = {
 		}
 	],
 	researchStatus: 'approved',
-	requirements: ['species_counterpoint'],
+	requirements: ['species_counterpoint', 'phrase_context', 'role_mix'],
 	config: {
 		harmony: {
 			scaleMode: 'Dorian',
@@ -382,12 +382,13 @@ export const SUSPENSION_GARLAND_PRESET: ArrangementPresetV2 = {
 			counterpoint: {
 				enabled: true,
 				species: 'Species4',
-				transposeDegrees: 2,
-				preferAbove: true,
+				transposeDegrees: -2,
+				preferAbove: false,
+				phraseAware: true,
 				holdMode: { kind: 'near_future', tail_beats: 2 }
 			}
 		},
-		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 1 }
+		mix: { input: 1, harmony: 1, canon: 1, counterpoint: 0.55 }
 	}
 };
 
@@ -396,15 +397,15 @@ export const PLANED_CATHEDRAL_PRESET: ArrangementPresetV2 = {
 	id: '12-planed-cathedral',
 	name: 'Planed Cathedral',
 	family: 'classical',
-	tags: ['early-modern', 'whole-tone', 'exact-planing', 'player-shaped-form'],
+	tags: ['early-modern', 'scale-relative', 'exact-planing', 'player-shaped-form'],
 	builtIn: true,
 	result:
-		'Each in-collection note becomes a fixed three-note whole-tone augmented plane; your register, velocity, and silence shape the rise and withdrawal.',
+		'Each note becomes a fixed three-note parallel plane drawn from your selected scale; register, velocity, and silence shape the rise and withdrawal.',
 	approximation:
-		"A static whole-tone chord plane inspired by one selected coloristic process in Debussy's mature piano writing. It does not reconstruct La cathédrale engloutie, model Debussy's pentatonic, diatonic, or chromatic collection changes, preserve an independent pedal, reproduce piano resonance or orchestration, infer a phrase arc, or represent his whole career. You supply emergence and submergence through register, velocity, duration, density, and silence.",
+		"A static scale-relative chord plane inspired by one selected coloristic process in Debussy's mature piano writing. Whole Tone produces the reference augmented plane, but the arrangement never changes your selected scale. It does not reconstruct La cathédrale engloutie, model Debussy's collection changes, preserve an independent pedal, reproduce piano resonance or orchestration, infer a phrase arc, or represent his whole career. You supply emergence and submergence through register, velocity, duration, density, and silence.",
 	play: {
 		prompt:
-			'Hold one soft in-collection note at a time. Rise and grow until one broad, bright peak, then fall away into lower notes and longer silences; release every note cleanly before the next.',
+			'Hold one soft note from your selected scale at a time. Rise and grow toward one broad peak, then fall into lower notes and longer silences; release every note cleanly before the next.',
 		input: 'single_notes',
 		articulation:
 			'Rounded 2–5 second tones with complete releases; one 5–7 second peak, no physical overlap, pedal, bends, slides, or ringing strings.',
@@ -458,15 +459,15 @@ export const COLOR_MODE_WINDOWS_PRESET: ArrangementPresetV2 = {
 	id: '14-color-mode-windows',
 	name: 'Color-Mode Windows',
 	family: 'classical',
-	tags: ['early-modern', 'mode-2', 'octatonic', 'player-shaped-form'],
+	tags: ['early-modern', 'mode-2-reference', 'scale-relative', 'player-shaped-form'],
 	builtIn: true,
 	result:
-		'Each in-collection note opens a fixed four-note Mode-2 diminished-seventh window; your repeated cells, register, attack, and silence frame the contrasts.',
+		'Each note opens a fixed four-note window through your selected scale; repeated cells, register, attack, and silence frame the contrasts.',
 	approximation:
-		"A static fixed-transposition Mode-2 window inspired by one pitch-and-voicing property of Messiaen's modal-harmonic language as codified in 1944. It does not reproduce his added or resonance chords, pedals, tonal poles, nine-note Mode 3, rhythmic procedures, birdsong, orchestration, theology, or personal chord-color perceptions, and it does not rotate collections automatically. You supply the cells, contrasts, register, dynamics, articulation, duration, and silence.",
+		"A static scale-relative window inspired by one pitch-and-voicing property of Messiaen's modal-harmonic language as codified in 1944. Diminished Half–Whole produces the Mode-2 diminished-seventh reference window, but the arrangement never changes your selected scale. It does not reproduce his added or resonance chords, pedals, tonal poles, nine-note Mode 3, rhythmic procedures, birdsong, orchestration, theology, or personal chord-color perceptions, and it does not rotate collections automatically. You supply the cells, contrasts, register, dynamics, articulation, duration, and silence.",
 	play: {
 		prompt:
-			'Play a crisp two-to-four-note cell from the shown collection, then leave a long gap. Repeat it once higher or stronger, change only one note, and hear each generated chord as a separate color window.',
+			'Play a crisp two-to-four-note cell from your selected scale, then leave a long gap. Repeat it once higher or stronger, change one note, and hear each generated chord as a separate color window.',
 		input: 'motif',
 		articulation:
 			'Clear 0.6–2 second notes with complete releases; one 2–3 second destination, no pedal, overlap, bends, slides, or ringing strings.',
@@ -523,12 +524,12 @@ export const SIXTH_DIMINISHED_CONVEYOR_PRESET: ArrangementPresetV2 = {
 	tags: ['bebop-pedagogy', 'sixth-diminished', 'drop-2', 'player-shaped-form'],
 	builtIn: true,
 	result:
-		'Each eligible note selects either the tonic major-sixth family or its related diminished seventh as one four-voice drop-2 block.',
+		'Each eligible note selects a four-voice drop-2 sixth-or-diminished block while your selected scale remains untouched.',
 	approximation:
-		"A fixed live drop-2 study of one major sixth-diminished collection from Barry Harris's mature teaching. It does not infer a song, chord progression, bass, harmonic region, borrowed-note movement, related dominant family, chromatic extra-note rules, swing, cadence, phrase form, or Harris's touch and improvisational judgment. Notes outside the displayed collection pass through without guaranteed generated harmony; you supply the movement, target, timing, accents, dynamics, register, resolution, and silence.",
+		"A fixed live drop-2 study of sixth-diminished procedure from Barry Harris's mature teaching. The engine derives a compatible major- or minor-sixth-diminished voicing context from your selected scale family without changing the player's scale setting; nonmatching notes pass through. It does not infer a song, chord progression, bass, harmonic region, borrowed-note movement, related dominant family, chromatic extra-note rules, swing, cadence, phrase form, or Harris's touch and improvisational judgment. You supply the movement, target, timing, accents, dynamics, register, resolution, and silence.",
 	play: {
 		prompt:
-			'Play one clean note at a time through the shown eight-note collection. Move through a diminished passing tone into a clear sixth-chord arrival, hold it briefly, release, and leave a full-bar rest.',
+			'Play one clean note at a time in the scale you know. Move through a passing tone into a clear arrival, hold it briefly, release, and leave a full-bar rest; unmatched notes intentionally remain solo.',
 		input: 'single_notes',
 		articulation:
 			'Connected, lightly swung or even eighth notes with distinct attacks and clean releases; pedal up, unused strings muted, and no physical overlap.',
@@ -655,15 +656,15 @@ export const QUARTAL_COLOSSUS_PRESET: ArrangementPresetV2 = {
 	id: '27-quartal-colossus',
 	name: 'Quartal Colossus',
 	family: 'jazz',
-	tags: ['post-bop', 'dorian', 'fourth-derived', 'player-shaped-form'],
+	tags: ['post-bop', 'scale-relative', 'fourth-derived', 'player-shaped-form'],
 	builtIn: true,
 	result:
-		'Each in-collection note becomes one four-voice Dorian fourth-derived block with the exact source at the bottom; degrees 1, 2, 5, and 6 form exact perfect-fourth stacks.',
+		'Each note becomes one four-voice fourth-derived block through your selected scale, with the exact source kept in the player register.',
 	approximation:
-		'A fixed harmony study inspired by one open fourth-rich feature documented in selected 1960–67 McCoy Tyner performances. It does not generate Tyner’s phrases, rhythm, touch, pedals, bass movement, dominant substitutions, chromatic resolutions, comping decisions, ensemble interaction, or formal development. Degrees flat-3, 4, and flat-7 contain one augmented fourth; you supply the cell, accents, register, dynamics, repetition, resolution, and silence.',
+		'A scale-relative harmony study inspired by one open fourth-rich feature documented in selected 1960–67 McCoy Tyner performances. Dorian is the reference profile, but the interval qualities follow the player’s selected scale. It does not generate Tyner’s phrases, rhythm, touch, pedals, bass movement, dominant substitutions, chromatic resolutions, comping decisions, ensemble interaction, or formal development. You supply the cell, accents, register, dynamics, repetition, resolution, and silence.',
 	play: {
 		prompt:
-			'Punch a two-to-four-note cell from displayed degrees 1, 2, 5, and 6, repeat its rhythm with one stronger accent or octave shift, then release and leave a full bar of air.',
+			'Punch a two-to-four-note cell in your selected scale, repeat its rhythm with one stronger accent or octave shift, then release and leave a full bar of air.',
 		input: 'motif',
 		articulation:
 			'Firm, dry, non-legato single notes with complete releases; keyboard pedal up, guitar strings muted, and no bends, slides, double-stops, or ringing strings.',
@@ -720,7 +721,7 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 	tags: ['famicom-nes', 'three-pitched-roles', 'pattern-lane', 'stable-role-groups'],
 	builtIn: true,
 	result:
-		'A live hook leads a phrase-relative bass arpeggio while a compact counterpulse answers your latest note in the spaces you leave.',
+		'A live hook leads a phrase-opening bass arpeggio while a compact counterpulse follows your latest note, yields to attacks, and reanchors after your configured Phrase Gap.',
 	approximation:
 		'A modern deterministic MIDI trio informed by three-pitched-role economy in selected 1985–87 Famicom/NES practice. The low pattern takes its pitch center from the phrase opening and moves through a compact four-step arpeggio. The counter pattern retunes from the latest player attack and yields to held notes, so contour changes its answer without adding another voice. It does not emulate NES hardware, reproduce game music, simulate Koji Kondo or Manami Matsumae, or add noise, DMC, percussion, chip timbre, sound effects, motif recognition, or game-state logic.',
 	play: {
@@ -741,7 +742,7 @@ export const PIXEL_TRIO_PRESET: ArrangementPresetV2 = {
 		}
 	],
 	researchStatus: 'approved',
-	requirements: ['pattern_lane', 'stable_lane_groups', 'role_mix'],
+	requirements: ['pattern_lane', 'phrase_context', 'stable_lane_groups', 'role_mix'],
 	config: {
 		harmony: {
 			scaleMode: 'Ionian',
@@ -806,15 +807,15 @@ export const HOLLOW_CHOIR_PRESET: ArrangementPresetV2 = {
 	id: '43-hollow-choir',
 	name: 'Hollow Choir',
 	family: 'game',
-	tags: ['dark-fantasy', 'aeolian', 'satb-shadow', 'player-shaped-form'],
+	tags: ['dark-fantasy', 'scale-relative', 'satb-shadow', 'player-shaped-form'],
 	builtIn: true,
 	result:
-		'A singable Aeolian line receives a restrained four-part, SATB-style minor harmonic shadow.',
+		'A singable line receives a restrained four-part SATB-style shadow whenever your selected scale supports chorale harmony.',
 	approximation:
-		'A static harmony study informed by sparse, melancholic vocal/orchestral atmosphere in a bounded 2014–18 Hollow Knight project corpus. It does not generate a literal choir, acoustic orchestration, distant layers, independent counterline, adaptive game scenes, ambience, reverb, narrative response, protected cue material, or Christopher Larkin’s identity. Sound choice and performance create the color.',
+		'A scale-preserving harmony study informed by sparse, melancholic vocal/orchestral atmosphere in a bounded 2014–18 Hollow Knight project corpus. Aeolian is the reference profile; unsupported scale types leave notes exposed rather than changing the player’s choice. It does not generate a literal choir, acoustic orchestration, distant layers, independent counterline, adaptive game scenes, ambience, reverb, narrative response, protected cue material, or Christopher Larkin’s identity. Sound choice and performance create the color.',
 	play: {
 		prompt:
-			'Play one soft two-to-five-note minor phrase, hold the destination, release completely, then leave a full bar of silence before one small variation.',
+			'Play one soft two-to-five-note phrase in your selected scale, hold the destination, release completely, then leave a full bar of silence before one small variation.',
 		input: 'single_notes',
 		articulation:
 			'Soft, rounded, non-overlapping notes with clean releases; keyboard pedal up, guitar strings muted, and no bends, slides, harmonics, wide vibrato, or ringing strings.',
@@ -868,12 +869,12 @@ export const CRYSTAL_CHORALE_PRESET: ArrangementPresetV2 = {
 	id: '48-crystal-chorale',
 	name: 'Crystal Chorale',
 	family: 'game',
-	tags: ['fantasy-rpg', 'harmonic-minor', 'satb-shadow', 'octave-echo'],
+	tags: ['fantasy-rpg', 'scale-relative', 'satb-shadow', 'octave-echo'],
 	builtIn: true,
 	result:
-		'Each clean harmonic-minor melody note receives a four-part SATB-style chord and one complete octave echo two beats later.',
+		'Each melody note receives a four-part SATB-style chord when supported and one complete octave echo two beats later, without changing your scale.',
 	approximation:
-		'A bounded melody-first fantasy-RPG arrangement study informed by selected 1987–94 console practice. Harmonic minor and the per-note octave echo are product choices, not Nobuo Uematsu signatures. It does not compose or recognize themes, replay phrases, reproduce the Prelude or any score, orchestrate a choir, follow game or narrative state, develop form, or simulate Uematsu.',
+		'A bounded melody-first fantasy-RPG arrangement study informed by selected 1987–94 console practice. Harmonic Minor is the reference profile, while chorale compatibility follows the player’s selected scale and unsupported notes remain exposed. The per-note octave echo is a product choice, not a Nobuo Uematsu signature. It does not compose or recognize themes, replay phrases, reproduce the Prelude or any score, orchestrate a choir, follow game or narrative state, develop form, or simulate Uematsu.',
 	play: {
 		prompt:
 			'Perform an original four-bar single-note phrase, repeat its opening with one small change, hold the cadence for two to four beats, then release and leave a full bar for the echo tail.',
@@ -938,7 +939,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 5, name: 'Crabwise Reflection', family: 'classical', result: 'A completed phrase returns backward.', prompt: 'Play a clean four-to-eight-note phrase, then stop for the reverse answer.', references: ["J. S. Bach's Crab Canon"], requirements: ['phrase_capture', 'phrase_reverse'], input: 'motif', transportRequired: true },
 	{ number: 6, name: 'Mirror Canon', family: 'classical', result: 'Intervals invert equally around a tonal axis.', prompt: 'Play recognizable angular intervals without chords.', references: ['J. S. Bach', 'Renaissance inversion canons'], requirements: ['axis_inversion'], input: 'motif' },
 	{ number: 7, name: 'Stretto Engine', family: 'classical', result: 'Tonic, fifth, and octave answers enter progressively closer.', prompt: 'Repeat a strong two-to-four-note subject with consistent rhythm.', references: ['J. S. Bach fugues'], requirements: ['strict_canon'], input: 'motif', transportRequired: true },
-	{ number: 8, name: 'Suspension Garland', family: 'classical', result: 'Prepared suspensions resolve across strong beats.', prompt: 'Play long legato notes across beats and barlines.', references: ['Johann Joseph Fux', 'Giovanni Pierluigi da Palestrina'], requirements: ['species_counterpoint'], transportRequired: true },
+	{ number: 8, name: 'Suspension Garland', family: 'classical', result: SUSPENSION_GARLAND_PRESET.result, prompt: SUSPENSION_GARLAND_PRESET.play.prompt, references: ['Johann Joseph Fux', 'Giovanni Pierluigi da Palestrina'], requirements: ['species_counterpoint', 'phrase_context', 'role_mix'], transportRequired: true },
 	{ number: 9, name: 'Ground-Bass Theatre', family: 'classical', result: 'A repeating bass supports evolving counterpoint.', prompt: 'Record a simple bass figure, then play a freer upper melody.', references: ['Claudio Monteverdi', 'Henry Purcell'], requirements: ['pattern_lane'], input: 'motif', transportRequired: true },
 	{ number: 10, name: 'Alberti Clockwork', family: 'classical', result: 'Low-high-middle-high accompaniment follows the lead.', prompt: 'Play sustained melody or simple harmony changes on downbeats.', references: ['W. A. Mozart', 'Muzio Clementi'], requirements: ['pattern_lane'], transportRequired: true },
 	{ number: 11, name: 'Motive Forge', family: 'classical', result: 'A small motif is fragmented, displaced, and expanded.', prompt: 'Repeat one emphatic three-to-five-note idea and leave development space.', references: ['Ludwig van Beethoven'], requirements: ['motif_transform'], input: 'motif' },
@@ -966,7 +967,7 @@ const DRAFT_SPECS: DraftSpec[] = [
 	{ number: 33, name: 'Metric Labyrinth', family: 'jazz', result: 'Percussive counterpoint crosses uneven groupings.', prompt: 'Repeat an exact accented figure in 5, 7, or grouped 4/4.', references: ['Tigran Hamasyan', 'Vijay Iyer'], requirements: ['odd_meter', 'pattern_lane'], input: 'motif', transportRequired: true },
 	{ number: 34, name: 'Chamber Sky', family: 'jazz', result: 'Lyrical voices expand into airy ensemble harmony.', prompt: 'Play breath-shaped arcs with wide expressive intervals and long releases.', references: ['Maria Schneider', 'Kenny Wheeler'], requirements: ['stable_lane_groups'] },
 	{ number: 35, name: 'Elastic Counter-Groove', family: 'jazz', result: 'Syncopated harmony alternates with contrapuntal answers.', prompt: 'Play concise one- or two-bar riffs with deliberate holes.', references: ['Esperanza Spalding', 'Brad Mehldau', 'Robert Glasper'], requirements: ['pattern_lane'], input: 'motif', transportRequired: true },
-	{ number: 36, name: 'Pixel Trio', family: 'game', result: PIXEL_TRIO_PRESET.result, prompt: PIXEL_TRIO_PRESET.play.prompt, references: ['Selected early Famicom/NES practice'], requirements: ['pattern_lane', 'stable_lane_groups', 'role_mix'], input: 'motif', transportRequired: true },
+	{ number: 36, name: 'Pixel Trio', family: 'game', result: PIXEL_TRIO_PRESET.result, prompt: PIXEL_TRIO_PRESET.play.prompt, references: ['Selected early Famicom/NES practice'], requirements: ['pattern_lane', 'phrase_context', 'stable_lane_groups', 'role_mix'], input: 'motif', transportRequired: true },
 	{ number: 37, name: 'Fractured Crystal', family: 'game', result: 'A tiny motif fractures into limited-voice ostinatos and modal echoes.', prompt: 'Repeat a three-to-five-note motif slowly, alter one note, and leave substantial air.', references: ['Disasterpeace — FEZ'], requirements: ['motif_memory', 'pattern_lane', 'probability_density'], input: 'motif', transportRequired: true },
 	{ number: 38, name: 'Summit Pulse', family: 'game', result: 'An intimate line grows into rhythmic upper layers.', prompt: 'Begin softly with hesitant fragments, then increase register, velocity, and repetition.', references: ['Lena Raine'], requirements: ['adaptive_scenes'], input: 'motif' },
 	{ number: 39, name: 'Adaptive Pilgrim', family: 'game', result: 'The arrangement follows an emotional intensity arc.', prompt: 'Play isolated sustained notes, then longer and louder phrases, then withdraw.', references: ['Austin Wintory', 'Jessica Curry', 'Gareth Coker'], requirements: ['adaptive_scenes'] },
