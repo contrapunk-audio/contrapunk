@@ -7,6 +7,7 @@
 	import { engine } from '$lib/stores/engine.svelte';
 	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
+	import { phrase } from '$lib/stores/phrase.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import { slide } from '$lib/stores/slide.svelte';
 	import { tone } from '$lib/stores/tone.svelte';
@@ -111,9 +112,11 @@
 			slide: slideLabel('canon')
 		},
 		{
-			name: 'Species Counterpoint',
-			shortName: 'Counterpoint',
-			subtitle: engine.counterpointSpecies.replace('Species', 'Sp. '),
+			name: arrangement.counterpoint.phraseAware ? 'Suspension Pair' : 'Species Counterpoint',
+			shortName: arrangement.counterpoint.phraseAware ? 'Suspension' : 'Counterpoint',
+			subtitle: arrangement.counterpoint.phraseAware
+				? 'Bass + tied voice'
+				: engine.counterpointSpecies.replace('Species', 'Sp. '),
 			section: 'counterpoint',
 			group: 3,
 			active: engine.counterpointNotes.length > 0,
@@ -157,6 +160,11 @@
 	<div class="arrangement-pane">
 		<header>
 			<h2 id="arrangement-title"><span aria-hidden="true">⎇</span>Arrangement</h2>
+			{#if adapter.capabilities.phraseContext}
+				<button class="phrase-status" type="button" title="Configure phrase gap" aria-live="polite" onclick={() => openSetup('canon')}>
+					<i class:live={phrase.phase !== 'idle'}></i><span>PHRASE</span><strong>{phrase.statusLabel}</strong>
+				</button>
+			{/if}
 			<EnsemblePresetBar compact />
 			<label class="slide-preset">
 				<span>SLIDE</span>
@@ -244,6 +252,12 @@
 	header { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 4px 6px 4px 9px; border-bottom: 1px solid var(--proto-line); }
 	header h2 { display: flex; flex: none; align-items: center; gap: 6px; margin: 0; font-size: 11px; font-weight: 650; }
 	header h2 span { color: var(--proto-muted); font: 10px var(--font-code); }
+	.phrase-status { display: grid; grid-template-columns: 5px auto; grid-template-rows: 1fr 1fr; align-items: center; column-gap: 5px; min-width: 72px; min-height: 27px; padding: 2px 6px; border: 1px solid var(--proto-line); background: transparent; color: var(--proto-muted); text-align: left; }
+	.phrase-status:hover { border-color: var(--proto-text); }
+	.phrase-status i { grid-row: 1 / 3; width: 4px; height: 4px; border: 1px solid currentColor; border-radius: 50%; }
+	.phrase-status i.live { border-color: #4fe8c3; background: #4fe8c3; box-shadow: 0 0 6px #4fe8c3; }
+	.phrase-status span { align-self: end; font: 700 6px var(--font-code); letter-spacing: .08em; }
+	.phrase-status strong { align-self: start; overflow: hidden; color: var(--proto-text); font: 7px var(--font-code); text-overflow: ellipsis; white-space: nowrap; }
 	header :global(.preset-bar.compact) { max-width: 470px; margin-left: auto; }
 	header :global(.preset-bar.compact .toolbar) { grid-template-columns: 42px minmax(150px, 1fr) auto; gap: 5px; }
 	.slide-preset { display: grid; min-width: 150px; grid-template-columns: auto minmax(92px, 1fr); align-items: center; gap: 5px; color: var(--proto-muted); font: 700 7px var(--font-code); letter-spacing: .1em; }
