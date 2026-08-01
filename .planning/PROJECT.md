@@ -35,6 +35,7 @@ Real-time harmony generation with minimal latency — when you play a note, the 
 - [ ] Clean, monophonic, standard-tuned guitar input produces reliable MIDI notes
 - [ ] Guitar processing is deterministic, benchmarked against the checked-in corpus, and real-time safe
 - [ ] User can browse, understand, apply, duplicate, and author research-backed global arrangement presets with explicit performance guidance
+- [ ] User can capture one live MIDI phrase, close it on a bar boundary, replay it through the current full arrangement, and perform over it without drift, recursive capture, phrase contamination, or stuck notes
 
 ### Out of Scope
 
@@ -75,6 +76,7 @@ Real-time harmony generation with minimal latency — when you play a note, the 
 | Arrangement presets preserve performance environment | Applying a musical arrangement must not silently change tonic, tempo, devices, routing, sound, master level, mute/solo, hosted plugins, or transport state | LOCKED for Phase 10.2 |
 | Research before stylistic implementation | Every operational built-in receives three cited research perspectives plus a parent synthesis; labels alone are not evidence of stylistic fidelity | LOCKED for Phase 10.2 |
 | First-12 performance checkpoint | Stop after the first 12 research-backed presets for user testing before building later capability waves | LOCKED for Phase 10.2 |
+| Internal looper before hardware UX | Prove one volatile pre-arrangement MIDI loop with isolated full-arrangement replay and exact lifecycle cleanup in desktop Contrapunk before Daisy firmware, Pod/MPK mapping, audio looping, multi-slot, or overdub work | LOCKED for Phase 10.3 |
 
 ### Elixir Milestone Decisions
 
@@ -90,4 +92,4 @@ Locked decisions from `ELIXIR-PLAN.md` §10 — ingested 2026-05-18 via `/gsd-in
 | **ELIX-DEC-06** — GSD milestone integration: ingest as real milestone | ELIXIR-PLAN.md and ELIXIR-DESIGN.md are ingested into `.planning/` via `/gsd-ingest-docs`, becoming a real GSD milestone with discuss/plan/execute phases. | LOCKED (ELIXIR-PLAN.md §10 #6) — Completed 2026-05-18 |
 
 ---
-*Last updated: 2026-07-19 — Added Phase 10.2 arrangement-preset scope, research gate, environment-preservation rule, and first-12 checkpoint.*
+*Last updated: 2026-08-01 — Added Phase 10.3 internal MIDI looper as the prerequisite for Daisy hardware UX.*

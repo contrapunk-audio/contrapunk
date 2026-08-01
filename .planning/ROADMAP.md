@@ -37,6 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 10: Guitar Input** - Audio input from guitar with pitch detection (runtime exists; broad original claims remain unverified)
 - [x] **Phase 10.1: Guitar Reliability** - Automated corpus, lifecycle, realtime-safety, and truthful-calibration gates complete; manual release-surface smoke remains (INSERTED)
 - [ ] **Phase 10.2: Composer-Informed Arrangement Presets** - Research, author, and implement 50 technique-named global arrangements; hard-stop for user testing after the first 12 operational presets (INSERTED)
+- [ ] **Phase 10.3: Internal MIDI Looper** - Build and performance-test one bar-quantized, pre-arrangement MIDI phrase loop before any Daisy firmware or hardware UX work resumes (INSERTED)
 - [ ] **Phase 6.12: DMG Distribution** - Ship Contrapunk as a signed macOS DMG with app icon, codesigning, and notarization (INSERTED)
 - ~~**Phase 11: Trackpad Beat Input**~~ - DROPPED
 - [ ] **Phase 16: VST3/CLAP/AU Plugin** - nih-plug plugin with webview GUI, AU wrapper via clap-wrapper (GitHub #15)
@@ -549,6 +550,33 @@ Plans:
 - [ ] 10.2-05 — Data-driven Pattern Lane and advanced timing
 - [ ] 10.2-06 — Stable lane instances/groups, harmonic timeline, and three-state adaptive scenes
 - [ ] 10.2-07 — Experimental capabilities, all-50 tuning, and final cross-surface acceptance
+
+### Phase 10.3: Internal MIDI Looper (INSERTED)
+
+**Goal:** Build and test one reliable volatile MIDI phrase loop in Contrapunk before continuing Daisy hardware firmware or screenless hardware UX.
+**Depends on:** Current Companion Lane/transport architecture, Phase 10.1 guitar-detected MIDI lifecycle, and checkpointed Phase 10.2 Phrase Context/arrangement work
+**Requirements:** LOOP-01 through LOOP-10
+**Context:** [10.3-CONTEXT.md](./phases/10.3-internal-midi-looper/10.3-CONTEXT.md)
+**Priority gate:** Daisy firmware, Pod/MPK mappings, and further hardware UX remain paused until automated lifecycle evidence and a user-run desktop performance test pass.
+
+**Success Criteria:**
+1. One volatile slot follows `Empty → Armed → Recording → Playing → Stopped → Playing`; long-clear returns it safely to Empty.
+2. First press starts a stopped transport with a one-bar count-in or arms a running transport for the next downbeat; second press closes on the next downbeat.
+3. Capture preserves live pre-arrangement NoteOn, NoteOff, velocity, channel, and sustain CC64 at raw beat-relative offsets.
+4. Notes held at closure receive matching boundary NoteOffs; no loop-owned note or sustain state survives stop, clear, panic, transport stop/reset, seek, disable, or reconfigure.
+5. Replay passes through the current full arrangement and reharmonizes after key/scale/arrangement changes without mutating the recorded source.
+6. Loop replay uses an explicit non-live origin and isolated arrangement/Phrase Context, preventing recursive capture and live phrase-state contamination.
+7. Live MIDI or clean monophonic guitar-detected notes can layer over playback without ownership collisions.
+8. Coarse/fine/delayed tick simulations emit every due event exactly once across boundaries, and tempo changes preserve beat phase without accumulated drift.
+9. Minimal Tauri controls expose press, clear, and truthful state; unsupported WASM/plugin surfaces are capability-gated rather than pretending parity.
+10. Focused Rust tests, workspace/UI checks, and a manual desktop MPK-plus-guitar performance session pass before hardware work resumes.
+
+**Explicit non-goals:** audio looping, multiple slots, overdub/undo, output capture, arbitrary CC/pitch/aftertouch capture, cross-boundary ties, persistence, Ableton Link, WASM/plugin/Daisy parity, and hardware control mapping.
+
+**Plans:** TBD
+
+Plans:
+- [ ] TBD — Phrase/Arrangement prerequisite checkpointed; run `/gsd-plan-phase 10.3`
 
 ### Phase 14: openDAW Device Integration
 

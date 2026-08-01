@@ -79,6 +79,19 @@
 - [ ] **ARRP-11**: Stable lane instance IDs enable multiple groups, mix/register/output attribution, serialization, harmonic timelines, and Sparse/Building/Full adaptive scenes.
 - [ ] **ARRP-12**: All operational presets have catalog validation, cited research artifacts, surface-honest capability checks, automated lifecycle evidence, and focused manual performance acceptance.
 
+## Phase 10.3 Internal MIDI Looper Requirements
+
+- [ ] **LOOP-01**: One volatile loop slot implements the explicit lifecycle `Empty → Armed → Recording → Playing → Stopped → Playing`, with long-clear returning safely to Empty.
+- [ ] **LOOP-02**: Pressing Loop while stopped starts transport with one bar of count-in; while running, recording starts on the next downbeat. A closing press ends capture and begins playback on the next downbeat.
+- [ ] **LOOP-03**: Capture stores only live pre-arrangement NoteOn, NoteOff, velocity, channel, and sustain CC64 at raw beat-relative offsets; replay never records itself.
+- [ ] **LOOP-04**: Notes still held at loop closure receive matching NoteOffs exactly at the boundary; cross-boundary ties are not created.
+- [ ] **LOOP-05**: Replay passes through the current complete arrangement, so key, scale, harmony, and Companion changes reharmonize the immutable recorded source on later cycles.
+- [ ] **LOOP-06**: Replayed events have an explicit loop origin and isolated arrangement/Phrase Context; they cannot contaminate live phrase state, capture state, sustain, or note ownership.
+- [ ] **LOOP-07**: Live MIDI and clean monophonic guitar-detected notes can layer over playback while tempo changes preserve beat phase and scheduler windows emit every due event exactly once.
+- [ ] **LOOP-08**: Stop, clear, panic, transport stop/reset, backward seek, disable, and reconfigure leave zero active loop-owned notes, zero pending loop events, and sustain up.
+- [ ] **LOOP-09**: Minimal Tauri controls expose press, clear, and truthful lifecycle status; unimplemented WASM/plugin/Daisy surfaces are capability-gated.
+- [ ] **LOOP-10**: Deterministic unit/integration tests plus a user-run desktop MPK and clean-guitar performance test pass before Daisy firmware or hardware UX work resumes.
+
 ## v2 Requirements
 
 ### Extended Features
@@ -197,6 +210,16 @@
 | ARRP-10 | Phase 10.2 / Waves 4 and 5 | Not started |
 | ARRP-11 | Phase 10.2 / Wave 6 | Not started |
 | ARRP-12 | Phase 10.2 / All waves | Not started |
+| LOOP-01 | Phase 10.3 | Not started |
+| LOOP-02 | Phase 10.3 | Not started |
+| LOOP-03 | Phase 10.3 | Not started |
+| LOOP-04 | Phase 10.3 | Not started |
+| LOOP-05 | Phase 10.3 | Not started |
+| LOOP-06 | Phase 10.3 | Not started |
+| LOOP-07 | Phase 10.3 | Not started |
+| LOOP-08 | Phase 10.3 | Not started |
+| LOOP-09 | Phase 10.3 | Not started |
+| LOOP-10 | Phase 10.3 | Not started |
 | REQ-elixir-a0-workspace-bootstrap | Phase 21.A0 | Not started |
 | REQ-elixir-a1-bare-oscillator | Phase 21.A1 | Not started |
 | REQ-elixir-a2-polyphony-voice-management | Phase 21.A2 | Not started |
@@ -232,10 +255,12 @@
 - Mapped to phases: 34
 - Arrangement preset requirements: 12 total
 - Arrangement preset requirements mapped to Phase 10.2: 12
+- Internal MIDI looper requirements: 10 total
+- Internal MIDI looper requirements mapped to Phase 10.3: 10
 - Elixir milestone requirements: 24 total
 - Elixir mapped to phases: 24
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-28*
-*Last updated: 2026-07-19 — Added Phase 10.2 composer-informed arrangement preset requirements, mandatory three-researcher gate, and first-12 human checkpoint.*
+*Last updated: 2026-08-01 — Added and mapped Phase 10.3 internal MIDI looper requirements.*
