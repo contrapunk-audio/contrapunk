@@ -7,6 +7,8 @@
 //!   the audio thread's callback.
 //! - `bpm` — tempo in beats per minute, stored as fixed-point (× 1000)
 //!   in an atomic so it can be updated from any thread without locks.
+//! - `beat_position` — accumulated musical position in fixed-point beat units.
+//!   New tempo affects future samples only; it never rewrites history.
 //! - `running` — whether the clock is currently advancing. When false,
 //!   `advance()` is a no-op even if called; sample_pos stays put.
 //! - `time_signature` — `(beats_per_bar, beat_unit)`, atomic.
@@ -19,6 +21,10 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
+
+/// Q28.36 fixed-point: over a year of range at 400 BPM and sub-20-picobeat
+/// resolution per audio block, without floating-point races or callback locks.
+const BEAT_UNITS_PER_BEAT: u64 = 1 << 36;
 
 /// A single beat-boundary crossing detected by `advance()`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -49,6 +55,14 @@ pub struct Transport {
     sample_rate: AtomicU32,
     /// Current tempo in milli-BPM (BPM × 1000) so we can use AtomicU32.
     bpm_milli: AtomicU32,
+    /// Accumulated Q28.36 musical position. Tempo changes leave it untouched.
+    beat_position_units: AtomicU64,
+    /// Division remainder carried between blocks so accumulation does not
+    /// depend on audio callback size.
+    beat_remainder: AtomicU64,
+    /// Incremented by reset/seek/meter changes so schedulers can distinguish
+    /// transport jumps from an ordinary delayed polling window.
+    discontinuity_revision: AtomicU64,
     /// Whether the clock is advancing.
     running: AtomicBool,
     /// Time signature numerator.
@@ -66,8 +80,11 @@ impl Transport {
     pub fn new(sample_rate: u32) -> Arc<Self> {
         Arc::new(Self {
             sample_pos: AtomicU64::new(0),
-            sample_rate: AtomicU32::new(sample_rate),
+            sample_rate: AtomicU32::new(sample_rate.max(1)),
             bpm_milli: AtomicU32::new(120_000),
+            beat_position_units: AtomicU64::new(0),
+            beat_remainder: AtomicU64::new(0),
+            discontinuity_revision: AtomicU64::new(0),
             running: AtomicBool::new(false),
             beats_per_bar: AtomicU8::new(4),
             beat_unit: AtomicU8::new(4),
@@ -81,11 +98,10 @@ impl Transport {
         self.sample_rate.load(Ordering::Relaxed)
     }
 
-    /// Update the sample rate. Should only be called at startup, before
-    /// the transport has advanced — otherwise past sample_pos values
-    /// become meaningless.
+    /// Update the sample rate without moving the current musical position.
     pub fn set_sample_rate(&self, sr: u32) {
-        self.sample_rate.store(sr, Ordering::Relaxed);
+        self.sample_rate.store(sr.max(1), Ordering::Relaxed);
+        self.beat_remainder.store(0, Ordering::Relaxed);
     }
 
     pub fn sample_pos(&self) -> u64 {
@@ -119,9 +135,12 @@ impl Transport {
 
     /// Monotonically-increasing total beats elapsed since transport start.
     pub fn total_beats(&self) -> f64 {
-        let samples = self.sample_pos() as f64;
-        let seconds = samples / self.sample_rate() as f64;
-        seconds * self.bpm() / 60.0
+        self.beat_position_units.load(Ordering::Relaxed) as f64 / BEAT_UNITS_PER_BEAT as f64
+    }
+
+    /// Revision changed by reset, seek, or meter changes, but not tempo.
+    pub fn discontinuity_revision(&self) -> u64 {
+        self.discontinuity_revision.load(Ordering::Acquire)
     }
 
     /// Current bar (0-based) since transport start.
@@ -135,36 +154,23 @@ impl Transport {
 
     // ─── Mutators (from command thread) ───────────────────────────
 
-    /// Set tempo in BPM. Clamped to [20, 400]. Takes effect immediately.
-    ///
-    /// Also re-anchors `last_crossed_beat` to the beat-count implied
-    /// by the current `sample_pos` under the NEW bpm. Without this
-    /// re-anchor, lowering BPM mid-play made the metronome silently
-    /// stop firing: the recomputed `current_beat` (under the new
-    /// smaller bpm) was less than the old `last_crossed_beat`, so
-    /// every subsequent `advance()` saw `current_beat <= last` and
-    /// returned `None`. Raising BPM did the inverse — fired a
-    /// retroactive burst of crossings to "catch up." Both are
-    /// surprising behaviours; re-anchoring sidesteps both by
-    /// declaring "the next crossing fires after the next beat in
-    /// the NEW tempo, starting from where we are right now."
+    /// Set tempo in BPM. Clamped to [20, 400]. Takes effect immediately
+    /// for future samples without moving the current total-beat position.
     pub fn set_bpm(&self, bpm: f64) {
         let clamped = bpm.clamp(20.0, 400.0);
         self.bpm_milli
             .store((clamped * 1000.0) as u32, Ordering::Relaxed);
-        // Re-anchor the monotonic beat counter at the new tempo.
-        let sample_pos = self.sample_pos.load(Ordering::Relaxed);
-        let new_total_beats = (sample_pos as f64 / self.sample_rate() as f64) * (clamped / 60.0);
-        let new_current_beat = new_total_beats.floor() as u64;
-        self.last_crossed_beat
-            .store(new_current_beat, Ordering::Relaxed);
+        self.beat_remainder.store(0, Ordering::Relaxed);
     }
 
     pub fn set_time_signature(&self, beats_per_bar: u8, beat_unit: u8) {
-        self.beats_per_bar
-            .store(beats_per_bar.clamp(1, 32), Ordering::Relaxed);
-        self.beat_unit
-            .store(beat_unit.clamp(1, 64), Ordering::Relaxed);
+        let next = (beats_per_bar.clamp(1, 32), beat_unit.clamp(1, 64));
+        if self.time_signature() == next {
+            return;
+        }
+        self.beats_per_bar.store(next.0, Ordering::Relaxed);
+        self.beat_unit.store(next.1, Ordering::Relaxed);
+        self.discontinuity_revision.fetch_add(1, Ordering::AcqRel);
     }
 
     /// Start the clock (resume from current sample_pos).
@@ -177,10 +183,13 @@ impl Transport {
         self.running.store(false, Ordering::Relaxed);
     }
 
-    /// Reset sample_pos to 0. Does not change running state.
+    /// Reset sample_pos and musical position to 0. Does not change running state.
     pub fn reset(&self) {
         self.sample_pos.store(0, Ordering::Relaxed);
+        self.beat_position_units.store(0, Ordering::Relaxed);
+        self.beat_remainder.store(0, Ordering::Relaxed);
         self.last_crossed_beat.store(u64::MAX, Ordering::Relaxed);
+        self.discontinuity_revision.fetch_add(1, Ordering::AcqRel);
     }
 
     /// Seek `sample_pos` to an absolute value. Re-anchors
@@ -190,12 +199,21 @@ impl Transport {
     /// `ProcessContext::transport().pos_samples()`) to follow DAW
     /// loop / jump / locate events.
     pub fn set_sample_pos(&self, sample_pos: u64) {
+        let bpm_milli = self.bpm_milli.load(Ordering::Relaxed) as u128;
+        let sample_rate = self.sample_rate.load(Ordering::Relaxed).max(1) as u128;
+        let denominator = sample_rate * 60_000;
+        let units = (sample_pos as u128 * bpm_milli * BEAT_UNITS_PER_BEAT as u128
+            + denominator / 2)
+            / denominator;
         self.sample_pos.store(sample_pos, Ordering::Relaxed);
-        let bpm = self.bpm();
-        let total_beats = (sample_pos as f64 / self.sample_rate() as f64) * (bpm / 60.0);
-        let current_beat = total_beats.floor() as u64;
-        self.last_crossed_beat
-            .store(current_beat, Ordering::Relaxed);
+        self.beat_position_units
+            .store(units.min(u64::MAX as u128) as u64, Ordering::Relaxed);
+        self.beat_remainder.store(0, Ordering::Relaxed);
+        self.last_crossed_beat.store(
+            (units / BEAT_UNITS_PER_BEAT as u128) as u64,
+            Ordering::Relaxed,
+        );
+        self.discontinuity_revision.fetch_add(1, Ordering::AcqRel);
     }
 
     // ─── Audio-thread API ─────────────────────────────────────────
@@ -215,10 +233,20 @@ impl Transport {
         }
 
         let new_pos = self.sample_pos.fetch_add(frames as u64, Ordering::Relaxed) + frames as u64;
-        // Compute the current monotonic beat count from the new position.
-        let bpm = self.bpm();
-        let total_beats = (new_pos as f64 / self.sample_rate() as f64) * (bpm / 60.0);
-        let current_beat = total_beats.floor() as u64;
+        let bpm_milli = self.bpm_milli.load(Ordering::Relaxed) as u128;
+        let sample_rate = self.sample_rate.load(Ordering::Relaxed).max(1) as u128;
+        let denominator = sample_rate * 60_000;
+        let numerator = frames as u128 * bpm_milli * BEAT_UNITS_PER_BEAT as u128
+            + self.beat_remainder.load(Ordering::Relaxed) as u128;
+        let delta_units = numerator / denominator;
+        self.beat_remainder
+            .store((numerator % denominator) as u64, Ordering::Relaxed);
+        let delta_units = delta_units.min(u64::MAX as u128) as u64;
+        let new_units = self
+            .beat_position_units
+            .fetch_add(delta_units, Ordering::Relaxed)
+            .saturating_add(delta_units);
+        let current_beat = new_units / BEAT_UNITS_PER_BEAT;
 
         let last = self.last_crossed_beat.load(Ordering::Relaxed);
         if last == u64::MAX || current_beat > last {
@@ -313,6 +341,64 @@ mod tests {
         assert_eq!(t.bpm(), 400.0);
         t.set_bpm(140.0);
         assert!((t.bpm() - 140.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn tempo_changes_preserve_current_beat_and_change_future_rate() {
+        let t = Transport::new(48_000);
+        t.play();
+        let _ = t.advance(78_000); // 3.25 beats at 120 BPM.
+        assert!((t.total_beats() - 3.25).abs() < 1.0e-9);
+
+        t.set_bpm(60.0);
+        assert!((t.total_beats() - 3.25).abs() < 1.0e-9);
+        let _ = t.advance(48_000);
+        assert!((t.total_beats() - 4.25).abs() < 1.0e-9);
+
+        t.set_bpm(180.0);
+        assert!((t.total_beats() - 4.25).abs() < 1.0e-9);
+        let _ = t.advance(16_000);
+        assert!((t.total_beats() - 5.25).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn discontinuity_revision_excludes_tempo_changes() {
+        let t = Transport::new(48_000);
+        assert_eq!(t.discontinuity_revision(), 0);
+        t.set_bpm(90.0);
+        assert_eq!(t.discontinuity_revision(), 0);
+        t.set_time_signature(3, 4);
+        assert_eq!(t.discontinuity_revision(), 1);
+        t.set_time_signature(3, 4);
+        assert_eq!(t.discontinuity_revision(), 1);
+        t.set_sample_pos(24_000);
+        assert_eq!(t.discontinuity_revision(), 2);
+        t.reset();
+        assert_eq!(t.discontinuity_revision(), 3);
+    }
+
+    #[test]
+    fn tempo_change_near_boundary_does_not_swallow_crossing() {
+        let t = Transport::new(48_000);
+        t.play();
+        let _ = t.advance(23_999);
+        t.set_bpm(60.0);
+        let crossing = t.advance(3).expect("beat one must still cross");
+        assert_eq!(crossing.total_beat, 1);
+    }
+
+    #[test]
+    fn beat_accumulation_is_independent_of_callback_size() {
+        let one_block = Transport::new(48_000);
+        one_block.play();
+        let _ = one_block.advance(48_000);
+
+        let tiny_blocks = Transport::new(48_000);
+        tiny_blocks.play();
+        for _ in 0..48_000 {
+            let _ = tiny_blocks.advance(1);
+        }
+        assert!((one_block.total_beats() - tiny_blocks.total_beats()).abs() < 1.0e-12);
     }
 
     #[test]
