@@ -114,6 +114,8 @@ fn main() {
             commands::slide::set_slide_config,
             commands::companion::companion_set_enabled,
             commands::companion::companion_is_enabled,
+            commands::companion::companion_set_phrase_gap,
+            commands::companion::companion_phrase_state,
             commands::companion::companion_set_global_hold_mode,
             commands::companion::canon_configure,
             commands::companion::counterpoint_configure,

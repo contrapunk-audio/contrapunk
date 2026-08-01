@@ -109,6 +109,7 @@ pub struct NoteUpdatePayload {
     /// Notes currently sounding from the Companion's counterpoint lane.
     /// Same source-attribution role as `canon_notes`.
     pub counterpoint_notes: Vec<u8>,
+    pub phrase: contrapunk_companion::PhraseSnapshot,
 }
 
 /// Payload for the "guitar-signal" Tauri event (UI signal feedback).
@@ -747,15 +748,15 @@ fn run_tauri_router(
                     let cc_number = message[1];
                     let cc_value = message[2];
 
-                    // Issue #90 fast-path: CC 123 = All Notes Off (MIDI
-                    // standard panic). Drain every tracked note and send
+                    // Issue #90 fast-path: CC 120/123 = All Sound/Notes Off.
+                    // Drain every tracked note and send
                     // NoteOff downstream so the user can recover from
                     // dropped Note-Offs / MPE channel rotation / device
                     // disconnect mid-phrase without restarting routing.
                     // The full reconcile-against-engine.active_notes
                     // story is deferred — this gives users a one-button
                     // escape today.
-                    if cc_number == 123 {
+                    if matches!(cc_number, 120 | 123) {
                         let notes_to_release = drain_all_tracked_notes(
                             &input_notes,
                             &harmony_notes,
@@ -776,9 +777,28 @@ fn run_tauri_router(
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
                             .reset_runtime();
-                        eprintln!("[router] CC 123 panic: cleared all tracked notes");
+                        eprintln!("[router] CC {cc_number} panic: cleared all tracked notes");
                         // Continue to also forward to UI below so the
                         // Performance view's CC mapping still sees it.
+                    }
+
+                    if let Some(ev) = midi_bytes_to_input_event(&message) {
+                        let tagged = {
+                            let mut c = companion.lock().unwrap_or_else(|e| e.into_inner());
+                            c.on_input_tagged(ev, &engine).0
+                        };
+                        let num_ports = output_router.connection_count();
+                        dispatch_companion_ops(
+                            &tagged,
+                            num_ports,
+                            &synth_tx,
+                            &mut output_router,
+                            &harmony_notes,
+                            &canon_notes,
+                            &counterpoint_notes,
+                            &mut companion_output_notes,
+                            &slide_config,
+                        );
                     }
 
                     let value = (cc_value as f32) / 127.0;
@@ -866,6 +886,10 @@ fn run_tauri_router(
                 let canon = canon_notes.lock().unwrap_or_else(|e| e.into_inner());
                 let cp = counterpoint_notes.lock().unwrap_or_else(|e| e.into_inner());
                 let ch_name = chord_name.lock().unwrap_or_else(|e| e.into_inner());
+                let phrase = companion
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .phrase_snapshot();
                 build_note_update_payload(
                     &in_notes,
                     &harm_notes,
@@ -875,6 +899,7 @@ fn run_tauri_router(
                     current_key,
                     &canon,
                     &cp,
+                    phrase,
                 )
             };
             let _ = app_handle.emit("note-update", payload);
@@ -1727,6 +1752,7 @@ fn build_note_update_payload(
     current_key: String,
     canon_notes: &NoteCounts,
     counterpoint_notes: &NoteCounts,
+    phrase: contrapunk_companion::PhraseSnapshot,
 ) -> NoteUpdatePayload {
     let mut in_vec: Vec<u8> = input_notes.iter().copied().collect();
     let mut harm_vec: Vec<u8> = harmony_notes.iter().copied().collect();
@@ -1747,6 +1773,7 @@ fn build_note_update_payload(
         current_key,
         canon_notes: canon_vec,
         counterpoint_notes: cp_vec,
+        phrase,
     }
 }
 
@@ -1809,6 +1836,9 @@ mod tests {
             "C".into(),
             &canon,
             &cp,
+            contrapunk_companion::PhraseSnapshot::idle(
+                contrapunk_companion::DEFAULT_PHRASE_GAP_BEATS,
+            ),
         );
         assert_eq!(payload.input_notes, vec![60, 64, 67]);
         assert_eq!(payload.harmony_notes, vec![55, 60, 71]);
@@ -1833,6 +1863,9 @@ mod tests {
             "C".into(),
             &empty_counts,
             &empty_counts,
+            contrapunk_companion::PhraseSnapshot::idle(
+                contrapunk_companion::DEFAULT_PHRASE_GAP_BEATS,
+            ),
         );
         assert!(payload.input_notes.is_empty());
         assert!(payload.harmony_notes.is_empty());

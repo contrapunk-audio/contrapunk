@@ -8,6 +8,7 @@
 
 import { adapter } from '$lib/adapter';
 import type { HarmonicLimit, NoteState, TuningStyle } from '$lib/adapter';
+import { phrase } from '$lib/stores/phrase.svelte';
 
 /** Compare two note arrays (order-independent) to avoid unnecessary Svelte re-renders.
  *  HashSet iteration order is non-deterministic, so we must sort before comparing. */
@@ -1902,6 +1903,7 @@ class EngineStore {
 		if (this.unsubNotes) return;
 
 		this.unsubNotes = adapter.onNoteUpdate((state: NoteState) => {
+			if (state.phrase) phrase.applySnapshot(state.phrase);
 			if (!sameNotes(this.inputNotes, state.inputNotes))
 				this.inputNotes = state.inputNotes;
 			if (!sameNotes(this.harmonyNotes, state.harmonyNotes))

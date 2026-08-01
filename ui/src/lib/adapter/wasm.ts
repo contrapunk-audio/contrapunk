@@ -14,6 +14,7 @@ import type {
 	MidiDevice,
 	MidiPermissionState,
 	NoteState,
+	PhraseState,
 	PluginInputMode,
 	PluginMidiOutputMode,
 	Preset,
@@ -33,6 +34,7 @@ import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
 import * as embedAudio from '$lib/embed/audio';
 import { defaultSlideConfig, resolveSlide } from '$lib/slide/config';
+import { mapPhraseState } from './phrase';
 
 /**
  * Dynamically imported WASM module.
@@ -138,6 +140,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		companionLanes: true,
 		intervalMaps: true,
 		patternLanes: true,
+		phraseContext: true,
 		// WASM exposes MIDI + guitar-audio via Web MIDI + WebAudio
 		// (guitarCapture.ts). Voice option is disabled like everywhere.
 		inputSourcePicker: true,
@@ -635,6 +638,16 @@ export class WasmAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async setPhraseGapBeats(beats: number): Promise<void> {
+		if (!companion) return;
+		companion.set_phrase_gap(beats);
+	}
+
+	async getPhraseState(): Promise<PhraseState> {
+		if (!companion) return mapPhraseState(null);
+		return mapPhraseState(JSON.parse(companion.phrase_state()));
+	}
+
 	async canonSetEnabled(enabled: boolean): Promise<void> {
 		if (companion) companion.configure_canon(JSON.stringify({ enabled }));
 	}
@@ -677,6 +690,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		species?: string;
 		transpose_degrees?: number;
 		prefer_above?: boolean;
+		phrase_aware?: boolean;
 	}): Promise<void> {
 		if (!companion) return;
 		try {
@@ -737,11 +751,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 		species: string;
 		transpose_degrees: number;
 		prefer_above: boolean;
+		phrase_aware?: boolean;
 	} | null> {
-		// CompanionWasm doesn't expose a state getter in v1.2.0 — the
-		// canonical state lives in the JS engine store + localStorage,
-		// and gets pushed back via configure_counterpoint on mount.
-		return null;
+		if (!companion) return null;
+		try {
+			return JSON.parse(companion.counterpoint_state());
+		} catch {
+			return null;
+		}
 	}
 
 	async canonState(): Promise<{
@@ -873,6 +890,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 			this.activeInput.onmidimessage = (event: MIDIMessageEvent) => {
 				if (!event.data || event.data.length < 2) return;
 				const status = event.data[0] & 0xf0;
+				const channel = event.data[0] & 0x0f;
 				const note = event.data[1];
 				const velocity = event.data.length > 2 ? event.data[2] : 0;
 
@@ -907,7 +925,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 						// MIDI hardware.
 						if (companion) {
 							try {
-								const opsJson = companion.on_note_on(note, velocity, 0);
+								const opsJson = companion.on_note_on(note, velocity, channel);
 								self.dispatchOpsJson(opsJson);
 								logCompanionEvent('note_on (midi)', {
 									player_note: note,
@@ -939,7 +957,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 						}
 						if (companion) {
 							try {
-								const opsJson = companion.on_note_off(note, 0);
+								const opsJson = companion.on_note_off(note, channel);
 								self.dispatchOpsJson(opsJson);
 								logCompanionEvent('note_off (midi)', {
 									player_note: note,
@@ -953,8 +971,16 @@ export class WasmAdapter implements ContrapunkAdapter {
 						/* give up */
 					}
 				} else {
+					if (status === 0xb0 && companion) {
+						try {
+							self.dispatchOpsJson(companion.on_cc(note, velocity, channel));
+							if (note === 120 || note === 123) companion.reset_runtime();
+						} catch {
+							/* best-effort */
+						}
+					}
 					if (status === 0xb0 && note === 64) embedAudio.setSustainPedal(velocity >= 64);
-					if (status === 0xb0 && note === 123) embedAudio.allNotesOff();
+					if (status === 0xb0 && (note === 120 || note === 123)) embedAudio.allNotesOff();
 					// Pass through other MIDI messages (CC, pitch bend, etc.)
 					for (const output of outs) {
 						output.send(Array.from(event.data));
@@ -1272,7 +1298,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 				lastBorrowedFrom: raw?.last_borrowed_from ?? '',
 				currentKey: engine.current_key?.() ?? 'C',
 				canonNotes: activeNotes(activeCanonNotes),
-				counterpointNotes: activeNotes(activeCounterpointNotes)
+				counterpointNotes: activeNotes(activeCounterpointNotes),
+				phrase: await this.getPhraseState()
 			};
 		} catch {
 			return {
@@ -1283,7 +1310,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 				lastBorrowedFrom: '',
 				currentKey: 'C',
 				canonNotes: activeNotes(activeCanonNotes),
-				counterpointNotes: activeNotes(activeCounterpointNotes)
+				counterpointNotes: activeNotes(activeCounterpointNotes),
+				phrase: mapPhraseState(null)
 			};
 		}
 	}

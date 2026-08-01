@@ -89,6 +89,11 @@ impl ContrapunkEditorHandler {
                 self.params.synth_counterpoint_gain.value(),
             ],
             "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
+            "phrase": self
+                .companion
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .phrase_snapshot(),
         })
         .to_string()
     }
@@ -146,6 +151,11 @@ impl ContrapunkEditorHandler {
             (input, harmony, canon, counterpoint)
         };
         let key = format!("{:?}", self.params.key.value());
+        let phrase = self
+            .companion
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .phrase_snapshot();
         let empty: Vec<u8> = Vec::new();
         let payload = serde_json::json!({
             "type": "noteUpdate",
@@ -157,6 +167,7 @@ impl ContrapunkEditorHandler {
             "chordName": "",
             "lastBorrowedFrom": "",
             "currentKey": key,
+            "phrase": phrase,
         })
         .to_string();
         if payload == self.last_note_json {
@@ -397,6 +408,12 @@ impl EditorHandler for ContrapunkEditorHandler {
                         let c = self.companion.lock().unwrap_or_else(|e| e.into_inner());
                         c.set_global_hold_mode(mode);
                     }
+                }
+            }
+            "companionSetPhraseGap" => {
+                if let Some(beats) = msg.get("value").and_then(|value| value.as_f64()) {
+                    let c = self.companion.lock().unwrap_or_else(|e| e.into_inner());
+                    let _ = c.set_phrase_gap_beats(beats);
                 }
             }
             "canonConfigure" => {
