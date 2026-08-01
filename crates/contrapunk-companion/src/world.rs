@@ -20,6 +20,7 @@ use std::time::Instant;
 use contrapunk_harmony::HarmonyEngine;
 use contrapunk_transport::Transport;
 
+use crate::phrase::{PhraseContext, PhraseSnapshot};
 use crate::voice_output::VoiceOutputTarget;
 
 /// One currently-held input note. Populated on `Companion::on_input`
@@ -124,6 +125,10 @@ pub struct WorldState {
     /// `Arc<AtomicX>` because `HoldMode` is an enum with payload,
     /// not a primitive.
     pub global_hold_mode: Arc<Mutex<crate::lane::HoldMode>>,
+
+    /// Canonical phrase/input lifecycle. Companion ingress updates this
+    /// exactly once before lane fan-out; Decide lanes read snapshots.
+    phrase: Arc<Mutex<PhraseContext>>,
 }
 
 impl WorldState {
@@ -137,7 +142,45 @@ impl WorldState {
             sounding_voices: Arc::new(Mutex::new(HashMap::new())),
             current_chord: Arc::new(Mutex::new(DetectedChord::default())),
             global_hold_mode: Arc::new(Mutex::new(crate::lane::HoldMode::default())),
+            phrase: Arc::new(Mutex::new(PhraseContext::new())),
         })
+    }
+
+    pub fn observe_phrase_input(&self, event: crate::lane::InputEvent) {
+        let now = self.transport.total_beats();
+        self.phrase
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .observe(event, now);
+    }
+
+    pub fn advance_phrase(&self) {
+        let now = self.transport.total_beats();
+        self.phrase
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .advance(now);
+    }
+
+    pub fn reset_phrase_runtime(&self) {
+        self.phrase
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .reset_runtime();
+    }
+
+    pub fn set_phrase_gap_beats(&self, beats: f64) -> Result<(), String> {
+        self.phrase
+            .lock()
+            .map_err(|error| error.to_string())?
+            .set_gap_beats(beats)
+    }
+
+    pub fn phrase_snapshot(&self) -> PhraseSnapshot {
+        self.phrase
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .snapshot()
     }
 }
 

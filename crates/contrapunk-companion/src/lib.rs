@@ -20,6 +20,7 @@ pub mod lane;
 pub mod loops;
 pub mod orchestrator;
 pub mod pattern_lane;
+pub mod phrase;
 pub mod voice_output;
 pub mod world;
 
@@ -30,6 +31,10 @@ pub use canon_lane::CanonLane;
 #[allow(unused_imports)]
 pub use counterpoint_lane::CounterpointLane;
 pub use pattern_lane::PatternLane;
+pub use phrase::{
+    PhrasePhase, PhraseSnapshot, DEFAULT_PHRASE_GAP_BEATS, MAX_PHRASE_GAP_BEATS,
+    MIN_PHRASE_GAP_BEATS,
+};
 
 #[allow(unused_imports)]
 pub use lane::{
