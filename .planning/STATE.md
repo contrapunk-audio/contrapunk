@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Contrapunk release reliability
 status: active
-stopped_at: Phase 16 prototype UI promotion and plugin build.
-last_updated: "2026-07-20T14:40:00Z"
-last_activity: 2026-07-20 — Direct VST3 hosting was parked in Phase 21.C3. The prototype route and legacy workspace were retired, and universal VST3/CLAP bundles with the production UI were built and installed for the Analog Lab V DAW workflow.
+stopped_at: Phase 10.3 prerequisite checkpoints complete; ready for implementation planning.
+last_updated: "2026-08-01T11:10:43Z"
+last_activity: 2026-08-01 — Reviewed, repaired, tested, and checkpointed all Phrase Context, phrase-aware Species IV, cross-surface, generated WASM, and arrangement contract work; Phase 10.3 is ready for planning.
 progress:
-  total_phases: 55
+  total_phases: 56
   completed_phases: 18
   total_plans: 89
   completed_plans: 66
@@ -17,20 +17,34 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-18 — added Elixir Milestone Decisions subsection)
+See: .planning/PROJECT.md (updated 2026-08-01 — added Phase 10.3 internal MIDI looper prerequisite)
 
 **Core value:** Real-time harmony generation with minimal latency
-**Current focus:** Promote the prototype workspace to the production desktop/plugin UI and bundle Contrapunk as a MIDI-output plugin for Analog Lab V.
-**Mandatory checkpoint:** Stop after the first 12 operational presets for user performance testing before Wave 3.
+**Current focus:** Plan Phase 10.3, one internal MIDI phrase looper, before any Daisy firmware or hardware UX implementation.
+**Mandatory checkpoint:** The looper must pass deterministic lifecycle tests and a user-run desktop MPK plus clean-guitar performance session before hardware work resumes. Phase 10.2's first-12 preset checkpoint remains paused and still gates later arrangement waves.
 **Parked validation:** User-operated hardware, DAW, installer, signing, and notarization validation for v1.3.0 remains unfinished.
 **Queued work:** Elixir remains preserved in the working tree and roadmap, but is not active.
 
 ## Current Position
 
-Phase: 16 VST3/CLAP/AU Plugin
-Plan: Promote the prototype workspace and bundle the existing nih-plug MIDI-output plugin
-Status: Production UI promoted; universal VST3/CLAP bundles built and installed; direct hosting parked under Phase 21.C3
-Last activity: 2026-07-20 — Plugin mode exposes guitar audio or host MIDI input, Full Contrapunk output, and internal-monitor controls so a DAW can place Analog Lab V after Contrapunk. The installed bundles contain arm64 and x86_64 slices. Phase 10.2 is paused with preset 13 Axis Mirror next.
+Phase: 10.3 Internal MIDI Looper
+Plan: Context captured; next action is `/gsd-plan-phase 10.3`
+Status: Prerequisites checkpointed; ready for implementation planning; no looper implementation has started
+Last activity: 2026-08-01 — User locked a one-slot MIDI looper with bar-quantized pedal lifecycle, one-bar count-in, pre-arrangement capture, full-arrangement isolated replay, CC64 sustain, exact cleanup, no overdub, and desktop acceptance before Daisy work. Phase 10.2 remains paused; its next preset is intentionally undecided until the looper checkpoint is complete.
+
+### Phase 10.3 Context — 2026-08-01
+
+**Scope:** One volatile MIDI event loop; capture live NoteOn/NoteOff/velocity/channel/CC64 before arrangement processing; replay through the current full arrangement in an isolated loop origin/Phrase Context.
+
+**Lifecycle:** Empty → Armed → Recording → Playing → Stopped → Playing. First press arms the next downbeat; stopped transport gives one bar of count-in. Second press closes on the next downbeat. Long press clears. Boundary-held notes receive exact NoteOffs.
+
+**Hard exclusions:** Audio looping, multiple slots, overdub/undo, output/frozen capture, arbitrary expression capture, cross-boundary ties, persistence, Ableton Link, WASM/plugin/Daisy parity, and hardware mapping.
+
+**Prerequisite satisfied:** Pixel Trio was already checkpointed in `a290e226`. Phrase Context, the Pixel Trio migration, phrase-aware Suspension Garland, surface wiring, generated WASM, and arrangement semantics were separately checkpointed in `a74e68a7` through `841072a1` after focused tests and workspace/UI checks.
+
+**Acceptance gate:** Focused deterministic scheduler/lifecycle tests, workspace/UI checks, then one user-run desktop MPK and clean-monophonic-guitar performance test. Daisy firmware and screenless UX stay paused until approval.
+
+**Context:** `.planning/phases/10.3-internal-midi-looper/10.3-CONTEXT.md`
 
 ### Phase 10.2 Start — 2026-07-19
 
