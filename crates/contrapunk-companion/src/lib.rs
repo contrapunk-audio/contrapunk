@@ -6,10 +6,10 @@
 //! Six of the nine jam-pipeline weeks (looper, arp, drone, pad, beat
 //! machine, motif transposer) fit cleanly as Lane impls.
 //!
-//! Phase 1.4 ships the abstraction: `WorldState`, the `Lane` trait,
-//! and the `Companion` orchestrator with no concrete Lanes. The
-//! looper slot types in `loops` are scaffolding for Phase 2's
-//! `LooperLane`, the first concrete Lane.
+//! `WorldState`, the `Lane` trait, and the `Companion` orchestrator
+//! host timed musical behavior. The input-only `LooperLane` in `loops`
+//! owns a pure volatile capture/playback state machine; adapters route
+//! its replay through an isolated arrangement runtime.
 //!
 //! See `.planning/jam-features-2026/01-companion-architecture.md` for
 //! the full architecture, phase ordering rationale, and Lane catalog.
@@ -42,7 +42,11 @@ pub use lane::{
     WorldWrite,
 };
 #[allow(unused_imports)]
-pub use loops::{LoopBuffer, LoopEvent, LoopEventKind, LoopSlot, LoopSource, LoopState};
+pub use loops::{
+    InputOrigin, LoopBuffer, LoopEvent, LoopMidiEvent, LoopPressOutcome, LoopState, LoopStatus,
+    LoopStatusState, LooperLane, OriginMidiEvent, MAX_LOOP_BEATS, MAX_LOOP_EVENTS,
+    MICROBEATS_PER_BEAT,
+};
 #[allow(unused_imports)]
 pub use orchestrator::{Companion, CompanionInputResult, CompanionState};
 #[allow(unused_imports)]

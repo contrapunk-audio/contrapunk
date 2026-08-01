@@ -952,7 +952,11 @@ impl Lane for CounterpointLane {
         }
 
         if let Some(mut gesture) = self.species4.take() {
-            if gesture.release_by.map(|at| now >= at).unwrap_or(false) {
+            if gesture
+                .release_by
+                .map(|at| now + 1.0e-9 >= at)
+                .unwrap_or(false)
+            {
                 if gesture.stage != Species4Stage::Armed {
                     ops.push(DispatchOp::NoteOff {
                         target: self.voice_output,
