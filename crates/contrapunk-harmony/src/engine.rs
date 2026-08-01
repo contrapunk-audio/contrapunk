@@ -281,7 +281,6 @@ pub struct HarmonyEngine {
     counterpoint_species: CounterpointSpecies,
     /// Active strictness applied to all counterpoint states.
     counterpoint_strictness: CounterpointStrictness,
-    saved_scale_mode: Option<ScaleMode>,
     harmonic_context: Option<HarmonicContext>,
     /// Harmony notes that need an explicit Note-Off after an auto-key
     /// triggered `set_key`. The key change wipes `active_notes`, which
@@ -358,7 +357,6 @@ impl HarmonyEngine {
             synthetic_beat_counter: 0.0,
             counterpoint_species: CounterpointSpecies::default(),
             counterpoint_strictness: CounterpointStrictness::default(),
-            saved_scale_mode: None,
             pending_releases: Vec::new(),
             pending_reharm_inputs: Vec::new(),
             harmonic_context: None,
@@ -634,18 +632,6 @@ impl HarmonyEngine {
         // Clear cached beat-phase; router pushes a fresh value on next cycle.
         self.counterpoint_beat_phase = None;
         self.synthetic_beat_counter = 0.0;
-
-        if mode == HarmonyMode::BarryHarris {
-            match super::barry_harris::validate_scale(self.scale_mode) {
-                super::barry_harris::BhScaleGuard::Valid => {}
-                super::barry_harris::BhScaleGuard::Fallback(bh_scale) => {
-                    self.saved_scale_mode = Some(self.scale_mode);
-                    self.set_scale_mode(bh_scale);
-                }
-            }
-        } else if let Some(saved) = self.saved_scale_mode.take() {
-            self.set_scale_mode(saved);
-        }
     }
 
     /// Returns the current scale mode.
@@ -1274,7 +1260,14 @@ impl HarmonyEngine {
     }
 
     fn harmonize_block_chord(&mut self, note: Note) -> Vec<Note> {
-        match super::barry_harris::build_voicing(note, &self.scale, self.beat_phase) {
+        let inferred = match super::barry_harris::validate_scale(self.scale_mode) {
+            super::barry_harris::BhScaleGuard::Valid => None,
+            super::barry_harris::BhScaleGuard::Fallback(mode) => {
+                Some(Scale::new(self.key.semitones_from_c(), mode))
+            }
+        };
+        let scale = inferred.as_ref().unwrap_or(&self.scale);
+        match super::barry_harris::build_voicing(note, scale, self.beat_phase) {
             Some(voicing) => {
                 let mut result = Vec::with_capacity(4);
                 result.push(note);
@@ -2483,26 +2476,28 @@ mod tests {
         }
     }
     #[test]
-    fn test_barry_harris_scale_guard_auto_switch() {
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 5);
+    fn test_barry_harris_major_fallback_preserves_player_scale() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 4);
         engine.set_scale_mode(ScaleMode::Ionian);
         engine.set_mode(HarmonyMode::BarryHarris);
-        assert_eq!(engine.scale_mode(), ScaleMode::BHMajor6thDim);
+        assert_eq!(engine.scale_mode(), ScaleMode::Ionian);
+        assert_eq!(engine.harmonize(Note::C4).len(), 4);
     }
     #[test]
-    fn test_barry_harris_scale_guard_minor() {
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 5);
+    fn test_barry_harris_minor_fallback_preserves_player_scale() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 4);
         engine.set_scale_mode(ScaleMode::Aeolian);
         engine.set_mode(HarmonyMode::BarryHarris);
-        assert_eq!(engine.scale_mode(), ScaleMode::BHMinor6thDim);
+        assert_eq!(engine.scale_mode(), ScaleMode::Aeolian);
+        assert_eq!(engine.harmonize(Note::C4).len(), 4);
     }
     #[test]
-    fn test_barry_harris_scale_guard_restore() {
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 5);
-        engine.set_scale_mode(ScaleMode::Ionian);
+    fn test_leaving_barry_harris_keeps_player_scale_unchanged() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 4);
+        engine.set_scale_mode(ScaleMode::Dorian);
         engine.set_mode(HarmonyMode::BarryHarris);
         engine.set_mode(HarmonyMode::DiatonicThirds);
-        assert_eq!(engine.scale_mode(), ScaleMode::Ionian);
+        assert_eq!(engine.scale_mode(), ScaleMode::Dorian);
     }
     #[test]
     fn test_barry_harris_note_tracking() {
