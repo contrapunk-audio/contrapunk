@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 
 use serde::Serialize;
 use serde_json::json;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use contrapunk::preset::storage::save_preset_to_file;
 use contrapunk::preset::ContrapunkPresetPayload;
@@ -95,7 +95,7 @@ pub(crate) fn apply_preset_inner(state: &AppState, name: &str) -> Result<(), Str
 /// Saves the current engine config as a custom preset, both in-memory
 /// and to the disk as a .cpk file.
 #[tauri::command]
-pub fn save_preset(name: String, state: State<AppState>) -> Result<(), String> {
+pub fn save_preset(name: String, state: State<AppState>, app: AppHandle) -> Result<(), String> {
     let engine = state.engine.lock().map_err(|e| e.to_string())?;
 
     // 1. Create the core StylePreset
@@ -131,9 +131,22 @@ pub fn save_preset(name: String, state: State<AppState>) -> Result<(), String> {
     };
 
     // 4. Save to disk (Fixes Reviewer Point #1)
-    let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+    // Fetch the secure OS-level AppData directory managed by Tauri
+    let mut file_path = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Cannot find AppData dir".to_string())?;
+
+    // Append a dedicated "presets" folder to organize files cleanly
+    file_path.push("presets");
+
+    // Ensure the folder actually exists before writing, avoiding silent path errors
+    std::fs::create_dir_all(&file_path).map_err(|e| e.to_string())?;
+
+    // Format the filename and push it to the path
     let file_name = format!("{}.cpk", name.replace(" ", "_").to_lowercase());
-    let file_path = current_dir.join(file_name);
+    file_path.push(file_name);
 
     save_preset_to_file(&payload, &file_path).map_err(|e| e.to_string())?;
 
