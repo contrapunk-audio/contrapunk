@@ -23,9 +23,10 @@ import type {
 	SlideVoiceState,
 	TransportState,
 	TuningStyle,
-	VoiceOutputTarget
+	VoiceOutputAssignment,
+	VoiceOutputTarget,
+	VoiceRouteId
 } from './types';
-import { MAX_VOICES } from './types';
 import {
 	GuitarAudioCapture,
 	serializeGuitarCaptureOperation
@@ -147,8 +148,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// Per-voice port routing is NOT honored on WASM today: the MIDI
 		// dispatch loop (search for `outs[i % outs.length]`) round-robins
 		// regardless of what `setVoiceOutput` was passed. Flip back to
-		// true once the dispatch loop consults `_voiceOutputs[i]` for
-		// kind/port. Brutal-critic #12 caveat — was advertising a
+		// true once dispatch resolves the stable route map for kind/port.
+		// Brutal-critic #12 caveat — was advertising a
 		// capability we didn't have.
 		perVoicePortRouting: false,
 		// Plugin-only host MIDI mode selector.
@@ -1142,20 +1143,15 @@ export class WasmAdapter implements ContrapunkAdapter {
 	// has no backend to route to — tracked in the in-memory table below
 	// so UI reads/writes round-trip consistently until the WASM engine
 	// gains a synth + MIDI dispatcher of its own.
-	private _voiceOutputs: VoiceOutputTarget[] = Array.from(
-		{ length: MAX_VOICES },
-		() => ({ kind: 'synth' })
-	);
+	private _voiceOutputs = new Map<VoiceRouteId, VoiceOutputTarget>();
 
-	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void> {
-		if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) {
-			throw new Error(`voiceIdx ${voiceIdx} out of range (0..${MAX_VOICES - 1})`);
-		}
-		this._voiceOutputs[voiceIdx] = target;
+	async setVoiceOutput(route: VoiceRouteId, target: VoiceOutputTarget): Promise<void> {
+		if (target.kind === 'synth') this._voiceOutputs.delete(route);
+		else this._voiceOutputs.set(route, target);
 	}
 
-	async getVoiceOutputs(): Promise<VoiceOutputTarget[]> {
-		return this._voiceOutputs.slice();
+	async getVoiceOutputs(): Promise<VoiceOutputAssignment[]> {
+		return [...this._voiceOutputs].map(([route, target]) => ({ route, target }));
 	}
 
 	async getPluginInputMode(): Promise<PluginInputMode> {

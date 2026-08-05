@@ -6,8 +6,13 @@
  * localStorage so they survive page reloads.
  */
 
-import { adapter, platformName } from '$lib/adapter';
-import type { MidiDevice, MidiPermissionState, VoiceOutputTarget } from '$lib/adapter';
+import { adapter, isVoiceRouteId, platformName } from '$lib/adapter';
+import type {
+	MidiDevice,
+	MidiPermissionState,
+	VoiceOutputTarget,
+	VoiceRouteId
+} from '$lib/adapter';
 import { MAX_VOICES } from '$lib/adapter/types';
 
 const MIDI_SETTINGS_KEY = 'contrapunk-midi';
@@ -19,37 +24,88 @@ interface MidiSettings {
 	outputNames: string[];
 }
 
-function loadVoiceOutputs(): VoiceOutputTarget[] | null {
+type VoiceOutputMap = Partial<Record<VoiceRouteId, VoiceOutputTarget>>;
+type StoredVoiceOutputTarget =
+	| { kind: 'off' }
+	| { kind: 'midi_port'; deviceName: string };
+type StoredVoiceOutputs = {
+	version: 2;
+	routes: Partial<Record<VoiceRouteId, StoredVoiceOutputTarget>>;
+};
+type LoadedVoiceOutputs = { routes: VoiceOutputMap; migrated: boolean };
+
+function readTarget(
+	value: unknown,
+	outputs: MidiDevice[],
+	selectedOutputs: number[],
+	legacyConnectionSlot: boolean
+): VoiceOutputTarget | null {
+	if (!value || typeof value !== 'object') return null;
+	const stored = value as { kind?: unknown; port?: unknown; deviceName?: unknown };
+	if (stored.kind === 'synth' || stored.kind === 'off') return { kind: stored.kind };
+	if (stored.kind !== 'midi_port') return null;
+	if (typeof stored.deviceName === 'string') {
+		const device = outputs.find((output) => output.name === stored.deviceName);
+		return device ? { kind: 'midi_port', port: device.index } : null;
+	}
+	if (!Number.isInteger(stored.port)) return null;
+	const savedPort = stored.port as number;
+	const deviceIndex = legacyConnectionSlot ? selectedOutputs[savedPort] : savedPort;
+	return Number.isInteger(deviceIndex) ? { kind: 'midi_port', port: deviceIndex } : null;
+}
+
+function loadVoiceOutputs(
+	outputs: MidiDevice[],
+	selectedOutputs: number[],
+	voicePosition: number
+): LoadedVoiceOutputs | null {
 	try {
 		const raw = localStorage.getItem(VOICE_OUTPUTS_KEY);
 		if (!raw) return null;
-		const parsed = JSON.parse(raw);
-		if (!Array.isArray(parsed)) return null;
-		// Validate each entry against the current schema. Old installs
-		// may have `use_default` kinds left over — those got removed
-		// when routing collapsed to Synth | MidiPort | Off. Drop any
-		// invalid entry so the loader's `?? { kind: 'synth' }` fallback
-		// fills it in.
-		return parsed.slice(0, MAX_VOICES).map((entry: unknown) => {
-			if (!entry || typeof entry !== 'object') return { kind: 'synth' as const };
-			const kind = (entry as { kind?: unknown }).kind;
-			if (kind === 'synth' || kind === 'off') return entry as VoiceOutputTarget;
-			if (kind === 'midi_port') {
-				const port = (entry as { port?: unknown }).port;
-				if (typeof port === 'number') {
-					return { kind: 'midi_port', port } as VoiceOutputTarget;
-				}
-			}
-			return { kind: 'synth' as const };
-		});
+		const parsed: unknown = JSON.parse(raw);
+		const routes: VoiceOutputMap = {};
+
+		// Old builds addressed a mutable connection-array slot. Preserve each
+		// SATB destination and seed the performed-input route from its current slot.
+		if (Array.isArray(parsed)) {
+			parsed.slice(0, MAX_VOICES).forEach((entry, index) => {
+				const target = readTarget(entry, outputs, selectedOutputs, true);
+				if (!target || target.kind === 'synth') return;
+				routes[`harmony:${index}`] = target;
+				if (index === voicePosition) routes.input = target;
+			});
+			return { routes, migrated: true };
+		}
+		if (!parsed || typeof parsed !== 'object') return null;
+		const versioned = parsed as Partial<StoredVoiceOutputs>;
+		const currentVersion = versioned.version === 2 && !!versioned.routes;
+		const source = currentVersion ? versioned.routes! : parsed;
+		for (const [route, value] of Object.entries(source)) {
+			const target = readTarget(value, outputs, selectedOutputs, !currentVersion);
+			if (isVoiceRouteId(route) && target && target.kind !== 'synth') routes[route] = target;
+		}
+		return { routes, migrated: !currentVersion };
 	} catch {
 		return null;
 	}
 }
 
-function saveVoiceOutputs(targets: VoiceOutputTarget[]) {
+function saveVoiceOutputs(targets: VoiceOutputMap, outputs: MidiDevice[]) {
+	const routes: StoredVoiceOutputs['routes'] = {};
+	for (const [route, target] of Object.entries(targets)) {
+		if (!isVoiceRouteId(route) || !target || target.kind === 'synth') continue;
+		if (target.kind === 'off') {
+			routes[route] = target;
+			continue;
+		}
+		const device = outputs.find((output) => output.index === target.port);
+		if (device) routes[route] = { kind: 'midi_port', deviceName: device.name };
+	}
 	try {
-		localStorage.setItem(VOICE_OUTPUTS_KEY, JSON.stringify(targets));
+		localStorage.setItem(
+			VOICE_OUTPUTS_KEY,
+			JSON.stringify({ version: 2, routes } satisfies StoredVoiceOutputs)
+		);
 	} catch {
 		// localStorage unavailable
 	}
@@ -117,12 +173,9 @@ class MidiStore {
 	 *  browser path drives the "Enable MIDI" UI. */
 	permissionState = $state<MidiPermissionState>(initialPermissionState());
 
-	// -- Per-voice output routing (issue #36 / backed by #57) --
-	// Length is always MAX_VOICES. Default is `synth` — first run plays
-	// audio without the user needing to add a MIDI port first.
-	voiceOutputs = $state<VoiceOutputTarget[]>(
-		Array.from({ length: MAX_VOICES }, () => ({ kind: 'synth' as const }))
-	);
+	// -- Stable musical-part output routing --
+	// Missing entries mean Synth, so first run produces audio without setup.
+	voiceOutputs = $state<VoiceOutputMap>({});
 
 	// -- Loading / error state --
 	isLoading = $state(false);
@@ -310,66 +363,66 @@ class MidiStore {
 		this.persist();
 	}
 
-	/**
-	 * Ensure a device is in the active output port pool and return the
-	 * port index (slot 0..selectedOutputs.length-1) for use in
-	 * `VoiceOutputTarget.midi_port`. Single source of truth for the
-	 * "find or append output port" pattern previously inlined in
-	 * MidiDevices + OutputPanel as a hidden assignment-in-expression
-	 * (`(midi.selectedOutputs = [...]).length - 1`) — brutal-critic #8.
-	 */
+	/** Ensure a system MIDI output is connected and return its stable device index. */
 	ensureOutputPort(deviceIdx: number): number {
-		const existing = this.selectedOutputs.indexOf(deviceIdx);
-		if (existing >= 0) return existing;
-		this.selectedOutputs = [...this.selectedOutputs, deviceIdx];
-		this.persist();
-		return this.selectedOutputs.length - 1;
+		if (!this.selectedOutputs.includes(deviceIdx)) {
+			this.selectedOutputs = [...this.selectedOutputs, deviceIdx];
+			this.persist();
+		}
+		return deviceIdx;
 	}
 
-	/**
-	 * Set the output destination for a single voice.
-	 * Updates the reactive store, pushes to the backend via the adapter,
-	 * and persists to localStorage so the selection survives reloads.
-	 */
-	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget) {
-		if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;
-		const next = this.voiceOutputs.slice();
-		next[voiceIdx] = target;
+	getVoiceOutput(route: VoiceRouteId): VoiceOutputTarget {
+		return this.voiceOutputs[route] ?? { kind: 'synth' };
+	}
+
+	/** Update one musical part, push it to the backend, and persist it. */
+	async setVoiceOutput(route: VoiceRouteId, target: VoiceOutputTarget) {
+		const previous = this.voiceOutputs;
+		const next: VoiceOutputMap = { ...previous };
+		if (target.kind === 'synth') delete next[route];
+		else next[route] = target;
 		this.voiceOutputs = next;
-		saveVoiceOutputs(next);
+		saveVoiceOutputs(next, this.outputs);
 		try {
-			await adapter.setVoiceOutput(voiceIdx, target);
-		} catch (e) {
-			this.error = `Failed to set voice output: ${e}`;
+			await adapter.setVoiceOutput(route, target);
+			this.error = null;
+		} catch (error) {
+			this.voiceOutputs = previous;
+			saveVoiceOutputs(previous, this.outputs);
+			this.error = `Failed to set voice output: ${error}`;
+			throw error;
 		}
 	}
 
-	/**
-	 * Hydrate voiceOutputs from localStorage and push to the backend.
-	 * Falls back to the backend's current state if no saved selection
-	 * exists (first run, fresh install). Call once at app init.
-	 */
-	async hydrateVoiceOutputs() {
-		const saved = loadVoiceOutputs();
-		if (saved && saved.length > 0) {
-			const padded: VoiceOutputTarget[] = Array.from({ length: MAX_VOICES }, (_, i) =>
-				saved[i] ?? { kind: 'synth' }
-			);
-			this.voiceOutputs = padded;
-			try {
-				await Promise.all(padded.map((t, i) => adapter.setVoiceOutput(i, t)));
-			} catch {
-				// Non-fatal — UI still reflects user's prior choice
+	/** Hydrate stable routes after device-name restoration, migrating old slot-based settings. */
+	async hydrateVoiceOutputs(voicePosition: number) {
+		if (!adapter.capabilities.perVoicePortRouting) return;
+		if (this.outputs.length === 0) await this.refresh();
+		const saved = loadVoiceOutputs(this.outputs, this.selectedOutputs, voicePosition);
+		if (saved) {
+			this.voiceOutputs = saved.routes;
+			for (const target of Object.values(saved.routes)) {
+				if (target?.kind === 'midi_port' && !this.selectedOutputs.includes(target.port)) {
+					this.selectedOutputs = [...this.selectedOutputs, target.port];
+				}
 			}
+			this.persist();
+			if (saved.migrated) saveVoiceOutputs(saved.routes, this.outputs);
+			await Promise.all(
+				Object.entries(saved.routes).flatMap(([route, target]) =>
+					target ? [adapter.setVoiceOutput(route as VoiceRouteId, target)] : []
+				)
+			);
 			return;
 		}
 		try {
 			const current = await adapter.getVoiceOutputs();
-			if (Array.isArray(current) && current.length === MAX_VOICES) {
-				this.voiceOutputs = current;
-			}
+			this.voiceOutputs = Object.fromEntries(
+				current.map(({ route, target }) => [route, target])
+			) as VoiceOutputMap;
 		} catch {
-			// Adapter may be stubbed (browser / plugin host)
+			// Adapter may be stubbed (browser / plugin host).
 		}
 	}
 

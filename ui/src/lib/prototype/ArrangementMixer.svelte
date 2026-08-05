@@ -1,16 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { adapter } from '$lib/adapter';
-	import type { PluginInputMode, SlideRole, VoiceOutputTarget } from '$lib/adapter/types';
+	import type { PluginInputMode, SlideRole, VoiceOutputTarget, VoiceRouteId } from '$lib/adapter/types';
 	import EnsemblePresetBar from '$lib/components/EnsemblePresetBar.svelte';
-	import ToneSourcePanel from '$lib/components/ToneSourcePanel.svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { phrase } from '$lib/stores/phrase.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import { slide } from '$lib/stores/slide.svelte';
-	import { tone } from '$lib/stores/tone.svelte';
 	import { SLIDE_PRESETS, SLIDE_ROLES } from '$lib/slide/config';
 
 	let { openSetup }: { openSetup: (section: string, focus?: string) => void } = $props();
@@ -31,21 +29,43 @@
 	let pluginInputMode = $state<PluginInputMode>('midi');
 
 	function routeName(target: VoiceOutputTarget | undefined): string {
+		if (!adapter.capabilities.perVoicePortRouting) {
+			return adapter.capabilities.pluginMidiOutputMode ? 'DAW host' : 'Browser output';
+		}
 		if (!target || target.kind === 'synth') return 'Synth';
 		if (target.kind === 'off') return 'Off';
-		const deviceIndex = midi.selectedOutputs[target.port];
-		return midi.outputs.find((device) => device.index === deviceIndex)?.name ?? `MIDI ${target.port + 1}`;
+		return midi.outputs.find((device) => device.index === target.port)?.name ?? 'MIDI unavailable';
 	}
 
-	let inputRoute = $derived(routeName(midi.voiceOutputs[engine.voicePosition]));
-	let harmonyRoute = $derived.by(() => {
-		const names = new Set(
-			midi.voiceOutputs
-				.slice(0, engine.voiceCount)
-				.filter((_, index) => index !== engine.voicePosition)
-				.map(routeName)
-		);
+	let inputRoute = $derived(routeName(midi.getVoiceOutput('input')));
+	function routesName(routes: VoiceRouteId[]): string {
+		const names = new Set(routes.map((route) => routeName(midi.getVoiceOutput(route))));
 		return names.size === 1 ? [...names][0] : names.size ? 'Mixed' : '—';
+	}
+	let harmonyRoute = $derived.by(() =>
+		routesName(
+			engine.mode === 'PassThrough'
+				? []
+				: Array.from({ length: engine.voiceCount }, (_, slot) => slot)
+						.filter((slot) => slot !== engine.voicePosition)
+						.map((slot) => `harmony:${slot}` as VoiceRouteId)
+		)
+	);
+	let canonRoute = $derived.by(() => {
+		const routes = engine.canonEnabled
+			? engine.canonVoices.map((_, index) => `canon:${index}` as VoiceRouteId)
+			: [];
+		if (arrangement.patterns.lowSupport.enabled) routes.push('pattern_low');
+		return routesName(routes);
+	});
+	let counterpointRoute = $derived.by(() => {
+		const routes: VoiceRouteId[] = arrangement.counterpoint.enabled
+			? arrangement.counterpoint.phraseAware
+				? ['counterpoint:0', 'counterpoint:1']
+				: ['counterpoint:0']
+			: [];
+		if (arrangement.patterns.counterline.enabled) routes.push('pattern_counter');
+		return routesName(routes);
 	});
 	let sourceName = $derived.by(() => {
 		if (adapter.capabilities.pluginMidiOutputMode) {
@@ -58,10 +78,18 @@
 	});
 	let sourceType = $derived.by(() => {
 		if (adapter.capabilities.pluginMidiOutputMode) return pluginInputMode === 'audio' ? 'MONOPHONIC AUDIO' : 'DAW EVENTS';
-		if (midi.selectedInput === VIRTUAL_TONE_SOURCE) return `${tone.noteNames[tone.pitchClass]}${tone.octave} · ${tone.frequency.toFixed(2)} Hz`;
+		if (midi.selectedInput === VIRTUAL_TONE_SOURCE) return 'DIAGNOSTIC MIDI';
 		if (midi.selectedInput === 999_997) return 'MONOPHONIC AUDIO';
 		if (midi.selectedInput === 999_998) return 'TYPING KEYBOARD';
 		return midi.selectedInput === null ? 'NOT CONNECTED' : 'MIDI INPUT';
+	});
+	let sourceDetail = $derived.by(() => {
+		if (adapter.capabilities.pluginMidiOutputMode) return pluginInputMode === 'audio' ? 'Pitch tracking into MIDI' : 'Notes from the DAW host';
+		if (midi.selectedInput === 999_997) return 'Clean single-note pitch tracking';
+		if (midi.selectedInput === 999_998) return 'Computer keys become MIDI notes';
+		if (midi.selectedInput === VIRTUAL_TONE_SOURCE) return 'Test MIDI through the arrangement';
+		if (midi.selectedInput === null) return 'Choose an input in Setup';
+		return 'Controller notes enter the arrangement';
 	});
 	function slideLabel(role: SlideRole): string {
 		const index = SLIDE_ROLES.indexOf(role);
@@ -92,7 +120,9 @@
 		{
 			name: 'Harmonic Support',
 			shortName: 'Harmony',
-			subtitle: `${Math.max(0, engine.voiceCount - 1)} ${engine.voiceCount === 2 ? 'voice' : 'voices'}`,
+			subtitle: engine.mode === 'PassThrough'
+				? 'Off'
+				: `${Math.max(0, engine.voiceCount - 1)} ${engine.voiceCount === 2 ? 'voice' : 'voices'}`,
 			section: 'harmony',
 			group: 1,
 			active: engine.harmonyNotes.length > 0,
@@ -107,7 +137,7 @@
 			section: 'canon',
 			group: 2,
 			active: engine.canonNotes.length > 0,
-			route: 'Companion',
+			route: canonRoute,
 			color: '#ffdd44',
 			slide: slideLabel('canon')
 		},
@@ -120,7 +150,7 @@
 			section: 'counterpoint',
 			group: 3,
 			active: engine.counterpointNotes.length > 0,
-			route: 'Companion',
+			route: counterpointRoute,
 			color: '#a3e635',
 			slide: slideLabel('counterpoint')
 		}
@@ -144,14 +174,14 @@
 <section class="arrangement" aria-labelledby="arrangement-title">
 	<aside class="source-pane" class:live={engine.inputNotes.length > 0}>
 		<div class="source-heading">
-			<span>SOURCE + TONE</span>
+			<span>SOURCE</span>
 			<button type="button" title="Input setup" onclick={() => openSetup('input', 'input-source')}>CHANGE ↗</button>
 		</div>
 		<div class="source-identity">
 			<span class="source-dot" aria-hidden="true"></span>
 			<div><strong>{sourceName}</strong><small>{sourceType}</small></div>
 		</div>
-		<ToneSourcePanel compact />
+		<p class="source-detail">{sourceDetail}</p>
 		<button class="source-slide" type="button" title="Configure Your Voice Slide" onclick={() => openSetup('harmony', 'slide-controls')}>
 			<span>YOUR VOICE SLIDE</span><strong>{roles[0].slide}</strong>
 		</button>
@@ -246,6 +276,7 @@
 	.source-identity strong, .source-identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.source-identity strong { font-size: 11px; }
 	.source-identity small { color: var(--proto-muted); font: 7px var(--font-code); letter-spacing: .08em; }
+	.source-detail { align-self: start; margin: 5px 0 0; color: var(--proto-muted); font: 8px/1.4 var(--font-code); }
 	.source-slide { display: flex; min-height: 28px; align-items: center; justify-content: space-between; padding: 0 6px; border: 1px solid var(--proto-line); background: transparent; color: var(--proto-muted); font: 7px var(--font-code); }
 	.source-slide strong { color: #4fe8c3; }
 	.arrangement-pane { display: grid; min-width: 0; grid-template-rows: 36px minmax(0, 1fr); }

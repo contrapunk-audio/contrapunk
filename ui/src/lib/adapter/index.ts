@@ -79,6 +79,8 @@ export type {
 	SynthState,
 	TransportState,
 	TuningStyle,
-	VoiceOutputTarget
+	VoiceOutputAssignment,
+	VoiceOutputTarget,
+	VoiceRouteId
 } from './types';
-export { MAX_VOICES } from './types';
+export { isVoiceRouteId, MAX_VOICES } from './types';

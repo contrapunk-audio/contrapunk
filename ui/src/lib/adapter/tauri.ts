@@ -35,7 +35,9 @@ import type {
 	SynthState,
 	TransportState,
 	TuningStyle,
-	VoiceOutputTarget
+	VoiceOutputAssignment,
+	VoiceOutputTarget,
+	VoiceRouteId
 } from './types';
 
 /** Map snake_case CalibrationStatus from the Tauri backend to camelCase. */
@@ -646,17 +648,17 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
-	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void> {
+	async setVoiceOutput(route: VoiceRouteId, target: VoiceOutputTarget): Promise<void> {
 		try {
-			await invoke('set_voice_output', { voiceIdx, target });
+			await invoke('set_voice_output', { route, target });
 		} catch (e) {
 			throw new Error(`Failed to set voice output: ${e}`);
 		}
 	}
 
-	async getVoiceOutputs(): Promise<VoiceOutputTarget[]> {
+	async getVoiceOutputs(): Promise<VoiceOutputAssignment[]> {
 		try {
-			return (await invoke('get_voice_outputs')) as VoiceOutputTarget[];
+			return (await invoke('get_voice_outputs')) as VoiceOutputAssignment[];
 		} catch (e) {
 			throw new Error(`Failed to get voice outputs: ${e}`);
 		}

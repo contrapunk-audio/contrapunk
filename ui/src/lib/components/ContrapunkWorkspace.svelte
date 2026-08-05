@@ -90,6 +90,7 @@
 				if (adapter.capabilities.pluginMidiOutputMode) await engine.restoreCompanionSettings();
 				else await engine.restoreSettings();
 				await midi.hydratePermission();
+				await midi.hydrateVoiceOutputs(engine.voicePosition);
 				await Promise.all([synth.syncFromBackend(), transport.syncFromBackend(), phrase.init()]);
 				try {
 					await transport.setMetronomeEnabled(false);

@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { engine } from '$lib/stores/engine.svelte';
+	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { adapter } from '$lib/adapter';
 	import VoiceCard from './VoiceCard.svelte';
-	import type { HoldMode } from '$lib/adapter/types';
+	import type { HoldMode, VoiceRouteId } from '$lib/adapter/types';
 
 	const VIRTUAL_COMPUTER_KEYBOARD = 999_998;
 	const VIRTUAL_GUITAR_AUDIO = 999_997;
@@ -35,87 +35,27 @@
 		return `V${index + 1}`;
 	}
 
-	// Engine port_map snapshot — refreshed onMount + after engine config
-	// changes. Maps result-index i → arrangement slot. Empty when the
-	// engine has not processed a note yet (Idle); in that case
-	// `slotFor()` falls back to voicePosition-based mapping for the
-	// melody card and naive index-based mapping for harmonies.
-	let portMap = $state<number[]>([]);
-	async function refreshPortMap() {
-		try {
-			portMap = await adapter.getLastPortMap();
-		} catch {
-			portMap = [];
+	function outputForRoute(route: VoiceRouteId): string {
+		if (!adapter.capabilities.perVoicePortRouting) {
+			return adapter.capabilities.pluginMidiOutputMode ? 'DAW host' : 'Browser output';
 		}
+		const target = midi.getVoiceOutput(route);
+		if (target.kind === 'synth') return 'Synth';
+		if (target.kind === 'off') return 'Off';
+		return midi.outputs.find((output) => output.index === target.port)?.name ?? 'MIDI unavailable';
 	}
 
-	onMount(() => {
-		refreshPortMap();
+	function harmonyRoutes(): VoiceRouteId[] {
+		if (engine.mode === 'PassThrough') return [];
+		return Array.from({ length: engine.voiceCount }, (_, slot) => slot)
+			.filter((slot) => slot !== engine.voicePosition)
+			.map((slot) => `harmony:${slot}` as VoiceRouteId);
+	}
+
+	let harmonyOutput = $derived.by(() => {
+		const names = new Set(harmonyRoutes().map(outputForRoute));
+		return names.size === 1 ? [...names][0] : names.size ? 'Mixed' : 'Off';
 	});
-
-	// Re-fetch when config changes that affect routing. The store doesn't
-	// emit a single "port_map invalidated" event, so we depend on the
-	// individual scalars that drive it.
-	$effect(() => {
-		// Touch reactive fields so the effect re-runs on change.
-		void engine.voiceCount;
-		void engine.voicePosition;
-		void engine.octaveMode;
-		void engine.mode;
-		void engine.counterpointSpecies;
-		refreshPortMap();
-	});
-
-	/** Map result-index i (0=melody, 1..=harmony voices) → arrangement
-	 *  slot. Uses the engine's actual port_map when available; otherwise
-	 *  falls back to a config-derived best guess (melody at
-	 *  voicePosition, harmonies fill the remaining slots in order).
-	 *  This is the fix for brutal-critic #9. */
-	function slotFor(resultIdx: number): number {
-		if (resultIdx < portMap.length) {
-			return portMap[resultIdx];
-		}
-		// Fallback when engine hasn't populated port_map yet.
-		if (resultIdx === 0) return engine.voicePosition;
-		// Naive: result-index i (i > 0) fills slots 0..voiceCount-1 in
-		// order, skipping the user's voicePosition. Matches Pass-Through
-		// and simple voicings; non-trivial voicings re-fetch port_map.
-		let slot = 0;
-		let counted = 0;
-		for (let i = 0; i < 8; i++) {
-			if (i === engine.voicePosition) continue;
-			if (counted === resultIdx - 1) {
-				slot = i;
-				break;
-			}
-			counted++;
-		}
-		return slot;
-	}
-
-	function outputForSlot(slot: number): string {
-		const t = midi.voiceOutputs[slot];
-		if (!t || t.kind === 'synth') return 'Synth';
-		if (t.kind === 'off') return 'Off';
-		if (t.kind === 'midi_port') {
-			const dev = midi.selectedOutputs[t.port];
-			if (typeof dev === 'number') {
-				const out = midi.outputs.find((d) => d.index === dev);
-				return out?.name ?? `Port ${t.port + 1}`;
-			}
-			return `Port ${t.port + 1}`;
-		}
-		return 'Synth';
-	}
-
-	// Canon + counterpoint emissions don't flow through the main engine's
-	// last_port_map(): each Companion DispatchOp carries its own
-	// VoiceOutputTarget baked in by the lane (src-tauri commands/engine.rs
-	// dispatch_companion_ops). The UI doesn't track per-canon-voice
-	// destinations in the midi store, so we surface a truthful "Companion"
-	// label instead of inventing a per-slot mapping. A v2 enhancement can
-	// expose the lane's target via canonState() once the backend includes it.
-	const COMPANION_OUTPUT = 'Companion';
 
 	function openCanonEditor() {
 		ui.setActiveTab('companion');
@@ -130,22 +70,17 @@
 
 	let rows = $derived.by<VoiceRow[]>(() => {
 		const out: VoiceRow[] = [];
-		// 1) Melody — the user's own voice. The melody's actual output
-		// slot comes from the engine's port_map[0] (which honors
-		// non-default voicings like Species 2-4 and drop voicings);
-		// falls back to voicePosition when port_map is empty.
-		const melodySlot = slotFor(0);
+		// The performed voice keeps one stable destination even when its
+		// register position changes inside the harmony stack.
 		out.push({
 			kind: 'melody',
-			label: voicePositionLabel(melodySlot, engine.voiceCount),
+			label: voicePositionLabel(engine.voicePosition, engine.voiceCount),
 			transpose: 0,
-			output: outputForSlot(melodySlot),
+			output: outputForRoute('input'),
 			onclick: openMelodyEditor
 		});
 
-		// 2) Canon voices. Output destination is "Companion" rather than
-		// a specific slot because canon DispatchOps carry their own
-		// VoiceOutputTarget; the UI doesn't track that per-canon-voice.
+		// Canon voices have independent stable destinations.
 		if (engine.companionEnabled && engine.canonEnabled) {
 			for (let i = 0; i < engine.canonVoices.length; i++) {
 				const v = engine.canonVoices[i];
@@ -157,39 +92,54 @@
 					transpose: v.transpose_degrees,
 					timeOffsetBeats: v.delay_beats,
 					holdMode: hold,
-					output: COMPANION_OUTPUT,
+					output: outputForRoute(`canon:${i}` as VoiceRouteId),
 					onclick: openCanonEditor
 				});
 			}
 		}
 
-		// 3) Counterpoint lane — only when Companion is enabled AND
-		// counterpoint mode is engaged. Previously the row was emitted
-		// whenever companionEnabled was true, advertising a lane the
-		// user might not actually have on (brutal-critic #9 follow-up).
-		if (engine.companionEnabled && engine.mode === 'StrictCounterpoint') {
+		// Dedicated Counterpoint lane (separate from the main harmony mode).
+		if (engine.companionEnabled && arrangement.counterpoint.enabled) {
+			const holdMode = engine.counterpointLaneHoldMode ?? engine.companionHoldMode;
 			out.push({
 				kind: 'counterpoint',
-				label: 'Counterpoint',
+				label: arrangement.counterpoint.phraseAware ? 'Tied inner voice' : 'Counterpoint',
+				index: 0,
 				transpose: 0,
 				timeOffsetBeats: 0,
-				holdMode: engine.counterpointLaneHoldMode ?? engine.companionHoldMode,
-				output: COMPANION_OUTPUT,
+				holdMode,
+				output: outputForRoute('counterpoint:0'),
 				onclick: openCanonEditor
 			});
+			if (arrangement.counterpoint.phraseAware) {
+				out.push({
+					kind: 'counterpoint',
+					label: 'Moving bass',
+					index: 1,
+					transpose: 0,
+					timeOffsetBeats: 0,
+					holdMode,
+					output: outputForRoute('counterpoint:1'),
+					onclick: openCanonEditor
+				});
+			}
 		}
 		return out;
 	});
 
 	let outputNodes = $derived.by(() => {
-		const seen = new Set<string>();
-		const nodes: { id: string; label: string }[] = [];
-		for (const r of rows) {
-			if (seen.has(r.output)) continue;
-			seen.add(r.output);
-			nodes.push({ id: r.output, label: r.output });
+		const destinations = rows.map((row) => row.output);
+		destinations.push(...harmonyRoutes().map(outputForRoute));
+		if (engine.companionEnabled && arrangement.counterpoint.phraseAware) {
+			destinations.push(outputForRoute('counterpoint:1'));
 		}
-		return nodes;
+		if (engine.companionEnabled && arrangement.patterns.lowSupport.enabled) {
+			destinations.push(outputForRoute('pattern_low'));
+		}
+		if (engine.companionEnabled && arrangement.patterns.counterline.enabled) {
+			destinations.push(outputForRoute('pattern_counter'));
+		}
+		return [...new Set(destinations)].map((label) => ({ id: label, label }));
 	});
 </script>
 
@@ -212,7 +162,7 @@
 		<button class="part-card harmony-part" type="button" onclick={openMelodyEditor} title="The chordal voices generated at the same time as your melody.">
 			<div class="part-top font-ui"><strong>HARMONIC SUPPORT</strong><span>MAGENTA · CH 2–5</span></div>
 			<div class="part-main font-code">{engine.mode} · {Math.max(0, engine.voiceCount - 1)} generated voice{engine.voiceCount === 2 ? '' : 's'}</div>
-			<div class="part-meta font-code">{engine.voiceLeadingEnabled ? `${engine.voiceLeadingStyle} voice leading` : 'Direct movement'} · Spread {Math.round(engine.octaveIntensity * 100)}%</div>
+			<div class="part-meta font-code">{engine.voiceLeadingEnabled ? `${engine.voiceLeadingStyle} voice leading` : 'Direct movement'} · Spread {Math.round(engine.octaveIntensity * 100)}% · → {harmonyOutput}</div>
 		</button>
 	</div>
 
@@ -245,7 +195,7 @@
 				<div class="vgc-node out-node font-ui" title={`Destination: ${out.label}`}>
 					<div class="node-title">{out.label}</div>
 					<div class="node-sub">
-						{out.label === 'Synth' ? (adapter.capabilities.audioFx ? 'built-in' : 'host') : out.label === 'Off' ? 'muted' : out.label === 'Companion' ? 'internal' : 'external'}
+						{out.label === 'Synth' ? (adapter.capabilities.audioFx ? 'built-in' : 'host') : out.label === 'Off' ? 'muted' : 'external'}
 					</div>
 				</div>
 			{/each}
