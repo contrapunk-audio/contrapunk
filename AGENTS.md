@@ -7,3 +7,8 @@
 - Run `git status` before completion and explicitly resolve any remaining changes.
 - If pre-existing user work cannot be safely included, leave it untouched and clearly identify it instead of mixing it into a commit.
 - Never push directly to `main`; push a feature branch and use a pull request.
+
+## Pull request discipline
+
+- Use `.github/pull_request_template.md` for every pull request and preserve its required sections.
+- Complete the submitter checklist honestly, apply a `kind/*` label, and keep the release-note block accurate.
