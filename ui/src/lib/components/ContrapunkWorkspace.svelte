@@ -167,7 +167,7 @@
 			<img src="/logo.svg" alt="Contrapunk" />
 			{#if adapter.capabilities.audioFx}
 				<nav class="view-tabs" aria-label="Main view">
-					<button class:active={activeView === 'harmony'} onclick={() => (activeView = 'harmony')}>Harmony</button>
+					<button class:active={activeView === 'harmony'} onclick={() => (activeView = 'harmony')}>Perform</button>
 					<span aria-hidden="true">|</span>
 					<button class:active={activeView === 'synth'} onclick={() => (activeView = 'synth')}>Synth</button>
 				</nav>
