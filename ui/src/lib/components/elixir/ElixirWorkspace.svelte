@@ -47,10 +47,7 @@
 <main class="workspace" class:embedded>
 	<section class="synth-panel">
 		<header class="titlebar">
-			<div class="product">
-				<strong>ELIXIR</strong>
-				<span>Sine Synth</span>
-			</div>
+			<strong class="product">ELIXIR</strong>
 			<div class="summary font-code">
 				<span>16 VOICES</span>
 				<span class:online={ready && available}>{ready && available ? 'READY' : 'OFFLINE'}</span>
@@ -120,11 +117,6 @@
 			</div>
 		{/if}
 
-		<footer class="statusbar font-code">
-			<span>OSC 1: SINE</span>
-			<span>POLY: 16</span>
-			<span>DE-CLICK: 5 MS</span>
-		</footer>
 	</section>
 </main>
 
@@ -157,9 +149,7 @@
 		border-bottom: 1px solid #3a3a3a;
 		background: #282828;
 	}
-	.product { display: flex; align-items: baseline; gap: 12px; }
-	.product strong { font: 700 15px var(--font-ui); letter-spacing: .08em; color: #f0f0f0; }
-	.product span { font: 12px var(--font-ui); color: #999; }
+	.product { font: 700 15px var(--font-ui); letter-spacing: .08em; color: #f0f0f0; }
 	.summary { display: flex; gap: 12px; color: #888; font-size: 10px; }
 	.summary .online { color: #8fb584; }
 	.actions { display: flex; gap: 6px; }
@@ -196,17 +186,6 @@
 	.gain-row.master { padding-top: 2px; }
 	.role-section { margin-top: 10px; padding-top: 12px; border-top: 1px solid #3b3b3b; }
 	.role-section h3 { margin-bottom: 5px; color: #888; text-transform: uppercase; letter-spacing: .06em; }
-	.statusbar {
-		display: flex;
-		gap: 20px;
-		min-height: 28px;
-		align-items: center;
-		padding: 0 12px;
-		border-top: 1px solid #3a3a3a;
-		background: #282828;
-		color: #777;
-		font-size: 9px;
-	}
 	.notice { margin: 10px; padding: 14px; border: 1px solid #484848; background: #242424; color: #aaa; font: 12px var(--font-ui); }
 	@media (max-width: 760px) {
 		.titlebar { grid-template-columns: 1fr auto; }
