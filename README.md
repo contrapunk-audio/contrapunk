@@ -23,6 +23,8 @@ The same Rust core powers the native app, browser app, and DAW plug-ins. Arrange
 - **DAW plug-ins:** published releases may include VST3, CLAP, and macOS Audio Unit assets; check the release asset list.
 - **Full setup guide:** [contrapunk.com/docs/start/install](https://contrapunk.com/docs/start/install/).
 
+Desktop custom harmony-style presets persist as versioned `.cpk` files in the app-data directory. They do not yet include synth, plug-in, routing, Slide, or Companion state.
+
 ### Logic Pro
 
 Contrapunk provides two Audio Units under **Contrapunk Audio**:

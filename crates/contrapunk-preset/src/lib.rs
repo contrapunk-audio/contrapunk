@@ -4,9 +4,6 @@ pub mod storage;
 use contrapunk_harmony::{HarmonyMode, Key, OctaveMode, ScaleMode, VoiceLeadingStyle};
 use serde::{Deserialize, Serialize};
 
-// Import for flexible JSON values to avoid circular dependencies
-use serde_json::Value;
-
 /// A complete musical style preset bundling harmony, voice leading,
 /// humanization, and octave settings into a selectable style.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -104,25 +101,4 @@ impl PresetManager {
     pub fn set_custom_presets(&mut self, presets: Vec<StylePreset>) {
         self.custom = presets;
     }
-}
-
-/// Complete plugin state payload requested by the reviewer.
-/// Uses serde_json::Value to avoid dependency cycles with other crates.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ContrapunkPresetPayload {
-    /// Format version for backward compatibility
-    pub version: u32,
-
-    /// Core harmony and style config
-    pub style: StylePreset,
-
-    /// Active voice count
-    pub voice_count: usize,
-
-    /// External crate states stored as JSON
-    pub mixer: Value,
-    pub tuning: Value,
-    pub routing: Value,
-    pub slide_enabled: bool,
-    pub companion: Value,
 }
