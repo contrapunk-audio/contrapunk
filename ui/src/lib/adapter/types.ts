@@ -10,19 +10,40 @@
  *  `src-tauri/src/state.rs`. */
 export const MAX_VOICES = 8;
 
-/** Per-voice output destination. Shape mirrors the Rust `VoiceOutputTarget`
+/** Per-part output destination. Shape mirrors the Rust `VoiceOutputTarget`
  *  enum with `#[serde(tag = "kind", rename_all = "snake_case")]` — see
  *  `src-tauri/src/state.rs` and the `voice_output_target_json_shape_is_tagged`
  *  test in `src-tauri/src/commands/routing.rs`.
  *
  *    - `synth`     — internal synth only, skip external MIDI (DEFAULT)
- *    - `midi_port` — specific MIDI port only, skip the internal synth
+ *    - `midi_port` — specific MIDI port only; Tauri uses its system device index
  *    - `off`       — voice is silent
  */
 export type VoiceOutputTarget =
 	| { kind: 'synth' }
 	| { kind: 'midi_port'; port: number }
 	| { kind: 'off' };
+
+/** Stable musical identity used by desktop output routing. Live and loop
+ * playback intentionally share these IDs. */
+export type VoiceRouteId =
+	| 'input'
+	| `harmony:${number}`
+	| `canon:${number}`
+	| `counterpoint:${number}`
+	| 'pattern_low'
+	| 'pattern_counter';
+
+export interface VoiceOutputAssignment {
+	route: VoiceRouteId;
+	target: VoiceOutputTarget;
+}
+
+export function isVoiceRouteId(value: string): value is VoiceRouteId {
+	if (value === 'input' || value === 'pattern_low' || value === 'pattern_counter') return true;
+	const match = /^(harmony|canon|counterpoint):(\d+)$/.exec(value);
+	return !!match && Number(match[2]) < MAX_VOICES;
+}
 
 export type PluginInputMode = 'midi' | 'audio';
 export type PluginMidiOutputMode = 'full' | 'pass_through';
@@ -298,10 +319,9 @@ export interface AdapterCapabilities {
 	 *  routes audio in and chooses the input bus itself, so the picker
 	 *  would be inert. */
 	inputSourcePicker: boolean;
-	/** Whether the OutputPanel exposes per-voice MIDI port routing
-	 *  pickers. False in plugin mode — the DAW assigns plugin output
-	 *  channels and our per-voice picker would conflict. Tauri + WASM
-	 *  both expose real MIDI out via the adapter's setVoiceOutput. */
+	/** Whether the OutputPanel exposes enforceable per-part routing.
+	 *  Currently true only on Tauri; browser dispatch and plugin-host
+	 *  routing do not honor these destinations yet. */
 	perVoicePortRouting: boolean;
 	/** Whether plugin mode exposes a host-side MIDI output mode selector
 	 *  (Full Contrapunk vs pass-through-only). False outside plugin mode. */
@@ -537,19 +557,11 @@ export interface ContrapunkAdapter {
 
 	// -- Per-voice output routing --
 
-	/**
-	 * Set the output destination for a single voice by index (0..7).
-	 * Each voice can go independently to the internal synth, a specific
-	 * external MIDI port, nowhere (off), or fall back to the global
-	 * routing mode (use_default).
-	 */
-	setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void>;
+	/** Set one stable musical part's destination. */
+	setVoiceOutput(route: VoiceRouteId, target: VoiceOutputTarget): Promise<void>;
 
-	/**
-	 * Get the current voice-output routing table. Array length = MAX_VOICES
-	 * (8). Each entry is the destination for that voice index.
-	 */
-	getVoiceOutputs(): Promise<VoiceOutputTarget[]>;
+	/** Return non-default route assignments; omitted routes use the synth. */
+	getVoiceOutputs(): Promise<VoiceOutputAssignment[]>;
 
 	// -- Plugin host routing controls --
 	getPluginInputMode(): Promise<PluginInputMode>;

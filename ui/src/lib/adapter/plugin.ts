@@ -24,9 +24,10 @@ import type {
 	SlideVoiceState,
 	TransportState,
 	TuningStyle,
-	VoiceOutputTarget
+	VoiceOutputAssignment,
+	VoiceOutputTarget,
+	VoiceRouteId
 } from './types';
-import { MAX_VOICES } from './types';
 import { defaultSlideConfig } from '$lib/slide/config';
 import { mapPhraseState } from './phrase';
 
@@ -412,16 +413,13 @@ export class PluginAdapter implements ContrapunkAdapter {
 	// Per-voice output routing — the plugin host handles MIDI routing
 	// outside the UI, so these are no-ops that just track the user's
 	// selection in memory for UI restoration.
-	private _voiceOutputs: VoiceOutputTarget[] = Array.from(
-		{ length: MAX_VOICES },
-		() => ({ kind: 'synth' })
-	);
-	async setVoiceOutput(voiceIdx: number, target: VoiceOutputTarget): Promise<void> {
-		if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;
-		this._voiceOutputs[voiceIdx] = target;
+	private _voiceOutputs = new Map<VoiceRouteId, VoiceOutputTarget>();
+	async setVoiceOutput(route: VoiceRouteId, target: VoiceOutputTarget): Promise<void> {
+		if (target.kind === 'synth') this._voiceOutputs.delete(route);
+		else this._voiceOutputs.set(route, target);
 	}
-	async getVoiceOutputs(): Promise<VoiceOutputTarget[]> {
-		return this._voiceOutputs.slice();
+	async getVoiceOutputs(): Promise<VoiceOutputAssignment[]> {
+		return [...this._voiceOutputs].map(([route, target]) => ({ route, target }));
 	}
 
 	async getPluginInputMode(): Promise<PluginInputMode> {

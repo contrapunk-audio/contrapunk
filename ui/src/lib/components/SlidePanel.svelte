@@ -83,7 +83,7 @@
 	<header>
 		<div>
 			<h3 id="slide-heading">Slide</h3>
-			<p>Continuous pitch movement after harmony and tuning.</p>
+			<p>Continuous pitch movement after harmony and tuning. Routed MIDI uses pitch bend; independently sliding parts need separate MIDI ports.</p>
 		</div>
 		<label>
 			<span>Preset</span>
