@@ -14,12 +14,6 @@
 			</svg>
 		</div>
 
-		<div class="parameter-list">
-			<div><span>Waveform</span><strong>Sine</strong></div>
-			<div><span>Voices</span><strong>16</strong></div>
-			<div><span>Pitch</span><strong>Exact Hz</strong></div>
-			<div><span>Ramp</span><strong>5 ms</strong></div>
-		</div>
 	</div>
 </section>
 
@@ -46,19 +40,4 @@
 	.grid { fill: none; stroke: #242424; stroke-width: 1; }
 	.axis { fill: none; stroke: #383838; stroke-width: 1; }
 	.wave { fill: none; stroke: #8aaac0; stroke-width: 2; vector-effect: non-scaling-stroke; }
-	.parameter-list {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		border: 1px solid #3b3b3b;
-		border-top: 0;
-	}
-	.parameter-list div { min-width: 0; padding: 10px; border-right: 1px solid #3b3b3b; display: grid; gap: 3px; }
-	.parameter-list div:last-child { border-right: 0; }
-	.parameter-list span { color: #777; font: 10px var(--font-ui); }
-	.parameter-list strong { color: #c8c8c8; font: 500 12px var(--font-ui); }
-	@media (max-width: 600px) {
-		.parameter-list { grid-template-columns: repeat(2, 1fr); }
-		.parameter-list div:nth-child(2) { border-right: 0; }
-		.parameter-list div:nth-child(-n + 2) { border-bottom: 1px solid #3b3b3b; }
-	}
 </style>
