@@ -41,6 +41,9 @@ pub enum SynthEvent {
     NoteOff {
         voice_id: SynthVoiceId,
     },
+    SustainPedal {
+        on: bool,
+    },
     AllNotesOff,
 }
 
@@ -97,6 +100,10 @@ impl SynthEvent {
 
     pub const fn note_off(voice_id: SynthVoiceId) -> Self {
         Self::NoteOff { voice_id }
+    }
+
+    pub const fn sustain_pedal(on: bool) -> Self {
+        Self::SustainPedal { on }
     }
 }
 

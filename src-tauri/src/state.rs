@@ -3,11 +3,10 @@
 //! AppState is registered with Tauri's managed state system and accessed
 //! via `State<AppState>` in command handlers.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI32};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-
-use serde::{Deserialize, Serialize};
 
 use contrapunk::audio::guitar::GuitarCalibrationProfile;
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig};
@@ -29,6 +28,94 @@ pub const MAX_VOICES: usize = 8;
 /// the same type. Re-exported here so the rest of src-tauri keeps
 /// importing `crate::state::VoiceOutputTarget` unchanged.
 pub use contrapunk_companion::voice_output::VoiceOutputTarget;
+
+/// Stable identity of one routable musical part. Live input and loop replay
+/// share these identities so changing a destination affects both paths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VoiceRouteId {
+    Input,
+    Harmony { slot: u8 },
+    Canon { voice: u8 },
+    Counterpoint { voice: u8 },
+    PatternLow,
+    PatternCounter,
+}
+
+impl VoiceRouteId {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "input" => Ok(Self::Input),
+            "pattern_low" => Ok(Self::PatternLow),
+            "pattern_counter" => Ok(Self::PatternCounter),
+            _ => {
+                let (kind, index) = value
+                    .split_once(':')
+                    .ok_or_else(|| format!("unknown voice route: {value}"))?;
+                let index = index
+                    .parse::<u8>()
+                    .map_err(|_| format!("invalid voice route index: {value}"))?;
+                if index as usize >= MAX_VOICES {
+                    return Err(format!(
+                        "voice route index {index} out of range (max {})",
+                        MAX_VOICES - 1
+                    ));
+                }
+                match kind {
+                    "harmony" => Ok(Self::Harmony { slot: index }),
+                    "canon" => Ok(Self::Canon { voice: index }),
+                    "counterpoint" => Ok(Self::Counterpoint { voice: index }),
+                    _ => Err(format!("unknown voice route: {value}")),
+                }
+            }
+        }
+    }
+
+    pub fn key(self) -> String {
+        match self {
+            Self::Input => "input".into(),
+            Self::Harmony { slot } => format!("harmony:{slot}"),
+            Self::Canon { voice } => format!("canon:{voice}"),
+            Self::Counterpoint { voice } => format!("counterpoint:{voice}"),
+            Self::PatternLow => "pattern_low".into(),
+            Self::PatternCounter => "pattern_counter".into(),
+        }
+    }
+}
+
+/// Central destination table. Missing entries intentionally mean Synth, so a
+/// fresh install produces sound without pre-populating every possible route.
+#[derive(Clone, Debug, Default)]
+pub struct VoiceOutputRoutes {
+    targets: HashMap<VoiceRouteId, VoiceOutputTarget>,
+}
+
+impl VoiceOutputRoutes {
+    pub fn get(&self, route: VoiceRouteId) -> VoiceOutputTarget {
+        self.targets.get(&route).copied().unwrap_or_default()
+    }
+
+    pub fn set(&mut self, route: VoiceRouteId, target: VoiceOutputTarget) -> bool {
+        if self.get(route) == target {
+            return false;
+        }
+        if target == VoiceOutputTarget::Synth {
+            self.targets.remove(&route);
+        } else {
+            self.targets.insert(route, target);
+        }
+        true
+    }
+
+    pub fn assignments(&self) -> impl Iterator<Item = (VoiceRouteId, VoiceOutputTarget)> + '_ {
+        self.targets.iter().map(|(&route, &target)| (route, target))
+    }
+
+    pub fn has_external_target(&self) -> bool {
+        self.targets
+            .values()
+            .any(|target| matches!(target, VoiceOutputTarget::MidiPort { .. }))
+    }
+}
 
 /// Application state managed by Tauri.
 ///
@@ -104,6 +191,11 @@ pub struct AppState {
     /// across every port and clearing tracked note state.
     pub panic_pending: Arc<AtomicBool>,
 
+    /// Raised after a routing destination changes. The router drains sounding
+    /// notes before using the new table, so a held note cannot be stranded on
+    /// its old synth or MIDI port.
+    pub route_change_pending: Arc<AtomicBool>,
+
     /// Global detune in cents. Read by the router thread each frame (lock-free).
     /// Updated by the `set_detune` command.
     pub detune_cents: Arc<AtomicI32>,
@@ -136,6 +228,7 @@ pub struct AppState {
     /// Read only on note/control events, never from the audio callback.
     pub slide_config: Arc<Mutex<SlideConfig>>,
     pub slide_telemetry: Arc<SlideTelemetry>,
+    pub midi_slide_telemetry: Arc<SlideTelemetry>,
 
     /// Built-in reverb parameters. Read by the audio callback each
     /// buffer; mutated by Tauri command handlers in response to UI
@@ -151,24 +244,47 @@ pub struct AppState {
     /// setup hook after the Chain is constructed.
     pub chain_commander: Mutex<Option<Arc<ChainCommander>>>,
 
-    /// Per-voice output routing table, indexed 0..MAX_VOICES.
-    /// Router thread reads this on every note to decide whether each
-    /// voice goes to the internal synth, to a specific MIDI port, or
-    /// nowhere. Default all to the built-in sine synth so users get audio out of the box
-    /// without configuring a MIDI port first.
-    pub voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    /// Destinations keyed by stable musical part rather than a single shared
+    /// harmony index. Main harmony, Canon, Counterpoint, and pattern voices
+    /// all resolve through this table; loop replay reuses the same routes.
+    pub voice_outputs: Arc<Mutex<VoiceOutputRoutes>>,
 
-    /// Companion orchestrator (#91 wiring, commit A-minus). Owns the
-    /// Sense/Mutate/Decide Lane registry. The router thread will
-    /// clone this Arc and tick it once per loop iteration (next
-    /// commit); future Tauri commands take brief locks to
-    /// enable/disable / register Lanes.
-    /// Constructed `enabled = false`, no Lanes registered — fully
-    /// no-op until the router-thread wiring (commit A) and the
-    /// input pipeline + UI controls (commits B/C) land.
-    /// `#[allow(dead_code)]` until router wiring consumes it.
+    /// Live Companion orchestrator and its concrete arrangement lanes.
+    /// The looper router constructs a second instance with independent
+    /// WorldState/Phrase Context and copies configuration only.
     #[allow(dead_code)]
     pub companion: Arc<Mutex<crate::companion::Companion>>,
+
+    /// One volatile MIDI loop. Router owns replay/cleanup; commands only
+    /// mutate the pure state machine. Deliberately absent from rig/presets.
+    pub looper: Arc<Mutex<contrapunk_companion::LooperLane>>,
+}
+
+pub(crate) fn new_arrangement_companion(
+    transport: Arc<Transport>,
+    engine: Arc<Mutex<HarmonyEngine>>,
+) -> crate::companion::Companion {
+    let world = crate::companion::WorldState::new(transport, engine);
+    let mut companion = crate::companion::Companion::new(world);
+    companion
+        .lanes
+        .push(Box::new(crate::companion::CanonLane::new()));
+    companion
+        .lanes
+        .push(Box::new(crate::companion::CounterpointLane::new()));
+    companion
+        .lanes
+        .push(Box::new(crate::companion::PatternLane::new(
+            "Low Support",
+            "pattern_low",
+        )));
+    companion
+        .lanes
+        .push(Box::new(crate::companion::PatternLane::new(
+            "Counterline Pattern",
+            "pattern_counter",
+        )));
+    companion
 }
 
 impl Default for AppState {
@@ -182,26 +298,10 @@ impl Default for AppState {
             HarmonyMode::PassThrough,
         )));
         let transport = Transport::new(48_000);
-        let world = crate::companion::WorldState::new(Arc::clone(&transport), Arc::clone(&engine));
-        let companion = Arc::new(Mutex::new(crate::companion::Companion::new(world)));
-        // Register concrete Lanes here. CanonLane is the first one
-        // (issue #3) and ships disabled by default — the user opts in
-        // via Tauri command. Future Lanes (LooperLane, BeatMachineLane,
-        // etc.) get pushed alongside as they ship.
-        {
-            let mut c = companion.lock().expect("companion mutex poisoned at init");
-            c.lanes.push(Box::new(crate::companion::CanonLane::new()));
-            c.lanes
-                .push(Box::new(crate::companion::CounterpointLane::new()));
-            c.lanes.push(Box::new(crate::companion::PatternLane::new(
-                "Low Support",
-                "pattern_low",
-            )));
-            c.lanes.push(Box::new(crate::companion::PatternLane::new(
-                "Counterline Pattern",
-                "pattern_counter",
-            )));
-        }
+        let companion = Arc::new(Mutex::new(new_arrangement_companion(
+            Arc::clone(&transport),
+            Arc::clone(&engine),
+        )));
         Self {
             engine,
             preset_manager: Mutex::new(PresetManager::new()),
@@ -215,6 +315,7 @@ impl Default for AppState {
             stop_signal: Mutex::new(None),
             router_tx: Mutex::new(None),
             panic_pending: Arc::new(AtomicBool::new(false)),
+            route_change_pending: Arc::new(AtomicBool::new(false)),
             detune_cents: Arc::new(AtomicI32::new(0)),
             // Placeholder sample rate; audio_clock::start() corrects it
             // to the actual cpal device rate at app launch.
@@ -228,11 +329,13 @@ impl Default for AppState {
             synth_rx: Mutex::new(None),
             slide_config: Arc::new(Mutex::new(SlideConfig::default())),
             slide_telemetry: Arc::new(SlideTelemetry::new()),
+            midi_slide_telemetry: Arc::new(SlideTelemetry::new()),
             reverb_params: Arc::new(ReverbParams::default()),
             delay_params: Arc::new(DelayParams::default()),
             chain_commander: Mutex::new(None),
-            voice_outputs: Arc::new(Mutex::new(vec![VoiceOutputTarget::default(); MAX_VOICES])),
+            voice_outputs: Arc::new(Mutex::new(VoiceOutputRoutes::default())),
             companion,
+            looper: Arc::new(Mutex::new(contrapunk_companion::LooperLane::new())),
         }
     }
 }

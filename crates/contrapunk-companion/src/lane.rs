@@ -297,7 +297,7 @@ pub trait Lane: Send + Sync {
 
 /// Persisted snapshot of one Lane's state, addressed by `type_id`.
 /// The companion's rig writer collects these into `CompanionState`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LaneState {
     pub type_id: String,
     pub state: serde_json::Value,

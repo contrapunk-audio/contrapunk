@@ -168,6 +168,10 @@ fn main() {
             commands::transport::set_bpm,
             commands::transport::set_time_signature,
             commands::transport::set_metronome_enabled,
+            // Volatile MIDI looper
+            commands::looper::looper_press,
+            commands::looper::looper_clear,
+            commands::looper::looper_status,
             // Built-in synth
             commands::synth::get_synth_state,
             commands::synth::set_synth_enabled,

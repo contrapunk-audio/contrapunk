@@ -371,6 +371,57 @@ impl HarmonyEngine {
         Self::with_voices(key, mode, 2)
     }
 
+    /// Copy musical configuration into a clean, independent performance
+    /// runtime. Active notes, pending releases, detectors, voice-leading
+    /// history, and counterpoint history are deliberately reset.
+    pub fn fork_clean_runtime(&self) -> Self {
+        let mut fork = Self::with_voices(self.key, self.mode, self.voice_count);
+        fork.octave_mode = self.octave_mode;
+        fork.octave_intensity = self.octave_intensity;
+        fork.scale_mode = self.scale_mode;
+        fork.scale = self.scale.clone();
+        fork.explicit_interval_map = self.explicit_interval_map.clone();
+        fork.interchange_enabled = self.interchange_enabled;
+        fork.borrowing_range = self.borrowing_range;
+        fork.tuning_config = self.tuning_config;
+        fork.voice_position = self.voice_position;
+        fork.voice_leading.enabled = self.voice_leading.enabled;
+        fork.voice_leading.set_style(self.voice_leading.style);
+        fork.auto_key = self.auto_key;
+        fork.beat_phase = self.beat_phase;
+        fork.counterpoint_beat_phase = self.counterpoint_beat_phase;
+        fork.counterpoint_species = self.counterpoint_species;
+        fork.counterpoint_strictness = self.counterpoint_strictness;
+        fork.suppress_bass_register = self.suppress_bass_register;
+        fork.bass_register_threshold = self.bass_register_threshold;
+        fork
+    }
+
+    /// Whether two runtimes would harmonize new input with the same current
+    /// musical settings. Runtime ownership/history is intentionally ignored.
+    pub fn has_same_configuration(&self, other: &Self) -> bool {
+        self.key == other.key
+            && self.mode == other.mode
+            && self.octave_mode == other.octave_mode
+            && self.octave_intensity.to_bits() == other.octave_intensity.to_bits()
+            && self.scale_mode == other.scale_mode
+            && self.explicit_interval_map == other.explicit_interval_map
+            && self.interchange_enabled == other.interchange_enabled
+            && self.borrowing_range == other.borrowing_range
+            && self.voice_count == other.voice_count
+            && self.tuning_config == other.tuning_config
+            && self.voice_position == other.voice_position
+            && self.voice_leading.enabled == other.voice_leading.enabled
+            && self.voice_leading.style == other.voice_leading.style
+            && self.auto_key == other.auto_key
+            && self.beat_phase.position.to_bits() == other.beat_phase.position.to_bits()
+            && self.beat_phase.is_strong == other.beat_phase.is_strong
+            && self.counterpoint_species == other.counterpoint_species
+            && self.counterpoint_strictness == other.counterpoint_strictness
+            && self.suppress_bass_register == other.suppress_bass_register
+            && self.bass_register_threshold == other.bass_register_threshold
+    }
+
     /// Returns the current key.
     pub fn key(&self) -> Key {
         self.key
@@ -2266,6 +2317,34 @@ mod tests {
             assert!(first.active_notes.is_empty());
             assert!(second.active_notes.is_empty());
         }
+    }
+
+    #[test]
+    fn clean_runtime_fork_copies_configuration_without_ownership_history() {
+        let mut live = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 4);
+        live.set_scale_mode(ScaleMode::Dorian);
+        live.set_voice_position(1);
+        live.set_octave_mode(OctaveMode::Spread);
+        live.set_octave_intensity(0.4);
+        live.set_voice_leading_enabled(true);
+        live.set_voice_leading_style(VoiceLeadingStyle::Palestrina);
+        live.set_counterpoint_species(CounterpointSpecies::Species4);
+        live.set_counterpoint_strictness(CounterpointStrictness::Strict);
+        live.set_interchange_enabled(true);
+        live.set_borrowing_range(4);
+        let _ = live.harmonize_note_on(Note::C4);
+        assert!(!live.active_notes.is_empty());
+
+        let fork = live.fork_clean_runtime();
+        assert!(fork.has_same_configuration(&live));
+        assert!(fork.active_notes.is_empty());
+        assert!(fork.active_port_maps.is_empty());
+        assert!(fork.pending_releases.is_empty());
+        assert!(fork.pending_reharm_inputs.is_empty());
+        assert!(fork.harmonic_context.is_none());
+
+        live.set_key(Key::D);
+        assert!(!fork.has_same_configuration(&live));
     }
 
     #[test]

@@ -177,6 +177,7 @@ impl ElixirSynthBlock {
                         voice_id: VoiceId::new(voice_id.get()),
                     });
                 }
+                SynthEvent::SustainPedal { on } => self.engine.set_sustain_pedal(on),
                 SynthEvent::AllNotesOff => {
                     self.clear_ownership();
                     self.slide.clear();

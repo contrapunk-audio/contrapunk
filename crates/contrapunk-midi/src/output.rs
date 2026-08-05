@@ -149,6 +149,19 @@ impl OutputRouter {
         self.connections.len()
     }
 
+    /// Original system MIDI port indices represented by the connection pool.
+    pub fn connected_port_indices(&self) -> &[usize] {
+        &self.port_indices
+    }
+
+    /// Send to a stable system MIDI port index rather than a mutable position
+    /// in the connection pool.
+    pub fn send_to_device_port(&mut self, device_port_index: usize, message: &[u8]) -> Result<()> {
+        let connection_index = connection_index(&self.port_indices, device_port_index)
+            .ok_or_else(|| anyhow!("MIDI output port {device_port_index} is not connected"))?;
+        self.send_to_port(connection_index, message)
+    }
+
     /// Sends a MIDI message to a specific output port by index.
     ///
     /// This is used for harmony routing where different notes go to
@@ -175,5 +188,22 @@ impl OutputRouter {
                 self.connections.len()
             ))
         }
+    }
+}
+
+fn connection_index(port_indices: &[usize], device_port_index: usize) -> Option<usize> {
+    port_indices
+        .iter()
+        .position(|&index| index == device_port_index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::connection_index;
+
+    #[test]
+    fn device_port_identity_survives_connection_reordering() {
+        assert_eq!(connection_index(&[8, 4, 6], 4), Some(1));
+        assert_eq!(connection_index(&[6, 8], 4), None);
     }
 }

@@ -347,6 +347,9 @@ struct PendingOn {
     /// the HoldMode filter to "only emissions seeded by THIS released
     /// player note" so other held notes' cascades aren't disturbed.
     player_note: u8,
+    /// Input channel paired with `player_note`; MPE can reuse the same
+    /// pitch on multiple channels before either release arrives.
+    player_channel: u8,
     /// Index into `CanonLane.voices` of the voice that scheduled
     /// this emission. Required for per-voice HoldMode override
     /// resolution at NoteOff — without this, the filter loop would
@@ -365,6 +368,8 @@ struct PendingOff {
     /// reason as `PendingOn.player_note` — needed when HoldMode
     /// cancels a NoteOn so we can also drop its matched NoteOff.
     player_note: u8,
+    /// Input channel paired with `player_note` for exact MPE ownership.
+    player_channel: u8,
     /// Index into `CanonLane.voices` of the voice that scheduled
     /// the corresponding NoteOn. Needed so the orphan-NoteOff
     /// cleanup at HoldMode resolution can pair PendingOff with the
@@ -427,10 +432,9 @@ pub struct CanonLane {
     /// Pending NoteOff emissions, scanned linearly each tick.
     pending_off: Vec<PendingOff>,
 
-    /// Currently-held inputs. One entry per *input* MIDI note;
-    /// each entry's `voices` vec records the per-voice fire info
-    /// the lane will need at NoteOff time.
-    held: HashMap<u8, HeldEntry>,
+    /// Currently-held inputs keyed by source channel and note so MPE
+    /// retriggers cannot steal another channel's pending releases.
+    held: HashMap<(u8, u8), HeldEntry>,
 
     /// Beat at which the current phrase started. All canon voice
     /// emissions for this phrase are computed relative to this
@@ -966,6 +970,7 @@ impl Lane for CanonLane {
                             velocity,
                             channel,
                             player_note: note,
+                            player_channel: channel,
                             voice_idx,
                         });
                     }
@@ -976,7 +981,7 @@ impl Lane for CanonLane {
                     });
                 }
                 self.held.insert(
-                    note,
+                    (channel, note),
                     HeldEntry {
                         on_beat: now,
                         anchor,
@@ -985,7 +990,7 @@ impl Lane for CanonLane {
                 );
                 self.last_input_beat = Some(now);
             }
-            InputEvent::NoteOff { note, channel: _ } => {
+            InputEvent::NoteOff { note, channel } => {
                 // Resolve global hold mode once for this NoteOff. Per-
                 // voice / per-lane overrides are checked inside the
                 // loop below so each voice's pending emissions can use
@@ -1013,11 +1018,11 @@ impl Lane for CanonLane {
                 let was_pending_on: std::collections::HashSet<(usize, u8)> = self
                     .pending_on
                     .iter()
-                    .filter(|p| p.player_note == note)
+                    .filter(|p| p.player_note == note && p.player_channel == channel)
                     .map(|p| (p.voice_idx, p.canon_note))
                     .collect();
 
-                if let Some(held) = self.held.remove(&note) {
+                if let Some(held) = self.held.remove(&(channel, note)) {
                     let duration = (now - held.on_beat).max(0.0);
                     for fire in held.voices {
                         let Some(voice) = self.voices.get(fire.voice_idx) else {
@@ -1061,6 +1066,7 @@ impl Lane for CanonLane {
                                 canon_note,
                                 channel: fire.channel,
                                 player_note: note,
+                                player_channel: channel,
                                 voice_idx: fire.voice_idx,
                             });
                         }
@@ -1079,7 +1085,7 @@ impl Lane for CanonLane {
                 let voice_holds: Vec<Option<HoldMode>> =
                     self.voices.iter().map(|v| v.hold_mode).collect();
                 self.pending_on.retain(|p| {
-                    if p.player_note != note {
+                    if p.player_note != note || p.player_channel != channel {
                         return true; // not seeded by this NoteOff
                     }
                     // Resolve effective HoldMode: voice override wins
@@ -1109,11 +1115,11 @@ impl Lane for CanonLane {
                 let survived: std::collections::HashSet<(usize, u8)> = self
                     .pending_on
                     .iter()
-                    .filter(|p| p.player_note == note)
+                    .filter(|p| p.player_note == note && p.player_channel == channel)
                     .map(|p| (p.voice_idx, p.canon_note))
                     .collect();
                 self.pending_off.retain(|p| {
-                    if p.player_note != note {
+                    if p.player_note != note || p.player_channel != channel {
                         return true;
                     }
                     let key = (p.voice_idx, p.canon_note);
@@ -1405,7 +1411,7 @@ mod tests {
 
         let held = lane
             .held
-            .get(&60)
+            .get(&(0, 60))
             .expect("held entry for player note 60 should exist");
 
         // Subjects = the first emitted note per voice = each mini-
@@ -1816,6 +1822,56 @@ mod tests {
         };
         assert_ne!(emitted, 63, "must not fall back to unison");
         assert!((emitted as i16 - 63).abs() <= 7);
+    }
+
+    #[test]
+    fn same_pitch_on_mpe_channels_releases_each_canon_owner() {
+        let (mut lane, world, _transport) = fixture();
+        lane.set_enabled(true);
+        lane.set_delay(0.0);
+
+        for channel in [4, 5] {
+            lane.on_input(
+                InputEvent::NoteOn {
+                    note: 60,
+                    velocity: 100,
+                    channel,
+                },
+                &world,
+            );
+        }
+        let attacks = lane.tick(&world).ops;
+        assert_eq!(attacks.len(), 2);
+        assert!(lane.held.contains_key(&(4, 60)));
+        assert!(lane.held.contains_key(&(5, 60)));
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 4,
+            },
+            &world,
+        );
+        let first_release = lane.tick(&world).ops;
+        assert!(matches!(
+            first_release.as_slice(),
+            [DispatchOp::NoteOff { channel: 4, .. }]
+        ));
+        assert!(!lane.held.contains_key(&(4, 60)));
+        assert!(lane.held.contains_key(&(5, 60)));
+
+        lane.on_input(
+            InputEvent::NoteOff {
+                note: 60,
+                channel: 5,
+            },
+            &world,
+        );
+        assert!(matches!(
+            lane.tick(&world).ops.as_slice(),
+            [DispatchOp::NoteOff { channel: 5, .. }]
+        ));
+        assert!(lane.held.is_empty());
     }
 
     #[test]
