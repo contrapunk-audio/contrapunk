@@ -16,7 +16,7 @@ const MIDI_NOTES: usize = 128;
 const MIDI_CHANNELS: usize = 16;
 const MIDI_OWNERS: usize = MIDI_NOTES * MIDI_CHANNELS;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InputOrigin {
     Live,
     Loop,
@@ -130,6 +130,7 @@ pub struct LooperLane {
     captured_note_on: bool,
     playback_cursor_us: Option<u64>,
     last_transport_beat_us: Option<u64>,
+    accepted_discontinuity_revision: Option<u64>,
     cleanup_requested: bool,
 }
 
@@ -150,6 +151,7 @@ impl LooperLane {
             captured_note_on: false,
             playback_cursor_us: None,
             last_transport_beat_us: None,
+            accepted_discontinuity_revision: None,
             cleanup_requested: false,
         }
     }
@@ -254,6 +256,21 @@ impl LooperLane {
 
     pub fn take_cleanup_request(&mut self) -> bool {
         std::mem::take(&mut self.cleanup_requested)
+    }
+
+    /// Mark the command-owned reset used for count-in so the router does not
+    /// treat that known revision as an external seek.
+    pub fn accept_discontinuity_revision(&mut self, revision: u64) {
+        self.accepted_discontinuity_revision = Some(revision);
+    }
+
+    pub fn take_accepted_discontinuity(&mut self, revision: u64) -> bool {
+        if self.accepted_discontinuity_revision == Some(revision) {
+            self.accepted_discontinuity_revision = None;
+            true
+        } else {
+            false
+        }
     }
 
     /// Capture only normalized Live input. Loop-origin replay is ignored.

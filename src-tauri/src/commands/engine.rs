@@ -3,7 +3,7 @@
 //! Handles starting/stopping the MIDI router thread and emitting
 //! real-time note-update events to the frontend.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -20,11 +20,15 @@ use contrapunk::elixir::{SynthEvent, SynthEventSender};
 use contrapunk::harmony::HarmonyEngine;
 use contrapunk::midi::input::connect_input;
 use contrapunk::midi::output::OutputRouter;
-use contrapunk::slide::{SlideConfig, SlideRole, SlideSettings, SlideSlot};
+use contrapunk::slide::{
+    SlideConfig, SlideRole, SlideRuntime, SlideSettings, SlideSlot, SlideTelemetry, SlideTravel,
+    MAX_SLIDE_VOICES,
+};
 use contrapunk::transport::Transport;
+use contrapunk_companion::{InputOrigin, LoopMidiEvent, OriginMidiEvent};
 
 use crate::guitar_bridge::GuitarBridge;
-use crate::state::{AppState, VoiceOutputTarget};
+use crate::state::{AppState, VoiceOutputRoutes, VoiceOutputTarget, VoiceRouteId};
 
 /// Virtual input sentinels — must match the values in MidiDevices.svelte.
 const VIRTUAL_COMPUTER_KEYBOARD: usize = 999_998;
@@ -36,8 +40,410 @@ const MIX_HARMONY: u8 = 1;
 const MIX_CANON: u8 = 2;
 const MIX_COUNTERPOINT: u8 = 3;
 
+fn main_voice_route(result_index: usize, arrangement_slot: u8) -> VoiceRouteId {
+    if result_index == 0 {
+        VoiceRouteId::Input
+    } else {
+        VoiceRouteId::Harmony {
+            slot: arrangement_slot,
+        }
+    }
+}
+
+fn companion_voice_route(lane: &str, voice_slot: u8) -> VoiceRouteId {
+    match lane {
+        "canon" => VoiceRouteId::Canon { voice: voice_slot },
+        "counterpoint" => VoiceRouteId::Counterpoint { voice: voice_slot },
+        "pattern_low" => VoiceRouteId::PatternLow,
+        "pattern_counter" => VoiceRouteId::PatternCounter,
+        _ => VoiceRouteId::Harmony { slot: voice_slot },
+    }
+}
+
 type NoteCounts = HashMap<u8, u32>;
-type RoutedNoteCounts = HashMap<(VoiceOutputTarget, u8, u8, u8, u8), u32>;
+type RoutedNoteKey = (VoiceOutputTarget, u8, u8, u8, u8);
+type RoutedNoteCounts = HashMap<RoutedNoteKey, u32>;
+type SustainOwner = (InputOrigin, VoiceOutputTarget, u8);
+type SustainOwners = HashSet<SustainOwner>;
+
+const MIDI_SLIDE_BEND_RANGE_SEMITONES: f32 = 48.0;
+const MIDI_INPUT_BEND_RANGE_SEMITONES: f32 = 2.0;
+const MIDI_SLIDE_TIMEBASE_HZ: f32 = 1_000_000.0;
+const MIDI_SLIDE_UPDATE_INTERVAL: Duration = Duration::from_millis(10);
+
+#[derive(Clone, Copy)]
+struct MidiSlideVoice {
+    id: u64,
+    port: usize,
+    channel: u8,
+    note: u8,
+    target_hz: f32,
+    key_down: bool,
+}
+
+#[derive(Clone, Copy)]
+struct MidiBendUpdate {
+    id: u64,
+    port: usize,
+    channel: u8,
+    note: u8,
+    frequency_hz: f32,
+}
+
+struct MidiSlideRuntime {
+    slide: SlideRuntime,
+    voices: Vec<MidiSlideVoice>,
+    configured_channels: HashSet<(usize, u8)>,
+    sustained_channels: HashSet<(usize, u8)>,
+    input_bends: HashMap<(usize, u8), f32>,
+    last_bends: HashMap<(usize, u8), u16>,
+    telemetry: Arc<SlideTelemetry>,
+    next_id: u64,
+    last_tick: Instant,
+    detune_cents: i32,
+}
+
+impl MidiSlideRuntime {
+    fn new(detune_cents: i32, telemetry: Arc<SlideTelemetry>) -> Self {
+        Self {
+            slide: SlideRuntime::new(),
+            voices: Vec::with_capacity(MAX_SLIDE_VOICES),
+            configured_channels: HashSet::new(),
+            sustained_channels: HashSet::new(),
+            input_bends: HashMap::new(),
+            last_bends: HashMap::new(),
+            telemetry,
+            next_id: 1 << 63,
+            last_tick: Instant::now(),
+            detune_cents,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_note_on(
+        &mut self,
+        port: usize,
+        channel: u8,
+        note: u8,
+        target_hz: f32,
+        slot: SlideSlot,
+        settings: SlideSettings,
+        output: &mut OutputRouter,
+    ) {
+        let id = self.next_id;
+        self.next_id = self.next_id.wrapping_add(1);
+        if self.next_id == u64::MAX {
+            self.next_id = 0;
+        }
+        let initial_hz = self
+            .slide
+            .note_on(id, slot, target_hz, settings, MIDI_SLIDE_TIMEBASE_HZ);
+        self.voices.push(MidiSlideVoice {
+            id,
+            port,
+            channel,
+            note,
+            target_hz,
+            key_down: true,
+        });
+
+        let slide_enabled = !matches!(settings.travel, SlideTravel::Off);
+        if slide_enabled {
+            self.configure_channel(port, channel, output);
+        }
+        self.send_frequency_bend(port, channel, note, initial_hz, output);
+        self.telemetry.publish(&self.slide);
+    }
+
+    fn note_off(&mut self, port: usize, channel: u8, note: u8, output: &mut OutputRouter) {
+        let Some(index) = self.voices.iter().position(|voice| {
+            voice.port == port && voice.channel == channel && voice.note == note && voice.key_down
+        }) else {
+            return;
+        };
+        if self.sustained_channels.contains(&(port, channel)) {
+            self.voices[index].key_down = false;
+            return;
+        }
+        let voice = self.voices.remove(index);
+        self.slide.note_off(voice.id);
+        self.restore_channel(port, channel, output);
+        self.telemetry.publish(&self.slide);
+    }
+
+    fn set_sustain(&mut self, port: usize, channel: u8, on: bool, output: &mut OutputRouter) {
+        if on {
+            self.sustained_channels.insert((port, channel));
+            return;
+        }
+        if !self.sustained_channels.remove(&(port, channel)) {
+            return;
+        }
+        let mut released = Vec::new();
+        self.voices.retain(|voice| {
+            if voice.port == port && voice.channel == channel && !voice.key_down {
+                released.push(voice.id);
+                false
+            } else {
+                true
+            }
+        });
+        for id in released {
+            self.slide.note_off(id);
+        }
+        self.restore_channel(port, channel, output);
+        self.telemetry.publish(&self.slide);
+    }
+
+    fn release_note(&mut self, note: u8, output: &mut OutputRouter) {
+        let mut released = Vec::new();
+        let mut channels = HashSet::new();
+        self.voices.retain(|voice| {
+            if voice.note != note {
+                return true;
+            }
+            released.push(voice.id);
+            channels.insert((voice.port, voice.channel));
+            false
+        });
+        for id in released {
+            self.slide.note_off(id);
+        }
+        for (port, channel) in channels {
+            self.restore_channel(port, channel, output);
+        }
+        self.telemetry.publish(&self.slide);
+    }
+
+    fn tick(&mut self, output: &mut OutputRouter) {
+        let elapsed = self.last_tick.elapsed();
+        if elapsed < MIDI_SLIDE_UPDATE_INTERVAL {
+            return;
+        }
+        self.last_tick = Instant::now();
+        self.slide
+            .advance(elapsed.as_micros().min(u128::from(u32::MAX)) as usize);
+
+        let mut updates: [Option<MidiBendUpdate>; MAX_SLIDE_VOICES] = [None; MAX_SLIDE_VOICES];
+        let voices = &self.voices;
+        self.slide.for_each_moving(|id, frequency_hz| {
+            let Some(voice) = voices.iter().find(|voice| voice.id == id) else {
+                return;
+            };
+            if voices.iter().any(|newer| {
+                newer.port == voice.port && newer.channel == voice.channel && newer.id > voice.id
+            }) {
+                return;
+            }
+            let update = MidiBendUpdate {
+                id,
+                port: voice.port,
+                channel: voice.channel,
+                note: voice.note,
+                frequency_hz,
+            };
+            if let Some(existing) = updates
+                .iter_mut()
+                .flatten()
+                .find(|existing| existing.port == update.port && existing.channel == update.channel)
+            {
+                if update.id > existing.id {
+                    *existing = update;
+                }
+            } else if let Some(slot) = updates.iter_mut().find(|slot| slot.is_none()) {
+                *slot = Some(update);
+            }
+        });
+        for update in updates.into_iter().flatten() {
+            self.send_frequency_bend(
+                update.port,
+                update.channel,
+                update.note,
+                update.frequency_hz,
+                output,
+            );
+        }
+        self.telemetry.publish(&self.slide);
+        self.slide.finish_completed();
+    }
+
+    fn set_input_bend(
+        &mut self,
+        port: usize,
+        channel: u8,
+        semitones: f32,
+        output: &mut OutputRouter,
+    ) {
+        self.input_bends.insert((port, channel), semitones);
+        self.restore_channel(port, channel, output);
+    }
+
+    fn set_detune(&mut self, cents: i32, output: &mut OutputRouter) {
+        self.detune_cents = cents;
+        let channels: Vec<_> = self
+            .last_bends
+            .keys()
+            .chain(self.configured_channels.iter())
+            .copied()
+            .collect();
+        for (port, channel) in channels {
+            self.restore_channel(port, channel, output);
+        }
+    }
+
+    fn current_frequency(&self, voice: MidiSlideVoice) -> f32 {
+        let mut frequency_hz = voice.target_hz;
+        self.slide.for_each_moving(|id, current| {
+            if id == voice.id {
+                frequency_hz = current;
+            }
+        });
+        frequency_hz
+    }
+
+    fn restore_channel(&mut self, port: usize, channel: u8, output: &mut OutputRouter) {
+        if let Some(voice) = self
+            .voices
+            .iter()
+            .filter(|voice| voice.port == port && voice.channel == channel)
+            .max_by_key(|voice| voice.id)
+            .copied()
+        {
+            let frequency_hz = self.current_frequency(voice);
+            self.send_frequency_bend(port, channel, voice.note, frequency_hz, output);
+        } else {
+            self.send_semitone_bend(port, channel, 0.0, output);
+        }
+    }
+
+    fn clear(&mut self, output: &mut OutputRouter) {
+        let channels: HashSet<_> = self
+            .last_bends
+            .keys()
+            .chain(self.configured_channels.iter())
+            .copied()
+            .collect();
+        for (port, channel) in channels {
+            self.send_bend(port, channel, 8_192, output);
+            if self.configured_channels.contains(&(port, channel)) {
+                for message in midi_bend_range_messages(channel, 2) {
+                    let _ = output.send_to_device_port(port, &message);
+                }
+            }
+        }
+        self.slide.clear();
+        self.voices.clear();
+        self.configured_channels.clear();
+        self.sustained_channels.clear();
+        self.input_bends.clear();
+        self.last_bends.clear();
+        self.last_tick = Instant::now();
+        self.telemetry.publish(&self.slide);
+    }
+
+    fn configure_channel(&mut self, port: usize, channel: u8, output: &mut OutputRouter) {
+        if !self.configured_channels.insert((port, channel)) {
+            return;
+        }
+        for message in midi_bend_range_messages(channel, MIDI_SLIDE_BEND_RANGE_SEMITONES as u8) {
+            let _ = output.send_to_device_port(port, &message);
+        }
+        self.last_bends.remove(&(port, channel));
+    }
+
+    fn send_frequency_bend(
+        &mut self,
+        port: usize,
+        channel: u8,
+        note: u8,
+        frequency_hz: f32,
+        output: &mut OutputRouter,
+    ) {
+        self.send_semitone_bend(
+            port,
+            channel,
+            midi_frequency_semitones(note, frequency_hz),
+            output,
+        );
+    }
+
+    fn send_semitone_bend(
+        &mut self,
+        port: usize,
+        channel: u8,
+        semitones: f32,
+        output: &mut OutputRouter,
+    ) {
+        let range = if self.configured_channels.contains(&(port, channel)) {
+            MIDI_SLIDE_BEND_RANGE_SEMITONES
+        } else {
+            MIDI_INPUT_BEND_RANGE_SEMITONES
+        };
+        let composed = semitones
+            + self.detune_cents as f32 / 100.0
+            + self
+                .input_bends
+                .get(&(port, channel))
+                .copied()
+                .unwrap_or(0.0);
+        self.send_bend(port, channel, midi_bend_value(composed, range), output);
+    }
+
+    fn send_bend(&mut self, port: usize, channel: u8, value: u16, output: &mut OutputRouter) {
+        if self.last_bends.get(&(port, channel)) == Some(&value) {
+            return;
+        }
+        self.last_bends.insert((port, channel), value);
+        let message = [
+            0xe0 | (channel & 0x0f),
+            (value & 0x7f) as u8,
+            ((value >> 7) & 0x7f) as u8,
+        ];
+        let _ = output.send_to_device_port(port, &message);
+    }
+}
+
+fn midi_bend_range_messages(channel: u8, semitones: u8) -> [[u8; 3]; 6] {
+    let status = 0xb0 | (channel & 0x0f);
+    [
+        [status, 101, 0],
+        [status, 100, 0],
+        [status, 6, semitones],
+        [status, 38, 0],
+        [status, 101, 127],
+        [status, 100, 127],
+    ]
+}
+
+fn midi_frequency_semitones(note: u8, frequency_hz: f32) -> f32 {
+    if frequency_hz.is_finite() && frequency_hz > 0.0 {
+        12.0 * (frequency_hz / standard_frequency(note)).log2()
+    } else {
+        0.0
+    }
+}
+
+fn midi_input_bend_semitones(value: u16) -> f32 {
+    (value as f32 - 8_192.0) / 8_192.0 * MIDI_INPUT_BEND_RANGE_SEMITONES
+}
+
+fn midi_bend_value(semitones: f32, range_semitones: f32) -> u16 {
+    (8_192.0 + semitones / range_semitones * 8_192.0)
+        .round()
+        .clamp(0.0, 16_383.0) as u16
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LoopOwnedVoice {
+    key: RoutedNoteKey,
+    target: VoiceOutputTarget,
+    mix_group: u8,
+    channel: u8,
+    note: u8,
+    slide_slot: SlideSlot,
+}
+
+type LoopSourceFrames = HashMap<(u8, u8), VecDeque<Vec<LoopOwnedVoice>>>;
 
 fn count_note_on(notes: &mut NoteCounts, note: u8) {
     let count = notes.entry(note).or_insert(0);
@@ -59,7 +465,7 @@ fn routed_note_key(
     note: u8,
     mix_group: u8,
     voice_slot: u8,
-) -> (VoiceOutputTarget, u8, u8, u8, u8) {
+) -> RoutedNoteKey {
     let (channel, mix_group, voice_slot) = if target == VoiceOutputTarget::Synth {
         (0, mix_group, voice_slot)
     } else {
@@ -68,20 +474,14 @@ fn routed_note_key(
     (target, channel, note, mix_group, voice_slot)
 }
 
-fn count_routed_note_on(
-    notes: &mut RoutedNoteCounts,
-    key: (VoiceOutputTarget, u8, u8, u8, u8),
-) -> bool {
+fn count_routed_note_on(notes: &mut RoutedNoteCounts, key: RoutedNoteKey) -> bool {
     let first_owner = !notes.contains_key(&key);
     let count = notes.entry(key).or_insert(0);
     *count = count.saturating_add(1);
     first_owner
 }
 
-fn count_routed_note_off(
-    notes: &mut RoutedNoteCounts,
-    key: (VoiceOutputTarget, u8, u8, u8, u8),
-) -> bool {
+fn count_routed_note_off(notes: &mut RoutedNoteCounts, key: RoutedNoteKey) -> bool {
     let Some(count) = notes.get_mut(&key) else {
         return false;
     };
@@ -91,6 +491,33 @@ fn count_routed_note_off(
     }
     notes.remove(&key);
     true
+}
+
+fn count_origin_note_on(
+    origin: InputOrigin,
+    all: &mut RoutedNoteCounts,
+    loop_owned: &mut RoutedNoteCounts,
+    key: RoutedNoteKey,
+) -> bool {
+    if origin == InputOrigin::Loop {
+        count_routed_note_on(loop_owned, key);
+    }
+    count_routed_note_on(all, key)
+}
+
+fn count_origin_note_off(
+    origin: InputOrigin,
+    all: &mut RoutedNoteCounts,
+    loop_owned: &mut RoutedNoteCounts,
+    key: RoutedNoteKey,
+) -> bool {
+    if origin == InputOrigin::Loop {
+        if !loop_owned.contains_key(&key) {
+            return false;
+        }
+        count_routed_note_off(loop_owned, key);
+    }
+    count_routed_note_off(all, key)
 }
 
 /// Payload for the "note-update" Tauri event.
@@ -167,6 +594,11 @@ pub fn inject_note_off(note: u8, state: State<AppState>) -> Result<Vec<u8>, Stri
 /// Request the router's tracked NoteOff/CC123 drain and silence the
 /// built-in synth immediately. Safe when routing is already stopped.
 pub(crate) fn request_all_notes_off(state: &AppState) {
+    state
+        .looper
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .transport_discontinuity();
     let _ = state.synth_tx.send(SynthEvent::AllNotesOff);
     state
         .companion
@@ -345,8 +777,10 @@ pub fn start_routing(
 
     let detune = Arc::clone(&state.detune_cents);
     let panic_flag = Arc::clone(&state.panic_pending);
-    // Reset before spawning so a flag set from a prior session doesn't fire.
+    let route_change_flag = Arc::clone(&state.route_change_pending);
+    // Reset before spawning so flags set from a prior session don't fire.
     panic_flag.store(false, Ordering::SeqCst);
+    route_change_flag.store(false, Ordering::SeqCst);
 
     // Clone the synth event sender so the router thread can push note
     // events into the built-in synth alongside external MIDI output.
@@ -367,7 +801,9 @@ pub fn start_routing(
     // short-circuits and produces no DispatchOps until Lanes
     // register and the master switch flips.
     let companion = Arc::clone(&state.companion);
+    let looper = Arc::clone(&state.looper);
     let slide_config = Arc::clone(&state.slide_config);
+    let midi_slide_telemetry = Arc::clone(&state.midi_slide_telemetry);
 
     // Spawn router thread
     thread::spawn(move || {
@@ -393,11 +829,14 @@ pub fn start_routing(
             app_handle,
             detune,
             panic_flag,
+            route_change_flag,
             synth_tx,
             voice_outputs,
             transport,
             companion,
+            looper,
             slide_config,
+            midi_slide_telemetry,
         ) {
             eprintln!("[tauri-router] Error: {}", e);
         }
@@ -466,11 +905,14 @@ fn run_tauri_router(
     app_handle: AppHandle,
     detune_cents: Arc<AtomicI32>,
     panic_pending: Arc<std::sync::atomic::AtomicBool>,
+    route_change_pending: Arc<std::sync::atomic::AtomicBool>,
     synth_tx: SynthEventSender,
-    voice_outputs: Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    voice_outputs: Arc<Mutex<VoiceOutputRoutes>>,
     transport: Arc<Transport>,
     companion: Arc<Mutex<crate::companion::Companion>>,
+    looper: Arc<Mutex<contrapunk_companion::LooperLane>>,
     slide_config: Arc<Mutex<SlideConfig>>,
+    midi_slide_telemetry: Arc<SlideTelemetry>,
 ) -> anyhow::Result<()> {
     // Connect to either Guitar Audio bridge, physical MIDI input, or
     // nothing at all (Computer Keyboard virtual input — notes are pushed
@@ -512,12 +954,11 @@ fn run_tauri_router(
 
     // Create output router
     let mut output_router = OutputRouter::new(output_ports)?;
-    let num_outputs = output_router.connection_count();
 
     // voice_count is user-controlled via `set_voice_count`. With
     // per-voice routing, voices in excess of the connected MIDI ports
     // route to the built-in synth — there's no reason to clamp the
-    // engine's voice_count to `num_outputs` at routing start. (Doing
+    // engine's voice_count to the output count at routing start. (Doing
     // so silently overrode the UI's voice picker — see the wave of
     // "I picked soprano in a 4-voice setup but the engine had only
     // 2 voices" reports.)
@@ -528,6 +969,34 @@ fn run_tauri_router(
     let canon_notes: Arc<Mutex<NoteCounts>> = Arc::new(Mutex::new(HashMap::new()));
     let counterpoint_notes: Arc<Mutex<NoteCounts>> = Arc::new(Mutex::new(HashMap::new()));
     let mut companion_output_notes: RoutedNoteCounts = HashMap::new();
+    let mut loop_output_notes: RoutedNoteCounts = HashMap::new();
+    let mut sustain_owners: SustainOwners = HashSet::new();
+
+    // Loop replay gets independent harmony, lane, phrase, and note-state
+    // ownership while sharing the sample-derived transport and current config.
+    let loop_engine = Arc::new(Mutex::new(
+        engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .fork_clean_runtime(),
+    ));
+    let initial_companion_state = companion
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .save();
+    let mut loop_companion =
+        crate::state::new_arrangement_companion(Arc::clone(&transport), Arc::clone(&loop_engine));
+    loop_companion
+        .restore(initial_companion_state.clone())
+        .map_err(anyhow::Error::msg)?;
+    let mut applied_companion_state = initial_companion_state;
+    let loop_input_notes = Arc::new(Mutex::new(HashSet::new()));
+    let loop_harmony_notes: Arc<Mutex<HashSet<u8>>> = Arc::new(Mutex::new(HashSet::new()));
+    let loop_canon_notes: Arc<Mutex<NoteCounts>> = Arc::new(Mutex::new(HashMap::new()));
+    let loop_counterpoint_notes = Arc::new(Mutex::new(HashMap::new()));
+    let mut loop_source_frames: LoopSourceFrames = HashMap::new();
+    let mut last_transport_revision = transport.discontinuity_revision();
+    let mut transport_was_running = transport.is_running();
 
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();
@@ -535,11 +1004,85 @@ fn run_tauri_router(
 
     // Detune: track the previous value so we only send pitch bend on change.
     let mut prev_detune_cents: i32 = detune_cents.load(Ordering::Relaxed);
+    let mut midi_slides = MidiSlideRuntime::new(prev_detune_cents, midi_slide_telemetry);
 
     // Main routing loop
     loop {
         if stop_signal.load(Ordering::SeqCst) {
             break;
+        }
+
+        // A destination edit applies at a clean note boundary. Drain every
+        // currently sounding route before consulting the updated table so a
+        // held note cannot be left behind on its former synth or MIDI port.
+        if route_change_pending.swap(false, Ordering::AcqRel) {
+            let num_ports = output_router.connection_count();
+            cleanup_loop_outputs(
+                &mut companion_output_notes,
+                &mut loop_output_notes,
+                &mut sustain_owners,
+                num_ports,
+                &synth_tx,
+                &mut output_router,
+                &mut midi_slides,
+            );
+            clear_all_sustain(
+                &mut sustain_owners,
+                num_ports,
+                &synth_tx,
+                &mut output_router,
+                &mut midi_slides,
+            );
+            drain_routed_outputs(
+                &mut companion_output_notes,
+                num_ports,
+                &synth_tx,
+                &mut output_router,
+                &mut midi_slides,
+            );
+            midi_slides.clear(&mut output_router);
+            loop_output_notes.clear();
+            let _ = drain_all_tracked_notes(
+                &input_notes,
+                &harmony_notes,
+                &borrowed_notes,
+                &canon_notes,
+                &counterpoint_notes,
+            );
+            chord_name
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear();
+            loop_source_frames.clear();
+            loop_input_notes
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear();
+            loop_harmony_notes
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear();
+            loop_canon_notes
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear();
+            loop_counterpoint_notes
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear();
+            engine
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear_active_notes();
+            companion
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .reset_runtime();
+            loop_engine
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear_active_notes();
+            loop_companion.reset_runtime();
         }
 
         // Push current beat-phase from the transport clock to the engine.
@@ -558,6 +1101,170 @@ fn run_tauri_router(
             };
             let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
             eng.set_counterpoint_beat_phase(phase);
+        }
+
+        // Handle transport/control discontinuities and arrangement changes
+        // before any loop event or live Companion tick can attack notes.
+        let transport_revision = transport.discontinuity_revision();
+        let transport_running = transport.is_running();
+        let mut cleanup_loop = {
+            let mut loop_state = looper.lock().unwrap_or_else(|e| e.into_inner());
+            if transport_revision != last_transport_revision {
+                if !loop_state.take_accepted_discontinuity(transport_revision) {
+                    loop_state.transport_discontinuity();
+                }
+                last_transport_revision = transport_revision;
+            }
+            if transport_was_running && !transport_running {
+                loop_state.transport_discontinuity();
+            }
+            loop_state.take_cleanup_request()
+        };
+        transport_was_running = transport_running;
+
+        let live_companion_state = companion.lock().unwrap_or_else(|e| e.into_inner()).save();
+        let harmony_config_changed = {
+            let live = engine.lock().unwrap_or_else(|e| e.into_inner());
+            let replay = loop_engine.lock().unwrap_or_else(|e| e.into_inner());
+            !replay.has_same_configuration(&live)
+        };
+        let companion_config_changed = live_companion_state != applied_companion_state;
+        let rebuild_loop_runtime = harmony_config_changed || companion_config_changed;
+        cleanup_loop |= rebuild_loop_runtime;
+
+        if cleanup_loop {
+            cleanup_loop_outputs(
+                &mut companion_output_notes,
+                &mut loop_output_notes,
+                &mut sustain_owners,
+                output_router.connection_count(),
+                &synth_tx,
+                &mut output_router,
+                &mut midi_slides,
+            );
+            loop_source_frames.clear();
+            loop_input_notes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+            loop_harmony_notes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+            loop_canon_notes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+            loop_counterpoint_notes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+        }
+
+        if rebuild_loop_runtime {
+            *loop_engine.lock().unwrap_or_else(|e| e.into_inner()) = engine
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .fork_clean_runtime();
+            loop_companion = crate::state::new_arrangement_companion(
+                Arc::clone(&transport),
+                Arc::clone(&loop_engine),
+            );
+            loop_companion
+                .restore(live_companion_state.clone())
+                .map_err(anyhow::Error::msg)?;
+            applied_companion_state = live_companion_state;
+        } else if cleanup_loop {
+            loop_engine
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear_active_notes();
+            loop_companion.reset_runtime();
+        }
+
+        // Drive pending loop-Companion emissions, then replay all source events
+        // due in the scheduler's absolute beat window.
+        {
+            let phase = transport_running.then(|| transport.beat_position());
+            loop_engine
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .set_counterpoint_beat_phase(phase);
+            let tagged = loop_companion.tick_tagged(&loop_engine);
+            dispatch_companion_ops(
+                &tagged,
+                output_router.connection_count(),
+                &synth_tx,
+                &mut output_router,
+                &mut midi_slides,
+                &voice_outputs,
+                &loop_harmony_notes,
+                &loop_canon_notes,
+                &loop_counterpoint_notes,
+                &mut companion_output_notes,
+                &mut loop_output_notes,
+                InputOrigin::Loop,
+                &slide_config,
+            );
+
+            let replay = if transport_running {
+                looper
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .tick(transport.total_beats())
+            } else {
+                Vec::new()
+            };
+            for replay_event in replay {
+                let bytes = loop_event_bytes(replay_event.event);
+                let mut suppress_default = false;
+                if let Some(input) = midi_bytes_to_input_event(&bytes) {
+                    let (tagged, suppress) = loop_companion.on_input_tagged(input, &loop_engine);
+                    dispatch_companion_ops(
+                        &tagged,
+                        output_router.connection_count(),
+                        &synth_tx,
+                        &mut output_router,
+                        &mut midi_slides,
+                        &voice_outputs,
+                        &loop_harmony_notes,
+                        &loop_canon_notes,
+                        &loop_counterpoint_notes,
+                        &mut companion_output_notes,
+                        &mut loop_output_notes,
+                        InputOrigin::Loop,
+                        &slide_config,
+                    );
+                    suppress_default = suppress;
+                }
+                match replay_event.event {
+                    LoopMidiEvent::Cc64 { value, channel } => set_sustain_ownership(
+                        InputOrigin::Loop,
+                        channel,
+                        value >= 64,
+                        &mut sustain_owners,
+                        output_router.connection_count(),
+                        &synth_tx,
+                        &mut output_router,
+                        &mut midi_slides,
+                    ),
+                    _ if !suppress_default => process_loop_midi_event(
+                        replay_event.event,
+                        &loop_engine,
+                        &mut output_router,
+                        &mut midi_slides,
+                        &loop_input_notes,
+                        &loop_harmony_notes,
+                        &voice_outputs,
+                        &slide_config,
+                        &mut companion_output_notes,
+                        &mut loop_output_notes,
+                        &mut loop_source_frames,
+                        &synth_tx,
+                    ),
+                    _ => {}
+                }
+            }
         }
 
         // #91 commit A: tick the Companion orchestrator. When
@@ -581,10 +1288,14 @@ fn run_tauri_router(
                 num_ports,
                 &synth_tx,
                 &mut output_router,
+                &mut midi_slides,
+                &voice_outputs,
                 &harmony_notes,
                 &canon_notes,
                 &counterpoint_notes,
                 &mut companion_output_notes,
+                &mut loop_output_notes,
+                InputOrigin::Live,
                 &slide_config,
             );
         }
@@ -601,8 +1312,6 @@ fn run_tauri_router(
         // tick first would attack stale `harmony_notes` and produce an
         // audible click as reharm immediately releases the displaced
         // voices.
-        let panic_will_fire = panic_pending.load(Ordering::SeqCst);
-
         // Reharmonize on parameter change. Any engine-config setter that
         // could change the harmony output sets panic_pending and stashes
         // the previously-held input MIDI numbers in the engine's
@@ -663,12 +1372,19 @@ fn run_tauri_router(
             // port via the shared broadcast helper.
             let num_ports = output_router.connection_count();
             for n in &to_release {
-                broadcast_note_off(*n, num_ports, &synth_tx, &mut output_router);
+                companion_output_notes.retain(|(_, _, note, _, _), _| note != n);
+                broadcast_note_off(
+                    *n,
+                    num_ports,
+                    &synth_tx,
+                    &mut output_router,
+                    &mut midi_slides,
+                );
             }
 
             // Send NoteOn for newly-attacked notes, routed per voice via
             // each replay's port map and the live voice_outputs table.
-            let voice_targets: Vec<VoiceOutputTarget> = voice_outputs
+            let voice_targets = voice_outputs
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone();
@@ -687,24 +1403,32 @@ fn run_tauri_router(
                         continue; // already sounding from before
                     }
                     let slot = port_map.get(i).copied().unwrap_or(i);
-                    let target = voice_targets.get(slot).copied().unwrap_or_default();
-                    dispatch_voice(
-                        target,
-                        MIX_HARMONY,
-                        0,
-                        VoiceDispatch::NoteOn {
-                            note: n,
-                            frequency_hz,
-                            velocity: 100,
-                            slide_slot: SlideSlot::new(SlideRole::Harmony, slot as u8),
-                            slide: slide_snapshot
-                                .resolve(SlideSlot::new(SlideRole::Harmony, slot as u8))
-                                .unwrap_or_default(),
-                        },
-                        num_ports,
-                        &synth_tx,
-                        &mut output_router,
-                    );
+                    let target = voice_targets.get(VoiceRouteId::Harmony { slot: slot as u8 });
+                    if count_origin_note_on(
+                        InputOrigin::Live,
+                        &mut companion_output_notes,
+                        &mut loop_output_notes,
+                        routed_note_key(target, 0, n, MIX_HARMONY, slot as u8),
+                    ) {
+                        dispatch_voice(
+                            target,
+                            MIX_HARMONY,
+                            0,
+                            VoiceDispatch::NoteOn {
+                                note: n,
+                                frequency_hz,
+                                velocity: 100,
+                                slide_slot: SlideSlot::new(SlideRole::Harmony, slot as u8),
+                                slide: slide_snapshot
+                                    .resolve(SlideSlot::new(SlideRole::Harmony, slot as u8))
+                                    .unwrap_or_default(),
+                            },
+                            num_ports,
+                            &synth_tx,
+                            &mut output_router,
+                            &mut midi_slides,
+                        );
+                    }
                 }
             }
 
@@ -729,16 +1453,21 @@ fn run_tauri_router(
         let current_detune = detune_cents.load(Ordering::Relaxed);
         if current_detune != prev_detune_cents {
             prev_detune_cents = current_detune;
-            let pitch_bend_msg = cents_to_pitch_bend_msg(current_detune);
-            let num_ports = output_router.connection_count();
-            for p in 0..num_ports {
-                let _ = output_router.send_to_port(p, &pitch_bend_msg);
-            }
+            midi_slides.set_detune(current_detune, &mut output_router);
         }
+        midi_slides.tick(&mut output_router);
 
         // Process MIDI messages
         match rx.recv_timeout(Duration::from_millis(5)) {
             Ok(message) => {
+                // Capture normalized Live MIDI before Companion or harmony.
+                if let Some(event) = midi_bytes_to_loop_event(&message, InputOrigin::Live) {
+                    looper
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .capture(event, transport.total_beats());
+                }
+
                 // Intercept Control Change messages (status 0xB0-0xBF) and
                 // forward every CC to the frontend as "knob-cc-raw". The UI
                 // owns the CC → Performance-view-knob mapping (MIDI Learn,
@@ -757,18 +1486,50 @@ fn run_tauri_router(
                     // story is deferred — this gives users a one-button
                     // escape today.
                     if matches!(cc_number, 120 | 123) {
-                        let notes_to_release = drain_all_tracked_notes(
+                        looper
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .transport_discontinuity();
+                        let num_ports = output_router.connection_count();
+                        cleanup_loop_outputs(
+                            &mut companion_output_notes,
+                            &mut loop_output_notes,
+                            &mut sustain_owners,
+                            num_ports,
+                            &synth_tx,
+                            &mut output_router,
+                            &mut midi_slides,
+                        );
+                        loop_source_frames.clear();
+                        loop_engine
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .clear_active_notes();
+                        loop_companion.reset_runtime();
+                        clear_all_sustain(
+                            &mut sustain_owners,
+                            num_ports,
+                            &synth_tx,
+                            &mut output_router,
+                            &mut midi_slides,
+                        );
+                        drain_routed_outputs(
+                            &mut companion_output_notes,
+                            num_ports,
+                            &synth_tx,
+                            &mut output_router,
+                            &mut midi_slides,
+                        );
+                        loop_output_notes.clear();
+                        let _ = drain_all_tracked_notes(
                             &input_notes,
                             &harmony_notes,
                             &borrowed_notes,
                             &canon_notes,
                             &counterpoint_notes,
                         );
-                        let num_ports = output_router.connection_count();
-                        for n in notes_to_release {
-                            broadcast_note_off(n, num_ports, &synth_tx, &mut output_router);
-                        }
-                        companion_output_notes.clear();
+                        midi_slides.clear(&mut output_router);
+                        send_all_notes_off(num_ports, &synth_tx, &mut output_router);
                         engine
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
@@ -782,6 +1543,19 @@ fn run_tauri_router(
                         // Performance view's CC mapping still sees it.
                     }
 
+                    if cc_number == 64 {
+                        set_sustain_ownership(
+                            InputOrigin::Live,
+                            message[0] & 0x0f,
+                            cc_value >= 64,
+                            &mut sustain_owners,
+                            output_router.connection_count(),
+                            &synth_tx,
+                            &mut output_router,
+                            &mut midi_slides,
+                        );
+                    }
+
                     if let Some(ev) = midi_bytes_to_input_event(&message) {
                         let tagged = {
                             let mut c = companion.lock().unwrap_or_else(|e| e.into_inner());
@@ -793,10 +1567,14 @@ fn run_tauri_router(
                             num_ports,
                             &synth_tx,
                             &mut output_router,
+                            &mut midi_slides,
+                            &voice_outputs,
                             &harmony_notes,
                             &canon_notes,
                             &counterpoint_notes,
                             &mut companion_output_notes,
+                            &mut loop_output_notes,
+                            InputOrigin::Live,
                             &slide_config,
                         );
                     }
@@ -831,10 +1609,14 @@ fn run_tauri_router(
                             num_ports,
                             &synth_tx,
                             &mut output_router,
+                            &mut midi_slides,
+                            &voice_outputs,
                             &harmony_notes,
                             &canon_notes,
                             &counterpoint_notes,
                             &mut companion_output_notes,
+                            &mut loop_output_notes,
+                            InputOrigin::Live,
                             &slide_config,
                         );
                         suppress_default = sup;
@@ -842,8 +1624,10 @@ fn run_tauri_router(
                     if !suppress_default {
                         process_midi_message(
                             &message,
+                            InputOrigin::Live,
                             &engine,
                             &mut output_router,
+                            &mut midi_slides,
                             &input_notes,
                             &harmony_notes,
                             &borrowed_notes,
@@ -852,6 +1636,8 @@ fn run_tauri_router(
                             &synth_tx,
                             &voice_outputs,
                             &slide_config,
+                            &mut companion_output_notes,
+                            &mut loop_output_notes,
                         );
                     }
                 }
@@ -920,24 +1706,44 @@ fn run_tauri_router(
     // Release downstream sound while the router and its output handles
     // are still alive. Clearing bookkeeping alone would leave external
     // instruments and the built-in synth ringing after Stop.
-    let notes_to_release = drain_all_tracked_notes(
+    looper
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .transport_discontinuity();
+    let num_ports = output_router.connection_count();
+    cleanup_loop_outputs(
+        &mut companion_output_notes,
+        &mut loop_output_notes,
+        &mut sustain_owners,
+        num_ports,
+        &synth_tx,
+        &mut output_router,
+        &mut midi_slides,
+    );
+    clear_all_sustain(
+        &mut sustain_owners,
+        num_ports,
+        &synth_tx,
+        &mut output_router,
+        &mut midi_slides,
+    );
+    drain_routed_outputs(
+        &mut companion_output_notes,
+        num_ports,
+        &synth_tx,
+        &mut output_router,
+        &mut midi_slides,
+    );
+    loop_output_notes.clear();
+    let _ = drain_all_tracked_notes(
         &input_notes,
         &harmony_notes,
         &borrowed_notes,
         &canon_notes,
         &counterpoint_notes,
     );
-    let num_ports = output_router.connection_count();
-    for note in notes_to_release {
-        broadcast_note_off(note, num_ports, &synth_tx, &mut output_router);
-    }
-    let _ = synth_tx.send(SynthEvent::AllNotesOff);
-    for channel in 0u8..16 {
-        let message = [0xB0 | channel, 123, 0];
-        for port in 0..num_ports {
-            let _ = output_router.send_to_port(port, &message);
-        }
-    }
+    midi_slides.clear(&mut output_router);
+    send_all_notes_off(num_ports, &synth_tx, &mut output_router);
 
     engine
         .lock()
@@ -947,6 +1753,11 @@ fn run_tauri_router(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .reset_runtime();
+    loop_engine
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear_active_notes();
+    loop_companion.reset_runtime();
 
     // Clear note state on exit. Per-lane sets (canon_notes /
     // counterpoint_notes) MUST also be cleared — otherwise stale
@@ -980,16 +1791,20 @@ fn run_tauri_router(
 #[allow(clippy::too_many_arguments)]
 fn process_midi_message(
     bytes: &[u8],
+    origin: InputOrigin,
     engine: &Arc<Mutex<HarmonyEngine>>,
     output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
     routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &SynthEventSender,
-    voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    voice_outputs: &Arc<Mutex<VoiceOutputRoutes>>,
     slide_config: &Arc<Mutex<SlideConfig>>,
+    output_notes: &mut RoutedNoteCounts,
+    loop_output_notes: &mut RoutedNoteCounts,
 ) {
     let msg = match MidiMessage::try_from(bytes) {
         Ok(m) => m,
@@ -1017,6 +1832,7 @@ fn process_midi_message(
                     velocity,
                     eng,
                     output,
+                    midi_slides,
                     input_notes,
                     harmony_notes,
                     borrowed_notes,
@@ -1024,6 +1840,9 @@ fn process_midi_message(
                     routing_mode,
                     synth_tx,
                     voice_outputs,
+                    origin,
+                    output_notes,
+                    loop_output_notes,
                 );
             } else {
                 handle_note_on(
@@ -1032,6 +1851,7 @@ fn process_midi_message(
                     velocity,
                     eng,
                     output,
+                    midi_slides,
                     input_notes,
                     harmony_notes,
                     borrowed_notes,
@@ -1040,6 +1860,9 @@ fn process_midi_message(
                     synth_tx,
                     voice_outputs,
                     &slide_config,
+                    origin,
+                    output_notes,
+                    loop_output_notes,
                 );
             }
         }
@@ -1050,6 +1873,7 @@ fn process_midi_message(
                 velocity,
                 eng,
                 output,
+                midi_slides,
                 input_notes,
                 harmony_notes,
                 borrowed_notes,
@@ -1057,12 +1881,188 @@ fn process_midi_message(
                 routing_mode,
                 synth_tx,
                 voice_outputs,
+                origin,
+                output_notes,
+                loop_output_notes,
             );
+        }
+        MidiMessage::PitchBendChange(channel, bend) => {
+            let target = voice_outputs
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .get(VoiceRouteId::Input);
+            if let VoiceOutputTarget::MidiPort { port } = target {
+                midi_slides.set_input_bend(
+                    port,
+                    channel.index(),
+                    midi_input_bend_semitones(u16::from(bend)),
+                    output,
+                );
+            }
         }
         _ => {
             let _ = output.send_to_first(bytes);
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_loop_midi_event(
+    event: LoopMidiEvent,
+    engine: &Arc<Mutex<HarmonyEngine>>,
+    output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
+    input_notes: &Arc<Mutex<HashSet<u8>>>,
+    harmony_notes: &Arc<Mutex<HashSet<u8>>>,
+    voice_outputs: &Arc<Mutex<VoiceOutputRoutes>>,
+    slide_config: &Arc<Mutex<SlideConfig>>,
+    output_notes: &mut RoutedNoteCounts,
+    loop_output_notes: &mut RoutedNoteCounts,
+    source_frames: &mut LoopSourceFrames,
+    synth_tx: &SynthEventSender,
+) {
+    let (note, velocity, channel, note_on) = match event {
+        LoopMidiEvent::NoteOn {
+            note,
+            velocity,
+            channel,
+        } if velocity > 0 => (note, velocity, channel, true),
+        LoopMidiEvent::NoteOn { note, channel, .. }
+        | LoopMidiEvent::NoteOff {
+            note,
+            channel,
+            velocity: 0,
+        } => (note, 0, channel, false),
+        LoopMidiEvent::NoteOff {
+            note,
+            velocity,
+            channel,
+        } => (note, velocity, channel, false),
+        LoopMidiEvent::Cc64 { .. } => return,
+    };
+
+    if note_on {
+        let Ok(wmidi_note) = Note::try_from(note) else {
+            return;
+        };
+        let (notes, tuning, port_map) = {
+            let mut engine = engine
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let notes = engine.harmonize(wmidi_note);
+            let tuning = engine.tune_harmony(&notes).ok();
+            let port_map = engine.last_port_map().to_vec();
+            (notes, tuning, port_map)
+        };
+        let targets = voice_outputs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        let slide = *slide_config
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let num_ports = output.connection_count();
+        let mut owned = Vec::with_capacity(notes.len());
+        for (index, generated) in notes.iter().copied().enumerate() {
+            let voice_slot = port_map.get(index).copied().unwrap_or(index) as u8;
+            let target = targets.get(main_voice_route(index, voice_slot));
+            let mix_group = if index == 0 { MIX_INPUT } else { MIX_HARMONY };
+            let slide_slot = if index == 0 {
+                SlideSlot::new(SlideRole::Input, 0)
+            } else {
+                SlideSlot::new(SlideRole::Harmony, voice_slot)
+            };
+            let generated = u8::from(generated);
+            let key = routed_note_key(target, channel, generated, mix_group, voice_slot);
+            if count_origin_note_on(InputOrigin::Loop, output_notes, loop_output_notes, key) {
+                dispatch_voice(
+                    target,
+                    mix_group,
+                    channel,
+                    VoiceDispatch::NoteOn {
+                        note: generated,
+                        frequency_hz: tuning
+                            .as_ref()
+                            .and_then(|frame| frame.as_slice().get(index))
+                            .map(|pitch| pitch.frequency_hz as f32)
+                            .unwrap_or_else(|| standard_frequency(generated)),
+                        velocity,
+                        slide_slot,
+                        slide: slide.resolve(slide_slot).unwrap_or_default(),
+                    },
+                    num_ports,
+                    synth_tx,
+                    output,
+                    midi_slides,
+                );
+            }
+            owned.push(LoopOwnedVoice {
+                key,
+                target,
+                mix_group,
+                channel,
+                note: generated,
+                slide_slot,
+            });
+        }
+        source_frames
+            .entry((channel, note))
+            .or_default()
+            .push_back(owned);
+        input_notes
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(note);
+        let mut harmony = harmony_notes
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        harmony.extend(notes.iter().skip(1).map(|note| u8::from(*note)));
+        return;
+    }
+
+    let Some(frames) = source_frames.get_mut(&(channel, note)) else {
+        return;
+    };
+    let Some(owned) = frames.pop_front() else {
+        return;
+    };
+    if frames.is_empty() {
+        source_frames.remove(&(channel, note));
+    }
+    let num_ports = output.connection_count();
+    for voice in owned {
+        if count_origin_note_off(
+            InputOrigin::Loop,
+            output_notes,
+            loop_output_notes,
+            voice.key,
+        ) {
+            dispatch_voice(
+                voice.target,
+                voice.mix_group,
+                voice.channel,
+                VoiceDispatch::NoteOff {
+                    note: voice.note,
+                    velocity,
+                    slide_slot: Some(voice.slide_slot),
+                },
+                num_ports,
+                synth_tx,
+                output,
+                midi_slides,
+            );
+        }
+        if voice.mix_group == MIX_HARMONY {
+            harmony_notes
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(&voice.note);
+        }
+    }
+    input_notes
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&note);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1072,14 +2072,18 @@ fn handle_note_on(
     velocity: Velocity,
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
-    routing_mode: contrapunk::harmony::RoutingMode,
+    _routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &SynthEventSender,
-    voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    voice_outputs: &Arc<Mutex<VoiceOutputRoutes>>,
     slide_config: &SlideConfig,
+    origin: InputOrigin,
+    output_notes: &mut RoutedNoteCounts,
+    loop_output_notes: &mut RoutedNoteCounts,
 ) {
     let notes = engine.harmonize_note_on(note);
     let tuning = engine.tune_harmony(&notes).ok();
@@ -1092,7 +2096,7 @@ fn handle_note_on(
     // Send Note-Offs for stale harmonies before emitting the new ones.
     if !stale_releases.is_empty() {
         for &n in &stale_releases {
-            broadcast_note_off(u8::from(n), num_outputs, synth_tx, output);
+            broadcast_note_off(u8::from(n), num_outputs, synth_tx, output, midi_slides);
         }
         let mut harm = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
         let mut borr = borrowed_notes.lock().unwrap_or_else(|e| e.into_inner());
@@ -1102,22 +2106,18 @@ fn handle_note_on(
         }
     }
 
-    // Snapshot voice routing once per note event — clone is cheap
-    // (8-element Vec of Copy enums) and avoids lock contention during
-    // dispatch.
-    let voice_targets: Vec<VoiceOutputTarget> = voice_outputs
+    // Snapshot destinations once per event. The performed input has a stable
+    // route of its own; generated harmony retains SATB arrangement slots.
+    let voice_targets = voice_outputs
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    // The harmony engine returns notes as `[input, closest_harmony, ...]`
-    // — input always at index 0. To route each entry to the correct
-    // SATB voice slot (so e.g. the user's note plays through the
-    // tenor's output target when voice_position=2), we map result-Vec
-    // index → arrangement slot via the engine's port map.
     let port_map: Vec<usize> = engine.last_port_map().to_vec();
     let target_for = |i: usize| -> VoiceOutputTarget {
-        let slot = port_map.get(i).copied().unwrap_or(i);
-        voice_targets.get(slot).copied().unwrap_or_default()
+        voice_targets.get(main_voice_route(
+            i,
+            port_map.get(i).copied().unwrap_or(i) as u8,
+        ))
     };
 
     // Fan each voice via the unified dispatch helper. Synth and
@@ -1135,25 +2135,37 @@ fn handle_note_on(
         } else {
             SlideSlot::new(SlideRole::Harmony, arrangement_slot as u8)
         };
-        dispatch_voice(
-            target_for(i),
-            if i == 0 { MIX_INPUT } else { MIX_HARMONY },
+        let target = target_for(i);
+        let mix_group = if i == 0 { MIX_INPUT } else { MIX_HARMONY };
+        let key = routed_note_key(
+            target,
             channel_idx,
-            VoiceDispatch::NoteOn {
-                note: u8::from(n),
-                frequency_hz: tuning
-                    .as_ref()
-                    .and_then(|frame| frame.as_slice().get(i))
-                    .map(|pitch| pitch.frequency_hz as f32)
-                    .unwrap_or_else(|| standard_frequency(u8::from(n))),
-                velocity: velocity_byte,
-                slide_slot,
-                slide: slide_config.resolve(slide_slot).unwrap_or_default(),
-            },
-            num_outputs,
-            synth_tx,
-            output,
+            u8::from(n),
+            mix_group,
+            arrangement_slot as u8,
         );
+        if count_origin_note_on(origin, output_notes, loop_output_notes, key) {
+            dispatch_voice(
+                target,
+                mix_group,
+                channel_idx,
+                VoiceDispatch::NoteOn {
+                    note: u8::from(n),
+                    frequency_hz: tuning
+                        .as_ref()
+                        .and_then(|frame| frame.as_slice().get(i))
+                        .map(|pitch| pitch.frequency_hz as f32)
+                        .unwrap_or_else(|| standard_frequency(u8::from(n))),
+                    velocity: velocity_byte,
+                    slide_slot,
+                    slide: slide_config.resolve(slide_slot).unwrap_or_default(),
+                },
+                num_outputs,
+                synth_tx,
+                output,
+                midi_slides,
+            );
+        }
     }
 
     // Update shared state — recover from poisoned mutexes rather than panic.
@@ -1187,8 +2199,6 @@ fn handle_note_on(
             *ch = display;
         }
     }
-
-    let _ = (channel_idx, velocity_byte, target_for);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1198,28 +2208,31 @@ fn handle_note_off(
     velocity: Velocity,
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
     input_notes: &Arc<Mutex<HashSet<u8>>>,
     harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     chord_name: &Arc<Mutex<String>>,
-    routing_mode: contrapunk::harmony::RoutingMode,
+    _routing_mode: contrapunk::harmony::RoutingMode,
     synth_tx: &SynthEventSender,
-    voice_outputs: &Arc<Mutex<Vec<VoiceOutputTarget>>>,
+    voice_outputs: &Arc<Mutex<VoiceOutputRoutes>>,
+    origin: InputOrigin,
+    output_notes: &mut RoutedNoteCounts,
+    loop_output_notes: &mut RoutedNoteCounts,
 ) {
     let notes = engine.harmonize_note_off(note);
     let num_outputs = output.connection_count();
 
-    // Snapshot voice routing — same pattern as handle_note_on. Use the
-    // engine's port map so the per-voice routing slot matches the SATB
-    // arrangement (input note's slot follows voice_position, not 0).
-    let voice_targets: Vec<VoiceOutputTarget> = voice_outputs
+    let voice_targets = voice_outputs
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let port_map: Vec<usize> = engine.last_port_map().to_vec();
     let target_for = |i: usize| -> VoiceOutputTarget {
-        let slot = port_map.get(i).copied().unwrap_or(i);
-        voice_targets.get(slot).copied().unwrap_or_default()
+        voice_targets.get(main_voice_route(
+            i,
+            port_map.get(i).copied().unwrap_or(i) as u8,
+        ))
     };
 
     // Unified per-voice release. Synth NoteOff drops release velocity
@@ -1229,26 +2242,30 @@ fn handle_note_off(
     let channel_idx: u8 = channel.index();
     let velocity_byte: u8 = u8::from(velocity);
     for (i, &n) in notes.iter().enumerate() {
-        dispatch_voice(
-            target_for(i),
-            if i == 0 { MIX_INPUT } else { MIX_HARMONY },
-            channel_idx,
-            VoiceDispatch::NoteOff {
-                note: u8::from(n),
-                velocity: velocity_byte,
-                slide_slot: Some(if i == 0 {
-                    SlideSlot::new(SlideRole::Input, 0)
-                } else {
-                    SlideSlot::new(
-                        SlideRole::Harmony,
-                        port_map.get(i).copied().unwrap_or(i) as u8,
-                    )
-                }),
-            },
-            num_outputs,
-            synth_tx,
-            output,
-        );
+        let target = target_for(i);
+        let mix_group = if i == 0 { MIX_INPUT } else { MIX_HARMONY };
+        let voice_slot = port_map.get(i).copied().unwrap_or(i) as u8;
+        let key = routed_note_key(target, channel_idx, u8::from(n), mix_group, voice_slot);
+        if count_origin_note_off(origin, output_notes, loop_output_notes, key) {
+            dispatch_voice(
+                target,
+                mix_group,
+                channel_idx,
+                VoiceDispatch::NoteOff {
+                    note: u8::from(n),
+                    velocity: velocity_byte,
+                    slide_slot: Some(if i == 0 {
+                        SlideSlot::new(SlideRole::Input, 0)
+                    } else {
+                        SlideSlot::new(SlideRole::Harmony, voice_slot)
+                    }),
+                },
+                num_outputs,
+                synth_tx,
+                output,
+                midi_slides,
+            );
+        }
     }
 
     {
@@ -1329,9 +2346,10 @@ fn dispatch_voice(
     mix_group: u8,
     channel: u8,
     event: VoiceDispatch,
-    num_ports: usize,
+    _num_ports: usize,
     synth_tx: &SynthEventSender,
     output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
 ) {
     // Pin the u7/u4 invariants for callers — every existing site
     // already produces values in range (channel.index() / u8::from
@@ -1378,16 +2396,243 @@ fn dispatch_voice(
                 let _ = synth_tx.note_off(note, mix_group);
             }
         }
-        (VoiceOutputTarget::MidiPort { port }, _) if port >= num_ports => {}
-        (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOn { note, velocity, .. }) => {
+        (
+            VoiceOutputTarget::MidiPort { port },
+            VoiceDispatch::NoteOn {
+                note,
+                frequency_hz,
+                velocity,
+                slide_slot,
+                slide,
+            },
+        ) => {
+            midi_slides.prepare_note_on(
+                port,
+                channel,
+                note,
+                frequency_hz,
+                slide_slot,
+                slide,
+                output,
+            );
             let msg = [0x90 | (channel & 0x0F), note, velocity];
-            let _ = output.send_to_port(port, &msg);
+            let _ = output.send_to_device_port(port, &msg);
         }
         (VoiceOutputTarget::MidiPort { port }, VoiceDispatch::NoteOff { note, velocity, .. }) => {
             let msg = [0x80 | (channel & 0x0F), note, velocity];
-            let _ = output.send_to_port(port, &msg);
+            let _ = output.send_to_device_port(port, &msg);
+            midi_slides.note_off(port, channel, note, output);
         }
         (VoiceOutputTarget::Off, _) => {}
+    }
+}
+
+fn drain_routed_outputs(
+    notes: &mut RoutedNoteCounts,
+    num_ports: usize,
+    synth_tx: &SynthEventSender,
+    output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
+) {
+    for ((target, channel, note, mix_group, voice_slot), _) in notes.drain() {
+        let slide_role = match mix_group {
+            MIX_CANON => SlideRole::Canon,
+            MIX_COUNTERPOINT => SlideRole::Counterpoint,
+            MIX_HARMONY => SlideRole::Harmony,
+            _ => SlideRole::Input,
+        };
+        dispatch_voice(
+            target,
+            mix_group,
+            channel,
+            VoiceDispatch::NoteOff {
+                note,
+                velocity: 0,
+                slide_slot: Some(SlideSlot::new(slide_role, voice_slot)),
+            },
+            num_ports,
+            synth_tx,
+            output,
+            midi_slides,
+        );
+    }
+}
+
+fn send_all_notes_off(num_ports: usize, synth_tx: &SynthEventSender, output: &mut OutputRouter) {
+    let _ = synth_tx.send(SynthEvent::AllNotesOff);
+    for channel in 0u8..16 {
+        let message = [0xb0 | channel, 123, 0];
+        for port in 0..num_ports {
+            let _ = output.send_to_port(port, &message);
+        }
+    }
+}
+
+fn cleanup_loop_outputs(
+    all_notes: &mut RoutedNoteCounts,
+    loop_notes: &mut RoutedNoteCounts,
+    sustain_owners: &mut SustainOwners,
+    num_ports: usize,
+    synth_tx: &SynthEventSender,
+    output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
+) {
+    for (key, loop_count) in loop_notes.drain() {
+        let Some(total_count) = all_notes.get(&key).copied() else {
+            continue;
+        };
+        if total_count > loop_count {
+            all_notes.insert(key, total_count - loop_count);
+            continue;
+        }
+        all_notes.remove(&key);
+        let (target, channel, note, mix_group, voice_slot) = key;
+        let slide_role = match mix_group {
+            MIX_CANON => SlideRole::Canon,
+            MIX_COUNTERPOINT => SlideRole::Counterpoint,
+            MIX_HARMONY => SlideRole::Harmony,
+            _ => SlideRole::Input,
+        };
+        dispatch_voice(
+            target,
+            mix_group,
+            channel,
+            VoiceDispatch::NoteOff {
+                note,
+                velocity: 0,
+                slide_slot: Some(SlideSlot::new(slide_role, voice_slot)),
+            },
+            num_ports,
+            synth_tx,
+            output,
+            midi_slides,
+        );
+    }
+
+    let loop_sustain: Vec<_> = sustain_owners
+        .iter()
+        .copied()
+        .filter(|(origin, _, _)| *origin == InputOrigin::Loop)
+        .collect();
+    for owner @ (_, target, channel) in loop_sustain {
+        sustain_owners.remove(&owner);
+        if !sustain_owners
+            .iter()
+            .any(|(_, other_target, other_channel)| {
+                *other_target == target && *other_channel == channel
+            })
+        {
+            dispatch_sustain(
+                target,
+                channel,
+                false,
+                num_ports,
+                synth_tx,
+                output,
+                midi_slides,
+            );
+        }
+    }
+}
+
+fn clear_all_sustain(
+    owners: &mut SustainOwners,
+    num_ports: usize,
+    synth_tx: &SynthEventSender,
+    output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
+) {
+    let destinations: HashSet<_> = owners
+        .iter()
+        .map(|(_, target, channel)| (*target, *channel))
+        .collect();
+    owners.clear();
+    for (target, channel) in destinations {
+        dispatch_sustain(
+            target,
+            channel,
+            false,
+            num_ports,
+            synth_tx,
+            output,
+            midi_slides,
+        );
+    }
+}
+
+fn dispatch_sustain(
+    target: VoiceOutputTarget,
+    channel: u8,
+    on: bool,
+    _num_ports: usize,
+    synth_tx: &SynthEventSender,
+    output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
+) {
+    match target {
+        VoiceOutputTarget::Synth => {
+            let _ = synth_tx.send(SynthEvent::sustain_pedal(on));
+        }
+        VoiceOutputTarget::MidiPort { port } => {
+            let message = [0xb0 | (channel & 0x0f), 64, if on { 127 } else { 0 }];
+            let _ = output.send_to_device_port(port, &message);
+            midi_slides.set_sustain(port, channel, on, output);
+        }
+        VoiceOutputTarget::Off => {}
+    }
+}
+
+fn set_sustain_ownership(
+    origin: InputOrigin,
+    channel: u8,
+    on: bool,
+    owners: &mut SustainOwners,
+    num_ports: usize,
+    synth_tx: &SynthEventSender,
+    output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
+) {
+    let mut targets = Vec::with_capacity(num_ports + 1);
+    targets.push((VoiceOutputTarget::Synth, 0));
+    targets.extend(
+        output
+            .connected_port_indices()
+            .iter()
+            .copied()
+            .map(|port| (VoiceOutputTarget::MidiPort { port }, channel)),
+    );
+    for (target, routed_channel) in targets {
+        let owner = (origin, target, routed_channel);
+        if on {
+            let first = !owners.iter().any(|(_, owned_target, owned_channel)| {
+                *owned_target == target && *owned_channel == routed_channel
+            });
+            if owners.insert(owner) && first {
+                dispatch_sustain(
+                    target,
+                    routed_channel,
+                    true,
+                    num_ports,
+                    synth_tx,
+                    output,
+                    midi_slides,
+                );
+            }
+        } else if owners.remove(&owner)
+            && !owners.iter().any(|(_, owned_target, owned_channel)| {
+                *owned_target == target && *owned_channel == routed_channel
+            })
+        {
+            dispatch_sustain(
+                target,
+                routed_channel,
+                false,
+                num_ports,
+                synth_tx,
+                output,
+                midi_slides,
+            );
+        }
     }
 }
 
@@ -1423,6 +2668,7 @@ fn broadcast_note_off(
     num_ports: usize,
     synth_tx: &SynthEventSender,
     output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
 ) {
     debug_assert!(note < 128, "MIDI note out of range: {}", note);
     let event = VoiceDispatch::NoteOff {
@@ -1439,18 +2685,51 @@ fn broadcast_note_off(
         num_ports,
         synth_tx,
         output,
+        midi_slides,
     );
     // Every external port — channel 0 by convention (see fn doc).
-    for port in 0..num_ports {
-        dispatch_voice(
-            VoiceOutputTarget::MidiPort { port },
-            MIX_INPUT,
-            0,
-            event,
-            num_ports,
-            synth_tx,
-            output,
-        );
+    let _ = output.send_to_all(&[0x80, note, 0]);
+    midi_slides.release_note(note, output);
+}
+
+fn midi_bytes_to_loop_event(bytes: &[u8], origin: InputOrigin) -> Option<OriginMidiEvent> {
+    if bytes.len() < 3 || bytes[1] >= 128 || bytes[2] >= 128 {
+        return None;
+    }
+    let channel = bytes[0] & 0x0f;
+    let event = match bytes[0] & 0xf0 {
+        0x90 if bytes[2] > 0 => LoopMidiEvent::NoteOn {
+            note: bytes[1],
+            velocity: bytes[2],
+            channel,
+        },
+        0x80 | 0x90 => LoopMidiEvent::NoteOff {
+            note: bytes[1],
+            velocity: bytes[2],
+            channel,
+        },
+        0xb0 if bytes[1] == 64 => LoopMidiEvent::Cc64 {
+            value: bytes[2],
+            channel,
+        },
+        _ => return None,
+    };
+    Some(OriginMidiEvent { origin, event })
+}
+
+fn loop_event_bytes(event: LoopMidiEvent) -> [u8; 3] {
+    match event {
+        LoopMidiEvent::NoteOn {
+            note,
+            velocity,
+            channel,
+        } => [0x90 | channel, note, velocity],
+        LoopMidiEvent::NoteOff {
+            note,
+            velocity,
+            channel,
+        } => [0x80 | channel, note, velocity],
+        LoopMidiEvent::Cc64 { value, channel } => [0xb0 | channel, 64, value],
     }
 }
 
@@ -1505,34 +2784,45 @@ fn dispatch_companion_ops(
     num_ports: usize,
     synth_tx: &SynthEventSender,
     output: &mut OutputRouter,
+    midi_slides: &mut MidiSlideRuntime,
+    voice_outputs: &Arc<Mutex<VoiceOutputRoutes>>,
     _harmony_notes: &Arc<Mutex<HashSet<u8>>>,
     canon_notes: &Arc<Mutex<NoteCounts>>,
     counterpoint_notes: &Arc<Mutex<NoteCounts>>,
     output_notes: &mut RoutedNoteCounts,
+    loop_output_notes: &mut RoutedNoteCounts,
+    origin: InputOrigin,
     slide_config: &Arc<Mutex<SlideConfig>>,
 ) {
     use crate::companion::DispatchOp;
     let slide_config = *slide_config
         .lock()
         .unwrap_or_else(|error| error.into_inner());
+    let voice_outputs = voice_outputs
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
     for (lane, voice_slot, op) in tagged {
-        // Per-lane set the note belongs to, if any. Other lane tags
-        // (or AllNotesOff) leave both untouched.
-        let (lane_notes, mix_group): (Option<&Arc<Mutex<NoteCounts>>>, u8) = match *lane {
+        // Routing identity stays separate from the synth mix grouping: pattern
+        // lanes keep their own destinations even though they share a mixer role.
+        let (lane_notes, mix_group) = match *lane {
             "canon" | "pattern_low" => (Some(canon_notes), MIX_CANON),
             "counterpoint" | "pattern_counter" => (Some(counterpoint_notes), MIX_COUNTERPOINT),
             _ => (None, MIX_HARMONY),
         };
+        let routed_target = voice_outputs.get(companion_voice_route(lane, *voice_slot));
         match op {
             DispatchOp::NoteOn {
-                target,
                 note,
                 velocity,
                 channel,
+                ..
             } => {
-                let first_owner = count_routed_note_on(
+                let first_owner = count_origin_note_on(
+                    origin,
                     output_notes,
-                    routed_note_key(*target, *channel, *note, mix_group, *voice_slot),
+                    loop_output_notes,
+                    routed_note_key(routed_target, *channel, *note, mix_group, *voice_slot),
                 );
                 if first_owner {
                     let slide_role = if mix_group == MIX_CANON {
@@ -1542,7 +2832,7 @@ fn dispatch_companion_ops(
                     };
                     let slide_slot = SlideSlot::new(slide_role, *voice_slot);
                     dispatch_voice(
-                        *target,
+                        routed_target,
                         mix_group,
                         *channel,
                         VoiceDispatch::NoteOn {
@@ -1555,6 +2845,7 @@ fn dispatch_companion_ops(
                         num_ports,
                         synth_tx,
                         output,
+                        midi_slides,
                     );
                 }
                 if let Some(notes) = lane_notes {
@@ -1562,18 +2853,16 @@ fn dispatch_companion_ops(
                     count_note_on(&mut notes, *note);
                 }
             }
-            DispatchOp::NoteOff {
-                target,
-                note,
-                channel,
-            } => {
-                let last_owner = count_routed_note_off(
+            DispatchOp::NoteOff { note, channel, .. } => {
+                let last_owner = count_origin_note_off(
+                    origin,
                     output_notes,
-                    routed_note_key(*target, *channel, *note, mix_group, *voice_slot),
+                    loop_output_notes,
+                    routed_note_key(routed_target, *channel, *note, mix_group, *voice_slot),
                 );
                 if last_owner {
                     dispatch_voice(
-                        *target,
+                        routed_target,
                         mix_group,
                         *channel,
                         VoiceDispatch::NoteOff {
@@ -1591,6 +2880,7 @@ fn dispatch_companion_ops(
                         num_ports,
                         synth_tx,
                         output,
+                        midi_slides,
                     );
                 }
                 if let Some(notes) = lane_notes {
@@ -1598,8 +2888,10 @@ fn dispatch_companion_ops(
                     count_note_off(&mut notes, *note);
                 }
             }
-            DispatchOp::AllNotesOff { .. } => {
+            DispatchOp::AllNotesOff { .. } if origin == InputOrigin::Live => {
                 output_notes.clear();
+                loop_output_notes.clear();
+                midi_slides.clear(output);
                 if let Some(notes) = lane_notes {
                     notes.lock().unwrap_or_else(|e| e.into_inner()).clear();
                 }
@@ -1614,6 +2906,7 @@ fn dispatch_companion_ops(
                     }
                 }
             }
+            DispatchOp::AllNotesOff { .. } => {}
         }
     }
 }
@@ -1685,7 +2978,7 @@ fn drain_all_tracked_notes(
 ///
 /// Pure: takes slices, returns Option<String>. No I/O, no locks.
 fn detect_no_external_output_warning(
-    voice_outputs: &[crate::state::VoiceOutputTarget],
+    voice_outputs: &VoiceOutputRoutes,
     output_indices: &[usize],
 ) -> Option<String> {
     if output_indices.is_empty() {
@@ -1693,10 +2986,7 @@ fn detect_no_external_output_warning(
         // user picked. Don't warn.
         return None;
     }
-    let any_external = voice_outputs
-        .iter()
-        .any(|t| matches!(t, crate::state::VoiceOutputTarget::MidiPort { .. }));
-    if any_external {
+    if voice_outputs.has_external_target() {
         return None;
     }
     Some(format!(
@@ -1705,32 +2995,6 @@ fn detect_no_external_output_warning(
          Open Voice Routing in the UI to send harmonies to your external port(s).",
         output_indices.len()
     ))
-}
-
-/// Encode a detune-in-cents value as a 3-byte MIDI pitch-bend message
-/// on channel 0. Pure: takes cents (any i32), returns [status, LSB, MSB].
-///
-/// Conventions:
-/// - Pitch bend range is ±2 semitones (±200 cents) per General MIDI default.
-/// - Center (no bend) is 14-bit value 8192 (0x2000) → bytes [0xE0, 0x00, 0x40].
-/// - The 14-bit value is clamped to [0, 16383]; out-of-range inputs (beyond
-///   ±200 cents) saturate at the endpoints rather than wrapping or panicking.
-/// - Channel bits in the status byte are zero (channel 1 in 1-indexed MIDI).
-///
-/// Extracted from the inline detune-tick block in run_tauri_router so the
-/// 14-bit packing is independently testable. The send-to-all-ports loop
-/// stays at the call site since it's pure I/O.
-fn cents_to_pitch_bend_msg(cents: i32) -> [u8; 3] {
-    const MAX_CENTS: i32 = 200; // ±2 semitones
-    let bend_f = (cents as f64 / MAX_CENTS as f64) * 8192.0 + 8192.0;
-    // Clamp BEFORE the cast — Rust's f64-to-u16 saturating cast clamps to
-    // [0, 65535], but we need clamping to the MIDI [0, 16383] range. A
-    // pre-clamp on the i32-equivalent avoids both negative-saturation
-    // surprises and the >16383 overshoot.
-    let bend_clamped = bend_f.round().clamp(0.0, 16383.0) as u16;
-    let lsb = (bend_clamped & 0x7F) as u8;
-    let msb = ((bend_clamped >> 7) & 0x7F) as u8;
-    [0xE0, lsb, msb]
 }
 
 /// Build the payload sent on the "note-update" Tauri event.
@@ -2119,8 +3383,8 @@ mod tests {
         }
     }
 
-    /// Other status bytes (pitch bend, aftertouch, sysex, etc.) fall
-    /// through with None so the legacy router path handles them.
+    /// Non-note status bytes are not Companion input events. The router
+    /// handles pitch bend separately so it can compose with tuning and Slide.
     #[test]
     fn test_midi_bytes_to_input_event_passthrough() {
         assert!(midi_bytes_to_input_event(&[0xE0, 0, 64]).is_none()); // pitch bend
@@ -2129,13 +3393,218 @@ mod tests {
         assert!(midi_bytes_to_input_event(&[0x90]).is_none()); // too short
     }
 
+    #[test]
+    fn midi_slide_uses_48_semitone_bend_range_and_exact_endpoints() {
+        assert_eq!(midi_bend_value(0.0, 48.0), 8_192);
+        assert_eq!(midi_bend_value(12.0, 48.0), 10_240);
+        assert_eq!(midi_bend_value(-48.0, 48.0), 0);
+        assert_eq!(midi_bend_value(48.0, 48.0), 16_383);
+        assert_eq!(midi_bend_value(96.0, 48.0), 16_383);
+        assert_eq!(midi_bend_value(1.0, 2.0), 12_288);
+    }
+
+    #[test]
+    fn midi_slide_preserves_tuned_frequency_and_configures_receiver_range() {
+        assert!((midi_frequency_semitones(69, 880.0) - 12.0).abs() < 1.0e-4);
+        assert_eq!(midi_input_bend_semitones(8_192), 0.0);
+        assert_eq!(midi_input_bend_semitones(12_288), 1.0);
+        assert_eq!(
+            midi_bend_range_messages(3, 48),
+            [
+                [0xb3, 101, 0],
+                [0xb3, 100, 0],
+                [0xb3, 6, 48],
+                [0xb3, 38, 0],
+                [0xb3, 101, 127],
+                [0xb3, 100, 127],
+            ]
+        );
+    }
+
+    #[test]
+    fn midi_slide_composes_tuning_detune_and_input_bend_when_slide_is_off() {
+        let mut output = OutputRouter::new(&[]).unwrap();
+        let mut runtime = MidiSlideRuntime::new(25, Arc::new(SlideTelemetry::new()));
+        runtime.set_input_bend(0, 0, 0.5, &mut output);
+        let target_hz = standard_frequency(69) * 2.0_f32.powf(0.25 / 12.0);
+
+        runtime.prepare_note_on(
+            0,
+            0,
+            69,
+            target_hz,
+            SlideSlot::new(SlideRole::Input, 0),
+            SlideSettings::default(),
+            &mut output,
+        );
+
+        assert_eq!(runtime.last_bends.get(&(0, 0)), Some(&12_288));
+        assert!(runtime.configured_channels.is_empty());
+    }
+
+    #[test]
+    fn midi_slide_note_off_restores_the_remaining_channel_owner() {
+        let mut output = OutputRouter::new(&[]).unwrap();
+        let mut runtime = MidiSlideRuntime::new(0, Arc::new(SlideTelemetry::new()));
+        let settings = SlideSettings::default();
+        let slot = SlideSlot::new(SlideRole::Harmony, 0);
+        runtime.prepare_note_on(
+            0,
+            0,
+            60,
+            standard_frequency(60),
+            slot,
+            settings,
+            &mut output,
+        );
+        runtime.prepare_note_on(
+            0,
+            0,
+            64,
+            standard_frequency(64) * 2.0_f32.powf(1.0 / 12.0),
+            slot,
+            settings,
+            &mut output,
+        );
+        assert_eq!(runtime.last_bends.get(&(0, 0)), Some(&12_288));
+
+        runtime.note_off(0, 0, 64, &mut output);
+
+        assert_eq!(runtime.voices.len(), 1);
+        assert_eq!(runtime.last_bends.get(&(0, 0)), Some(&8_192));
+    }
+
+    #[test]
+    fn midi_slide_tick_never_overrides_a_newer_stationary_channel_owner() {
+        let mut output = OutputRouter::new(&[]).unwrap();
+        let telemetry = Arc::new(SlideTelemetry::new());
+        let mut runtime = MidiSlideRuntime::new(0, Arc::clone(&telemetry));
+        let moving_slot = SlideSlot::new(SlideRole::Harmony, 0);
+        runtime.prepare_note_on(
+            0,
+            0,
+            60,
+            standard_frequency(60),
+            moving_slot,
+            SlideSettings::default(),
+            &mut output,
+        );
+        runtime.note_off(0, 0, 60, &mut output);
+        runtime.prepare_note_on(
+            0,
+            0,
+            72,
+            standard_frequency(72),
+            moving_slot,
+            SlideSettings {
+                travel: SlideTravel::Time {
+                    milliseconds: 1_000.0,
+                },
+                trigger: contrapunk::slide::SlideTrigger::Always,
+                curve: Default::default(),
+            },
+            &mut output,
+        );
+        let moving = telemetry.snapshot();
+        assert_eq!(moving.len(), 1);
+        assert_eq!(moving[0].slot, moving_slot);
+        assert!(moving[0].voice_id >= 1 << 63);
+
+        runtime.prepare_note_on(
+            0,
+            0,
+            67,
+            standard_frequency(67),
+            SlideSlot::new(SlideRole::Harmony, 1),
+            SlideSettings::default(),
+            &mut output,
+        );
+        assert_eq!(runtime.last_bends.get(&(0, 0)), Some(&8_192));
+
+        runtime.last_tick = Instant::now() - MIDI_SLIDE_UPDATE_INTERVAL;
+        runtime.tick(&mut output);
+
+        assert_eq!(runtime.last_bends.get(&(0, 0)), Some(&8_192));
+    }
+
+    #[test]
+    fn midi_slide_keeps_sustained_voice_until_pedal_up() {
+        let mut output = OutputRouter::new(&[]).unwrap();
+        let mut runtime = MidiSlideRuntime::new(0, Arc::new(SlideTelemetry::new()));
+        runtime.prepare_note_on(
+            0,
+            2,
+            60,
+            standard_frequency(60),
+            SlideSlot::new(SlideRole::Input, 0),
+            SlideSettings::default(),
+            &mut output,
+        );
+        runtime.set_sustain(0, 2, true, &mut output);
+        runtime.note_off(0, 2, 60, &mut output);
+
+        assert_eq!(runtime.voices.len(), 1);
+        assert!(!runtime.voices[0].key_down);
+
+        runtime.set_sustain(0, 2, false, &mut output);
+        assert!(runtime.voices.is_empty());
+        assert_eq!(runtime.last_bends.get(&(0, 2)), Some(&8_192));
+    }
+
+    #[test]
+    fn routed_cleanup_releases_canon_on_its_original_mpe_channel() {
+        let mut output = OutputRouter::new(&[]).unwrap();
+        let mut runtime = MidiSlideRuntime::new(0, Arc::new(SlideTelemetry::new()));
+        runtime.prepare_note_on(
+            0,
+            6,
+            60,
+            standard_frequency(60),
+            SlideSlot::new(SlideRole::Canon, 0),
+            SlideSettings::default(),
+            &mut output,
+        );
+        let mut notes = RoutedNoteCounts::new();
+        notes.insert(
+            routed_note_key(VoiceOutputTarget::MidiPort { port: 0 }, 6, 60, MIX_CANON, 0),
+            1,
+        );
+        let (synth_tx, _synth_rx) = contrapunk::elixir::synth_event_channel();
+
+        drain_routed_outputs(&mut notes, 0, &synth_tx, &mut output, &mut runtime);
+
+        assert!(notes.is_empty());
+        assert!(runtime.voices.is_empty());
+    }
+
+    #[test]
+    fn generated_parts_resolve_to_distinct_stable_routes() {
+        assert_eq!(main_voice_route(0, 3), VoiceRouteId::Input);
+        assert_eq!(main_voice_route(1, 0), VoiceRouteId::Harmony { slot: 0 });
+        assert_eq!(
+            companion_voice_route("canon", 2),
+            VoiceRouteId::Canon { voice: 2 }
+        );
+        assert_eq!(
+            companion_voice_route("counterpoint", 1),
+            VoiceRouteId::Counterpoint { voice: 1 }
+        );
+        assert_eq!(
+            companion_voice_route("pattern_low", 0),
+            VoiceRouteId::PatternLow
+        );
+        assert_eq!(
+            companion_voice_route("pattern_counter", 0),
+            VoiceRouteId::PatternCounter
+        );
+    }
+
     /// Issue #14 detection: external ports selected + all voices Synth →
     /// the warning must fire. This is the support-thread case ("MIDI out
     /// not producing messages for some users").
     #[test]
     fn test_detect_no_external_output_warning_fires_when_all_synth() {
-        use crate::state::VoiceOutputTarget;
-        let voices = vec![VoiceOutputTarget::Synth; 8];
+        let voices = VoiceOutputRoutes::default();
         let result = detect_no_external_output_warning(&voices, &[0, 1]);
         assert!(
             result.is_some(),
@@ -2158,13 +3627,11 @@ mod tests {
     /// happy path — no warning even if other voices stay on Synth.
     #[test]
     fn test_detect_no_external_output_warning_silent_when_any_external() {
-        use crate::state::VoiceOutputTarget;
-        let voices = vec![
-            VoiceOutputTarget::Synth,
+        let mut voices = VoiceOutputRoutes::default();
+        voices.set(
+            VoiceRouteId::Canon { voice: 2 },
             VoiceOutputTarget::MidiPort { port: 0 },
-            VoiceOutputTarget::Synth,
-            VoiceOutputTarget::Synth,
-        ];
+        );
         assert!(detect_no_external_output_warning(&voices, &[0]).is_none());
     }
 
@@ -2172,8 +3639,7 @@ mod tests {
     /// They explicitly opted out of MIDI; the bug doesn't apply.
     #[test]
     fn test_detect_no_external_output_warning_silent_when_no_external_ports_selected() {
-        use crate::state::VoiceOutputTarget;
-        let voices = vec![VoiceOutputTarget::Synth; 8];
+        let voices = VoiceOutputRoutes::default();
         assert!(detect_no_external_output_warning(&voices, &[]).is_none());
     }
 
@@ -2183,45 +3649,9 @@ mod tests {
     /// reaches them. That matches user intent: "I wanted MIDI out".
     #[test]
     fn test_detect_no_external_output_warning_fires_when_all_off() {
-        use crate::state::VoiceOutputTarget;
-        let voices = vec![VoiceOutputTarget::Off; 8];
+        let mut voices = VoiceOutputRoutes::default();
+        voices.set(VoiceRouteId::Input, VoiceOutputTarget::Off);
         assert!(detect_no_external_output_warning(&voices, &[0]).is_some());
-    }
-
-    /// Zero detune must produce the canonical center pitch-bend: status
-    /// 0xE0, LSB=0x00, MSB=0x40 (14-bit value 8192).
-    #[test]
-    fn test_cents_to_pitch_bend_msg_zero_is_center() {
-        assert_eq!(cents_to_pitch_bend_msg(0), [0xE0, 0x00, 0x40]);
-    }
-
-    /// +200 cents (max upward bend) must produce the 14-bit max 16383.
-    #[test]
-    fn test_cents_to_pitch_bend_msg_max_up() {
-        assert_eq!(cents_to_pitch_bend_msg(200), [0xE0, 0x7F, 0x7F]);
-    }
-
-    /// -200 cents (max downward bend) must produce 14-bit 0.
-    #[test]
-    fn test_cents_to_pitch_bend_msg_max_down() {
-        assert_eq!(cents_to_pitch_bend_msg(-200), [0xE0, 0x00, 0x00]);
-    }
-
-    /// Out-of-range inputs must clamp at the endpoints (no panic, no wrap).
-    /// Especially important for negative inputs — f64-to-u16 saturating
-    /// casts in older Rust versions clamped negatives to 0, which we want,
-    /// but the explicit pre-clamp here makes it robust across compilers.
-    #[test]
-    fn test_cents_to_pitch_bend_msg_clamps_out_of_range() {
-        assert_eq!(cents_to_pitch_bend_msg(10_000), [0xE0, 0x7F, 0x7F]);
-        assert_eq!(cents_to_pitch_bend_msg(-10_000), [0xE0, 0x00, 0x00]);
-    }
-
-    /// +100 cents = halfway up = 14-bit 12288 (0x3000): LSB=0, MSB=0x60.
-    /// Regression guard: an off-by-one or wrong-shift bug would catch here.
-    #[test]
-    fn test_cents_to_pitch_bend_msg_half_up() {
-        assert_eq!(cents_to_pitch_bend_msg(100), [0xE0, 0x00, 0x60]);
     }
 
     /// No frequency at all (idle / silence) must produce an empty name.

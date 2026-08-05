@@ -13,7 +13,9 @@ pub fn get_slide_config(state: State<AppState>) -> SlideConfig {
 
 #[tauri::command]
 pub fn get_slide_voices(state: State<AppState>) -> Vec<SlideVoiceSnapshot> {
-    state.slide_telemetry.snapshot()
+    let mut voices = state.slide_telemetry.snapshot();
+    voices.extend(state.midi_slide_telemetry.snapshot());
+    voices
 }
 
 #[tauri::command]

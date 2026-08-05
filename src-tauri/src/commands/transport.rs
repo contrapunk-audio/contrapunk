@@ -51,6 +51,11 @@ pub fn transport_play(state: State<AppState>) {
 
 fn stop_transport(state: &AppState) {
     state.transport.stop();
+    state
+        .looper
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .transport_discontinuity();
     crate::commands::engine::request_all_notes_off(state);
 }
 
@@ -61,6 +66,11 @@ pub fn transport_stop(state: State<AppState>) {
 
 fn reset_transport(state: &AppState) {
     state.transport.reset();
+    state
+        .looper
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .transport_discontinuity();
     crate::commands::engine::request_all_notes_off(state);
 }
 
@@ -76,7 +86,15 @@ pub fn set_bpm(bpm: f64, state: State<AppState>) {
 
 #[tauri::command]
 pub fn set_time_signature(beats_per_bar: u8, beat_unit: u8, state: State<AppState>) {
+    let previous = state.transport.time_signature();
     state.transport.set_time_signature(beats_per_bar, beat_unit);
+    if state.transport.time_signature() != previous {
+        state
+            .looper
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .transport_discontinuity();
+    }
 }
 
 #[cfg(test)]

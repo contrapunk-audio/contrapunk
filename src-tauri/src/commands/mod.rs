@@ -10,6 +10,7 @@ pub mod engine;
 pub mod fx;
 pub mod guitar;
 pub mod harmony;
+pub mod looper;
 pub mod midi;
 pub mod plugins;
 pub mod presets;

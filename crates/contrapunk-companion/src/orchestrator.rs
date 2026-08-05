@@ -37,7 +37,7 @@ pub struct CompanionInputResult {
 /// Persisted snapshot of the whole companion. Written into the rig
 /// JSON; restored on rig load. Lane order is preserved so phase
 /// ordering is stable across save/load.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CompanionState {
     pub enabled: bool,
     #[serde(default = "default_phrase_gap_beats")]
