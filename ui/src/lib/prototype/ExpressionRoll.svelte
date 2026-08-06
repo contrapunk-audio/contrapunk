@@ -29,7 +29,7 @@
 	};
 
 	const WINDOW_MS = 8_000;
-	const KEY_RAIL = 50;
+	const KEYBOARD_HEIGHT = 42;
 	const KEY_RANGES: Record<PianoKeyCount, readonly [number, number]> = {
 		25: [48, 72],
 		32: [41, 72],
@@ -49,7 +49,6 @@
 	};
 
 	let canvas = $state<HTMLCanvasElement>();
-	let orientation = $state<'horizontal' | 'vertical'>('horizontal');
 	let pitchName = $state('—');
 	let frequency = $state<number | null>(null);
 	let cents = $state(0);
@@ -198,15 +197,10 @@
 		ctx.fillRect(0, 0, width, height);
 
 		const [minNote, maxNote] = KEY_RANGES[ui.pianoKeyCount];
-		const vertical = orientation === 'vertical';
-		const railSize = vertical ? 42 : KEY_RAIL;
-		const plotWidth = Math.max(1, width - (vertical ? 0 : KEY_RAIL));
-		const plotHeight = Math.max(1, height - (vertical ? railSize : 0));
-		const timeFor = (at: number) => vertical
-			? railSize + ((at - cutoff) / WINDOW_MS) * plotHeight
-			: KEY_RAIL + ((at - cutoff) / WINDOW_MS) * plotWidth;
+		const plotHeight = Math.max(1, height - KEYBOARD_HEIGHT);
+		const timeFor = (at: number) => ((at - cutoff) / WINDOW_MS) * plotHeight;
 
-		// Use real piano geometry: white keys occupy the rail and black keys
+		// Use real piano geometry: white keys span the bottom keyboard and black keys
 		// overlay their boundaries. The old fixed 5px bars were the reason
 		// the keyboard looked like a barcode on a wide roll.
 		const whiteNotes = Array.from(
@@ -227,18 +221,12 @@
 			if (fraction === 0 || low === maxNote) return keyPosition(low);
 			return keyPosition(low) + (keyPosition(low + 1) - keyPosition(low)) * fraction;
 		};
-		const pitchFor = (note: number) => {
-			const position = pianoPosition(note) / whiteCount;
-			return vertical ? position * width : (1 - position) * height;
-		};
-		const pointFor = (at: number, note: number): [number, number] => vertical
-			? [pitchFor(note), timeFor(at)]
-			: [timeFor(at), pitchFor(note)];
+		const pitchFor = (note: number) => pianoPosition(note) / whiteCount * width;
+		const pointFor = (at: number, note: number): [number, number] => [pitchFor(note), timeFor(at)];
 
-		const whiteSize = (vertical ? width : height) / whiteCount;
+		const whiteSize = width / whiteCount;
 		ctx.fillStyle = '#111115';
-		if (vertical) ctx.fillRect(0, 0, width, railSize);
-		else ctx.fillRect(0, 0, railSize, height);
+		ctx.fillRect(0, plotHeight, width, KEYBOARD_HEIGHT);
 
 		for (const [index, note] of whiteNotes.entries()) {
 			const inScale = engine.inScaleNotes.includes(note);
@@ -248,15 +236,9 @@
 			ctx.lineWidth = 0.75;
 			ctx.shadowColor = activeColor || 'transparent';
 			ctx.shadowBlur = activeColor ? 10 : 0;
-			if (vertical) {
-				const x = index * whiteSize;
-				ctx.fillRect(x, 0, whiteSize, railSize);
-				ctx.strokeRect(x, 0, whiteSize, railSize);
-			} else {
-				const y = height - (index + 1) * whiteSize;
-				ctx.fillRect(0, y, railSize, whiteSize);
-				ctx.strokeRect(0, y, railSize, whiteSize);
-			}
+			const x = index * whiteSize;
+			ctx.fillRect(x, plotHeight, whiteSize, KEYBOARD_HEIGHT);
+			ctx.strokeRect(x, plotHeight, whiteSize, KEYBOARD_HEIGHT);
 			ctx.shadowBlur = 0;
 		}
 
@@ -270,16 +252,9 @@
 			ctx.shadowColor = activeColor || 'transparent';
 			ctx.shadowBlur = activeColor ? 10 : 0;
 			const center = pianoPosition(note) * whiteSize;
-			if (vertical) {
-				const keyWidth = whiteSize * 0.6;
-				ctx.fillRect(center - keyWidth / 2, 0, keyWidth, railSize * 0.62);
-				ctx.strokeRect(center - keyWidth / 2, 0, keyWidth, railSize * 0.62);
-			} else {
-				const keyHeight = whiteSize * 0.6;
-				const y = height - center - keyHeight / 2;
-				ctx.fillRect(0, y, railSize * 0.66, keyHeight);
-				ctx.strokeRect(0, y, railSize * 0.66, keyHeight);
-			}
+			const keyWidth = whiteSize * 0.6;
+			ctx.fillRect(center - keyWidth / 2, plotHeight, keyWidth, KEYBOARD_HEIGHT * 0.62);
+			ctx.strokeRect(center - keyWidth / 2, plotHeight, keyWidth, KEYBOARD_HEIGHT * 0.62);
 			ctx.shadowBlur = 0;
 		}
 
@@ -288,36 +263,24 @@
 			ctx.strokeStyle = note % 12 === 0 ? '#38383e' : '#202025';
 			ctx.lineWidth = note % 12 === 0 ? 1 : 0.5;
 			ctx.beginPath();
-			if (vertical) {
-				ctx.moveTo(Math.round(pitch) + 0.5, railSize);
-				ctx.lineTo(Math.round(pitch) + 0.5, height);
-			} else {
-				ctx.moveTo(KEY_RAIL, Math.round(pitch) + 0.5);
-				ctx.lineTo(width, Math.round(pitch) + 0.5);
-			}
+			ctx.moveTo(Math.round(pitch) + 0.5, 0);
+			ctx.lineTo(Math.round(pitch) + 0.5, plotHeight);
 			ctx.stroke();
 			if (note % 12 === 0) {
 				ctx.fillStyle = '#55555d';
 				ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
-				ctx.textAlign = vertical ? 'center' : 'start';
-				ctx.fillText(midiToName(note), vertical ? pitch : 37, vertical ? railSize - 4 : pitch + 3);
+				ctx.textAlign = 'center';
+				ctx.fillText(midiToName(note), pitch, height - 4);
 			}
 		}
 		ctx.textAlign = 'start';
 		for (let step = 0; step <= 8; step++) {
-			const time = vertical
-				? railSize + (step / 8) * plotHeight
-				: KEY_RAIL + (step / 8) * plotWidth;
+			const time = (step / 8) * plotHeight;
 			ctx.strokeStyle = step === 8 ? '#55555c' : '#242429';
 			ctx.lineWidth = 1;
 			ctx.beginPath();
-			if (vertical) {
-				ctx.moveTo(0, Math.round(time) + 0.5);
-				ctx.lineTo(width, Math.round(time) + 0.5);
-			} else {
-				ctx.moveTo(Math.round(time) + 0.5, 0);
-				ctx.lineTo(Math.round(time) + 0.5, height);
-			}
+			ctx.moveTo(0, Math.round(time) + 0.5);
+			ctx.lineTo(width, Math.round(time) + 0.5);
 			ctx.stroke();
 		}
 
@@ -325,15 +288,11 @@
 			const start = Math.max(cutoff, gate.startedAt);
 			const end = Math.min(now, gate.endedAt ?? now);
 			const [startX, startY] = pointFor(start, gate.note);
-			const [endX, endY] = pointFor(end, gate.note);
+			const [, endY] = pointFor(end, gate.note);
 			const keySize = whiteSize * (isBlackKey(gate.note) ? 0.6 : 1);
 			ctx.globalAlpha = gate.endedAt === null ? 0.95 : 0.62;
 			ctx.fillStyle = colors[gate.role];
-			if (vertical) {
-				ctx.fillRect(startX - keySize / 2, startY, keySize, Math.max(3, endY - startY));
-			} else {
-				ctx.fillRect(startX, startY - keySize / 2, Math.max(3, endX - startX), keySize);
-			}
+			ctx.fillRect(startX - keySize / 2, startY, keySize, Math.max(3, endY - startY));
 		}
 		ctx.globalAlpha = 1;
 
@@ -484,28 +443,20 @@
 	style={`--player-color:${colors.player};--harmony-color:${colors.harmony};--canon-color:${colors.canon};--counterpoint-color:${colors.counterpoint}`}
 >
 	<header>
-		<div class="roll-title">
-			<h2 id="expression-title">{engine.chordName || '—'}</h2>
-			<button
-				type="button"
-				aria-label="Flip piano roll orientation"
-				title={orientation === 'horizontal' ? 'Place pitch left to right and time top to bottom' : 'Place pitch bottom to top and time left to right'}
-				onclick={() => (orientation = orientation === 'horizontal' ? 'vertical' : 'horizontal')}
-			>Flip {orientation === 'horizontal' ? '↕' : '↔'}</button>
-		</div>
+		<h2 id="expression-title">{engine.chordName || '—'}</h2>
 		<div class="legend" aria-label="Sound roles">
 			<span class:live={guitarLive}><i class="guitar"></i>Guitar pitch</span>
 			<span class:live={playerLive}><i class="player"></i>Emitted MIDI</span>
 			<span class:live={harmonyLive}><i class="harmony"></i>Harmony</span>
 			<span class:live={canonLive}><i class="canon"></i>Canon</span>
 			<span class:live={counterpointLive}><i class="counterpoint"></i>Counterpoint</span>
-			<span class:live={slideLive}><i class="slide"></i>Slide {slideLive ? slide.voices.length : ''}</span>
+			<span class:live={slideLive}><i class="slide"></i>Slide</span>
 		</div>
 	</header>
 	<div class="roll-frame">
-		<canvas bind:this={canvas} aria-label={`Eight-second piano roll with time moving ${orientation === 'horizontal' ? 'left to right' : 'top to bottom'}`}></canvas>
+		<canvas bind:this={canvas} aria-label="Eight-second piano roll with a horizontal keyboard at the bottom and notes moving upward"></canvas>
 		{#if !hasHistory}
-			<div class="empty" class:vertical={orientation === 'vertical'}>Play a note to reveal its shape.</div>
+			<div class="empty">Play a note to reveal its shape.</div>
 		{/if}
 	</div>
 	<footer>
@@ -518,10 +469,7 @@
 <style>
 	.expression-roll { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; border: 1px solid var(--proto-line); background: var(--proto-panel); }
 	header { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 12px; border-bottom: 1px solid var(--proto-line); }
-	.roll-title { display: flex; min-width: 0; align-items: center; gap: 10px; }
 	h2 { min-width: 1.5em; margin: 0; overflow: hidden; color: var(--proto-text); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-	.roll-title button { min-height: 26px; padding: 0 8px; border: 1px solid var(--proto-line-strong); background: transparent; color: var(--proto-muted); font: 650 9px var(--font-grotesk); }
-	.roll-title button:hover { border-color: var(--proto-text); color: var(--proto-text); }
 	.legend { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; color: var(--proto-muted); font-size: 10px; }
 	.legend span { display: inline-flex; align-items: center; gap: 5px; }
 	.legend i { width: 12px; height: 2px; background: var(--proto-dim); }
@@ -534,8 +482,7 @@
 	.legend span.live i.slide { background: linear-gradient(90deg, var(--player-color), var(--harmony-color)); }
 	.roll-frame { position: relative; min-height: 0; background: #0b0b0d; }
 	canvas { display: block; width: 100%; height: 100%; }
-	.empty { position: absolute; inset: 0; display: grid; place-items: center; padding-left: 50px; color: var(--proto-dim); font-size: 12px; pointer-events: none; }
-	.empty.vertical { padding-top: 42px; padding-left: 0; }
+	.empty { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 42px; color: var(--proto-dim); font-size: 12px; pointer-events: none; }
 	footer { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--proto-line); }
 	footer > div { min-width: 0; padding: 8px 11px; border-right: 1px solid var(--proto-line); }
 	footer > div:last-child { border-right: 0; }
