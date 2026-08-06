@@ -84,19 +84,6 @@
 		return 'Counterpoint';
 	}
 
-	function slidePitch(frequencyHz: number): string {
-		return `${midiToName(Math.round(frequencyToMidi(frequencyHz)))} ${frequencyHz.toFixed(2)} Hz`;
-	}
-
-	function slideCurve(curve: string): string {
-		return curve === 'inverse_exponential' ? 'Inverse Exponential' : curve === 'exponential' ? 'Exponential' : 'Linear';
-	}
-
-	function slideSummary(voice: SlideVoiceState): string {
-		const role = slideRole(voice.slot.role);
-		return `${slideVoiceLabel(role, voice.slot.voice)} · ${slidePitch(voice.currentFrequencyHz)} → ${slidePitch(voice.targetFrequencyHz)} · ${slideCurve(voice.curve)} · ${Math.round(voice.durationMs)} ms · ${Math.round(voice.progress * 100)}%`;
-	}
-
 	function slideCanvasLabel(voice: SlideVoiceState): string {
 		const role = slideRole(voice.slot.role);
 		const current = midiToName(Math.round(frequencyToMidi(voice.currentFrequencyHz)));
@@ -525,7 +512,6 @@
 		<div><span>GUITAR</span><strong class:live={guitarLive}>{pitchName}{frequency === null ? '' : `  ${cents >= 0 ? '+' : ''}${cents}¢`}</strong></div>
 		<div><span>MIDI OUT</span><strong class:live={playerLive}>{midiSummary}</strong></div>
 		<div><span>DYNAMICS</span><strong class:live={guitarLive}>{guitarLive ? `${Math.round(dynamics * 100)}% · ${Math.round(clarity * 100)}% clear` : 'Waiting for sound'}</strong></div>
-		<div class="slide-status"><span>SLIDE</span><strong class:live={slideLive}>{slideLive ? slide.voices.map(slideSummary).join('  |  ') : 'No pitch movement'}</strong></div>
 	</footer>
 </section>
 
@@ -556,8 +542,6 @@
 	footer span { display: block; margin-bottom: 4px; color: var(--proto-muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; }
 	footer strong { display: block; overflow: hidden; color: var(--proto-dim); font: 500 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 	footer strong.live { color: var(--proto-text); }
-	footer .slide-status { grid-column: 1 / -1; border-top: 1px solid var(--proto-line); border-right: 0; }
-	footer .slide-status strong { overflow: visible; text-overflow: clip; white-space: normal; }
 	@media (max-width: 760px) {
 		header { align-items: flex-start; flex-direction: column; }
 		.legend { justify-content: flex-start; }
