@@ -8,6 +8,7 @@
 	import ClapPluginPicker from './ClapPluginPicker.svelte';
 
 	let pickerOpen = $state(false);
+	let audioBlocks = $derived(chainStore.blocks.filter((block) => block.typeId !== 'builtin.synth'));
 
 	onMount(() => {
 		reverb.syncFromBackend();
@@ -19,25 +20,22 @@
 <div class="chain-wrap">
 	<div class="chain-header-row">
 		<div class="chain-header font-ui">Audio chain</div>
-		<button class="pixel-btn font-ui add-plugin-btn" onclick={() => (pickerOpen = true)}>
-			+ Plugin
-		</button>
+		{#if adapter.capabilities.chainEditor}
+			<button class="pixel-btn font-ui add-plugin-btn" onclick={() => (pickerOpen = true)}>
+				+ Plugin
+			</button>
+		{/if}
 	</div>
 
-	<!-- Signal-flow strip: dynamic based on chain state -->
+	<!-- The Synth view owns levels; this strip only summarizes its output into the FX chain. -->
 	<div class="flow">
 		<div class="flow-node source font-ui">
-			<div class="flow-title">Harmony</div>
-			<div class="flow-sub">MIDI</div>
+			<div class="flow-title">Elixir</div>
+			<div class="flow-sub">{synth.enabled ? 'from Synth view' : 'muted in Synth view'}</div>
 		</div>
-		{#each chainStore.blocks as b, i (i + ':' + b.typeId)}
+		{#each audioBlocks as b, i (i + ':' + b.typeId)}
 			<div class="flow-arrow font-ui">━━▶</div>
-			{#if b.typeId === 'builtin.synth'}
-				<div class="flow-node synth-node font-ui">
-					<div class="flow-title">Sine</div>
-					<div class="flow-sub">16-voice</div>
-				</div>
-			{:else if b.typeId === 'builtin.delay'}
+			{#if b.typeId === 'builtin.delay'}
 				<div class="flow-node delay-node font-ui" class:active={delay.enabled}>
 					<div class="flow-title">Delay</div>
 					<div class="flow-sub">{delay.enabled ? 'on' : 'bypass'}</div>
@@ -62,50 +60,8 @@
 		</div>
 	</div>
 
-	{#if adapter.capabilities.audioFx}
-	<!-- Synth rack: Serum-inspired -->
-	<div class="rack">
-		<div class="rack-header">
-			<span class="rack-title font-ui">Synth</span>
-			<button
-				class="pixel-btn power-btn font-ui"
-				class:active={synth.enabled}
-				onclick={() => synth.setEnabled(!synth.enabled)}
-				title={synth.enabled ? 'Bypass synth' : 'Enable synth'}
-			>
-				{synth.enabled ? 'ON' : 'OFF'}
-			</button>
-		</div>
-
-		<div class="rack-grid">
-			<section class="rack-section source-contract">
-				<div class="section-label font-ui">Source</div>
-				<strong class="font-code">SINE</strong>
-				<span class="font-code">16 voices · fixed 5 ms de-click</span>
-			</section>
-
-			<section class="rack-section amp">
-				<div class="section-label font-ui">Amp</div>
-				<div class="knob-row single">
-					<Knob
-						label="Master"
-						value={synth.masterGain}
-						min={0}
-						max={1}
-						step={0.01}
-						defaultValue={0.25}
-						format={(v) => `${Math.round(v * 100)}%`}
-						accent="var(--color-accent-gold)"
-						size={64}
-						onchange={(v) => synth.setMasterGain(v)}
-					/>
-				</div>
-			</section>
-		</div>
-
-	</div>
-
-	<ClapPluginPicker bind:open={pickerOpen} />
+	{#if adapter.capabilities.chainEditor}
+		<ClapPluginPicker bind:open={pickerOpen} />
 	{/if}
 
 	{#if adapter.capabilities.builtInFx}
@@ -364,11 +320,6 @@
 		color: var(--color-accent-cyan);
 	}
 
-	.flow-node.synth-node {
-		border-color: var(--color-accent-magenta-dim);
-		box-shadow: var(--glow-magenta);
-	}
-
 	.flow-node.plugin-node {
 		border-color: var(--color-accent-cyan-dim);
 		background: rgba(0, 60, 90, 0.5);
@@ -415,7 +366,7 @@
 		letter-spacing: -2px;
 	}
 
-	/* Synth rack */
+	/* Audio effect and plug-in racks */
 	.rack {
 		background: linear-gradient(180deg, #12101f, #0a0918);
 		border: 1px solid var(--color-border);
@@ -452,45 +403,6 @@
 		box-shadow: var(--glow-teal);
 		color: #ffffff;
 	}
-
-	.rack-grid {
-		display: grid;
-		grid-template-columns: 1fr auto;
-		gap: 8px;
-	}
-
-	.rack-section {
-		background: rgba(15, 14, 26, 0.5);
-		border: 1px solid var(--color-border);
-		padding: 6px 8px 8px;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.section-label {
-		color: var(--color-text-secondary);
-		font-size: var(--font-size-xs);
-		letter-spacing: 1.5px;
-		text-transform: uppercase;
-		padding-bottom: 2px;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.source-contract strong { color: var(--color-accent-cyan); font-size: var(--font-size-lg); letter-spacing: .12em; }
-	.source-contract span { color: var(--color-text-dim); font-size: var(--font-size-xs); }
-
-	.knob-row {
-		display: flex;
-		justify-content: space-around;
-		align-items: flex-start;
-		gap: 6px;
-	}
-
-	.knob-row.single {
-		justify-content: center;
-	}
-
 
 	/* Reverb rack */
 	.reverb-rack {
@@ -619,15 +531,4 @@
 		opacity: 0.35;
 	}
 
-	/* Collapse rack-grid on narrow windows */
-	@media (max-width: 980px) {
-		.rack-grid {
-			grid-template-columns: 1fr 1fr;
-		}
-	}
-	@media (max-width: 600px) {
-		.rack-grid {
-			grid-template-columns: 1fr;
-		}
-	}
 </style>

@@ -81,6 +81,9 @@
 
 	onMount(() => {
 		let cancelled = false;
+		const unsubscribeSynth = adapter.capabilities.pluginMidiOutputMode
+			? adapter.onPluginParamsUpdate(() => void synth.syncFromBackend())
+			: () => {};
 		void (async () => {
 			try {
 				ui.restoreAppearance();
@@ -112,6 +115,7 @@
 		})();
 		return () => {
 			cancelled = true;
+			unsubscribeSynth();
 			void tone.stop();
 		};
 	});
@@ -167,9 +171,9 @@
 			<img src="/logo.svg" alt="Contrapunk" />
 			{#if adapter.capabilities.audioFx}
 				<nav class="view-tabs" aria-label="Main view">
-					<button class:active={activeView === 'harmony'} onclick={() => (activeView = 'harmony')}>Perform</button>
+					<button class:active={activeView === 'harmony'} aria-pressed={activeView === 'harmony'} onclick={() => (activeView = 'harmony')}>Perform</button>
 					<span aria-hidden="true">|</span>
-					<button class:active={activeView === 'synth'} onclick={() => (activeView = 'synth')}>Synth</button>
+					<button class:active={activeView === 'synth'} aria-pressed={activeView === 'synth'} onclick={() => (activeView = 'synth')}>Synth</button>
 				</nav>
 			{/if}
 		</div>
@@ -212,7 +216,7 @@
 			<div class="live-grid">
 				<ExpressionRoll />
 			</div>
-			<ArrangementMixer {openSetup} />
+			<ArrangementMixer {openSetup} openSynth={() => (activeView = 'synth')} />
 		{/if}
 	</main>
 	{/if}

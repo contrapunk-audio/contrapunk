@@ -75,7 +75,7 @@
 	});
 
 	let outputOptions = $derived([
-		{ value: SYNTH_VALUE, label: 'Internal Synth' },
+		{ value: SYNTH_VALUE, label: 'Elixir Synth' },
 		...midi.outputs.map((device) => ({ value: String(device.index), label: device.name })),
 		{ value: OFF_VALUE, label: 'Off' }
 	]);
@@ -158,20 +158,18 @@
 		</div>
 	{/if}
 
-	{#if adapter.capabilities.audioFx || adapter.capabilities.chainEditor}
-		<!-- Synth + FX racks (absorbed from the legacy Chain tab).
-		     ChainPanel handles its own audioFx capability gating
-		     internally; we render it here whenever either flag is set. -->
+	{#if adapter.capabilities.builtInFx || adapter.capabilities.chainEditor}
+		<!-- The Synth view owns synth levels. Output renders the chain only
+		     when this surface can edit built-in effects or hosted plug-ins. -->
 		<ChainPanel />
 	{:else if !adapter.capabilities.perVoicePortRouting}
-		<!-- Plugin mode (audioFx=false, chainEditor=false,
-		     perVoicePortRouting=false) → without this hint the Output
-		     subtab would be just the static VGC card and a lot of empty
-		     space, leading users to think the tab is broken.
-		     Brutal-critic #7. -->
 		<div class="surface-unavailable font-ui">
-			Your DAW owns audio output and MIDI routing in plugin mode.
-			Use the host's mixer + plugin chain instead of these controls.
+			{#if adapter.capabilities.pluginMidiOutputMode}
+				Your DAW owns audio output and MIDI routing in plugin mode.
+				Use the host's mixer + plugin chain instead of these controls.
+			{:else}
+				The browser uses its built-in audio output and does not expose per-part MIDI destinations.
+			{/if}
 		</div>
 	{/if}
 </div>
