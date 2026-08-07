@@ -1,6 +1,7 @@
 import { adapter } from '$lib/adapter';
 import type { CounterpointSpeciesName } from './engine.svelte';
 import { DEFAULT_EXPLICIT_INTERVAL_MAP, engine } from './engine.svelte';
+import { synth } from './synth.svelte';
 import { tone } from './tone.svelte';
 import {
 	validateArrangementConfig,
@@ -46,11 +47,6 @@ function emptyPatterns(): ArrangementPatternConfig {
 class ArrangementStore {
 	counterpoint = $state<CounterpointLaneState>({ ...DEFAULT_COUNTERPOINT });
 	patterns = $state<ArrangementPatternConfig>(emptyPatterns());
-	mixLevels = $state([1, 1, 1, 1]);
-	muted = $state([false, false, false, false]);
-	solo = $state<number | null>(null);
-	mixLoaded = $state(false);
-	mixError = $state<string | null>(null);
 	applying = $state(false);
 
 	get availableCapabilities(): ReadonlySet<ArrangementCapability> {
@@ -98,17 +94,7 @@ class ArrangementStore {
 			}
 		}
 
-		if (adapter.capabilities.roleMix) {
-			try {
-				const state = await adapter.getSynthState();
-				if (state.mixGains?.length === 4 && this.solo === null && !this.muted.some(Boolean)) {
-					this.mixLevels = state.mixGains.map((value) => clamp01(value));
-				}
-			} catch {
-				// Keep unity defaults when the synth is not ready yet.
-			}
-		}
-		this.mixLoaded = true;
+		await synth.syncFromBackend();
 	}
 
 	async setPattern(
@@ -155,70 +141,6 @@ class ArrangementStore {
 			this.counterpoint = previous;
 			throw error;
 		}
-	}
-
-	setMixLevel(group: number, value: number) {
-		if (group < 0 || group >= 4) return;
-		this.mixLevels[group] = clamp01(value);
-		this.mixLevels = [...this.mixLevels];
-	}
-
-	appliedMixLevel(group: number) {
-		if (this.muted[group]) return 0;
-		if (this.solo !== null && this.solo !== group) return 0;
-		return this.mixLevels[group] ?? 1;
-	}
-
-	async pushMixLevel(group: number, value = this.appliedMixLevel(group)) {
-		if (!adapter.capabilities.roleMix || group < 0 || group >= 4) return;
-		await adapter.setSynthMixGain(group, clamp01(value));
-	}
-
-	async setAndPushMixLevel(group: number, value: number) {
-		if (!adapter.capabilities.roleMix || group < 0 || group >= 4) return;
-		const previous = this.mixLevels[group] ?? 1;
-		this.setMixLevel(group, value);
-		try {
-			await this.pushMixLevel(group);
-			this.mixError = null;
-		} catch (error) {
-			this.setMixLevel(group, previous);
-			try { await this.pushMixLevel(group); } catch { /* Preserve the original error. */ }
-			this.mixError = `Could not change mix level: ${error}`;
-		}
-	}
-
-	async toggleMute(group: number) {
-		if (!adapter.capabilities.roleMix || group < 0 || group >= 4) return;
-		const previous = [...this.muted];
-		this.muted[group] = !this.muted[group];
-		this.muted = [...this.muted];
-		try {
-			await this.pushMixLevel(group);
-			this.mixError = null;
-		} catch (error) {
-			this.muted = previous;
-			try { await this.pushMixLevel(group); } catch { /* Preserve the original error. */ }
-			this.mixError = `Could not change mute: ${error}`;
-		}
-	}
-
-	async toggleSolo(group: number) {
-		if (!adapter.capabilities.roleMix || group < 0 || group >= 4) return;
-		const previous = this.solo;
-		this.solo = this.solo === group ? null : group;
-		try {
-			await this.pushAllMixLevels();
-			this.mixError = null;
-		} catch (error) {
-			this.solo = previous;
-			try { await this.pushAllMixLevels(); } catch { /* Preserve the original error. */ }
-			this.mixError = `Could not change solo: ${error}`;
-		}
-	}
-
-	private async pushAllMixLevels() {
-		for (let group = 0; group < 4; group++) await this.pushMixLevel(group);
 	}
 
 	async apply(config: ArrangementConfig) {
@@ -300,8 +222,8 @@ class ArrangementStore {
 
 		const mix = [config.mix.input, config.mix.harmony, config.mix.canon, config.mix.counterpoint];
 		for (let group = 0; group < mix.length; group++) {
-			this.setMixLevel(group, mix[group]);
-			await this.pushMixLevel(group);
+			const applied = await synth.setMixGain(group, mix[group]);
+			if (!applied) throw new Error(synth.mixError ?? `Could not apply mix group ${group}`);
 		}
 	}
 
@@ -362,10 +284,10 @@ class ArrangementStore {
 				}
 			},
 			mix: {
-				input: this.mixLevels[0] ?? 1,
-				harmony: this.mixLevels[1] ?? 1,
-				canon: this.mixLevels[2] ?? 1,
-				counterpoint: this.mixLevels[3] ?? 1
+				input: synth.mixGains[0] ?? 1,
+				harmony: synth.mixGains[1] ?? 1,
+				canon: synth.mixGains[2] ?? 1,
+				counterpoint: synth.mixGains[3] ?? 1
 			}
 		};
 	}
@@ -408,8 +330,5 @@ function patternFromWire(state: Record<string, unknown>): ArrangementPatternLane
 	};
 }
 
-function clamp01(value: number): number {
-	return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 1));
-}
 
 export const arrangement = new ArrangementStore();

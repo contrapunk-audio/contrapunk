@@ -12,7 +12,6 @@
 	const roles = ['Input', 'Harmony', 'Canon', 'Counterpoint'];
 	let ready = $state(false);
 	let error = $state('');
-	let panicSent = $state(false);
 	let available = $derived(masterOnly || adapter.capabilities.audioFx);
 
 	onMount(() => {
@@ -26,7 +25,9 @@
 				if (!cancelled) error = cause instanceof Error ? cause.message : 'Synth unavailable';
 			}
 		})();
-		const unsubscribe = adapter.onPluginParamsUpdate(() => void synth.syncFromBackend());
+		const unsubscribe = embedded
+			? () => {}
+			: adapter.onPluginParamsUpdate(() => void synth.syncFromBackend());
 		return () => {
 			cancelled = true;
 			unsubscribe();
@@ -35,12 +36,6 @@
 
 	function formatGain(gain: number) {
 		return gain <= 0.0001 ? '−∞ dB' : `${(20 * Math.log10(gain)).toFixed(1)} dB`;
-	}
-
-	async function panic() {
-		await adapter.panicAllNotesOff();
-		panicSent = true;
-		window.setTimeout(() => (panicSent = false), 700);
 	}
 </script>
 
@@ -61,9 +56,6 @@
 						onclick={() => synth.setEnabled(!synth.enabled)}
 					>
 						{synth.enabled ? 'Enabled' : 'Bypassed'}
-					</button>
-					<button class="panic" class:confirmed={panicSent} disabled={!ready} onclick={panic}>
-						{panicSent ? 'Cleared' : 'Panic'}
 					</button>
 				</div>
 			{/if}
@@ -97,19 +89,25 @@
 							<div class="role-section">
 								<h3>Roles</h3>
 								{#each roles as role, index}
-									<label class="gain-row">
+									<div class="gain-row">
 										<span><b>{role}</b><output>{formatGain(synth.mixGains[index])}</output></span>
-										<input
-											type="range"
-											min="0"
-											max="1"
-											step="0.01"
-											value={synth.mixGains[index]}
-											disabled={!ready || !synth.enabled}
-											oninput={(event) => synth.setMixGain(index, Number(event.currentTarget.value))}
-										/>
-									</label>
+										<div class="role-controls">
+											<input
+												aria-label={`${role} level`}
+												type="range"
+												min="0"
+												max="1"
+												step="0.01"
+												value={synth.mixGains[index]}
+												disabled={!ready || !synth.enabled}
+												oninput={(event) => synth.setMixGain(index, Number(event.currentTarget.value))}
+											/>
+											<button class:on={synth.muted[index]} type="button" aria-label={`Mute ${role}`} aria-pressed={synth.muted[index]} disabled={!ready || !synth.enabled} onclick={() => synth.toggleMute(index)}>{synth.muted[index] ? 'M✓' : 'M'}</button>
+											<button class:on={synth.solo === index} type="button" aria-label={`Solo ${role}`} aria-pressed={synth.solo === index} disabled={!ready || !synth.enabled} onclick={() => synth.toggleSolo(index)}>{synth.solo === index ? 'S✓' : 'S'}</button>
+										</div>
+									</div>
 								{/each}
+								{#if synth.mixError}<p class="mix-error" role="alert">{synth.mixError}</p>{/if}
 							</div>
 						{/if}
 					</div>
@@ -162,8 +160,7 @@
 		font: 12px var(--font-ui);
 	}
 	button:hover:not(:disabled) { background: #393939; color: #eee; }
-	button.enabled { border-color: #668563; color: #b7d0b3; }
-	button.panic:hover:not(:disabled), button.confirmed { border-color: #9b6666; color: #e0aaaa; }
+	button.enabled, button.on { border-color: #668563; color: #b7d0b3; }
 	button:disabled { opacity: .45; }
 	.main-grid {
 		display: grid;
@@ -181,9 +178,12 @@
 	.gain-row span { display: flex; justify-content: space-between; gap: 12px; }
 	.gain-row b { font: 500 12px var(--font-ui); color: #bbb; }
 	.gain-row output { font: 10px var(--font-code); color: #aaa; }
-	.gain-row input { width: 100%; accent-color: #7c9eb8; }
+	.gain-row input { width: 100%; min-width: 0; accent-color: #7c9eb8; }
 	.gain-row input:disabled { opacity: .35; }
 	.gain-row.master { padding-top: 2px; }
+	.role-controls { display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px; align-items: center; gap: 5px; }
+	.role-controls button { width: 30px; height: 26px; padding: 0; font: 700 10px var(--font-code); }
+	.mix-error { margin: 8px 0 0; color: #e0aaaa; font: 10px/1.4 var(--font-code); }
 	.role-section { margin-top: 10px; padding-top: 12px; border-top: 1px solid #3b3b3b; }
 	.role-section h3 { margin-bottom: 5px; color: #888; text-transform: uppercase; letter-spacing: .06em; }
 	.notice { margin: 10px; padding: 14px; border: 1px solid #484848; background: #242424; color: #aaa; font: 12px var(--font-ui); }

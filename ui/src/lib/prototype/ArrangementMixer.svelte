@@ -11,9 +11,13 @@
 	import { slide } from '$lib/stores/slide.svelte';
 	import { SLIDE_PRESETS, SLIDE_ROLES } from '$lib/slide/config';
 
-	let { openSetup }: { openSetup: (section: string, focus?: string) => void } = $props();
+	let { openSetup, openSynth }: {
+		openSetup: (section: string, focus?: string) => void;
+		openSynth: () => void;
+	} = $props();
 
 	const VIRTUAL_TONE_SOURCE = 999_996;
+	const synthLabel = adapter.capabilities.pluginMidiOutputMode ? 'internal monitor' : 'built-in synth';
 	type Role = {
 		name: string;
 		shortName: string;
@@ -156,12 +160,16 @@
 		}
 	]);
 
-	async function setLevel(group: number, value: number) {
-		await arrangement.setAndPushMixLevel(group, value);
+	function mixStatus(group: number): string {
+		const level = `${Math.round((synth.mixGains[group] ?? 1) * 100)}%`;
+		if (synth.muted[group]) return `Muted · ${level}`;
+		if (synth.solo === group) return `Solo · ${level}`;
+		if (synth.solo !== null) return `Muted by solo · ${level}`;
+		return level;
 	}
 
 	onMount(() => {
-		if (!arrangement.mixLoaded) void arrangement.syncFromBackend();
+		void arrangement.syncFromBackend();
 		if (!adapter.capabilities.pluginMidiOutputMode) return;
 		const refreshInputMode = () => {
 			void adapter.getPluginInputMode().then((mode) => (pluginInputMode = mode));
@@ -210,7 +218,7 @@
 					{#each SLIDE_PRESETS as preset}<option value={preset.id}>{preset.name}</option>{/each}
 				</select>
 			</label>
-			{#if arrangement.mixError}<span class="mix-error" role="alert" title={arrangement.mixError}>MIX ERROR</span>{/if}
+			{#if synth.mixError}<span class="mix-error" role="alert" title={synth.mixError}>MIX ERROR</span>{/if}
 			<button class="arrangement-setup" type="button" title="Open arrangement setup" aria-label="Open arrangement setup" onclick={() => openSetup('harmony')}>⚙</button>
 		</header>
 
@@ -225,14 +233,13 @@
 			</div>
 			<span class="arrow" aria-hidden="true">→</span>
 			<div class="output-strip">
-				<button class="node-title" type="button" title="Output setup" onclick={() => openSetup('output', 'output-routing')}>
+				<button class="node-title" type="button" title={`Open ${synthLabel}`} onclick={openSynth}>
 					<span class="activity-dot" class:active={synth.enabled}></span>
-					<strong>Master</strong><small>Built-in sine</small>
+					<strong>{adapter.capabilities.pluginMidiOutputMode ? 'Monitor' : 'Master'}</strong><small>Elixir synth</small>
 				</button>
-				<div class="node-controls master-controls">
-					<button class:on={!synth.enabled} type="button" title="Mute built-in synth" aria-label="Mute built-in synth" aria-pressed={!synth.enabled} onclick={() => synth.setEnabled(!synth.enabled)}>M</button>
-					<label title="Built-in synth master level"><input aria-label="Master output level" type="range" min="0" max="1" step="0.01" value={synth.masterGain} oninput={(event) => synth.setMasterGain(Number(event.currentTarget.value))} /><output>{Math.round(synth.masterGain * 100)}</output></label>
-				</div>
+				<button class="synth-summary" type="button" aria-label={`Open ${synthLabel}; ${synth.enabled ? `${Math.round(synth.masterGain * 100)} percent` : 'muted'}`} onclick={openSynth}>
+					<strong>{synth.enabled ? `${Math.round(synth.masterGain * 100)}%` : 'Muted'}</strong><small>Synth mix ↗</small>
+				</button>
 				<button class="node-foot output-foot" type="button" onclick={() => openSetup('output', 'output-routing')}>OUTPUT ↗</button>
 			</div>
 		</div>
@@ -244,16 +251,9 @@
 		<span class="activity-dot" class:active={role.active}></span>
 		<strong>{role.shortName}</strong><small>{role.subtitle}</small>
 	</button>
-	<div class="node-controls">
-		<div class="mix-buttons">
-			<button class:on={arrangement.muted[role.group]} type="button" title={`Mute ${role.name}`} aria-label={`Mute ${role.name} in built-in synth`} aria-pressed={arrangement.muted[role.group]} disabled={!adapter.capabilities.roleMix} onclick={() => arrangement.toggleMute(role.group)}>M</button>
-			<button class:on={arrangement.solo === role.group} type="button" title={`Solo ${role.name}`} aria-label={`Solo ${role.name} in built-in synth`} aria-pressed={arrangement.solo === role.group} disabled={!adapter.capabilities.roleMix} onclick={() => arrangement.toggleSolo(role.group)}>S</button>
-		</div>
-		<label class="gain" title={`${role.name} built-in synth level`}>
-			<input aria-label={`${role.name} built-in synth level`} type="range" min="0" max="1" step="0.01" value={arrangement.mixLevels[role.group]} disabled={!arrangement.mixLoaded || !adapter.capabilities.roleMix} oninput={(event) => setLevel(role.group, Number(event.currentTarget.value))} />
-			<output>{Math.round((arrangement.mixLevels[role.group] ?? 1) * 100)}</output>
-		</label>
-	</div>
+	<button class="synth-summary" type="button" aria-label={`Open synth mix for ${role.name}; ${mixStatus(role.group)}`} disabled={!adapter.capabilities.roleMix} onclick={openSynth}>
+		<strong>{adapter.capabilities.roleMix ? mixStatus(role.group) : 'Unavailable'}</strong><small>Synth mix ↗</small>
+	</button>
 	<div class="node-foot">
 		<button type="button" title={`Configure ${role.name} Slide`} onclick={() => openSetup('harmony', 'slide-controls')}>↝ {role.slide}</button>
 		{#if adapter.capabilities.perVoicePortRouting || adapter.capabilities.pluginMidiOutputMode}
@@ -302,26 +302,19 @@
 	.branch-rail { position: absolute; z-index: 0; inset: 50% 0 auto; height: 1px; background: var(--proto-line-strong); }
 	.role, .output-strip { position: relative; z-index: 1; display: grid; min-width: 0; grid-template-rows: 30px minmax(29px, 1fr) 28px; border: 1px solid var(--proto-line-strong); background: var(--proto-surface); }
 	.node-title { display: grid; min-width: 0; grid-template-columns: 7px 1fr; grid-template-rows: 1fr 1fr; align-items: center; column-gap: 5px; padding: 3px 6px; border: 0; border-bottom: 1px solid var(--proto-line); background: transparent; color: var(--proto-text); text-align: left; }
-	.node-title:hover, .node-foot button:hover, .output-foot:hover { background: var(--proto-hover); }
+	.node-title:hover, .synth-summary:hover:not(:disabled), .node-foot button:hover, .output-foot:hover { background: var(--proto-hover); }
 	.node-title strong, .node-title small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.node-title strong { align-self: end; font-size: 9px; line-height: 1; }
 	.node-title small { grid-column: 2; align-self: start; color: var(--proto-muted); font: 7px var(--font-code); }
 	.activity-dot { grid-row: 1 / 3; width: 5px; height: 5px; border: 1px solid var(--proto-muted); border-radius: 50%; }
 	.activity-dot.active { border-color: var(--role-color, var(--proto-text)); background: var(--role-color, var(--proto-text)); box-shadow: 0 0 6px var(--role-color, var(--proto-text)); }
-	.node-controls { display: grid; min-width: 0; grid-template-columns: 38px 1fr; align-items: center; gap: 5px; padding: 3px 5px; }
-	.mix-buttons { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--proto-line); }
-	.mix-buttons button, .master-controls > button { min-width: 0; height: 28px; padding: 0; border: 0; border-right: 1px solid var(--proto-line); background: transparent; color: var(--proto-muted); font: 700 7px var(--font-code); }
-	.mix-buttons button:last-child { border-right: 0; }
-	.mix-buttons button.on, .master-controls > button.on { background: var(--proto-text); color: var(--proto-bg); }
-	.mix-buttons button:disabled { opacity: .3; cursor: not-allowed; }
-	.gain, .master-controls label { display: grid; min-width: 0; grid-template-columns: 1fr 22px; align-items: center; gap: 3px; }
-	.gain input, .master-controls input { width: 100%; min-width: 0; accent-color: var(--role-color, var(--proto-text)); }
-	.gain output, .master-controls output { color: var(--proto-text); font: 7px var(--font-code); text-align: right; }
+	.synth-summary { display: grid; min-width: 0; place-content: center; gap: 2px; padding: 3px 5px; border: 0; background: transparent; color: var(--proto-text); text-align: center; }
+	.synth-summary strong { overflow: hidden; font: 700 8px var(--font-code); text-overflow: ellipsis; white-space: nowrap; }
+	.synth-summary small { color: var(--proto-muted); font: 7px var(--font-code); }
+	.synth-summary:disabled { opacity: .45; cursor: not-allowed; }
 	.node-foot { display: grid; min-width: 0; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--proto-line); }
 	.node-foot button, .node-foot .route-static, .output-foot { display: grid; min-width: 0; min-height: 28px; place-items: center; overflow: hidden; padding: 0 5px; border: 0; border-right: 1px solid var(--proto-line); background: transparent; color: var(--proto-muted); font: 7px var(--font-code); text-overflow: ellipsis; white-space: nowrap; }
 	.node-foot button:last-child, .node-foot .route-static:last-child { border-right: 0; color: var(--proto-text); }
-	.master-controls { grid-template-columns: 22px 1fr; }
-	.master-controls > button { border: 1px solid var(--proto-line); }
 	.output-foot { border-top: 1px solid var(--proto-line); border-right: 0; color: var(--proto-text); }
 	@media (max-width: 1080px) {
 		.arrangement { grid-template-columns: 225px minmax(0, 1fr); }
