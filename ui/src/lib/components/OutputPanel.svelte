@@ -4,12 +4,13 @@
 	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { engine } from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
+	import { stableVoiceRoutes } from '$lib/routing/stable-voice-routes.mjs';
 	import ChainPanel from './ChainPanel.svelte';
 	import PixelSelect from './PixelSelect.svelte';
 
 	const SYNTH_VALUE = '__synth__';
 	const OFF_VALUE = '__off__';
-	type RouteRow = { route: VoiceRouteId; label: string };
+	type RouteRow = { route: VoiceRouteId; label: string; active: boolean };
 	type RouteSection = { label: string; rows: RouteRow[] };
 
 	const voiceCountOptions = Array.from({ length: MAX_VOICES }, (_, index) => index + 1).map(
@@ -27,51 +28,52 @@
 	}
 
 	let routeSections = $derived.by<RouteSection[]>(() => {
-		const sections: RouteSection[] = [
+		const rows = stableVoiceRoutes({
+			voiceCount: engine.voiceCount,
+			voicePosition: engine.voicePosition,
+			harmonyEnabled: engine.mode !== 'PassThrough',
+			companionEnabled: engine.companionEnabled,
+			canonVoiceCount: engine.canonVoices.length,
+			canonEnabled: engine.canonEnabled,
+			counterpointEnabled: arrangement.counterpoint.enabled,
+			phraseAware: arrangement.counterpoint.phraseAware,
+			patternLowEnabled: arrangement.patterns.lowSupport.enabled,
+			patternCounterEnabled: arrangement.patterns.counterline.enabled
+		}) as Array<{ section: string; route: VoiceRouteId; active: boolean }>;
+
+		const rowsFor = (section: string, label: (route: VoiceRouteId) => string): RouteRow[] =>
+			rows.filter((row) => row.section === section).map((row) => ({ ...row, label: label(row.route) }));
+		const routeIndex = (route: VoiceRouteId) => Number(route.split(':')[1]);
+
+		return [
 			{
 				label: 'Performed input',
-				rows: [{ route: 'input', label: `You (${registerName(engine.voicePosition)})` }]
-			}
-		];
-		const harmony = engine.mode === 'PassThrough'
-			? []
-			: Array.from({ length: engine.voiceCount }, (_, slot) => slot)
-					.filter((slot) => slot !== engine.voicePosition)
-					.map((slot) => ({
-						route: `harmony:${slot}` as VoiceRouteId,
-						label: `${registerName(slot)} harmony`
-					}));
-		if (harmony.length) sections.push({ label: 'Harmony', rows: harmony });
-
-		if (engine.companionEnabled && engine.canonEnabled && engine.canonVoices.length) {
-			sections.push({
+				rows: rowsFor('input', () => `You (${registerName(engine.voicePosition)})`)
+			},
+			{
+				label: 'Harmony',
+				rows: rowsFor('harmony', (route) => `${registerName(routeIndex(route))} harmony`)
+			},
+			{
 				label: 'Canon',
-				rows: engine.canonVoices.map((voice, index) => ({
-					route: `canon:${index}` as VoiceRouteId,
-					label: voice.preset_id ?? `Canon ${index + 1}`
-				}))
-			});
-		}
-		if (engine.companionEnabled && arrangement.counterpoint.enabled) {
-			sections.push({
+				rows: rowsFor('canon', (route) => {
+					const index = routeIndex(route);
+					return engine.canonVoices[index]?.preset_id ?? `Canon ${index + 1}`;
+				})
+			},
+			{
 				label: arrangement.counterpoint.phraseAware ? 'Suspension' : 'Counterpoint',
-				rows: arrangement.counterpoint.phraseAware
-					? [
-							{ route: 'counterpoint:0', label: 'Tied inner voice' },
-							{ route: 'counterpoint:1', label: 'Moving bass' }
-						]
-					: [{ route: 'counterpoint:0', label: 'Counterpoint line' }]
-			});
-		}
-		const patterns: RouteRow[] = [];
-		if (engine.companionEnabled && arrangement.patterns.lowSupport.enabled) {
-			patterns.push({ route: 'pattern_low', label: 'Low Support pattern' });
-		}
-		if (engine.companionEnabled && arrangement.patterns.counterline.enabled) {
-			patterns.push({ route: 'pattern_counter', label: 'Counterline pattern' });
-		}
-		if (patterns.length) sections.push({ label: 'Patterns', rows: patterns });
-		return sections;
+				rows: rowsFor('counterpoint', (route) => route === 'counterpoint:0'
+					? arrangement.counterpoint.phraseAware ? 'Tied inner voice' : 'Counterpoint line'
+					: 'Moving bass')
+			},
+			{
+				label: 'Patterns',
+				rows: rowsFor('patterns', (route) => route === 'pattern_low'
+					? 'Low Support pattern'
+					: 'Counterline pattern')
+			}
+		].filter(({ rows }) => rows.length > 0);
 	});
 
 	let outputOptions = $derived([
@@ -109,8 +111,18 @@
 			: SYNTH_VALUE;
 	}
 
-	function routeIsActive(route: VoiceRouteId): boolean {
+	function routeHasDestination(route: VoiceRouteId): boolean {
 		return midi.getVoiceOutput(route).kind !== 'off';
+	}
+
+	function routeStatus(row: RouteRow): string {
+		if (!row.active) return 'Part inactive; route assignment is preserved';
+		return routeHasDestination(row.route) ? 'Part active and routed' : 'Part active; destination is Off';
+	}
+
+	function routeSymbol(row: RouteRow): string {
+		if (!row.active) return '◇';
+		return routeHasDestination(row.route) ? '●' : '○';
 	}
 </script>
 
@@ -135,15 +147,12 @@
 				{#each routeSections as section (section.label)}
 					<div class="route-group font-code">{section.label}</div>
 					{#each section.rows as row (row.route)}
-						<div class="output-slot" class:slot-off={!routeIsActive(row.route)}>
-							<span
-								class="slot-status"
-								aria-hidden="true"
-								title={routeIsActive(row.route) ? 'Will produce output' : 'Silent'}
-							>
-								{routeIsActive(row.route) ? '●' : '○'}
+						<div class="output-slot" class:slot-off={!routeHasDestination(row.route)} class:part-inactive={!row.active}>
+							<span class="slot-status" aria-label={routeStatus(row)} title={routeStatus(row)}>
+								{routeSymbol(row)}
 							</span>
 							<span class="slot-label font-ui">{row.label}</span>
+							<span class="part-state font-code" class:inactive={!row.active}>{row.active ? 'Active' : 'Inactive'}</span>
 							<PixelSelect
 								options={outputOptions}
 								value={selectedOutput(row.route)}
@@ -235,23 +244,30 @@
 		color: var(--color-accent-cyan);
 		text-shadow: 0 0 4px var(--color-accent-cyan);
 	}
-	.output-slot.slot-off .slot-status {
+	.output-slot.slot-off .slot-status,
+	.output-slot.part-inactive .slot-status {
 		color: var(--color-text-dim);
 		text-shadow: none;
 	}
-	.output-slot.slot-off {
-		opacity: 0.55;
-	}
-	.output-slot.slot-off .slot-label {
-		color: var(--color-text-dim);
-	}
+	.output-slot.slot-off { opacity: 0.55; }
+	.output-slot.slot-off .slot-label,
+	.output-slot.part-inactive .slot-label { color: var(--color-text-dim); }
 
 	.slot-label {
+		min-width: 96px;
 		color: var(--color-text-secondary);
 		font-size: var(--font-size-xs);
 		white-space: nowrap;
-		min-width: 96px;
 	}
+
+	.part-state {
+		min-width: 38px;
+		color: var(--color-text-secondary);
+		font-size: 7px;
+		letter-spacing: .06em;
+		text-transform: uppercase;
+	}
+	.part-state.inactive { color: var(--color-text-dim); }
 
 	.surface-unavailable {
 		padding: 16px 12px;
