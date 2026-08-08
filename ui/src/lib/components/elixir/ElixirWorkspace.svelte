@@ -53,7 +53,7 @@
 						class:enabled={synth.enabled}
 						aria-pressed={synth.enabled}
 						disabled={!ready || !available}
-						onclick={() => synth.setEnabled(!synth.enabled)}
+						onclick={() => void synth.setEnabled(!synth.enabled)}
 					>
 						{synth.enabled ? 'Enabled' : 'Bypassed'}
 					</button>
@@ -81,7 +81,7 @@
 								step="0.01"
 								value={synth.masterGain}
 								disabled={!ready || (!masterOnly && !synth.enabled)}
-								oninput={(event) => synth.setMasterGain(Number(event.currentTarget.value))}
+								oninput={(event) => void synth.setMasterGain(Number(event.currentTarget.value))}
 							/>
 						</label>
 
@@ -100,10 +100,10 @@
 												step="0.01"
 												value={synth.mixGains[index]}
 												disabled={!ready || !synth.enabled}
-												oninput={(event) => synth.setMixGain(index, Number(event.currentTarget.value))}
+												oninput={(event) => void synth.setMixGain(index, Number(event.currentTarget.value))}
 											/>
-											<button class:on={synth.muted[index]} type="button" aria-label={`Mute ${role}`} aria-pressed={synth.muted[index]} disabled={!ready || !synth.enabled} onclick={() => synth.toggleMute(index)}>{synth.muted[index] ? 'M✓' : 'M'}</button>
-											<button class:on={synth.solo === index} type="button" aria-label={`Solo ${role}`} aria-pressed={synth.solo === index} disabled={!ready || !synth.enabled} onclick={() => synth.toggleSolo(index)}>{synth.solo === index ? 'S✓' : 'S'}</button>
+											<button class:on={synth.muted[index]} type="button" aria-label={`Mute ${role}`} aria-pressed={synth.muted[index]} disabled={!ready || !synth.enabled} onclick={() => void synth.toggleMute(index)}>{synth.muted[index] ? 'M✓' : 'M'}</button>
+											<button class:on={synth.solo === index} type="button" aria-label={`Solo ${role}`} aria-pressed={synth.solo === index} disabled={!ready || !synth.enabled} onclick={() => void synth.toggleSolo(index)}>{synth.solo === index ? 'S✓' : 'S'}</button>
 										</div>
 									</div>
 								{/each}

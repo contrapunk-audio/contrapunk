@@ -28,7 +28,7 @@
 	}
 
 	onMount(() => {
-		void refresh();
+		void Promise.all([refresh(), synth.syncFromBackend()]);
 		return adapter.onPluginParamsUpdate(() => void refresh());
 	});
 
