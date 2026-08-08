@@ -52,7 +52,7 @@ class SynthStore {
 				index === role ? previous : current
 			);
 			try { await this.pushMixGain(role); } catch { /* Preserve the original error. */ }
-			this.mixError = `Could not change mix level: ${error}`;
+			this.mixError = `Could not change mix level: ${errorMessage(error)}`;
 			return false;
 		}
 	}
@@ -67,7 +67,7 @@ class SynthStore {
 		} catch (error) {
 			this.muted = previous;
 			try { await this.pushMixGain(role); } catch { /* Preserve the original error. */ }
-			this.mixError = `Could not change mute: ${error}`;
+			this.mixError = `Could not change mute: ${errorMessage(error)}`;
 		}
 	}
 
@@ -81,7 +81,7 @@ class SynthStore {
 		} catch (error) {
 			this.solo = previous;
 			try { await this.pushAllMixGains(); } catch { /* Preserve the original error. */ }
-			this.mixError = `Could not change solo: ${error}`;
+			this.mixError = `Could not change solo: ${errorMessage(error)}`;
 		}
 	}
 
@@ -92,6 +92,10 @@ class SynthStore {
 	private async pushAllMixGains() {
 		for (let role = 0; role < this.mixGains.length; role++) await this.pushMixGain(role);
 	}
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function clamp01(value: number): number {
