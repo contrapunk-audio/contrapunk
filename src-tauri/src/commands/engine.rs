@@ -1305,7 +1305,11 @@ fn run_tauri_router(
         let live_companion_state = companion.lock().unwrap_or_else(|e| e.into_inner()).save();
         let harmony_config_changed = {
             let live = engine.lock().unwrap_or_else(|e| e.into_inner());
-            let replay = loop_engine.lock().unwrap_or_else(|e| e.into_inner());
+            let mut replay = loop_engine.lock().unwrap_or_else(|e| e.into_inner());
+            // Spread changes are next-note parameters: keep existing loop-owned
+            // frames intact and let subsequent replay NoteOns use the new value.
+            replay.set_octave_intensity(live.octave_intensity());
+            replay.set_octave_mode(live.octave_mode());
             !replay.has_same_configuration(&live)
         };
         let companion_config_changed = live_companion_state != applied_companion_state;

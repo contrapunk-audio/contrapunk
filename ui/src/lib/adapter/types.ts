@@ -376,7 +376,7 @@ export interface ContrapunkAdapter {
 	/** Set the octave mode (e.g. "None", "Spread", "Mirror"). */
 	setOctaveMode(mode: string): Promise<void>;
 
-	/** Octave-spread coefficient applied to Spread / Split modes.
+	/** Octave-spread coefficient for subsequent notes in Spread / Split modes.
 	 *  Range [0.0, 1.0]; displacement is quantized to whole octaves. */
 	setOctaveIntensity(amount: number): Promise<void>;
 

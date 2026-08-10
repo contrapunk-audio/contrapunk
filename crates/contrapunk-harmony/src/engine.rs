@@ -545,17 +545,16 @@ impl HarmonyEngine {
         &self.last_port_map
     }
 
-    /// Sets the octave mode.
+    /// Sets the octave mode for subsequent NoteOns.
     ///
-    /// Octave mode transforms harmony note pitches after generation:
+    /// Already-held notes keep their original generated frame so their eventual
+    /// NoteOff remains exact and knob movement cannot retrigger a sounding note.
     /// - None: No change
     /// - Spread: Each voice is +1 octave higher than previous
     /// - BassTrebleSplit: Harmonies below melody go -1 octave, above go +1 octave
     /// - Mirror: Each harmony note is duplicated at +1 and -1 octave (tripling harmony notes)
     pub fn set_octave_mode(&mut self, octave_mode: OctaveMode) {
         self.octave_mode = octave_mode;
-        // Clear note tracking since octave transformations change output
-        self.clear_active_for_reharm();
     }
 
     /// Returns the current voice count.
@@ -776,8 +775,8 @@ impl HarmonyEngine {
         self.clear_active_for_reharm();
     }
 
-    /// Octave-spread coefficient applied to Spread and BassTrebleSplit.
-    /// Range [0.0, 1.0]; displacement is quantized to whole octaves.
+    /// Octave-spread coefficient applied to subsequent NoteOns in Spread and
+    /// BassTrebleSplit. Range [0.0, 1.0]; displacement is quantized to octaves.
     pub fn octave_intensity(&self) -> f32 {
         self.octave_intensity
     }
@@ -788,7 +787,6 @@ impl HarmonyEngine {
             return;
         }
         self.octave_intensity = clamped;
-        self.clear_active_for_reharm();
     }
 
     pub fn set_beat_phase(&mut self, phase: BeatPhase) {
@@ -2153,6 +2151,28 @@ mod tests {
     }
 
     #[test]
+    fn test_spread_changes_apply_to_next_notes_without_retriggering_held_notes() {
+        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 3);
+        let held = engine.harmonize_note_on(Note::C4);
+        assert_eq!(held, [Note::C4, Note::E4, Note::G4]);
+
+        engine.set_octave_intensity(0.6);
+        engine.set_octave_mode(OctaveMode::Spread);
+        assert!(engine.pending_reharm_inputs.is_empty());
+        assert_eq!(engine.harmonize_note_off(Note::C4), held);
+
+        let spread = engine.harmonize_note_on(Note::D4);
+        assert_eq!(spread, [Note::D4, Note::F5, Note::A5]);
+        engine.set_octave_mode(OctaveMode::None);
+        assert!(engine.pending_reharm_inputs.is_empty());
+        assert_eq!(engine.harmonize_note_off(Note::D4), spread);
+        assert_eq!(
+            engine.harmonize_note_on(Note::E4),
+            [Note::E4, Note::G4, Note::B4]
+        );
+    }
+
+    #[test]
     fn test_octave_mode_bass_treble_split() {
         let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::StrictCounterpoint, 2);
         engine.set_octave_mode(OctaveMode::BassTrebleSplit);
@@ -2272,21 +2292,6 @@ mod tests {
         // 3-voice, default voice_position=2 (bass). Arrangement indices: [2, 1, 0]
         // Port map should reflect SATB arrangement positions, not identity.
         assert_eq!(port_map, &[2, 1, 0]);
-    }
-
-    #[test]
-    fn test_octave_mode_clears_note_tracking() {
-        let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 2);
-
-        // Press a note
-        engine.harmonize_note_on(Note::C4);
-
-        // Change octave mode
-        engine.set_octave_mode(OctaveMode::Spread);
-
-        // Note-Off should not find tracked harmony (cleared on octave mode change)
-        let off_result = engine.harmonize_note_off(Note::C4);
-        assert_eq!(off_result, vec![Note::C4]);
     }
 
     // Voice leading integration tests
