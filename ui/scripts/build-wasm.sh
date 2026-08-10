@@ -29,7 +29,8 @@ export class Engine {
   constructor() { console.warn('[contrapunk-wasm] Using stub Engine. Run wasm-pack for real WASM.'); }
   set_key() {} set_mode() {} set_scale_mode() {} set_octave_mode() {}
   set_voice_leading() {} set_interchange() {} set_voice_position() {}
-  harmonize(n) { return [n]; } note_on(n) { return [n]; } note_off(n) { return [n]; }
+  harmonize(n) { return [n]; } note_on(n) { return [n]; } note_on_channel(n) { return [n]; }
+  note_off(n) { return [n]; } note_off_channel(n) { return [n]; }
   get_state() { return { key:'C', mode:'PassThrough', mode_number:1, scale_mode:'Ionian', octave_mode:'None', voice_leading_enabled:false, voice_leading_style:'Free', interchange_enabled:false, borrowing_range:3, voice_position:0, voice_count:2 }; }
   get_note_state() { return { input_notes:[], harmony_notes:[], borrowed_notes:[], chord_name:'', last_borrowed_from:'' }; }
   list_presets() { return []; } load_preset() {} save_preset() {} delete_preset() {}

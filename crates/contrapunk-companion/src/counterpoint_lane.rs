@@ -591,7 +591,7 @@ impl Lane for CounterpointLane {
         if !self.enabled {
             return LaneOutput::default();
         }
-        let now = world.transport.total_beats();
+        let now = world.total_beats();
 
         match ev {
             InputEvent::NoteOn {
@@ -867,7 +867,7 @@ impl Lane for CounterpointLane {
     }
 
     fn tick(&mut self, world: &WorldState) -> LaneOutput {
-        let now = world.transport.total_beats();
+        let now = world.total_beats();
         let mut ops: Vec<DispatchOp> = Vec::new();
 
         // Cleanup queued by disable/species changes must drain even

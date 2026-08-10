@@ -44,8 +44,6 @@ export type HarmonyModeName =
 	| 'PassThrough'
 	| 'DiatonicThirds'
 	| 'DiatonicFourths'
-	| 'RandomBelow'
-	| 'RandomBelowNoSeconds'
 	| 'ContraryMotion'
 	| 'StrictCounterpoint'
 	| 'BarryHarris'
@@ -273,18 +271,6 @@ export const ALL_MODES: {
 		label: 'Parallel Fourths',
 		shortLabel: '4ths',
 		tooltip: 'Adds +3 scale degrees per voice. Multiple voices stack into extended chords.'
-	},
-	{
-		name: 'RandomBelow',
-		label: 'Random Below',
-		shortLabel: 'Rand',
-		tooltip: 'Random diatonic interval (2nd-7th) below the melody'
-	},
-	{
-		name: 'RandomBelowNoSeconds',
-		label: 'Random Below (consonant)',
-		shortLabel: 'Rand-',
-		tooltip: 'Random diatonic interval below, excluding dissonant 2nds'
 	},
 	{
 		name: 'ContraryMotion',
@@ -693,6 +679,22 @@ const SETTINGS_DEFAULTS: PersistedSettings = {
 // Enum validation sets
 const VALID_KEYS = new Set(ALL_KEYS);
 const VALID_MODES = new Set(ALL_MODES.map((m) => m.name));
+
+function migrateLegacyHarmonyMode(value: string): string {
+	if (value === 'RandomBelow' || value === 'random_below') return 'ContraryMotion';
+	if (value === 'RandomBelowNoSeconds' || value === 'random_below_no_seconds') {
+		return 'StrictCounterpoint';
+	}
+	return value;
+}
+
+function parseHarmonyMode(value: unknown): HarmonyModeName {
+	if (typeof value !== 'string') return SETTINGS_DEFAULTS.mode;
+	const migrated = migrateLegacyHarmonyMode(value);
+	return VALID_MODES.has(migrated as HarmonyModeName)
+		? (migrated as HarmonyModeName)
+		: SETTINGS_DEFAULTS.mode;
+}
 const VALID_SCALE_MODES = new Set(SCALE_FAMILIES.flatMap((f) => f.modes.map((m) => m.name)));
 const VALID_OCTAVE_MODES = new Set(OCTAVE_MODES.map((m) => m.name));
 const VALID_VL_STYLES = new Set(VOICE_LEADING_STYLES.map((s) => s.name));
@@ -760,7 +762,7 @@ function loadSettings(): PersistedSettings | null {
 		return {
 			version: SETTINGS_VERSION,
 			key: VALID_KEYS.has(parsed.key) ? parsed.key : SETTINGS_DEFAULTS.key,
-			mode: VALID_MODES.has(parsed.mode) ? parsed.mode : SETTINGS_DEFAULTS.mode,
+			mode: parseHarmonyMode(parsed.mode),
 			scaleMode: VALID_SCALE_MODES.has(parsed.scaleMode)
 				? parsed.scaleMode
 				: SETTINGS_DEFAULTS.scaleMode,
@@ -860,7 +862,10 @@ function loadSettings(): PersistedSettings | null {
 									typeof v.time_ratio === 'number'
 										? Math.max(0.125, Math.min(8, v.time_ratio))
 										: 1.0,
-								harmony_mode: typeof v.harmony_mode === 'string' ? v.harmony_mode : null,
+								harmony_mode:
+									typeof v.harmony_mode === 'string'
+										? migrateLegacyHarmonyMode(v.harmony_mode)
+										: null,
 								reference_voice:
 									typeof v.reference_voice === 'number' ? v.reference_voice : null,
 								voice_count:
@@ -1300,10 +1305,11 @@ class EngineStore {
 	}
 
 	async setMode(newMode: HarmonyModeName) {
+		const mode = parseHarmonyMode(newMode);
 		const prev = this.mode;
-		this.mode = newMode;
+		this.mode = mode;
 		try {
-			await adapter.setMode(newMode);
+			await adapter.setMode(mode);
 			this.persist();
 		} catch (e) {
 			this.mode = prev;
@@ -1858,7 +1864,7 @@ class EngineStore {
 	async syncFromBackend() {
 		const state = await adapter.getEngineState();
 		this.key = state.key as KeyName;
-		this.mode = state.mode as HarmonyModeName;
+		this.mode = parseHarmonyMode(state.mode);
 		this.modeNumber = state.modeNumber;
 		this.scaleMode = state.scaleMode as ScaleModeName;
 		this.octaveMode = state.octaveMode as OctaveModeName;

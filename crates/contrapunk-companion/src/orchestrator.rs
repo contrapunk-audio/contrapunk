@@ -1,7 +1,7 @@
 //! Companion orchestrator — runs Lanes in 3-phase order.
 //!
 //! Owns the `Vec<Box<dyn Lane>>` and the shared `WorldState`. Each
-//! router-loop iteration calls `tick()`, which runs Sense lanes
+//! scheduler iteration calls `tick()`, which runs Sense lanes
 //! (write WorldState), then Mutate lanes (write HarmonyEngine), then
 //! Decide lanes (emit DispatchOps). Each input event triggers
 //! `on_input()`, which dispatches to filter-matching lanes and tells
@@ -13,16 +13,73 @@
 
 #![allow(dead_code)]
 
+use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
 use contrapunk_harmony::HarmonyEngine;
+use contrapunk_transport::Transport;
 
 use super::lane::{EngineMutation, InputEvent, Lane, LanePhase, LaneState, WorldWrite};
 use super::world::WorldState;
 use super::DispatchOp;
+
+/// Musical scheduler grid. Dispatch decisions are evaluated on these fixed
+/// beat boundaries rather than on OS/audio polling boundaries.
+pub const TICK_QUANTUM_BEATS: f64 = 1.0 / 256.0;
+
+/// Cursor shared by adapters that need to interleave multiple Companion
+/// runtimes on the same deterministic beat grid.
+#[derive(Clone, Debug)]
+pub struct BeatTickScheduler {
+    next_slot: u64,
+    transport_revision: u64,
+}
+
+impl BeatTickScheduler {
+    pub fn new(transport: &Transport) -> Self {
+        Self {
+            next_slot: Self::slot_at_or_after(transport.total_beats()),
+            transport_revision: transport.discontinuity_revision(),
+        }
+    }
+
+    fn slot_at_or_after(beat: f64) -> u64 {
+        (beat.max(0.0) / TICK_QUANTUM_BEATS).ceil() as u64
+    }
+
+    pub fn reset(&mut self, transport: &Transport) {
+        self.next_slot = Self::slot_at_or_after(transport.total_beats());
+        self.transport_revision = transport.discontinuity_revision();
+    }
+
+    pub fn due_slots(&mut self, transport: &Transport) -> Range<u64> {
+        if transport.discontinuity_revision() != self.transport_revision {
+            self.reset(transport);
+        }
+
+        let end =
+            ((transport.total_beats().max(0.0) / TICK_QUANTUM_BEATS) + 1e-9).floor() as u64 + 1;
+        if self.next_slot >= end {
+            return 0..0;
+        }
+
+        let start = self.next_slot;
+        self.next_slot = end;
+        start..end
+    }
+
+    pub fn beat(slot: u64) -> f64 {
+        slot as f64 * TICK_QUANTUM_BEATS
+    }
+
+    fn mark_processed(&mut self, beat: f64, transport: &Transport) {
+        self.next_slot = ((beat.max(0.0) / TICK_QUANTUM_BEATS) + 1e-9).floor() as u64 + 1;
+        self.transport_revision = transport.discontinuity_revision();
+    }
+}
 
 /// Result of `Companion::on_input` returned to the input pipeline.
 ///
@@ -74,6 +131,8 @@ pub struct Companion {
     /// the Lane count stays small (<20) so the linear scan cost is
     /// noise.
     pub lanes: Vec<Box<dyn Lane>>,
+
+    scheduler: BeatTickScheduler,
 }
 
 impl Companion {
@@ -81,10 +140,12 @@ impl Companion {
     /// Phase 1.4 callers register no Lanes; later phases append
     /// `LooperLane` etc. via `lanes.push(...)` or a registry helper.
     pub fn new(world: Arc<WorldState>) -> Self {
+        let scheduler = BeatTickScheduler::new(&world.transport);
         Self {
             enabled: AtomicBool::new(false),
             world,
             lanes: Vec::new(),
+            scheduler,
         }
     }
 
@@ -132,10 +193,12 @@ impl Companion {
     /// configuration. This is allocation-free and safe for panic/stop
     /// handling on the processing thread.
     pub fn reset_runtime(&mut self) {
+        self.world.set_logical_beats(None);
         self.world.reset_phrase_runtime();
         for lane in &mut self.lanes {
             lane.reset_runtime();
         }
+        self.scheduler.reset(&self.world.transport);
     }
 
     /// Run one iteration: Sense → Mutate → Decide. Returns the
@@ -145,46 +208,55 @@ impl Companion {
     /// `world.engine_snapshot`) so tests can pass an isolated engine
     /// without standing up a full `WorldState::new` wiring.
     pub fn tick(&mut self, engine: &Mutex<HarmonyEngine>) -> Vec<DispatchOp> {
-        self.world.advance_phrase();
         if !self.enabled.load(Ordering::Acquire) {
+            self.world.advance_phrase();
+            self.scheduler.reset(&self.world.transport);
             return Vec::new();
         }
 
-        // Phase 1: Sense — write WorldState.
-        for lane in self
-            .lanes
-            .iter_mut()
-            .filter(|l| l.phase() == LanePhase::Sense)
-        {
-            let out = lane.tick(&self.world);
-            apply_world_writes(&self.world, out.world_writes);
-        }
+        let slots = self.scheduler.due_slots(&self.world.transport);
+        let mut all_ops = Vec::new();
+        for slot in slots {
+            self.world
+                .set_logical_beats(Some(BeatTickScheduler::beat(slot)));
+            self.world.advance_phrase();
 
-        // Phase 2: Mutate — write HarmonyEngine.
-        for lane in self
-            .lanes
-            .iter_mut()
-            .filter(|l| l.phase() == LanePhase::Mutate)
-        {
-            let out = lane.tick(&self.world);
-            if !out.engine_mutations.is_empty() {
-                let mut e = engine.lock().expect("engine mutex poisoned");
-                for m in out.engine_mutations {
-                    apply_engine_mutation(&mut e, m);
+            // Phase 1: Sense — write WorldState.
+            for lane in self
+                .lanes
+                .iter_mut()
+                .filter(|l| l.phase() == LanePhase::Sense)
+            {
+                let out = lane.tick(&self.world);
+                apply_world_writes(&self.world, out.world_writes);
+            }
+
+            // Phase 2: Mutate — write HarmonyEngine.
+            for lane in self
+                .lanes
+                .iter_mut()
+                .filter(|l| l.phase() == LanePhase::Mutate)
+            {
+                let out = lane.tick(&self.world);
+                if !out.engine_mutations.is_empty() {
+                    let mut e = engine.lock().expect("engine mutex poisoned");
+                    for m in out.engine_mutations {
+                        apply_engine_mutation(&mut e, m);
+                    }
                 }
             }
-        }
 
-        // Phase 3: Decide — emit dispatch ops.
-        let mut all_ops = Vec::new();
-        for lane in self
-            .lanes
-            .iter_mut()
-            .filter(|l| l.phase() == LanePhase::Decide)
-        {
-            let out = lane.tick(&self.world);
-            all_ops.extend(out.ops);
+            // Phase 3: Decide — emit dispatch ops.
+            for lane in self
+                .lanes
+                .iter_mut()
+                .filter(|l| l.phase() == LanePhase::Decide)
+            {
+                let out = lane.tick(&self.world);
+                all_ops.extend(out.ops);
+            }
         }
+        self.world.set_logical_beats(None);
         all_ops
     }
 
@@ -194,13 +266,35 @@ impl Companion {
         &mut self,
         engine: &Mutex<HarmonyEngine>,
     ) -> Vec<(&'static str, u8, DispatchOp)> {
-        self.world.advance_phrase();
         if !self.enabled.load(Ordering::Acquire) {
+            self.world.advance_phrase();
+            self.scheduler.reset(&self.world.transport);
             return Vec::new();
         }
 
-        // Sense + Mutate are identical to `tick`; only Decide
-        // emissions get the lane_id stamp.
+        let slots = self.scheduler.due_slots(&self.world.transport);
+        let mut tagged = Vec::new();
+        for slot in slots {
+            tagged.extend(self.tick_tagged_at(BeatTickScheduler::beat(slot), engine));
+        }
+        tagged
+    }
+
+    /// Run exactly one externally scheduled beat slot. Tauri uses this to
+    /// interleave live and loop Companion runtimes before dispatch.
+    pub fn tick_tagged_at(
+        &mut self,
+        beat: f64,
+        engine: &Mutex<HarmonyEngine>,
+    ) -> Vec<(&'static str, u8, DispatchOp)> {
+        self.world.set_logical_beats(Some(beat));
+        self.world.advance_phrase();
+        if !self.enabled.load(Ordering::Acquire) {
+            self.world.set_logical_beats(None);
+            self.scheduler.mark_processed(beat, &self.world.transport);
+            return Vec::new();
+        }
+
         for lane in self
             .lanes
             .iter_mut()
@@ -234,6 +328,8 @@ impl Companion {
                 tagged.push((lane_id, voice_slot, op));
             }
         }
+        self.world.set_logical_beats(None);
+        self.scheduler.mark_processed(beat, &self.world.transport);
         tagged
     }
 
@@ -283,6 +379,18 @@ impl Companion {
     /// Variant of `on_input` that tags each emitted DispatchOp with
     /// the `lane.type_id()` that produced it. Same role as
     /// `tick_tagged` — surfaces per-lane attribution to the UI.
+    pub fn on_input_tagged_at(
+        &mut self,
+        ev: InputEvent,
+        beat: f64,
+        engine: &Mutex<HarmonyEngine>,
+    ) -> (Vec<(&'static str, u8, DispatchOp)>, bool) {
+        self.world.set_logical_beats(Some(beat));
+        let result = self.on_input_tagged(ev, engine);
+        self.world.set_logical_beats(None);
+        result
+    }
+
     pub fn on_input_tagged(
         &mut self,
         ev: InputEvent,

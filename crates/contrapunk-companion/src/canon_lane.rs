@@ -298,8 +298,6 @@ fn harmony_mode_to_str(m: HarmonyMode) -> &'static str {
         HarmonyMode::PassThrough => "PassThrough",
         HarmonyMode::DiatonicThirds => "DiatonicThirds",
         HarmonyMode::DiatonicFourths => "DiatonicFourths",
-        HarmonyMode::RandomBelow => "RandomBelow",
-        HarmonyMode::RandomBelowNoSeconds => "RandomBelowNoSeconds",
         HarmonyMode::ContraryMotion => "ContraryMotion",
         HarmonyMode::StrictCounterpoint => "StrictCounterpoint",
         HarmonyMode::BarryHarris => "BarryHarris",
@@ -317,8 +315,8 @@ fn harmony_mode_from_str(s: &str) -> Option<HarmonyMode> {
         "PassThrough" => HarmonyMode::PassThrough,
         "DiatonicThirds" => HarmonyMode::DiatonicThirds,
         "DiatonicFourths" => HarmonyMode::DiatonicFourths,
-        "RandomBelow" => HarmonyMode::RandomBelow,
-        "RandomBelowNoSeconds" => HarmonyMode::RandomBelowNoSeconds,
+        "RandomBelow" => HarmonyMode::ContraryMotion,
+        "RandomBelowNoSeconds" => HarmonyMode::StrictCounterpoint,
         "ContraryMotion" => HarmonyMode::ContraryMotion,
         "StrictCounterpoint" => HarmonyMode::StrictCounterpoint,
         "BarryHarris" => HarmonyMode::BarryHarris,
@@ -829,7 +827,7 @@ impl CanonLane {
         if !self.enabled {
             return Vec::new();
         }
-        let now = world.transport.total_beats();
+        let now = world.total_beats();
         let mut ops = Vec::new();
         while let Some(p) = self.pending_on.front() {
             if p.fire_at > now {
@@ -899,7 +897,7 @@ impl Lane for CanonLane {
         if !self.enabled || self.voices.is_empty() {
             return LaneOutput::default();
         }
-        let now = world.transport.total_beats();
+        let now = world.total_beats();
 
         // Phrase-anchor housekeeping: if no anchor yet, or if silence
         // since last input has exceeded PHRASE_SILENCE_THRESHOLD beats,

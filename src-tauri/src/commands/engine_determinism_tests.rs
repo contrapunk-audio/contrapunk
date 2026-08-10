@@ -21,7 +21,8 @@ struct OwnershipSnapshot {
     loop_sources: usize,
     synth_voices: usize,
     midi_slide_voices: usize,
-    phrase: PhrasePhase,
+    live_phrase: PhrasePhase,
+    loop_phrase: PhrasePhase,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,6 +53,8 @@ struct PerformanceHarness {
     loop_engine: Arc<Mutex<HarmonyEngine>>,
     transport: Arc<Transport>,
     companion: crate::companion::Companion,
+    loop_companion: crate::companion::Companion,
+    tick_scheduler: BeatTickScheduler,
     output: OutputRouter,
     midi_slides: MidiSlideRuntime,
     synth_tx: SynthEventSender,
@@ -65,6 +68,8 @@ struct PerformanceHarness {
     counterpoint_notes: Arc<Mutex<NoteCounts>>,
     loop_input_notes: Arc<Mutex<HashSet<u8>>>,
     loop_harmony_notes: Arc<Mutex<HashSet<u8>>>,
+    loop_canon_notes: Arc<Mutex<NoteCounts>>,
+    loop_counterpoint_notes: Arc<Mutex<NoteCounts>>,
     chord_name: Arc<Mutex<String>>,
     output_notes: RoutedNoteCounts,
     loop_output_notes: RoutedNoteCounts,
@@ -164,7 +169,13 @@ impl PerformanceHarness {
 
         let mut state = companion.save();
         state.enabled = rich_companion;
-        companion.restore(state).unwrap();
+        companion.restore(state.clone()).unwrap();
+        let mut loop_companion = crate::state::new_arrangement_companion(
+            Arc::clone(&transport),
+            Arc::clone(&loop_engine),
+        );
+        loop_companion.restore(state).unwrap();
+        let tick_scheduler = BeatTickScheduler::new(&transport);
         let (synth_tx, synth_rx) = elixir::synth_event_channel();
 
         Self {
@@ -172,6 +183,8 @@ impl PerformanceHarness {
             loop_engine,
             transport,
             companion,
+            loop_companion,
+            tick_scheduler,
             output: OutputRouter::new(&[]).unwrap(),
             midi_slides: MidiSlideRuntime::new(0, Arc::new(SlideTelemetry::new())),
             synth_tx,
@@ -185,6 +198,8 @@ impl PerformanceHarness {
             counterpoint_notes: Arc::new(Mutex::new(NoteCounts::new())),
             loop_input_notes: Arc::new(Mutex::new(HashSet::new())),
             loop_harmony_notes: Arc::new(Mutex::new(HashSet::new())),
+            loop_canon_notes: Arc::new(Mutex::new(NoteCounts::new())),
+            loop_counterpoint_notes: Arc::new(Mutex::new(NoteCounts::new())),
             chord_name: Arc::new(Mutex::new(String::new())),
             output_notes: RoutedNoteCounts::new(),
             loop_output_notes: RoutedNoteCounts::new(),
@@ -212,6 +227,18 @@ impl PerformanceHarness {
         tagged: &[(&'static str, u8, crate::companion::DispatchOp)],
         origin: InputOrigin,
     ) {
+        let (harmony_notes, canon_notes, counterpoint_notes) = match origin {
+            InputOrigin::Live => (
+                Arc::clone(&self.harmony_notes),
+                Arc::clone(&self.canon_notes),
+                Arc::clone(&self.counterpoint_notes),
+            ),
+            InputOrigin::Loop => (
+                Arc::clone(&self.loop_harmony_notes),
+                Arc::clone(&self.loop_canon_notes),
+                Arc::clone(&self.loop_counterpoint_notes),
+            ),
+        };
         dispatch_companion_ops(
             tagged,
             self.output.connection_count(),
@@ -219,9 +246,9 @@ impl PerformanceHarness {
             &mut self.output,
             &mut self.midi_slides,
             &self.voice_outputs,
-            &self.harmony_notes,
-            &self.canon_notes,
-            &self.counterpoint_notes,
+            &harmony_notes,
+            &canon_notes,
+            &counterpoint_notes,
             &mut self.output_notes,
             &mut self.loop_output_notes,
             origin,
@@ -276,6 +303,17 @@ impl PerformanceHarness {
 
     fn loop_event(&mut self, event: LoopMidiEvent) {
         self.set_beat_phase();
+        let mut suppress_default = false;
+        if let Some(input) = midi_bytes_to_input_event(&loop_event_bytes(event)) {
+            let (tagged, suppress) = self.loop_companion.on_input_tagged_at(
+                input,
+                self.transport.total_beats(),
+                &self.loop_engine,
+            );
+            self.dispatch_tagged(&tagged, InputOrigin::Loop);
+            suppress_default = suppress;
+        }
+
         match event {
             LoopMidiEvent::Cc64 { value, channel } => set_sustain_ownership(
                 InputOrigin::Loop,
@@ -287,7 +325,7 @@ impl PerformanceHarness {
                 &mut self.output,
                 &mut self.midi_slides,
             ),
-            event => process_loop_midi_event(
+            event if !suppress_default => process_loop_midi_event(
                 event,
                 &self.loop_engine,
                 &mut self.output,
@@ -301,14 +339,20 @@ impl PerformanceHarness {
                 &mut self.loop_source_frames,
                 &self.synth_tx,
             ),
+            _ => {}
         }
         self.drain_synth_events();
     }
 
     fn tick(&mut self) {
         self.set_beat_phase();
-        let tagged = self.companion.tick_tagged(&self.engine);
-        self.dispatch_tagged(&tagged, InputOrigin::Live);
+        for slot in self.tick_scheduler.due_slots(&self.transport) {
+            let beat = BeatTickScheduler::beat(slot);
+            let loop_tagged = self.loop_companion.tick_tagged_at(beat, &self.loop_engine);
+            self.dispatch_tagged(&loop_tagged, InputOrigin::Loop);
+            let live_tagged = self.companion.tick_tagged_at(beat, &self.engine);
+            self.dispatch_tagged(&live_tagged, InputOrigin::Live);
+        }
         self.drain_synth_events();
     }
 
@@ -324,6 +368,8 @@ impl PerformanceHarness {
 
     fn panic(&mut self) {
         self.companion.reset_runtime();
+        self.loop_companion.reset_runtime();
+        self.tick_scheduler.reset(&self.transport);
         cleanup_loop_outputs(
             &mut self.output_notes,
             &mut self.loop_output_notes,
@@ -367,6 +413,14 @@ impl PerformanceHarness {
             .unwrap_or_else(|error| error.into_inner())
             .clear();
         self.loop_harmony_notes
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clear();
+        self.loop_canon_notes
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clear();
+        self.loop_counterpoint_notes
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .clear();
@@ -451,7 +505,8 @@ impl PerformanceHarness {
             loop_sources: self.loop_source_frames.len(),
             synth_voices: self.active_synth_owners.len(),
             midi_slide_voices: self.midi_slides.voices.len(),
-            phrase: self.companion.phrase_snapshot().phase,
+            live_phrase: self.companion.phrase_snapshot().phase,
+            loop_phrase: self.loop_companion.phrase_snapshot().phase,
         }
     }
 
@@ -470,7 +525,13 @@ impl PerformanceHarness {
         assert!(self.counterpoint_notes.lock().unwrap().is_empty());
         assert!(self.loop_input_notes.lock().unwrap().is_empty());
         assert!(self.loop_harmony_notes.lock().unwrap().is_empty());
+        assert!(self.loop_canon_notes.lock().unwrap().is_empty());
+        assert!(self.loop_counterpoint_notes.lock().unwrap().is_empty());
         assert_eq!(self.companion.phrase_snapshot().phase, PhrasePhase::Idle);
+        assert_eq!(
+            self.loop_companion.phrase_snapshot().phase,
+            PhrasePhase::Idle
+        );
         assert!(matches!(
             self.synth_rx.try_recv(),
             Err(mpsc::TryRecvError::Empty)
@@ -632,6 +693,53 @@ fn mpe_same_pitch_releases_the_generated_frame_owned_by_each_channel() {
         releases, attacks,
         "every physical MPE attack needs one release"
     );
+}
+
+#[test]
+fn loop_companion_owns_phrase_and_lane_state_independently_from_live_input() {
+    let mut harness = PerformanceHarness::new(true);
+    assert_eq!(harness.companion.phrase_snapshot().phase, PhrasePhase::Idle);
+    assert_eq!(
+        harness.loop_companion.phrase_snapshot().phase,
+        PhrasePhase::Idle
+    );
+
+    harness.loop_event(LoopMidiEvent::NoteOn {
+        note: 60,
+        velocity: 90,
+        channel: 2,
+    });
+
+    assert_eq!(harness.companion.phrase_snapshot().phase, PhrasePhase::Idle);
+    assert_ne!(
+        harness.loop_companion.phrase_snapshot().phase,
+        PhrasePhase::Idle
+    );
+    harness.panic();
+    harness.assert_clean();
+}
+
+#[test]
+fn external_midi_owners_release_exactly_without_a_connected_device() {
+    let mut harness = PerformanceHarness::new(false);
+    harness
+        .voice_outputs
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .set(VoiceRouteId::Input, VoiceOutputTarget::MidiPort { port: 0 });
+
+    harness.live([0x90, 60, 100]);
+    harness.live([0x91, 60, 90]);
+    harness.live([0x81, 60, 19]);
+    harness.live([0x80, 60, 17]);
+
+    assert!(harness.output_notes.is_empty());
+    assert!(harness.midi_slides.voices.is_empty());
+    assert!(harness
+        .midi_slides
+        .last_bends
+        .values()
+        .all(|bend| *bend == 8_192));
 }
 
 #[test]

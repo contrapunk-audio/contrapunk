@@ -419,9 +419,10 @@ fn parse_harmony_mode(s: &str) -> Result<HarmonyMode, String> {
         "PassThrough" | "pass_through" | "1" => Ok(HarmonyMode::PassThrough),
         "DiatonicThirds" | "diatonic_thirds" | "2" => Ok(HarmonyMode::DiatonicThirds),
         "DiatonicFourths" | "diatonic_fourths" | "3" => Ok(HarmonyMode::DiatonicFourths),
-        "RandomBelow" | "random_below" | "4" => Ok(HarmonyMode::RandomBelow),
+        // Legacy persisted values migrate to deterministic replacements.
+        "RandomBelow" | "random_below" | "4" => Ok(HarmonyMode::ContraryMotion),
         "RandomBelowNoSeconds" | "random_below_no_seconds" | "5" => {
-            Ok(HarmonyMode::RandomBelowNoSeconds)
+            Ok(HarmonyMode::StrictCounterpoint)
         }
         "ContraryMotion" | "contrary_motion" | "6" => Ok(HarmonyMode::ContraryMotion),
         "StrictCounterpoint" | "strict_counterpoint" | "7" => Ok(HarmonyMode::StrictCounterpoint),
@@ -502,6 +503,22 @@ mod tests {
         assert_eq!(value["tuning_style"], "pure");
         assert_eq!(value["tuning_depth"], 0.75);
         assert_eq!(value["harmonic_limit"], "seven");
+    }
+
+    #[test]
+    fn legacy_random_mode_commands_migrate_without_random_output() {
+        for value in ["RandomBelow", "random_below", "4"] {
+            assert_eq!(
+                parse_harmony_mode(value).unwrap(),
+                HarmonyMode::ContraryMotion
+            );
+        }
+        for value in ["RandomBelowNoSeconds", "random_below_no_seconds", "5"] {
+            assert_eq!(
+                parse_harmony_mode(value).unwrap(),
+                HarmonyMode::StrictCounterpoint
+            );
+        }
     }
 
     #[test]

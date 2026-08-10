@@ -899,12 +899,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 
 				if (status === 0x90 && velocity > 0) {
 					try {
-						resultNotes = engine.note_on(note);
+						resultNotes = engine.note_on_channel(note, channel);
 						const voices = self.tunedVoices(resultNotes);
 						for (let i = 0; i < voices.length; i++) {
 							const voice = voices[i];
 							if (outs.length > 0) {
-								outs[i % outs.length].send([0x90, voice.note, velocity]);
+								outs[i % outs.length].send([0x90 | channel, voice.note, velocity]);
 							}
 							// External MIDI remains ordinary note bytes; Contrapunk's
 							// AudioWorklet receives the exact native tuning frequency.
@@ -942,12 +942,12 @@ export class WasmAdapter implements ContrapunkAdapter {
 					}
 				} else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
 					try {
-						resultNotes = engine.note_off(note);
+						resultNotes = engine.note_off_channel(note, channel);
 						const voices = self.tunedVoices(resultNotes);
 						for (let i = 0; i < voices.length; i++) {
 							const voice = voices[i];
 							if (outs.length > 0) {
-								outs[i % outs.length].send([0x80, voice.note, 0]);
+								outs[i % outs.length].send([0x80 | channel, voice.note, 0]);
 							}
 							embedAudio.noteOff(
 								voice.note,

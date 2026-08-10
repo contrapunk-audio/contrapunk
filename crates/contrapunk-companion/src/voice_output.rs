@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 /// Three explicit destinations only — no implicit "defer to global
 /// routing_mode" fallback. Default is `Synth` so users get audio out
 /// of the box without needing to add a MIDI port first.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VoiceOutputTarget {
     /// Send to the internal synth only. Skip external MIDI for this voice.

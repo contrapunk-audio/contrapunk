@@ -116,7 +116,7 @@ fn process_midi(bytes: &[u8], engine: &mut HarmonyEngine, stream: &mut TcpStream
         MidiMessage::NoteOn(channel, note, velocity) => {
             if velocity == wmidi::Velocity::MIN {
                 // Velocity 0 = Note-Off
-                let notes = engine.harmonize_note_off(note);
+                let notes = engine.harmonize_note_off_owned(note, channel.index());
                 for &n in &notes {
                     let msg = MidiMessage::NoteOn(channel, n, velocity);
                     let mut buf = vec![0u8; msg.bytes_size()];
@@ -124,7 +124,7 @@ fn process_midi(bytes: &[u8], engine: &mut HarmonyEngine, stream: &mut TcpStream
                     protocol::write_message(stream, &Message::MidiData(buf))?;
                 }
             } else {
-                let notes = engine.harmonize_note_on(note);
+                let notes = engine.harmonize_note_on_owned(note, channel.index());
                 for &n in &notes {
                     let msg = MidiMessage::NoteOn(channel, n, velocity);
                     let mut buf = vec![0u8; msg.bytes_size()];
@@ -134,7 +134,7 @@ fn process_midi(bytes: &[u8], engine: &mut HarmonyEngine, stream: &mut TcpStream
             }
         }
         MidiMessage::NoteOff(channel, note, velocity) => {
-            let notes = engine.harmonize_note_off(note);
+            let notes = engine.harmonize_note_off_owned(note, channel.index());
             for &n in &notes {
                 let msg = MidiMessage::NoteOff(channel, n, velocity);
                 let mut buf = vec![0u8; msg.bytes_size()];

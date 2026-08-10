@@ -16,7 +16,7 @@ const MIDI_NOTES: usize = 128;
 const MIDI_CHANNELS: usize = 16;
 const MIDI_OWNERS: usize = MIDI_NOTES * MIDI_CHANNELS;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum InputOrigin {
     Live,
     Loop,
@@ -26,6 +26,16 @@ pub enum InputOrigin {
 pub struct OriginMidiEvent {
     pub origin: InputOrigin,
     pub event: LoopMidiEvent,
+    /// Absolute replay time in the looper's fixed microbeat domain.
+    /// Live capture events are untimed here because `capture` receives time.
+    pub scheduled_beat_us: Option<u64>,
+}
+
+impl OriginMidiEvent {
+    pub fn scheduled_beat(self) -> Option<f64> {
+        self.scheduled_beat_us
+            .map(|beat| beat as f64 / MICROBEATS_PER_BEAT as f64)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -545,9 +555,10 @@ impl LooperLane {
         due.sort_by_key(|(at, priority, sequence, _)| (*at, *priority, *sequence));
         self.playback_cursor_us = Some(now);
         due.into_iter()
-            .map(|(_, _, _, event)| OriginMidiEvent {
+            .map(|(at, _, _, event)| OriginMidiEvent {
                 origin: InputOrigin::Loop,
                 event,
+                scheduled_beat_us: Some(at),
             })
             .collect()
     }
@@ -636,6 +647,7 @@ mod tests {
         OriginMidiEvent {
             origin: InputOrigin::Live,
             event,
+            scheduled_beat_us: None,
         }
     }
 
@@ -768,6 +780,7 @@ mod tests {
                     velocity: 1,
                     channel: 9,
                 },
+                scheduled_beat_us: None,
             },
             4.15,
         );
@@ -876,6 +889,13 @@ mod tests {
                     channel: 2,
                 },
             ]
+        );
+        assert_eq!(
+            first
+                .iter()
+                .map(|event| event.scheduled_beat_us)
+                .collect::<Vec<_>>(),
+            vec![Some(8_250_000), Some(8_750_000)]
         );
         assert!(looper.tick(9.0).is_empty());
         assert!(looper.tick(11.9).is_empty());

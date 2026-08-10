@@ -124,19 +124,20 @@ But here's the problem: **no tool exists that generates proper counterpoint in r
 
 Play a note on your MIDI keyboard. Contrapunk generates harmony notes that follow actual voice-leading rules — not just "a third above" but a melodically independent line that avoids parallel fifths, prefers stepwise motion, and maintains voice independence. In real-time. With sub-10ms latency.
 
-## 8 Harmony Modes
+## Deterministic Harmony Modes
 
-**Simple (stateless):**
+**Simple:**
 1. **Pass Through** — No harmony, notes pass unchanged
 2. **Diatonic Thirds** — Adds 2 scale degrees above
 3. **Diatonic Fourths** — Adds 3 scale degrees above
-4. **Random Below** — Random diatonic interval below (musical variety)
-5. **Random No Seconds** — Random below, excluding dissonant 2nds
 
-**Advanced (stateful):**
-6. **Contrary Motion** — Tracks previous melody and harmony, moves harmony OPPOSITE to melody direction. If you go up, the harmony goes down. True independence.
-7. **Strict Counterpoint** — Full voice-leading engine with interval history, contour analysis, and scoring. Avoids repeating the same interval, encourages range expansion, prefers contrary motion.
-8. **Barry Harris** — Moves by 2 scale degrees in the Barry Harris 6th diminished 8-note scale, preserving chord-tone/passing-tone parity.
+**Stateful:**
+4. **Contrary Motion** — Tracks previous melody and harmony, moving harmony opposite to the melody direction.
+5. **Strict Counterpoint** — Uses interval history, contour analysis, and deterministic scoring to encourage independent motion.
+6. **Barry Harris** — Moves by 2 scale degrees in the Barry Harris 6th-diminished scale, preserving chord-tone/passing-tone parity.
+7. **Functional Harmony** — Selects chords from the current tonal context.
+8. **Bach Chorale** — Produces deterministic SATB-style voicing.
+9. **Explicit Intervals** — Applies a user-authored scale-degree interval map.
 
 ## 28 Scale Modes Across 5 Families
 

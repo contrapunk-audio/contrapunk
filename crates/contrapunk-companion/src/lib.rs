@@ -1,7 +1,7 @@
 //! Companion — automated bandmate that plays alongside the user.
 //!
 //! The companion is a state machine that runs `Lane` impls in three
-//! phases each router-loop iteration: Sense lanes write `WorldState`,
+//! phases on each deterministic scheduler beat: Sense lanes write `WorldState`,
 //! Mutate lanes write `HarmonyEngine`, Decide lanes emit `DispatchOp`s.
 //! Six of the nine jam-pipeline weeks (looper, arp, drone, pad, beat
 //! machine, motif transposer) fit cleanly as Lane impls.
@@ -48,7 +48,9 @@ pub use loops::{
     MICROBEATS_PER_BEAT,
 };
 #[allow(unused_imports)]
-pub use orchestrator::{Companion, CompanionInputResult, CompanionState};
+pub use orchestrator::{
+    BeatTickScheduler, Companion, CompanionInputResult, CompanionState, TICK_QUANTUM_BEATS,
+};
 #[allow(unused_imports)]
 pub use world::{ChordQuality, DetectedChord, HeldInput, HeldVoice, WorldState};
 

@@ -46,21 +46,11 @@
 //! ## Mode 3: Diatonic Fourths
 //! Same as thirds but uses 3 scale degrees (perfect 4th in most contexts).
 //!
-//! ## Mode 4: Random Below
-//! Chooses a random diatonic interval from 2nd to 7th below (-1 to -6 degrees).
-//! The random selection happens once per Note-On; the engine tracks this for
-//! consistent Note-Off release.
-//!
-//! ## Mode 5: Random Below No Seconds
-//! Same as Mode 4 but excludes 2nds (which can sound dissonant), using
-//! intervals from 3rd to 7th below (-2 to -6 degrees).
-//!
 //! ## Mode 8: Barry Harris
 //! Moves by exactly 2 scale degrees. In 8-note Barry Harris scales, this
 //! preserves chord-tone/passing-tone parity (even degrees stay even, odd
 //! stay odd). Works with any scale but is musically intended for BH scales.
 
-use rand::RngExt;
 use wmidi::Note;
 
 use crate::Scale;
@@ -103,56 +93,6 @@ pub fn diatonic_thirds(note: Note, scale: &mut Scale) -> Vec<Note> {
 /// If harmony would be out of range, returns only the original note.
 pub fn diatonic_fourths(note: Note, scale: &mut Scale) -> Vec<Note> {
     match scale.harmonize_smart(note, 3, true) {
-        Some(harmony) => vec![note, harmony],
-        None => vec![note],
-    }
-}
-
-/// Mode 4: Random diatonic interval below.
-///
-/// Returns the input note plus a random diatonic interval below
-/// (2nd through 7th below, i.e., -1 to -6 scale degrees).
-///
-/// # Random Selection
-///
-/// The interval is chosen randomly using `rand::thread_rng()`. For consistent
-/// Note-Off handling, the [`super::HarmonyEngine`] tracks which harmony was
-/// produced for each Note-On and replays it for Note-Off.
-///
-/// # Intervals Used
-///
-/// - -1 degree: 2nd below
-/// - -2 degrees: 3rd below
-/// - -3 degrees: 4th below
-/// - -4 degrees: 5th below
-/// - -5 degrees: 6th below
-/// - -6 degrees: 7th below
-pub fn random_below(note: Note, scale: &mut Scale) -> Vec<Note> {
-    let mut rng = rand::rng();
-
-    // Intervals: -1 (2nd below) to -6 (7th below)
-    let intervals = [-1, -2, -3, -4, -5, -6];
-    let interval = intervals[rng.random_range(0..intervals.len())];
-
-    match scale.harmonize_smart(note, interval, false) {
-        Some(harmony) => vec![note, harmony],
-        None => vec![note],
-    }
-}
-
-/// Mode 5: Random diatonic below, excluding seconds.
-///
-/// Like Mode 4, but excludes 2nds (which can sound dissonant).
-/// Returns input plus a random interval from 3rd to 7th below.
-/// For out-of-key notes, uses a consonant chromatic interval instead.
-pub fn random_below_no_seconds(note: Note, scale: &mut Scale) -> Vec<Note> {
-    let mut rng = rand::rng();
-
-    // Intervals: -2 (3rd below) to -6 (7th below), skipping -1 (2nd)
-    let intervals = [-2, -3, -4, -5, -6];
-    let interval = intervals[rng.random_range(0..intervals.len())];
-
-    match scale.harmonize_smart(note, interval, false) {
         Some(harmony) => vec![note, harmony],
         None => vec![note],
     }
@@ -225,44 +165,6 @@ pub fn diatonic_fourths_directed(note: Note, scale: &mut Scale, above: bool) -> 
     }
 }
 
-/// Directed random diatonic interval.
-///
-/// - `above = true`: Random 2nd-7th above (+1 to +6 degrees)
-/// - `above = false`: Random 2nd-7th below (-1 to -6 degrees)
-pub fn random_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
-    let mut rng = rand::rng();
-    let intervals: [i8; 6] = if above {
-        [1, 2, 3, 4, 5, 6]
-    } else {
-        [-1, -2, -3, -4, -5, -6]
-    };
-    let interval = intervals[rng.random_range(0..intervals.len())];
-
-    match harmonize_smart_or_wrap(scale, note, interval, above) {
-        Some(harmony) => vec![note, harmony],
-        None => vec![note],
-    }
-}
-
-/// Directed random diatonic interval, excluding seconds.
-///
-/// - `above = true`: Random 3rd-7th above (+2 to +6 degrees)
-/// - `above = false`: Random 3rd-7th below (-2 to -6 degrees)
-pub fn random_no_seconds_directed(note: Note, scale: &mut Scale, above: bool) -> Vec<Note> {
-    let mut rng = rand::rng();
-    let intervals: [i8; 5] = if above {
-        [2, 3, 4, 5, 6]
-    } else {
-        [-2, -3, -4, -5, -6]
-    };
-    let interval = intervals[rng.random_range(0..intervals.len())];
-
-    match harmonize_smart_or_wrap(scale, note, interval, above) {
-        Some(harmony) => vec![note, harmony],
-        None => vec![note],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,20 +196,5 @@ mod tests {
         // C4 + fourth = F4
         let result = diatonic_fourths(Note::C4, &mut scale);
         assert_eq!(result, vec![Note::C4, Note::F4]);
-    }
-
-    #[test]
-    fn test_random_below_produces_harmony() {
-        let mut scale = Scale::major(0);
-
-        // Should produce 2 notes (original + harmony below)
-        let result = random_below(Note::C5, &mut scale);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0], Note::C5);
-
-        // Harmony should be lower than input
-        let harmony_midi: u8 = result[1].into();
-        let input_midi: u8 = Note::C5.into();
-        assert!(harmony_midi < input_midi);
     }
 }
