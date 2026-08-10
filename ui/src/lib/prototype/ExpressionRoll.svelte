@@ -231,7 +231,7 @@
 		for (const [index, note] of whiteNotes.entries()) {
 			const inScale = engine.inScaleNotes.includes(note);
 			const activeColor = activeKeyColor(note);
-			ctx.fillStyle = activeColor || (inScale ? '#e4f1ee' : '#c9c9cd');
+			ctx.fillStyle = activeColor || (inScale ? '#f4f4f4' : '#c9c9cd');
 			ctx.strokeStyle = '#57575f';
 			ctx.lineWidth = 0.75;
 			ctx.shadowColor = activeColor || 'transparent';
@@ -246,7 +246,7 @@
 			if (!isBlackKey(note)) continue;
 			const inScale = engine.inScaleNotes.includes(note);
 			const activeColor = activeKeyColor(note);
-			ctx.fillStyle = activeColor || (inScale ? '#789e96' : '#17171b');
+			ctx.fillStyle = activeColor || (inScale ? '#050505' : '#2b2b2f');
 			ctx.strokeStyle = '#08080a';
 			ctx.lineWidth = 1;
 			ctx.shadowColor = activeColor || 'transparent';
