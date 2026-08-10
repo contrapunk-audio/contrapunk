@@ -1354,8 +1354,8 @@ class EngineStore {
 		}
 	}
 
-	/** Octave-spread knob coefficient. Range [0,1]. The engine quantizes
-	 *  displacement to whole octaves so spreading preserves pitch class. */
+	/** Octave-spread knob coefficient for subsequent notes. Range [0,1].
+	 *  Whole-octave displacement preserves pitch class and held notes. */
 	async setOctaveIntensity(amount: number) {
 		const clamped = Math.max(0, Math.min(1, amount));
 		this.octaveIntensity = clamped;

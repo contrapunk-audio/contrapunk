@@ -184,15 +184,14 @@ pub fn set_scale_mode(mode: String, state: State<AppState>) -> Result<(), String
     Ok(())
 }
 
-/// Sets the octave mode.
+/// Sets the octave mode for subsequently played notes. Held notes retain their
+/// original generated frame until NoteOff, so no router replay is required.
 #[tauri::command]
 pub fn set_octave_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     let parsed = parse_octave_mode(&mode)?;
-    {
-        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-        engine.set_octave_mode(parsed);
-    }
-    raise_panic(&state);
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.set_octave_mode(parsed);
+    // No raise_panic: active frames are retained until their exact NoteOff.
     Ok(())
 }
 
@@ -345,15 +344,12 @@ pub fn set_routing_mode(mode: String, state: State<AppState>) -> Result<(), Stri
     Ok(())
 }
 
-/// Octave-spread coefficient applied to Spread / Split modes.
-/// Range [0.0, 1.0]; displacement is quantized to whole octaves.
+/// Sets octave spread for subsequently played notes. Held notes are unchanged.
 #[tauri::command]
 pub fn set_octave_intensity(amount: f32, state: State<AppState>) -> Result<(), String> {
-    {
-        let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
-        engine.set_octave_intensity(amount);
-    }
-    raise_panic(&state);
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.set_octave_intensity(amount);
+    // No raise_panic: active frames are retained until their exact NoteOff.
     Ok(())
 }
 

@@ -229,7 +229,7 @@
 				<label><span>VOICES</span><select value={engine.voiceCount} onchange={(event) => engine.setVoiceCount(Number(event.currentTarget.value))}>{#each Array.from({ length: maxVoiceCount }, (_, index) => index + 1) as count}<option value={count}>{count}</option>{/each}</select></label>
 				<label><span>YOUR REGISTER</span><select value={engine.voicePosition} onchange={(event) => engine.setVoicePosition(Number(event.currentTarget.value))}>{#each registerOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
 				<div class="spread-control">
-					<Knob value={spread} min={0} max={1} step={0.01} defaultValue={0} size={44} label="Spread" help="Moves generated harmony voices apart by whole octaves without changing their notes or key." format={(value) => value <= 0.01 ? 'Off' : `${Math.round(value * 100)}%`} onchange={setSpread} />
+					<Knob value={spread} min={0} max={1} step={0.01} defaultValue={0} size={44} label="Spread" help="Moves newly played harmony voices apart by whole octaves without changing their notes or key. Held notes stay unchanged." format={(value) => value <= 0.01 ? 'Off' : `${Math.round(value * 100)}%`} onchange={setSpread} />
 				</div>
 			</section>
 

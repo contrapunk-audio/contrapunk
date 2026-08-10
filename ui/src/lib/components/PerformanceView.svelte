@@ -167,16 +167,14 @@
 		if (s <= 0.01) return 'Tight';
 		return `Wide ${Math.round(s * 100)}%`;
 	}
-	function applySpread(s: number) {
+	async function applySpread(s: number) {
 		spread = s;
 		if (s <= 0.01) {
-			void engine.setOctaveMode('None');
-		} else {
-			// Set mode first so apply_octave_mode hits the Spread branch,
-			// then push the intensity coefficient.
-			void engine.setOctaveMode('Spread');
-			void engine.setOctaveIntensity(s);
+			await engine.setOctaveMode('None');
+			return;
 		}
+		await engine.setOctaveIntensity(s);
+		await engine.setOctaveMode('Spread');
 	}
 
 	// Auto-key handling
@@ -414,6 +412,7 @@
 					step={0.01}
 					size={72}
 					label="Spread"
+					help="Applies whole-octave spacing to newly played harmony notes; held notes stay unchanged."
 					format={spreadLabel}
 					onchange={applySpread}
 				/>
