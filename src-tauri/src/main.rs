@@ -142,6 +142,7 @@ fn main() {
             commands::engine::panic_all_notes_off,
             // Per-voice output routing
             commands::routing::set_voice_output,
+            commands::routing::set_all_voice_outputs_to_synth,
             commands::routing::get_voice_outputs,
             // Guitar audio input
             commands::guitar::set_guitar_device,

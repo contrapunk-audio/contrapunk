@@ -1150,6 +1150,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 		else this._voiceOutputs.set(route, target);
 	}
 
+	async setAllVoiceOutputsToSynth(_enabled: boolean): Promise<void> {}
+
 	async getVoiceOutputs(): Promise<VoiceOutputAssignment[]> {
 		return [...this._voiceOutputs].map(([route, target]) => ({ route, target }));
 	}

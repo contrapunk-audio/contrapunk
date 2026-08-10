@@ -418,6 +418,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		if (target.kind === 'synth') this._voiceOutputs.delete(route);
 		else this._voiceOutputs.set(route, target);
 	}
+	async setAllVoiceOutputsToSynth(_enabled: boolean): Promise<void> {}
 	async getVoiceOutputs(): Promise<VoiceOutputAssignment[]> {
 		return [...this._voiceOutputs].map(([route, target]) => ({ route, target }));
 	}

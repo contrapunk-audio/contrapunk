@@ -560,6 +560,9 @@ export interface ContrapunkAdapter {
 	/** Set one stable musical part's destination. */
 	setVoiceOutput(route: VoiceRouteId, target: VoiceOutputTarget): Promise<void>;
 
+	/** Temporarily send every part to the synth without replacing its saved destination. */
+	setAllVoiceOutputsToSynth(enabled: boolean): Promise<void>;
+
 	/** Return non-default route assignments; omitted routes use the synth. */
 	getVoiceOutputs(): Promise<VoiceOutputAssignment[]>;
 

@@ -112,10 +112,15 @@
 	}
 
 	function routeHasDestination(route: VoiceRouteId): boolean {
-		return midi.getVoiceOutput(route).kind !== 'off';
+		return midi.allVoiceOutputsToSynth || midi.getVoiceOutput(route).kind !== 'off';
 	}
 
 	function routeStatus(row: RouteRow): string {
+		if (midi.allVoiceOutputsToSynth) {
+			return row.active
+				? 'Part active; global destination is Elixir Synth'
+				: 'Part inactive; per-voice route assignment is preserved';
+		}
 		if (!row.active) return 'Part inactive; route assignment is preserved';
 		return routeHasDestination(row.route) ? 'Part active and routed' : 'Part active; destination is Off';
 	}
@@ -134,15 +139,26 @@
 		<div class="routing-section pixel-card">
 			<div class="output-header-row">
 				<span class="section-header font-ui">Per-voice routing</span>
-				<div title="Number of voices the engine generates">
-					<PixelSelect
-						options={voiceCountOptions}
-						value={String(engine.voiceCount)}
-						small={true}
-						onchange={onVoiceCountChange}
-					/>
+				<div class="header-controls">
+					<label class="all-synth-toggle font-ui" title="Temporarily send every part to Elixir without replacing the destinations below">
+						<input
+							type="checkbox"
+							checked={midi.allVoiceOutputsToSynth}
+							onchange={(event) => void midi.setAllVoiceOutputsToSynth(event.currentTarget.checked)}
+						/>
+						<span>All to Synth</span>
+					</label>
+					<div title="Number of voices the engine generates">
+						<PixelSelect
+							options={voiceCountOptions}
+							value={String(engine.voiceCount)}
+							small={true}
+							onchange={onVoiceCountChange}
+						/>
+					</div>
 				</div>
 			</div>
+			{#if midi.error}<p class="routing-error font-ui" role="alert">{midi.error}</p>{/if}
 			<div class="output-slots">
 				{#each routeSections as section (section.label)}
 					<div class="route-group font-code">{section.label}</div>
@@ -158,6 +174,8 @@
 								value={selectedOutput(row.route)}
 								placeholder="None"
 								small={true}
+								disabled={midi.allVoiceOutputsToSynth}
+								help={midi.allVoiceOutputsToSynth ? 'Turn off All to Synth to edit this saved destination' : undefined}
 								onchange={(value) => void handleOutputChange(row.route, value)}
 							/>
 						</div>
@@ -210,6 +228,28 @@
 		justify-content: space-between;
 		gap: 8px;
 		margin-bottom: 6px;
+	}
+
+	.header-controls,
+	.all-synth-toggle {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.all-synth-toggle {
+		color: var(--color-text-secondary);
+		font-size: var(--font-size-xs);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.all-synth-toggle input { accent-color: var(--color-accent-cyan); }
+
+	.routing-error {
+		margin: 4px 0 6px;
+		color: #ff7a91;
+		font-size: var(--font-size-xs);
 	}
 
 	.output-slots {

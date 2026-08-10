@@ -87,15 +87,24 @@ impl VoiceRouteId {
 #[derive(Clone, Debug, Default)]
 pub struct VoiceOutputRoutes {
     targets: HashMap<VoiceRouteId, VoiceOutputTarget>,
+    all_to_synth: bool,
 }
 
 impl VoiceOutputRoutes {
     pub fn get(&self, route: VoiceRouteId) -> VoiceOutputTarget {
+        if self.all_to_synth {
+            VoiceOutputTarget::Synth
+        } else {
+            self.configured_target(route)
+        }
+    }
+
+    fn configured_target(&self, route: VoiceRouteId) -> VoiceOutputTarget {
         self.targets.get(&route).copied().unwrap_or_default()
     }
 
     pub fn set(&mut self, route: VoiceRouteId, target: VoiceOutputTarget) -> bool {
-        if self.get(route) == target {
+        if self.configured_target(route) == target {
             return false;
         }
         if target == VoiceOutputTarget::Synth {
@@ -106,14 +115,24 @@ impl VoiceOutputRoutes {
         true
     }
 
+    pub fn set_all_to_synth(&mut self, enabled: bool) -> bool {
+        if self.all_to_synth == enabled {
+            return false;
+        }
+        self.all_to_synth = enabled;
+        true
+    }
+
     pub fn assignments(&self) -> impl Iterator<Item = (VoiceRouteId, VoiceOutputTarget)> + '_ {
         self.targets.iter().map(|(&route, &target)| (route, target))
     }
 
     pub fn has_external_target(&self) -> bool {
-        self.targets
-            .values()
-            .any(|target| matches!(target, VoiceOutputTarget::MidiPort { .. }))
+        !self.all_to_synth
+            && self
+                .targets
+                .values()
+                .any(|target| matches!(target, VoiceOutputTarget::MidiPort { .. }))
     }
 }
 
