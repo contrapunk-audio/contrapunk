@@ -3668,3 +3668,7 @@ mod tests {
         assert_eq!(payload.midi_note, 0);
     }
 }
+
+#[cfg(test)]
+#[path = "engine_determinism_tests.rs"]
+mod deterministic_performance_tests;
