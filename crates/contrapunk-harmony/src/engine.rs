@@ -1612,7 +1612,9 @@ impl HarmonyEngine {
     fn clear_active_for_reharm(&mut self) {
         let mut held = Vec::new();
         for (&key, frames) in &self.active_notes {
-            held.extend(std::iter::repeat((key.source, key.note)).take(frames.len()));
+            for _ in frames {
+                held.push((key.source, key.note));
+            }
         }
         held.sort_unstable_by_key(|(source, note)| (*note, *source));
         self.pending_reharm_inputs.extend(held);
