@@ -17,6 +17,7 @@ import { MAX_VOICES } from '$lib/adapter/types';
 
 const MIDI_SETTINGS_KEY = 'contrapunk-midi';
 const VOICE_OUTPUTS_KEY = 'contrapunk-voice-outputs';
+const VOICE_OUTPUT_OVERRIDE_KEY = 'contrapunk-all-voice-outputs-to-synth';
 const MIDI_PERMISSION_KEY = 'contrapunk-midi-permission';
 
 interface MidiSettings {
@@ -54,13 +55,19 @@ function readTarget(
 	return Number.isInteger(deviceIndex) ? { kind: 'midi_port', port: deviceIndex } : null;
 }
 
+function browserStorage(): Storage | null {
+	return typeof localStorage === 'undefined' ? null : localStorage;
+}
+
 function loadVoiceOutputs(
 	outputs: MidiDevice[],
 	selectedOutputs: number[],
 	voicePosition: number
 ): LoadedVoiceOutputs | null {
+	const storage = browserStorage();
+	if (!storage) return null;
 	try {
-		const raw = localStorage.getItem(VOICE_OUTPUTS_KEY);
+		const raw = storage.getItem(VOICE_OUTPUTS_KEY);
 		if (!raw) return null;
 		const parsed: unknown = JSON.parse(raw);
 		const routes: VoiceOutputMap = {};
@@ -85,12 +92,15 @@ function loadVoiceOutputs(
 			if (isVoiceRouteId(route) && target && target.kind !== 'synth') routes[route] = target;
 		}
 		return { routes, migrated: !currentVersion };
-	} catch {
+	} catch (error) {
+		console.warn('[contrapunk] Could not load saved voice outputs:', error);
 		return null;
 	}
 }
 
 function saveVoiceOutputs(targets: VoiceOutputMap, outputs: MidiDevice[]) {
+	const storage = browserStorage();
+	if (!storage) return;
 	const routes: StoredVoiceOutputs['routes'] = {};
 	for (const [route, target] of Object.entries(targets)) {
 		if (!isVoiceRouteId(route) || !target || target.kind === 'synth') continue;
@@ -102,50 +112,81 @@ function saveVoiceOutputs(targets: VoiceOutputMap, outputs: MidiDevice[]) {
 		if (device) routes[route] = { kind: 'midi_port', deviceName: device.name };
 	}
 	try {
-		localStorage.setItem(
+		storage.setItem(
 			VOICE_OUTPUTS_KEY,
 			JSON.stringify({ version: 2, routes } satisfies StoredVoiceOutputs)
 		);
-	} catch {
-		// localStorage unavailable
+	} catch (error) {
+		console.warn('[contrapunk] Could not save voice outputs:', error);
+	}
+}
+
+function loadAllVoiceOutputsToSynth(): boolean {
+	const storage = browserStorage();
+	if (!storage) return false;
+	try {
+		return storage.getItem(VOICE_OUTPUT_OVERRIDE_KEY) === 'true';
+	} catch (error) {
+		console.warn('[contrapunk] Could not load the global voice-output override:', error);
+		return false;
+	}
+}
+
+function saveAllVoiceOutputsToSynth(enabled: boolean) {
+	const storage = browserStorage();
+	if (!storage) return;
+	try {
+		storage.setItem(VOICE_OUTPUT_OVERRIDE_KEY, String(enabled));
+	} catch (error) {
+		console.warn('[contrapunk] Could not save the global voice-output override:', error);
 	}
 }
 
 function loadMidiSettings(): MidiSettings | null {
+	const storage = browserStorage();
+	if (!storage) return null;
 	try {
-		const raw = localStorage.getItem(MIDI_SETTINGS_KEY);
+		const raw = storage.getItem(MIDI_SETTINGS_KEY);
 		if (!raw) return null;
 		return JSON.parse(raw);
-	} catch {
+	} catch (error) {
+		console.warn('[contrapunk] Could not load MIDI settings:', error);
 		return null;
 	}
 }
 
 function saveMidiSettings(settings: MidiSettings) {
+	const storage = browserStorage();
+	if (!storage) return;
 	try {
-		localStorage.setItem(MIDI_SETTINGS_KEY, JSON.stringify(settings));
-	} catch {
-		// localStorage unavailable
+		storage.setItem(MIDI_SETTINGS_KEY, JSON.stringify(settings));
+	} catch (error) {
+		console.warn('[contrapunk] Could not save MIDI settings:', error);
 	}
 }
 
 function loadPermissionState(): MidiPermissionState | null {
+	const storage = browserStorage();
+	if (!storage) return null;
 	try {
-		const raw = localStorage.getItem(MIDI_PERMISSION_KEY);
+		const raw = storage.getItem(MIDI_PERMISSION_KEY);
 		if (raw === 'granted' || raw === 'denied' || raw === 'idle' || raw === 'unsupported') {
 			return raw;
 		}
 		return null;
-	} catch {
+	} catch (error) {
+		console.warn('[contrapunk] Could not load MIDI permission state:', error);
 		return null;
 	}
 }
 
 function savePermissionState(state: MidiPermissionState) {
+	const storage = browserStorage();
+	if (!storage) return;
 	try {
-		localStorage.setItem(MIDI_PERMISSION_KEY, state);
-	} catch {
-		// localStorage unavailable
+		storage.setItem(MIDI_PERMISSION_KEY, state);
+	} catch (error) {
+		console.warn('[contrapunk] Could not save MIDI permission state:', error);
 	}
 }
 
@@ -176,6 +217,7 @@ class MidiStore {
 	// -- Stable musical-part output routing --
 	// Missing entries mean Synth, so first run produces audio without setup.
 	voiceOutputs = $state<VoiceOutputMap>({});
+	allVoiceOutputsToSynth = $state(loadAllVoiceOutputsToSynth());
 
 	// -- Loading / error state --
 	isLoading = $state(false);
@@ -395,6 +437,23 @@ class MidiStore {
 		}
 	}
 
+	/** Temporarily override every route with the synth while preserving per-part choices. */
+	async setAllVoiceOutputsToSynth(enabled: boolean) {
+		if (enabled === this.allVoiceOutputsToSynth) return;
+		const previous = this.allVoiceOutputsToSynth;
+		this.allVoiceOutputsToSynth = enabled;
+		saveAllVoiceOutputsToSynth(enabled);
+		try {
+			await adapter.setAllVoiceOutputsToSynth(enabled);
+			this.error = null;
+		} catch (error) {
+			this.allVoiceOutputsToSynth = previous;
+			saveAllVoiceOutputsToSynth(previous);
+			this.error = `Failed to change global voice output: ${error}`;
+			throw error;
+		}
+	}
+
 	/** Hydrate stable routes after device-name restoration, migrating old slot-based settings. */
 	async hydrateVoiceOutputs(voicePosition: number) {
 		if (!adapter.capabilities.perVoicePortRouting) return;
@@ -414,16 +473,17 @@ class MidiStore {
 					target ? [adapter.setVoiceOutput(route as VoiceRouteId, target)] : []
 				)
 			);
-			return;
+		} else {
+			try {
+				const current = await adapter.getVoiceOutputs();
+				this.voiceOutputs = Object.fromEntries(
+					current.map(({ route, target }) => [route, target])
+				) as VoiceOutputMap;
+			} catch (error) {
+				console.warn('[contrapunk] Could not hydrate voice outputs from the adapter:', error);
+			}
 		}
-		try {
-			const current = await adapter.getVoiceOutputs();
-			this.voiceOutputs = Object.fromEntries(
-				current.map(({ route, target }) => [route, target])
-			) as VoiceOutputMap;
-		} catch {
-			// Adapter may be stubbed (browser / plugin host).
-		}
+		await adapter.setAllVoiceOutputsToSynth(this.allVoiceOutputsToSynth);
 	}
 
 	/**

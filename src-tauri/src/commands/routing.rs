@@ -36,6 +36,21 @@ pub fn set_voice_output(
     Ok(())
 }
 
+/// Temporarily send every part to the internal synth without replacing the
+/// user's per-part assignments.
+#[tauri::command]
+pub fn set_all_voice_outputs_to_synth(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    let changed = state
+        .voice_outputs
+        .lock()
+        .map_err(|e| e.to_string())?
+        .set_all_to_synth(enabled);
+    if changed {
+        state.route_change_pending.store(true, Ordering::Release);
+    }
+    Ok(())
+}
+
 /// Return only non-default assignments. Missing routes resolve to Synth.
 #[tauri::command]
 pub fn get_voice_outputs(state: State<AppState>) -> Result<Vec<VoiceOutputAssignment>, String> {
@@ -102,6 +117,25 @@ mod tests {
         assert!(!routes.set(canon, VoiceOutputTarget::MidiPort { port: 2 }));
         assert!(routes.set(canon, VoiceOutputTarget::Synth));
         assert_eq!(routes.get(canon), VoiceOutputTarget::Synth);
+    }
+
+    #[test]
+    fn all_synth_override_preserves_user_assignments() {
+        let mut routes = crate::state::VoiceOutputRoutes::default();
+        let input = VoiceRouteId::Input;
+        let canon = VoiceRouteId::Canon { voice: 0 };
+        routes.set(input, VoiceOutputTarget::MidiPort { port: 2 });
+        routes.set(canon, VoiceOutputTarget::Off);
+
+        assert!(routes.set_all_to_synth(true));
+        assert_eq!(routes.get(input), VoiceOutputTarget::Synth);
+        assert_eq!(routes.get(canon), VoiceOutputTarget::Synth);
+        assert!(!routes.has_external_target());
+
+        assert!(routes.set_all_to_synth(false));
+        assert_eq!(routes.get(input), VoiceOutputTarget::MidiPort { port: 2 });
+        assert_eq!(routes.get(canon), VoiceOutputTarget::Off);
+        assert!(routes.has_external_target());
     }
 
     #[test]

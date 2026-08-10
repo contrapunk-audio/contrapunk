@@ -656,6 +656,14 @@ export class TauriAdapter implements ContrapunkAdapter {
 		}
 	}
 
+	async setAllVoiceOutputsToSynth(enabled: boolean): Promise<void> {
+		try {
+			await invoke('set_all_voice_outputs_to_synth', { enabled });
+		} catch (e) {
+			throw new Error(`Failed to change global voice output: ${e}`);
+		}
+	}
+
 	async getVoiceOutputs(): Promise<VoiceOutputAssignment[]> {
 		try {
 			return (await invoke('get_voice_outputs')) as VoiceOutputAssignment[];
