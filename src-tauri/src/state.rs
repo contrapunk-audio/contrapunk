@@ -3,8 +3,8 @@
 //! AppState is registered with Tauri's managed state system and accessed
 //! via `State<AppState>` in command handlers.
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicI32};
+use std::collections::{BTreeSet, HashMap};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
@@ -115,6 +115,10 @@ impl VoiceOutputRoutes {
         true
     }
 
+    pub fn all_to_synth(&self) -> bool {
+        self.all_to_synth
+    }
+
     pub fn set_all_to_synth(&mut self, enabled: bool) -> bool {
         if self.all_to_synth == enabled {
             return false;
@@ -139,6 +143,37 @@ impl VoiceOutputRoutes {
                 .targets
                 .values()
                 .any(|target| matches!(target, VoiceOutputTarget::MidiPort { .. }))
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PendingRouteChanges {
+    all: bool,
+    routes: BTreeSet<VoiceRouteId>,
+}
+
+impl PendingRouteChanges {
+    pub fn mark_route(&mut self, route: VoiceRouteId) {
+        if !self.all {
+            self.routes.insert(route);
+        }
+    }
+
+    pub fn mark_all(&mut self) {
+        self.all = true;
+        self.routes.clear();
+    }
+
+    pub fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
+
+    pub fn all(&self) -> bool {
+        self.all
+    }
+
+    pub fn routes(&self) -> impl Iterator<Item = VoiceRouteId> + '_ {
+        self.routes.iter().copied()
     }
 }
 
@@ -219,7 +254,11 @@ pub struct AppState {
     /// Raised after a routing destination changes. The router drains sounding
     /// notes before using the new table, so a held note cannot be stranded on
     /// its old synth or MIDI port.
-    pub route_change_pending: Arc<AtomicBool>,
+    pub route_changes: Arc<Mutex<PendingRouteChanges>>,
+
+    /// Incremented by the deterministic performance reset command. The router
+    /// observes the revision and rebuilds its loop-owned runtime histories.
+    pub performance_reset_revision: Arc<AtomicU64>,
 
     /// Global detune in cents. Read by the router thread each frame (lock-free).
     /// Updated by the `set_detune` command.
@@ -340,7 +379,8 @@ impl Default for AppState {
             stop_signal: Mutex::new(None),
             router_tx: Mutex::new(None),
             panic_pending: Arc::new(AtomicBool::new(false)),
-            route_change_pending: Arc::new(AtomicBool::new(false)),
+            route_changes: Arc::new(Mutex::new(PendingRouteChanges::default())),
+            performance_reset_revision: Arc::new(AtomicU64::new(0)),
             detune_cents: Arc::new(AtomicI32::new(0)),
             // Placeholder sample rate; audio_clock::start() corrects it
             // to the actual cpal device rate at app launch.

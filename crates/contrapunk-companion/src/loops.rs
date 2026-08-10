@@ -38,7 +38,8 @@ impl OriginMidiEvent {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum LoopMidiEvent {
     NoteOn { note: u8, velocity: u8, channel: u8 },
     NoteOff { note: u8, velocity: u8, channel: u8 },
@@ -67,14 +68,14 @@ impl LoopMidiEvent {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct LoopEvent {
     /// Offset from loop start. Ordinary events are in `[0, length)`.
     pub beat_offset_us: u64,
     pub event: LoopMidiEvent,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct LoopBuffer {
     pub length_beats_us: u64,
     pub recorded_beats_per_bar_us: u64,

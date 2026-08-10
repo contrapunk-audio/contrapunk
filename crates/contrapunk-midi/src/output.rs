@@ -6,6 +6,12 @@
 use anyhow::{anyhow, Result};
 use midir::{MidiOutput, MidiOutputConnection};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MidiWireEvent {
+    pub device_port: usize,
+    pub message: Vec<u8>,
+}
+
 /// Manages multiple MIDI output connections for message routing.
 ///
 /// `OutputRouter` holds connections to multiple MIDI output ports and
@@ -16,6 +22,8 @@ pub struct OutputRouter {
     connections: Vec<MidiOutputConnection>,
     /// Port indices for reference
     port_indices: Vec<usize>,
+    /// Optional adapter-boundary wire capture used by deterministic diagnostics.
+    trace: Option<Vec<MidiWireEvent>>,
 }
 
 impl OutputRouter {
@@ -71,7 +79,22 @@ impl OutputRouter {
         Ok(Self {
             connections,
             port_indices: port_indices.to_vec(),
+            trace: None,
         })
+    }
+
+    /// Construct a no-hardware router that records the exact bytes each stable
+    /// device port would receive.
+    pub fn recording(port_indices: &[usize]) -> Self {
+        Self {
+            connections: Vec::new(),
+            port_indices: port_indices.to_vec(),
+            trace: Some(Vec::new()),
+        }
+    }
+
+    pub fn take_trace(&mut self) -> Vec<MidiWireEvent> {
+        self.trace.as_mut().map(std::mem::take).unwrap_or_default()
     }
 
     /// Sends a MIDI message to the first connected output port.
@@ -88,6 +111,9 @@ impl OutputRouter {
     /// Returns `Ok(())` if the message was sent successfully, or an error
     /// if no connections exist or the send failed.
     pub fn send_to_first(&mut self, message: &[u8]) -> Result<()> {
+        if self.trace.is_some() {
+            return self.send_to_port(0, message);
+        }
         if let Some(conn) = self.connections.first_mut() {
             conn.send(message)
                 .map_err(|e| anyhow!("Failed to send MIDI message: {:?}", e))?;
@@ -119,6 +145,12 @@ impl OutputRouter {
     /// Returns `Ok(())` if the message was sent to all ports successfully.
     /// Returns an error containing details of any failed sends.
     pub fn send_to_all(&mut self, message: &[u8]) -> Result<()> {
+        if self.trace.is_some() {
+            for index in 0..self.port_indices.len() {
+                self.send_to_port(index, message)?;
+            }
+            return Ok(());
+        }
         let mut errors = Vec::new();
 
         for (i, conn) in self.connections.iter_mut().enumerate() {
@@ -146,7 +178,7 @@ impl OutputRouter {
 
     /// Returns the number of connected output ports.
     pub fn connection_count(&self) -> usize {
-        self.connections.len()
+        self.port_indices.len()
     }
 
     /// Original system MIDI port indices represented by the connection pool.
@@ -177,6 +209,20 @@ impl OutputRouter {
     /// Returns `Ok(())` if the message was sent successfully, or an error
     /// if the port index is out of range or the send failed.
     pub fn send_to_port(&mut self, port_index: usize, message: &[u8]) -> Result<()> {
+        if let Some(trace) = self.trace.as_mut() {
+            let device_port = *self.port_indices.get(port_index).ok_or_else(|| {
+                anyhow!(
+                    "Port index {} out of range (have {} ports)",
+                    port_index,
+                    self.port_indices.len()
+                )
+            })?;
+            trace.push(MidiWireEvent {
+                device_port,
+                message: message.to_vec(),
+            });
+            return Ok(());
+        }
         if let Some(conn) = self.connections.get_mut(port_index) {
             conn.send(message)
                 .map_err(|e| anyhow!("Failed to send to port {}: {:?}", port_index, e))?;
@@ -199,11 +245,44 @@ fn connection_index(port_indices: &[usize], device_port_index: usize) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use super::connection_index;
+    use super::{connection_index, MidiWireEvent, OutputRouter};
 
     #[test]
     fn device_port_identity_survives_connection_reordering() {
         assert_eq!(connection_index(&[8, 4, 6], 4), Some(1));
         assert_eq!(connection_index(&[6, 8], 4), None);
+    }
+
+    #[test]
+    fn recording_router_reports_unavailable_device_instead_of_falling_back() {
+        let mut router = OutputRouter::recording(&[8]);
+        let error = router.send_to_device_port(4, &[0x90, 60, 100]).unwrap_err();
+        assert!(error.to_string().contains("not connected"));
+        assert!(router.take_trace().is_empty());
+    }
+
+    #[test]
+    fn recording_router_captures_stable_device_ports_and_exact_bytes() {
+        let mut router = OutputRouter::recording(&[8, 4]);
+        router.send_to_device_port(4, &[0x91, 60, 99]).unwrap();
+        router.send_to_all(&[0xb0, 64, 0]).unwrap();
+
+        assert_eq!(
+            router.take_trace(),
+            [
+                MidiWireEvent {
+                    device_port: 4,
+                    message: vec![0x91, 60, 99],
+                },
+                MidiWireEvent {
+                    device_port: 8,
+                    message: vec![0xb0, 64, 0],
+                },
+                MidiWireEvent {
+                    device_port: 4,
+                    message: vec![0xb0, 64, 0],
+                },
+            ]
+        );
     }
 }

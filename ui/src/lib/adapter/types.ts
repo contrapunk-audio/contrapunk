@@ -330,6 +330,8 @@ export interface AdapterCapabilities {
 	roleMix: boolean;
 	/** Whether Contrapunk-owned audio accepts exact Adaptive Pure frequencies. */
 	nativeTuning: boolean;
+	/** Whether one command can restore a clean, beat-zero performance runtime. */
+	performanceReset: boolean;
 	/** Whether the surface supports loading + saving the per-string
 	 *  calibration profile to disk and applying it to the live guitar
 	 *  pipeline. Tauri only for v1 — uses `app_data_dir()`. WASM /
@@ -574,6 +576,7 @@ export interface ContrapunkAdapter {
 	getPluginSynthEnabled(): Promise<boolean>;
 	setPluginSynthEnabled(enabled: boolean): Promise<void>;
 	panicAllNotesOff(): Promise<void>;
+	resetPerformance(): Promise<void>;
 	/** Subscribe to DAW/plugin parameter changes (automation, controller assignments). */
 	onPluginParamsUpdate(callback: () => void): () => void;
 

@@ -29,6 +29,9 @@ use super::DispatchOp;
 /// Musical scheduler grid. Dispatch decisions are evaluated on these fixed
 /// beat boundaries rather than on OS/audio polling boundaries.
 pub const TICK_QUANTUM_BEATS: f64 = 1.0 / 256.0;
+/// Hard ceiling for one adapter callback. Backlog remains queued and is
+/// drained over later calls instead of creating an unbounded real-time spike.
+pub const MAX_TICK_SLOTS_PER_CALL: u64 = 256;
 
 /// Cursor shared by adapters that need to interleave multiple Companion
 /// runtimes on the same deterministic beat grid.
@@ -67,8 +70,9 @@ impl BeatTickScheduler {
         }
 
         let start = self.next_slot;
-        self.next_slot = end;
-        start..end
+        let bounded_end = end.min(start.saturating_add(MAX_TICK_SLOTS_PER_CALL));
+        self.next_slot = bounded_end;
+        start..bounded_end
     }
 
     pub fn beat(slot: u64) -> f64 {
@@ -553,6 +557,28 @@ mod tests {
     use contrapunk_harmony::{HarmonyMode, Key};
     use contrapunk_transport::Transport;
     use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn scheduler_bounds_each_catch_up_without_dropping_backlog() {
+        let transport = Transport::new(48_000);
+        transport.play();
+        let mut scheduler = BeatTickScheduler::new(&transport);
+        let _ = transport.advance(48_000 * 4);
+
+        let mut slots = Vec::new();
+        loop {
+            let due = scheduler.due_slots(&transport);
+            if due.is_empty() {
+                break;
+            }
+            assert!(due.end - due.start <= MAX_TICK_SLOTS_PER_CALL);
+            slots.extend(due);
+        }
+
+        assert_eq!(slots.first(), Some(&0));
+        assert_eq!(slots.last(), Some(&2048));
+        assert!(slots.windows(2).all(|pair| pair[1] == pair[0] + 1));
+    }
 
     /// Generic test Lane. Records every tick and on_input call into a
     /// shared trace and emits the configured output. Lets tests

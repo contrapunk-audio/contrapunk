@@ -157,6 +157,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		// Elixir AudioWorklet exposes the same four role buses as native.
 		roleMix: true,
 		nativeTuning: true,
+		performanceReset: false,
 		// No persistence layer for the calibration profile on web yet
 		// — hide the Calibrate button + status badge.
 		calibrationFlow: false
@@ -1179,8 +1180,8 @@ export class WasmAdapter implements ContrapunkAdapter {
 			try {
 				output.send([0xb0, 120, 0]);
 				output.send([0xb0, 123, 0]);
-			} catch {
-				/* disconnected output */
+			} catch (error) {
+				console.warn('[contrapunk] Could not panic a disconnected Web MIDI output:', error);
 			}
 		}
 		embedAudio.allNotesOff();
@@ -1188,9 +1189,13 @@ export class WasmAdapter implements ContrapunkAdapter {
 		try {
 			engine?.clear_notes?.();
 			companion?.reset_runtime?.();
-		} catch {
-			/* backend may not be initialized */
+		} catch (error) {
+			console.warn('[contrapunk] Could not reset the WASM performance runtime:', error);
 		}
+	}
+
+	async resetPerformance(): Promise<void> {
+		throw new Error('Performance Reset is not available in the browser yet');
 	}
 
 	onPluginParamsUpdate(_callback: () => void): () => void {

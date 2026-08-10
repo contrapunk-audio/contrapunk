@@ -144,6 +144,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		pluginMidiOutputMode: false,
 		roleMix: true,
 		nativeTuning: true,
+		performanceReset: true,
 		// Calibration profile persists to app_data_dir() and applies on
 		// next routing start via GuitarBridge -> GuitarInput.
 		calibrationFlow: true
@@ -166,8 +167,8 @@ export class TauriAdapter implements ContrapunkAdapter {
 		if (this._beatUpdateUnsub) {
 			try {
 				this._beatUpdateUnsub();
-			} catch {
-				// best-effort
+			} catch (error) {
+				console.warn('[contrapunk] Could not remove the previous beat listener:', error);
 			}
 			this._beatUpdateUnsub = null;
 		}
@@ -692,6 +693,10 @@ export class TauriAdapter implements ContrapunkAdapter {
 
 	async panicAllNotesOff(): Promise<void> {
 		await invoke('panic_all_notes_off');
+	}
+
+	async resetPerformance(): Promise<void> {
+		await invoke('reset_performance');
 	}
 
 	onPluginParamsUpdate(_callback: () => void): () => void {

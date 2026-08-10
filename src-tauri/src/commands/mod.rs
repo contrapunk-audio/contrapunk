@@ -6,6 +6,7 @@
 pub mod chain;
 pub mod companion;
 pub mod debug;
+pub mod determinism;
 pub mod engine;
 pub mod fx;
 pub mod guitar;

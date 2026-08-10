@@ -96,6 +96,7 @@ export class PluginAdapter implements ContrapunkAdapter {
 		// The internal Elixir monitor exposes all four role gain buses.
 		roleMix: true,
 		nativeTuning: true,
+		performanceReset: false,
 		// Plugin guitar path runs through the DAW; calibration profile
 		// persistence isn't wired (would need host file access).
 		calibrationFlow: false
@@ -454,6 +455,10 @@ export class PluginAdapter implements ContrapunkAdapter {
 
 	async panicAllNotesOff(): Promise<void> {
 		this.send('panic', true);
+	}
+
+	async resetPerformance(): Promise<void> {
+		throw new Error('Performance Reset is owned by the DAW in plugin mode');
 	}
 
 	onPluginParamsUpdate(callback: () => void): () => void {
