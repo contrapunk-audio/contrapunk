@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "posthog-js": "^1.409.0",
+    "posthog-js": "^1.413.3",
     "vexflow": "^5.0.0"
   },
   "type": "module"
