@@ -132,11 +132,14 @@ impl RoutedNoteCounts {
         released
     }
 
-    fn remove_note(&mut self, note: u8) -> Vec<RoutedNoteKey> {
+    fn remove_harmony_note(&mut self, note: u8) -> Vec<RoutedNoteKey> {
         let mut owners: Vec<_> = self
             .routes
             .iter()
-            .filter_map(|(&(route, key), &count)| (key.2 == note).then_some((route, key, count)))
+            .filter_map(|(&(route, key), &count)| {
+                (key.2 == note && matches!(route, VoiceRouteId::Harmony { .. }))
+                    .then_some((route, key, count))
+            })
             .collect();
         owners.sort_unstable_by_key(|(route, key, _)| (*route, *key));
         let mut released = Vec::new();
@@ -1559,8 +1562,8 @@ fn run_tauri_router(
             // Release only the exact destinations that owned each stale note.
             let num_ports = output_router.connection_count();
             for n in &to_release {
-                loop_output_notes.remove_note(*n);
-                for key in companion_output_notes.remove_note(*n) {
+                loop_output_notes.remove_harmony_note(*n);
+                for key in companion_output_notes.remove_harmony_note(*n) {
                     release_routed_key(
                         key,
                         num_ports,
@@ -2315,8 +2318,8 @@ fn handle_note_on(
     if !stale_releases.is_empty() {
         for &n in &stale_releases {
             let note = u8::from(n);
-            loop_output_notes.remove_note(note);
-            for key in output_notes.remove_note(note) {
+            loop_output_notes.remove_harmony_note(note);
+            for key in output_notes.remove_harmony_note(note) {
                 release_routed_key(key, num_outputs, synth_tx, output, midi_slides);
             }
         }
@@ -3351,6 +3354,19 @@ mod tests {
         assert!(!count_routed_note_on(&mut notes, route, second));
         assert!(!count_routed_note_off(&mut notes, route, first));
         assert!(count_routed_note_off(&mut notes, route, second));
+    }
+
+    #[test]
+    fn stale_harmony_release_never_steals_equal_input_pitch() {
+        let mut notes = RoutedNoteCounts::new();
+        let input_key = routed_note_key(VoiceOutputTarget::Synth, 0, 60, MIX_INPUT, 0);
+        let harmony_key = routed_note_key(VoiceOutputTarget::Synth, 0, 60, MIX_HARMONY, 1);
+        notes.note_on(VoiceRouteId::Input, input_key);
+        notes.note_on(VoiceRouteId::Harmony { slot: 1 }, harmony_key);
+
+        assert_eq!(notes.remove_harmony_note(60), [harmony_key]);
+        assert!(notes.owns(VoiceRouteId::Input, input_key));
+        assert_eq!(notes.len(), 1);
     }
 
     #[test]
