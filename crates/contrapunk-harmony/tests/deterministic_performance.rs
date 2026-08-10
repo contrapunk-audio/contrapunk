@@ -106,6 +106,33 @@ fn configuration_replay_preserves_same_pitch_source_owners() {
 }
 
 #[test]
+fn configuration_replay_preserves_source_velocity() {
+    let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::ContraryMotion, 3);
+    engine.harmonize_note_on_owned_with_velocity(note(60), 3, 41);
+    engine.harmonize_note_on_owned_with_velocity(note(60), 1, 99);
+
+    engine.set_mode(HarmonyMode::StrictCounterpoint);
+
+    assert_eq!(
+        engine.take_owned_reharm_inputs_with_velocity(),
+        vec![(1, 60, 99), (3, 60, 41)]
+    );
+}
+
+#[test]
+fn pass_through_attack_can_gain_harmony_during_configuration_replay() {
+    let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::PassThrough, 3);
+    engine.harmonize_note_on_owned_with_velocity(note(60), 2, 73);
+
+    engine.set_mode(HarmonyMode::DiatonicThirds);
+
+    assert_eq!(
+        engine.take_owned_reharm_inputs_with_velocity(),
+        vec![(2, 60, 73)]
+    );
+}
+
+#[test]
 fn held_inputs_replay_in_canonical_pitch_order_after_configuration_change() {
     let mut engine = HarmonyEngine::with_voices(Key::C, HarmonyMode::DiatonicThirds, 4);
     let held = [72, 48, 67, 55, 76, 60, 64, 52, 71, 57, 69, 50];

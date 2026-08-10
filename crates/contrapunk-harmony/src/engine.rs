@@ -264,8 +264,10 @@ pub struct HarmonyEngine {
     /// For Mirror mode: duplicates map back to the original harmony voice's port.
     last_port_map: Vec<usize>,
     last_arrangement_indices: Vec<usize>,
-    /// Stored port-map frames in the same FIFO order as `active_notes`.
+    /// Stored port-map and velocity frames in the same FIFO order as
+    /// `active_notes`.
     active_port_maps: HashMap<ActiveNoteKey, VecDeque<Vec<usize>>>,
+    active_velocities: HashMap<ActiveNoteKey, VecDeque<u8>>,
     /// Voice leading post-processor
     voice_leading: VoiceLeadingProcessor,
     /// Whether auto-key detection is enabled
@@ -302,7 +304,7 @@ pub struct HarmonyEngine {
     /// actually drop out get `NoteOff` and only newly-needed notes get
     /// `NoteOn`. The user's held input never gets interrupted —
     /// transitions between knob positions are seamless.
-    pending_reharm_inputs: Vec<(u8, u8)>,
+    pending_reharm_inputs: Vec<(u8, u8, u8)>,
     /// When true, input notes below `bass_register_threshold` pass
     /// through without producing harmony — the user is assumed to be
     /// playing the bass line themselves, and added harmonies would
@@ -354,6 +356,7 @@ impl HarmonyEngine {
             last_port_map: Vec::new(),
             last_arrangement_indices: Vec::new(),
             active_port_maps: HashMap::new(),
+            active_velocities: HashMap::new(),
             voice_leading: VoiceLeadingProcessor::new(voice_count),
             auto_key: false,
             key_detector: super::key_detect::KeyDetector::new(ScaleMode::Ionian),
@@ -1501,6 +1504,16 @@ impl HarmonyEngine {
     /// Owned variant for adapters that distinguish the same pitch on separate
     /// source channels. Repeated attacks for one owner remain FIFO-ordered.
     pub fn harmonize_note_on_owned(&mut self, note: Note, source: u8) -> Vec<Note> {
+        self.harmonize_note_on_owned_with_velocity(note, source, 100)
+    }
+
+    /// Owned Note-On with adapter velocity retained for configuration replay.
+    pub fn harmonize_note_on_owned_with_velocity(
+        &mut self,
+        note: Note,
+        source: u8,
+        velocity: u8,
+    ) -> Vec<Note> {
         // Feed note to key detector if auto-key is on
         if self.auto_key {
             let midi = u8::from(note);
@@ -1538,16 +1551,18 @@ impl HarmonyEngine {
         // Store the harmony notes and port map for Note-Off retrieval
         let midi = u8::from(note);
         let key = ActiveNoteKey { source, note: midi };
-        if result.len() > 1 {
-            self.active_notes
-                .entry(key)
-                .or_default()
-                .push_back(result[1..].to_vec());
-            self.active_port_maps
-                .entry(key)
-                .or_default()
-                .push_back(self.last_port_map.clone());
-        }
+        self.active_notes
+            .entry(key)
+            .or_default()
+            .push_back(result[1..].to_vec());
+        self.active_port_maps
+            .entry(key)
+            .or_default()
+            .push_back(self.last_port_map.clone());
+        self.active_velocities
+            .entry(key)
+            .or_default()
+            .push_back(velocity.min(127));
         result
     }
 
@@ -1582,6 +1597,7 @@ impl HarmonyEngine {
     pub fn clear_active_notes(&mut self) {
         self.active_notes.clear();
         self.active_port_maps.clear();
+        self.active_velocities.clear();
         self.pending_releases.clear();
         self.pending_reharm_inputs.clear();
         self.last_port_map.clear();
@@ -1600,6 +1616,14 @@ impl HarmonyEngine {
 
     /// Drain held inputs with their adapter-owned source identity intact.
     pub fn take_owned_reharm_inputs(&mut self) -> Vec<(u8, u8)> {
+        self.take_owned_reharm_inputs_with_velocity()
+            .into_iter()
+            .map(|(source, note, _)| (source, note))
+            .collect()
+    }
+
+    /// Drain held inputs with source identity and original Note-On velocity.
+    pub fn take_owned_reharm_inputs_with_velocity(&mut self) -> Vec<(u8, u8, u8)> {
         std::mem::take(&mut self.pending_reharm_inputs)
     }
 
@@ -1610,16 +1634,22 @@ impl HarmonyEngine {
     /// idiom in every parameter setter — the user's held inputs no
     /// longer drop on knob changes.
     fn clear_active_for_reharm(&mut self) {
-        let mut held = Vec::new();
-        for (&key, frames) in &self.active_notes {
-            for _ in frames {
-                held.push((key.source, key.note));
+        let mut keys: Vec<_> = self.active_notes.keys().copied().collect();
+        keys.sort_unstable_by_key(|key| (key.note, key.source));
+        for key in keys {
+            let velocities = self.active_velocities.get(&key);
+            for index in 0..self.active_notes[&key].len() {
+                let velocity = velocities
+                    .and_then(|frames| frames.get(index))
+                    .copied()
+                    .unwrap_or(100);
+                self.pending_reharm_inputs
+                    .push((key.source, key.note, velocity));
             }
         }
-        held.sort_unstable_by_key(|(source, note)| (*note, *source));
-        self.pending_reharm_inputs.extend(held);
         self.active_notes.clear();
         self.active_port_maps.clear();
+        self.active_velocities.clear();
     }
 
     pub fn harmonize_note_off(&mut self, note: Note) -> Vec<Note> {
@@ -1630,6 +1660,18 @@ impl HarmonyEngine {
     pub fn harmonize_note_off_owned(&mut self, note: Note, source: u8) -> Vec<Note> {
         let midi = u8::from(note);
         let key = ActiveNoteKey { source, note: midi };
+
+        let _velocity = self
+            .active_velocities
+            .get_mut(&key)
+            .and_then(VecDeque::pop_front);
+        if self
+            .active_velocities
+            .get(&key)
+            .is_some_and(VecDeque::is_empty)
+        {
+            self.active_velocities.remove(&key);
+        }
 
         let port_map = self
             .active_port_maps

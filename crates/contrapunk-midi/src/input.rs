@@ -54,18 +54,9 @@ pub fn connect_input(
         .connect(
             port,
             "contrapunk-read",
-            move |timestamp, message, _| {
+            move |_timestamp, message, _| {
                 // Clone message bytes (message is a borrowed slice)
                 let msg_vec = message.to_vec();
-
-                // Debug output
-                println!(
-                    "[IN] t={:>10} | {:?} (len={})",
-                    timestamp,
-                    message,
-                    message.len()
-                );
-
                 // Forward through channel
                 if let Err(e) = tx.send(msg_vec) {
                     eprintln!("Error sending MIDI message through channel: {}", e);

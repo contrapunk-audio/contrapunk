@@ -10,6 +10,7 @@
 
 	const SYNTH_VALUE = '__synth__';
 	const OFF_VALUE = '__off__';
+	const UNAVAILABLE_VALUE = '__unavailable__';
 	type RouteRow = { route: VoiceRouteId; label: string; active: boolean };
 	type RouteSection = { label: string; rows: RouteRow[] };
 
@@ -82,7 +83,15 @@
 		{ value: OFF_VALUE, label: 'Off' }
 	]);
 
+	function outputOptionsFor(route: VoiceRouteId) {
+		const unavailable = midi.getUnavailableVoiceOutputName(route);
+		return unavailable
+			? [...outputOptions, { value: UNAVAILABLE_VALUE, label: `Unavailable — ${unavailable}` }]
+			: outputOptions;
+	}
+
 	async function handleOutputChange(route: VoiceRouteId, value: string) {
+		if (value === UNAVAILABLE_VALUE) return;
 		if (value === SYNTH_VALUE) return midi.setVoiceOutput(route, { kind: 'synth' });
 		if (value === OFF_VALUE) return midi.setVoiceOutput(route, { kind: 'off' });
 		const deviceIndex = Number.parseInt(value, 10);
@@ -103,6 +112,7 @@
 	}
 
 	function selectedOutput(route: VoiceRouteId): string {
+		if (midi.getUnavailableVoiceOutputName(route)) return UNAVAILABLE_VALUE;
 		const target = midi.getVoiceOutput(route);
 		if (target.kind === 'synth') return SYNTH_VALUE;
 		if (target.kind === 'off') return OFF_VALUE;
@@ -116,6 +126,8 @@
 	}
 
 	function routeStatus(row: RouteRow): string {
+		const unavailable = midi.getUnavailableVoiceOutputName(row.route);
+		if (unavailable) return `Saved destination ${unavailable} is unavailable; using Elixir Synth`;
 		if (midi.allVoiceOutputsToSynth) {
 			return row.active
 				? 'Part active; global destination is Elixir Synth'
@@ -170,7 +182,7 @@
 							<span class="slot-label font-ui">{row.label}</span>
 							<span class="part-state font-code" class:inactive={!row.active}>{row.active ? 'Active' : 'Inactive'}</span>
 							<PixelSelect
-								options={outputOptions}
+								options={outputOptionsFor(row.route)}
 								value={selectedOutput(row.route)}
 								placeholder="None"
 								small={true}

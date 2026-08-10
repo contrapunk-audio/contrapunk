@@ -4,8 +4,6 @@
 //! configure where each voice sends notes: internal synth, a specific
 //! external MIDI port, off, or defer to the global routing mode.
 
-use std::sync::atomic::Ordering;
-
 use serde::Serialize;
 use tauri::State;
 
@@ -31,7 +29,11 @@ pub fn set_voice_output(
         .map_err(|e| e.to_string())?
         .set(route, target);
     if changed {
-        state.route_change_pending.store(true, Ordering::Release);
+        state
+            .route_changes
+            .lock()
+            .map_err(|error| error.to_string())?
+            .mark_route(route);
     }
     Ok(())
 }
@@ -46,7 +48,11 @@ pub fn set_all_voice_outputs_to_synth(enabled: bool, state: State<AppState>) -> 
         .map_err(|e| e.to_string())?
         .set_all_to_synth(enabled);
     if changed {
-        state.route_change_pending.store(true, Ordering::Release);
+        state
+            .route_changes
+            .lock()
+            .map_err(|error| error.to_string())?
+            .mark_all();
     }
     Ok(())
 }
@@ -164,6 +170,22 @@ mod tests {
                 "pattern_counter",
             ]
         );
+    }
+
+    #[test]
+    fn global_route_change_dominates_queued_individual_changes() {
+        let mut pending = crate::state::PendingRouteChanges::default();
+        pending.mark_route(VoiceRouteId::Canon { voice: 2 });
+        pending.mark_route(VoiceRouteId::Input);
+        assert_eq!(
+            pending.routes().collect::<Vec<_>>(),
+            [VoiceRouteId::Input, VoiceRouteId::Canon { voice: 2 }]
+        );
+
+        pending.mark_all();
+        pending.mark_route(VoiceRouteId::PatternLow);
+        assert!(pending.all());
+        assert!(pending.routes().next().is_none());
     }
 
     #[test]

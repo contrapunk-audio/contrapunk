@@ -140,6 +140,8 @@ fn main() {
             commands::engine::inject_note_on,
             commands::engine::inject_note_off,
             commands::engine::panic_all_notes_off,
+            commands::determinism::get_performance_snapshot,
+            commands::determinism::reset_performance,
             // Per-voice output routing
             commands::routing::set_voice_output,
             commands::routing::set_all_voice_outputs_to_synth,

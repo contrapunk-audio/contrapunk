@@ -265,6 +265,7 @@ impl PerformanceHarness {
                 bytes[0] & 0x0f,
                 bytes[2] >= 64,
                 &mut self.sustain_owners,
+                &self.voice_outputs,
                 self.output.connection_count(),
                 &self.synth_tx,
                 &mut self.output,
@@ -320,6 +321,7 @@ impl PerformanceHarness {
                 channel,
                 value >= 64,
                 &mut self.sustain_owners,
+                &self.voice_outputs,
                 self.output.connection_count(),
                 &self.synth_tx,
                 &mut self.output,
@@ -743,6 +745,30 @@ fn external_midi_owners_release_exactly_without_a_connected_device() {
 }
 
 #[test]
+fn external_midi_wire_bytes_replay_identically_at_the_router_boundary() {
+    fn trace() -> Vec<contrapunk::midi::output::MidiWireEvent> {
+        let mut harness = PerformanceHarness::new(false);
+        harness.output = OutputRouter::recording(&[9]);
+        harness
+            .voice_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .set(VoiceRouteId::Input, VoiceOutputTarget::MidiPort { port: 9 });
+
+        harness.live([0x91, 60, 87]);
+        harness.live([0x81, 60, 23]);
+        assert!(harness.output_notes.is_empty());
+        harness.output.take_trace()
+    }
+
+    let expected = trace();
+    assert_eq!(trace(), expected);
+    assert!(expected.iter().any(|event| event.message == [0x91, 60, 87]));
+    assert!(expected.iter().any(|event| event.message == [0x81, 60, 23]));
+    assert!(expected.iter().all(|event| event.device_port == 9));
+}
+
+#[test]
 fn sustain_stays_down_until_live_and_loop_owners_release_it() {
     let mut harness = PerformanceHarness::new(false);
     harness.live([0xb3, 64, 127]);
@@ -766,6 +792,29 @@ fn sustain_stays_down_until_live_and_loop_owners_release_it() {
         vec![ObservedEvent::Sustain(true), ObservedEvent::Sustain(false)]
     );
     assert!(harness.sustain_owners.is_empty());
+}
+
+#[test]
+fn all_to_synth_override_does_not_leak_sustain_to_external_ports() {
+    let mut harness = PerformanceHarness::new(false);
+    harness.output = OutputRouter::recording(&[9]);
+    {
+        let mut routes = harness
+            .voice_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        routes.set(VoiceRouteId::Input, VoiceOutputTarget::MidiPort { port: 9 });
+        routes.set_all_to_synth(true);
+    }
+
+    harness.live([0xb0, 64, 127]);
+    harness.live([0xb0, 64, 0]);
+
+    assert!(harness.output.take_trace().is_empty());
+    assert_eq!(
+        harness.trace,
+        [ObservedEvent::Sustain(true), ObservedEvent::Sustain(false)]
+    );
 }
 
 #[test]

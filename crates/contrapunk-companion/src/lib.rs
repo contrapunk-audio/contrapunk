@@ -49,7 +49,8 @@ pub use loops::{
 };
 #[allow(unused_imports)]
 pub use orchestrator::{
-    BeatTickScheduler, Companion, CompanionInputResult, CompanionState, TICK_QUANTUM_BEATS,
+    BeatTickScheduler, Companion, CompanionInputResult, CompanionState, MAX_TICK_SLOTS_PER_CALL,
+    TICK_QUANTUM_BEATS,
 };
 #[allow(unused_imports)]
 pub use world::{ChordQuality, DetectedChord, HeldInput, HeldVoice, WorldState};

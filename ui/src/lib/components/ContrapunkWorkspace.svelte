@@ -45,6 +45,8 @@
 	let initialized = $state(false);
 	let initError = $state<string | null>(null);
 	let panicSent = $state(false);
+	let resetSent = $state(false);
+	let resetError = $state<string | null>(null);
 	let setupDialog = $state<HTMLDialogElement>();
 	let setupOpen = $state(false);
 	let setupSection = $state<SetupSection>('input');
@@ -97,8 +99,8 @@
 				await Promise.all([synth.syncFromBackend(), transport.syncFromBackend(), phrase.init()]);
 				try {
 					await transport.setMetronomeEnabled(false);
-				} catch {
-					/* Surface has no transport. */
+				} catch (error) {
+					console.warn('[contrapunk] Could not disable the startup metronome:', error);
 				}
 				if (!adapter.capabilities.pluginMidiOutputMode) {
 					if (midi.selectedInput === null) {
@@ -137,6 +139,20 @@
 		await tone.panic();
 		panicSent = true;
 		window.setTimeout(() => (panicSent = false), 700);
+	}
+
+	async function resetPerformance() {
+		resetError = null;
+		try {
+			await tone.stop();
+			await adapter.resetPerformance();
+			await Promise.all([transport.syncFromBackend(), phrase.init()]);
+			resetSent = true;
+			window.setTimeout(() => (resetSent = false), 900);
+		} catch (error) {
+			resetError = `Could not reset performance: ${error}`;
+			console.error('[contrapunk] Performance reset failed:', error);
+		}
 	}
 
 	async function setSpread(value: number) {
@@ -191,10 +207,12 @@
 			{/if}
 			{#if !adapter.capabilities.pluginMidiOutputMode}<button class:running={engine.isRunning} disabled={!engine.isRunning && midi.selectedInput === null} onclick={toggleRouting}>{engine.isRunning ? 'Routing on' : 'Start routing'}</button>{:else}<span class="host-owned">DAW HOST</span>{/if}
 			<button class:confirmed={panicSent} onclick={panic}>{panicSent ? 'Cleared' : 'Panic'}</button>
+			{#if adapter.capabilities.performanceReset}<button class:confirmed={resetSent} onclick={resetPerformance}>{resetSent ? 'Reset' : 'Reset performance'}</button>{/if}
 			<button class="setup-button" onclick={() => openSetup('input')}>Setup</button>
 		</div>
 	</header>
 
+	{#if resetError}<div class="notice error" role="alert">{resetError}</div>{/if}
 	{#if activeView === 'synth' && adapter.capabilities.audioFx}
 		<div class="synth-body"><ElixirWorkspace embedded /></div>
 	{:else}
