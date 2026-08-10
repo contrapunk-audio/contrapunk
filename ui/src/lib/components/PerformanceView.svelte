@@ -157,10 +157,9 @@
 		void engine.setInterchange(true, range);
 	}
 
-	// === Spread (continuous via engine octave_intensity coefficient) ===
-	// Engine takes a continuous f32 intensity that scales per-voice
-	// octave displacement. 0 = no spread (matches OctaveMode::None);
-	// 1 = full-octave spread (matches legacy OctaveMode::Spread).
+	// === Spread (knob coefficient, quantized to whole-octave moves) ===
+	// 0 = no spread (matches OctaveMode::None); 1 = full legacy spread.
+	// Whole octaves preserve every generated note's pitch class and key.
 	// Mirror / BassTrebleSplit aren't exposed in this knob — they
 	// remain available in the Advanced view's full Octave Mode picker.
 	let spread = $state(0);
