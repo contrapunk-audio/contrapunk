@@ -376,10 +376,8 @@ export interface ContrapunkAdapter {
 	/** Set the octave mode (e.g. "None", "Spread", "Mirror"). */
 	setOctaveMode(mode: string): Promise<void>;
 
-	/** Continuous octave-spread coefficient applied to Spread / Split modes.
-	 *  Range [0.0, 1.0]; 0 = no displacement, 1 = full-octave (legacy)
-	 *  displacement. Used by the Performance view's Spread knob for
-	 *  smooth audible morphs. */
+	/** Octave-spread coefficient applied to Spread / Split modes.
+	 *  Range [0.0, 1.0]; displacement is quantized to whole octaves. */
 	setOctaveIntensity(amount: number): Promise<void>;
 
 	/** Configure voice leading (enabled flag + style). */

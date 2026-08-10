@@ -233,10 +233,9 @@ pub struct HarmonyEngine {
     key: Key,
     mode: HarmonyMode,
     octave_mode: OctaveMode,
-    /// Continuous coefficient applied to Spread and BassTrebleSplit
-    /// displacement amounts. Range [0.0, 1.0]; default 1.0 preserves
-    /// the legacy full-octave behavior. The simple-view Spread knob
-    /// uses this for smooth audible morphs as the knob sweeps.
+    /// Knob coefficient applied to Spread and BassTrebleSplit displacement.
+    /// Range [0.0, 1.0]; output is quantized to whole octaves so spreading
+    /// never changes pitch class. Default 1.0 preserves legacy behavior.
     octave_intensity: f32,
     scale_mode: ScaleMode,
     scale: Scale,
@@ -777,9 +776,8 @@ impl HarmonyEngine {
         self.clear_active_for_reharm();
     }
 
-    /// Continuous octave-spread coefficient applied to Spread and
-    /// BassTrebleSplit modes. Range [0.0, 1.0]; 0.0 = no displacement,
-    /// 1.0 = full-octave (legacy) displacement.
+    /// Octave-spread coefficient applied to Spread and BassTrebleSplit.
+    /// Range [0.0, 1.0]; displacement is quantized to whole octaves.
     pub fn octave_intensity(&self) -> f32 {
         self.octave_intensity
     }
@@ -1107,10 +1105,9 @@ impl HarmonyEngine {
             OctaveMode::Spread => {
                 for (i, note) in notes.iter_mut().enumerate().skip(1) {
                     let midi = u8::from(*note);
-                    // Continuous: per-voice shift = i × intensity × 12.
-                    // intensity = 0 → no displacement. intensity = 1 →
-                    // full-octave per voice (legacy behavior).
-                    let shift = ((i as f32) * intensity * 12.0).round().max(0.0) as u8;
+                    // Quantize before converting octaves to semitones. Rounding
+                    // semitones directly would transpose notes out of the key.
+                    let shift = ((i as f32) * intensity).round() as u8 * 12;
                     let shifted = midi.saturating_add(shift).min(127);
                     if anchor_ok(i, shifted) {
                         if let Ok(new_note) = Note::try_from(shifted) {
@@ -1121,7 +1118,7 @@ impl HarmonyEngine {
                 }
             }
             OctaveMode::BassTrebleSplit => {
-                let shift = (intensity * 12.0).round().max(0.0) as u8;
+                let shift = intensity.round() as u8 * 12;
                 for (i, note) in notes.iter_mut().enumerate().skip(1) {
                     let midi = u8::from(*note);
                     let shifted = if midi < user_midi {
@@ -2128,6 +2125,31 @@ mod tests {
         assert_eq!(result[0], Note::C4); // Melody unchanged
         assert_eq!(result[1], Note::E5); // First harmony +1 octave
         assert_eq!(result[2], Note::G6); // Second harmony +2 octaves
+    }
+
+    #[test]
+    fn test_spread_intensity_preserves_harmony_pitch_classes() {
+        fn pitches(intensity: f32) -> Vec<u8> {
+            let mut engine = HarmonyEngine::with_voices(Key::D, HarmonyMode::DiatonicThirds, 4);
+            engine.set_scale_mode(ScaleMode::Dorian);
+            engine.set_octave_mode(OctaveMode::Spread);
+            engine.set_octave_intensity(intensity);
+            engine
+                .harmonize(Note::D4)
+                .into_iter()
+                .map(|note| u8::from(note))
+                .collect()
+        }
+
+        let tight = pitches(0.0);
+        for intensity in [0.2, 0.4, 0.6, 0.8, 1.0] {
+            let spread = pitches(intensity);
+            assert_eq!(
+                spread.iter().map(|note| note % 12).collect::<Vec<_>>(),
+                tight.iter().map(|note| note % 12).collect::<Vec<_>>()
+            );
+        }
+        assert_ne!(pitches(0.6), tight, "the knob must still widen the voicing");
     }
 
     #[test]

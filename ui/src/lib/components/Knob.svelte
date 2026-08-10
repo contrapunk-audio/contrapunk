@@ -121,6 +121,19 @@
 		onchange(clamp(snap(value + dir * step * mul)));
 	}
 
+	function onKeyDown(e: KeyboardEvent) {
+		if (disabled) return;
+		const increment = step;
+		let next = value;
+		if (e.key === 'ArrowUp' || e.key === 'ArrowRight') next += increment;
+		else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') next -= increment;
+		else if (e.key === 'Home') next = min;
+		else if (e.key === 'End') next = max;
+		else return;
+		e.preventDefault();
+		onchange(clamp(snap(next)));
+	}
+
 	function onDoubleClick() {
 		if (disabled) return;
 		if (defaultValue !== undefined) {
@@ -144,12 +157,14 @@
 		onpointerenter={() => (hovering = true)}
 		onpointerleave={() => (hovering = false)}
 		onwheel={onWheel}
+		onkeydown={onKeyDown}
 		ondblclick={onDoubleClick}
 		role="slider"
 		tabindex={disabled ? -1 : 0}
 		aria-valuemin={min}
 		aria-valuemax={max}
 		aria-valuenow={value}
+		aria-valuetext={displayValue(value)}
 		aria-label={label}
 		aria-disabled={disabled}
 	>

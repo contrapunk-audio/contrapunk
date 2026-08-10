@@ -23,6 +23,7 @@
 	import ControlPanel from '$lib/components/ControlPanel.svelte';
 	import EnsemblePresetBar from '$lib/components/EnsemblePresetBar.svelte';
 	import InputPanel from '$lib/components/InputPanel.svelte';
+	import Knob from '$lib/components/Knob.svelte';
 	import OutputPanel from '$lib/components/OutputPanel.svelte';
 	import PerformanceView from '$lib/components/PerformanceView.svelte';
 	import PluginRoutingPanel from '$lib/components/PluginRoutingPanel.svelte';
@@ -65,7 +66,7 @@
 		if (midi.selectedInput === null) return 'No input';
 		return midi.inputs.find((device) => device.index === midi.selectedInput)?.name ?? 'MIDI Controller';
 	});
-	let spread = $derived(engine.octaveMode === 'None' ? 0 : engine.octaveIntensity);
+	let spread = $derived(engine.octaveMode === 'Spread' ? engine.octaveIntensity : 0);
 	let maxVoiceCount = $derived(adapter.capabilities.pluginMidiOutputMode ? 4 : 8);
 	let registerOptions = $derived(
 		Array.from({ length: engine.voiceCount }, (_, index) => ({
@@ -157,12 +158,11 @@
 
 	async function setSpread(value: number) {
 		if (value <= 0.01) {
-			await engine.setOctaveIntensity(0);
 			await engine.setOctaveMode('None');
 			return;
 		}
-		if (engine.octaveMode === 'None') await engine.setOctaveMode('Spread');
 		await engine.setOctaveIntensity(value);
+		if (engine.octaveMode !== 'Spread') await engine.setOctaveMode('Spread');
 	}
 
 	async function openSetup(section: string = 'input', focus?: string) {
@@ -228,7 +228,9 @@
 				<label><span>HARMONY</span><select value={engine.mode} onchange={(event) => engine.setMode(event.currentTarget.value as HarmonyModeName)}>{#each quickModes as mode}<option value={mode.name}>{mode.label}</option>{/each}</select></label>
 				<label><span>VOICES</span><select value={engine.voiceCount} onchange={(event) => engine.setVoiceCount(Number(event.currentTarget.value))}>{#each Array.from({ length: maxVoiceCount }, (_, index) => index + 1) as count}<option value={count}>{count}</option>{/each}</select></label>
 				<label><span>YOUR REGISTER</span><select value={engine.voicePosition} onchange={(event) => engine.setVoicePosition(Number(event.currentTarget.value))}>{#each registerOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
-				<label class="spread"><span>SPREAD <output>{Math.round(spread * 100)}</output></span><input type="range" min="0" max="1" step="0.01" value={spread} oninput={(event) => setSpread(Number(event.currentTarget.value))} /></label>
+				<div class="spread-control">
+					<Knob value={spread} min={0} max={1} step={0.01} defaultValue={0} size={44} label="Spread" help="Moves generated harmony voices apart by whole octaves without changing their notes or key." format={(value) => value <= 0.01 ? 'Off' : `${Math.round(value * 100)}%`} onchange={setSpread} />
+				</div>
 			</section>
 
 			<div class="live-grid">
@@ -343,13 +345,12 @@
 	.synth-body { height: calc(100vh - 52px); overflow: hidden; }
 	.synth-body > :global(*) { height: 100%; }
 	.performance-body { box-sizing: border-box; display: grid; width: min(1480px, calc(100% - 20px)); height: calc(100vh - 52px); grid-template-rows: auto minmax(0, 1fr) 146px; margin: 0 auto; gap: 8px; overflow: hidden; padding: 8px 0; }
-	.quick-controls { display: grid; grid-template-columns: .7fr 1.2fr 1.3fr .55fr .9fr 1fr; border: 1px solid var(--proto-line); background: var(--proto-panel); }
+	.quick-controls { display: grid; grid-template-columns: .7fr 1.2fr 1.3fr .55fr .9fr .6fr; border: 1px solid var(--proto-line); background: var(--proto-panel); }
 	.quick-controls label { display: grid; min-width: 0; gap: 3px; padding: 6px 10px; border-right: 1px solid var(--proto-line); }
 	.quick-controls label:last-child { border-right: 0; }
 	.quick-controls span { color: var(--proto-muted); font: 700 8px var(--font-code); letter-spacing: .1em; }
 	.quick-controls select { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--proto-text); font: 600 11px var(--font-grotesk); }
-	.quick-controls .spread span { display: flex; justify-content: space-between; }
-	.quick-controls input[type='range'] { width: 100%; accent-color: var(--proto-text); }
+	.spread-control { display: flex; align-items: center; justify-content: center; padding: 3px 8px; }
 	.live-grid { min-height: 0; }
 	.live-grid > :global(*) { height: 100%; }
 	.notice { padding: 18px; border: 1px solid var(--proto-line); background: var(--proto-panel); color: var(--proto-muted); font-size: 12px; }

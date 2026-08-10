@@ -1354,10 +1354,8 @@ class EngineStore {
 		}
 	}
 
-	/** Continuous octave-spread intensity coefficient. Range [0,1].
-	 *  Used by the Performance view's Spread knob — knob value passes
-	 *  through directly. Combined with setOctaveMode, the engine
-	 *  produces a smooth audible morph as the knob sweeps. */
+	/** Octave-spread knob coefficient. Range [0,1]. The engine quantizes
+	 *  displacement to whole octaves so spreading preserves pitch class. */
 	async setOctaveIntensity(amount: number) {
 		const clamped = Math.max(0, Math.min(1, amount));
 		this.octaveIntensity = clamped;
