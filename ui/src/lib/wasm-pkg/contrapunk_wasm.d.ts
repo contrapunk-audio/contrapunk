@@ -162,10 +162,18 @@ export class Engine {
      */
     note_off(note: number): Uint8Array;
     /**
+     * Channel-owned Note-Off for Web MIDI/MPE input.
+     */
+    note_off_channel(note: number, channel: number): Uint8Array;
+    /**
      * Process a MIDI Note-On event.
      * Returns a JS array of MIDI note numbers to sound.
      */
     note_on(note: number): Uint8Array;
+    /**
+     * Channel-owned Note-On for Web MIDI/MPE input.
+     */
+    note_on_channel(note: number, channel: number): Uint8Array;
     /**
      * Save current engine settings as a custom preset.
      */
@@ -340,7 +348,9 @@ export interface InitOutput {
     readonly engine_load_preset: (a: number, b: number, c: number, d: number) => void;
     readonly engine_new: () => number;
     readonly engine_note_off: (a: number, b: number, c: number) => void;
+    readonly engine_note_off_channel: (a: number, b: number, c: number, d: number) => void;
     readonly engine_note_on: (a: number, b: number, c: number) => void;
+    readonly engine_note_on_channel: (a: number, b: number, c: number, d: number) => void;
     readonly engine_save_preset: (a: number, b: number, c: number, d: number) => void;
     readonly engine_set_auto_key: (a: number, b: number, c: number) => void;
     readonly engine_set_bass_register_threshold: (a: number, b: number) => void;
@@ -420,7 +430,6 @@ export interface InitOutput {
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number, b: number, c: number) => void;
-    readonly __wbindgen_export4: (a: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_start: () => void;
 }

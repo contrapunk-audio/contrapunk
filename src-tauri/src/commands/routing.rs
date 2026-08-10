@@ -139,6 +139,34 @@ mod tests {
     }
 
     #[test]
+    fn route_assignments_have_canonical_part_order() {
+        let mut routes = crate::state::VoiceOutputRoutes::default();
+        for route in [
+            VoiceRouteId::PatternCounter,
+            VoiceRouteId::Canon { voice: 3 },
+            VoiceRouteId::Input,
+            VoiceRouteId::Harmony { slot: 2 },
+            VoiceRouteId::Counterpoint { voice: 1 },
+            VoiceRouteId::PatternLow,
+        ] {
+            routes.set(route, VoiceOutputTarget::Off);
+        }
+
+        let actual: Vec<_> = routes.assignments().map(|(route, _)| route.key()).collect();
+        assert_eq!(
+            actual,
+            [
+                "input",
+                "harmony:2",
+                "canon:3",
+                "counterpoint:1",
+                "pattern_low",
+                "pattern_counter",
+            ]
+        );
+    }
+
+    #[test]
     fn voice_output_target_json_shape_is_tagged() {
         // Frontend contract: `{ kind: "midi_port", port: 2 }` and similar.
         // Lock the shape so type changes break the test instead of silently

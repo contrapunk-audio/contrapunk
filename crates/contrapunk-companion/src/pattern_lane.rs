@@ -258,7 +258,7 @@ impl Lane for PatternLane {
             };
         }
 
-        let now = world.transport.total_beats();
+        let now = world.total_beats();
         let phrase = world.phrase_snapshot();
         let phrase_relative = self.pitch_anchor != PatternPitchAnchor::Key;
         let new_phrase = phrase_relative && phrase.id != self.phrase_id;
@@ -287,7 +287,7 @@ impl Lane for PatternLane {
     }
 
     fn tick(&mut self, world: &WorldState) -> LaneOutput {
-        let now = world.transport.total_beats();
+        let now = world.total_beats();
         let mut ops = Vec::new();
 
         let rewound = self

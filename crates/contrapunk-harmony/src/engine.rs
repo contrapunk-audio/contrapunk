@@ -22,12 +22,11 @@
 //!
 //! # Note Tracking
 //!
-//! The engine maintains a `HashMap<u8, Vec<Note>>` (`active_notes`) that maps
-//! each melody note's MIDI number to the harmony notes produced for it. This
-//! is critical for random modes (4-5) where the harmony interval is chosen
-//! randomly on Note-On and must be released with the same notes on Note-Off.
+//! The engine maintains a FIFO of generated frames for each melody pitch, so
+//! repeated Note-Ons retain distinct ownership and every Note-Off releases the
+//! matching original generated voices.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use wmidi::Note;
 
 use crate::config::{BeatPhase, ExplicitIntervalMap, HarmonyMode, Key, OctaveMode, ScaleMode};
@@ -217,11 +216,18 @@ impl VoiceLeadingProcessor {
 ///
 /// # Note-Off Tracking
 ///
-/// For consistent behavior (especially with random modes), use
+/// For exact lifecycle behavior, use
 /// [`harmonize_note_on`](Self::harmonize_note_on) and
 /// [`harmonize_note_off`](Self::harmonize_note_off) instead of
-/// [`harmonize`](Self::harmonize). This ensures the same harmony notes
-/// are released that were pressed.
+/// [`harmonize`](Self::harmonize). Adapters with per-channel ownership use
+/// [`harmonize_note_on_owned`](Self::harmonize_note_on_owned) and
+/// [`harmonize_note_off_owned`](Self::harmonize_note_off_owned).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct ActiveNoteKey {
+    source: u8,
+    note: u8,
+}
+
 #[derive(Debug)]
 pub struct HarmonyEngine {
     key: Key,
@@ -248,10 +254,9 @@ pub struct HarmonyEngine {
     // Stateful mode state - one per voice pair for chained harmonies
     contrary_motion_states: Vec<ContraryMotionState>,
     counterpoint_states: Vec<CounterpointState>,
-    /// Tracks active notes: melody MIDI number -> harmony notes produced.
-    /// Used to ensure Note-Off releases the same harmony notes that
-    /// Note-On created (critical for random modes).
-    active_notes: HashMap<u8, Vec<Note>>,
+    /// Tracks active notes: melody MIDI number -> generated harmony frames in
+    /// Note-On order. Repeated pitches retain one frame per source owner.
+    active_notes: HashMap<ActiveNoteKey, VecDeque<Vec<Note>>>,
     /// Port assignment map from the most recent harmonize call.
     /// Each index corresponds to a note in the harmonize result;
     /// the value is the output port index that note should be sent to.
@@ -259,8 +264,8 @@ pub struct HarmonyEngine {
     /// For Mirror mode: duplicates map back to the original harmony voice's port.
     last_port_map: Vec<usize>,
     last_arrangement_indices: Vec<usize>,
-    /// Stored port maps for active notes, used to retrieve port assignments on Note-Off.
-    active_port_maps: HashMap<u8, Vec<usize>>,
+    /// Stored port-map frames in the same FIFO order as `active_notes`.
+    active_port_maps: HashMap<ActiveNoteKey, VecDeque<Vec<usize>>>,
     /// Voice leading post-processor
     voice_leading: VoiceLeadingProcessor,
     /// Whether auto-key detection is enabled
@@ -297,7 +302,7 @@ pub struct HarmonyEngine {
     /// actually drop out get `NoteOff` and only newly-needed notes get
     /// `NoteOn`. The user's held input never gets interrupted —
     /// transitions between knob positions are seamless.
-    pending_reharm_inputs: Vec<u8>,
+    pending_reharm_inputs: Vec<(u8, u8)>,
     /// When true, input notes below `bass_register_threshold` pass
     /// through without producing harmony — the user is assumed to be
     /// playing the bass line themselves, and added harmonies would
@@ -895,7 +900,7 @@ impl HarmonyEngine {
     ///
     /// **Note:** For MIDI routing, prefer `harmonize_note_on()` and
     /// `harmonize_note_off()` which properly track harmony notes for
-    /// Note-Off handling (critical for random modes).
+    /// exact Note-Off handling.
     pub fn harmonize(&mut self, note: Note) -> Vec<Note> {
         if self.mode == HarmonyMode::PassThrough || self.voice_count <= 1 {
             self.last_arrangement_indices = vec![0];
@@ -1402,10 +1407,6 @@ impl HarmonyEngine {
             HarmonyMode::DiatonicFourths => {
                 modes::diatonic_fourths_directed(note, &mut self.scale, above)
             }
-            HarmonyMode::RandomBelow => modes::random_directed(note, &mut self.scale, above),
-            HarmonyMode::RandomBelowNoSeconds => {
-                modes::random_no_seconds_directed(note, &mut self.scale, above)
-            }
             HarmonyMode::ContraryMotion => {
                 if let Some(state) = self.contrary_motion_states.get_mut(state_index) {
                     state.process_directed(&mut self.scale, note, above)
@@ -1453,10 +1454,6 @@ impl HarmonyEngine {
             HarmonyMode::PassThrough => modes::pass_through(note, &mut self.scale),
             HarmonyMode::DiatonicThirds => modes::diatonic_thirds(note, &mut self.scale),
             HarmonyMode::DiatonicFourths => modes::diatonic_fourths(note, &mut self.scale),
-            HarmonyMode::RandomBelow => modes::random_below(note, &mut self.scale),
-            HarmonyMode::RandomBelowNoSeconds => {
-                modes::random_below_no_seconds(note, &mut self.scale)
-            }
             HarmonyMode::ContraryMotion => {
                 if let Some(state) = self.contrary_motion_states.get_mut(state_index) {
                     state.process(&mut self.scale, note)
@@ -1488,9 +1485,7 @@ impl HarmonyEngine {
     /// sent to outputs. When Note-Off comes, call `harmonize_note_off()`
     /// with the same melody note to get matching harmony releases.
     ///
-    /// This is critical for random modes (4-5) where the harmony
-    /// interval is chosen randomly - we must release the same note
-    /// that was pressed, not a new random one.
+    /// Tracking keeps NoteOff exact for every stateful or multi-voice mode.
     ///
     /// # Arguments
     ///
@@ -1500,6 +1495,12 @@ impl HarmonyEngine {
     ///
     /// Vec of notes to send: original note first, harmony notes after.
     pub fn harmonize_note_on(&mut self, note: Note) -> Vec<Note> {
+        self.harmonize_note_on_owned(note, u8::from(note))
+    }
+
+    /// Owned variant for adapters that distinguish the same pitch on separate
+    /// source channels. Repeated attacks for one owner remain FIFO-ordered.
+    pub fn harmonize_note_on_owned(&mut self, note: Note, source: u8) -> Vec<Note> {
         // Feed note to key detector if auto-key is on
         if self.auto_key {
             let midi = u8::from(note);
@@ -1510,9 +1511,13 @@ impl HarmonyEngine {
                     // this the old-key harmonies stay stuck — note-off for
                     // the user's input note only releases harmonies the
                     // engine is now tracking under the new key.
-                    for harmonies in self.active_notes.values() {
-                        self.pending_releases.extend(harmonies.iter().copied());
+                    for frames in self.active_notes.values() {
+                        for harmonies in frames {
+                            self.pending_releases.extend(harmonies.iter().copied());
+                        }
                     }
+                    self.pending_releases
+                        .sort_unstable_by_key(|note| u8::from(*note));
                     println!(
                         "[AUTOKEY] key change: {:?} -> {:?} (note={}, releasing {} stale)",
                         self.key,
@@ -1532,10 +1537,16 @@ impl HarmonyEngine {
         self.last_borrowed_from = self.scale.last_borrowed_from();
         // Store the harmony notes and port map for Note-Off retrieval
         let midi = u8::from(note);
+        let key = ActiveNoteKey { source, note: midi };
         if result.len() > 1 {
-            self.active_notes.insert(midi, result[1..].to_vec());
+            self.active_notes
+                .entry(key)
+                .or_default()
+                .push_back(result[1..].to_vec());
             self.active_port_maps
-                .insert(midi, self.last_port_map.clone());
+                .entry(key)
+                .or_default()
+                .push_back(self.last_port_map.clone());
         }
         result
     }
@@ -1581,6 +1592,14 @@ impl HarmonyEngine {
     /// `harmonize_note_on` for each so the new parameters take effect
     /// without dropping the user's held input.
     pub fn take_reharm_inputs(&mut self) -> Vec<u8> {
+        self.take_owned_reharm_inputs()
+            .into_iter()
+            .map(|(_, note)| note)
+            .collect()
+    }
+
+    /// Drain held inputs with their adapter-owned source identity intact.
+    pub fn take_owned_reharm_inputs(&mut self) -> Vec<(u8, u8)> {
         std::mem::take(&mut self.pending_reharm_inputs)
     }
 
@@ -1591,21 +1610,47 @@ impl HarmonyEngine {
     /// idiom in every parameter setter — the user's held inputs no
     /// longer drop on knob changes.
     fn clear_active_for_reharm(&mut self) {
-        self.pending_reharm_inputs
-            .extend(self.active_notes.keys().copied());
+        let mut held = Vec::new();
+        for (&key, frames) in &self.active_notes {
+            held.extend(std::iter::repeat((key.source, key.note)).take(frames.len()));
+        }
+        held.sort_unstable_by_key(|(source, note)| (*note, *source));
+        self.pending_reharm_inputs.extend(held);
         self.active_notes.clear();
         self.active_port_maps.clear();
     }
 
     pub fn harmonize_note_off(&mut self, note: Note) -> Vec<Note> {
+        self.harmonize_note_off_owned(note, u8::from(note))
+    }
+
+    /// Release one frame belonging to the exact adapter-owned source.
+    pub fn harmonize_note_off_owned(&mut self, note: Note, source: u8) -> Vec<Note> {
         let midi = u8::from(note);
-        // Restore the port map that was stored during Note-On
-        if let Some(port_map) = self.active_port_maps.remove(&midi) {
-            self.last_port_map = port_map;
-        } else {
-            self.last_port_map = vec![0];
+        let key = ActiveNoteKey { source, note: midi };
+
+        let port_map = self
+            .active_port_maps
+            .get_mut(&key)
+            .and_then(VecDeque::pop_front);
+        if self
+            .active_port_maps
+            .get(&key)
+            .is_some_and(VecDeque::is_empty)
+        {
+            self.active_port_maps.remove(&key);
         }
-        match self.active_notes.remove(&midi) {
+        self.last_port_map = port_map.unwrap_or_else(|| vec![0]);
+
+        let harmonies = self
+            .active_notes
+            .get_mut(&key)
+            .and_then(VecDeque::pop_front);
+        if self.active_notes.get(&key).is_some_and(VecDeque::is_empty) {
+            self.active_notes.remove(&key);
+        }
+
+        match harmonies {
             Some(harmonies) => {
                 let mut result = vec![note];
                 result.extend(harmonies);
@@ -1801,22 +1846,6 @@ mod tests {
         // Second Note-Off should just return the note (no longer tracked)
         let off_again = engine.harmonize_note_off(Note::C4);
         assert_eq!(off_again, vec![Note::C4]);
-    }
-
-    #[test]
-    fn test_random_mode_tracking() {
-        let mut engine = HarmonyEngine::new(Key::C, HarmonyMode::RandomBelow);
-
-        // Note-On should produce melody + random harmony
-        let on_result = engine.harmonize_note_on(Note::C5);
-        assert_eq!(on_result.len(), 2);
-
-        let harmony = on_result[1];
-
-        // Note-Off should return the SAME harmony that was produced
-        let off_result = engine.harmonize_note_off(Note::C5);
-        assert_eq!(off_result.len(), 2);
-        assert_eq!(off_result[1], harmony); // Same harmony note
     }
 
     #[test]
@@ -2792,6 +2821,10 @@ mod tests {
         assert!(
             !stale.is_empty(),
             "auto-key change should queue stale harmonies for release"
+        );
+        assert!(
+            stale.windows(2).all(|pair| pair[0] <= pair[1]),
+            "auto-key releases must have canonical pitch order: {stale:?}"
         );
         assert_eq!(
             engine.key(),

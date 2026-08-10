@@ -19,14 +19,14 @@
 //!
 //! - `HarmonyEngine` - Main engine for note transformation
 //! - `Key` - Musical keys (C through B)
-//! - `HarmonyMode` - 8 harmony algorithms
+//! - `HarmonyMode` - deterministic harmony algorithms
 //! - `ScaleMode` - 57 scale modes across 10 families
 //! - `Scale` - Scale operations and diatonic transposition
 //!
 //! # Features
 //!
-//! - **8 Harmony Modes**: Pass-through, thirds, fourths, random, contrary motion,
-//!   counterpoint, Barry Harris
+//! - **Deterministic Harmony Modes**: Pass-through, thirds, fourths, contrary
+//!   motion, counterpoint, Barry Harris, functional harmony, and Bach chorale
 //! - **57 Scale Modes**: Diatonic, harmonic/melodic minor, harmonic major,
 //!   double harmonic, pentatonic, blues, symmetric, world, and Barry Harris scales
 //! - **Modal Interchange**: Borrow notes from parallel modes for chromatic color

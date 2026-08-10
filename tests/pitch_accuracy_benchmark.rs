@@ -397,8 +397,14 @@ fn bench_noise_rejection() {
 
     // 2 seconds of low-level noise
     let n = SAMPLE_RATE * 2;
+    let mut seed = 0x6d2b_79f5_u32;
     let noise: Vec<f32> = (0..n)
-        .map(|_| (rand::random::<f32>() - 0.5) * 0.02) // very low amplitude noise
+        .map(|_| {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed as f32 / u32::MAX as f32 - 0.5) * 0.02
+        })
         .collect();
 
     let events = run_pipeline(&config, &noise);

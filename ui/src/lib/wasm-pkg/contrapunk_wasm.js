@@ -797,6 +797,30 @@ export class Engine {
         }
     }
     /**
+     * Channel-owned Note-Off for Web MIDI/MPE input.
+     * @param {number} note
+     * @param {number} channel
+     * @returns {Uint8Array}
+     */
+    note_off_channel(note, channel) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.engine_note_off_channel(retptr, this.__wbg_ptr, note, channel);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v1 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export3(r0, r1 * 1, 1);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * Process a MIDI Note-On event.
      * Returns a JS array of MIDI note numbers to sound.
      * @param {number} note
@@ -806,6 +830,30 @@ export class Engine {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
             wasm.engine_note_on(retptr, this.__wbg_ptr, note);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v1 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export3(r0, r1 * 1, 1);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Channel-owned Note-On for Web MIDI/MPE input.
+     * @param {number} note
+     * @param {number} channel
+     * @returns {Uint8Array}
+     */
+    note_on_channel(note, channel) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.engine_note_on_channel(retptr, this.__wbg_ptr, note, channel);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -1352,9 +1400,6 @@ function __wbg_get_imports() {
                 wasm.__wbindgen_export3(deferred0_0, deferred0_1, 1);
             }
         },
-        __wbg_getRandomValues_e9de607763a970bd: function() { return handleError(function (arg0, arg1) {
-            globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
-        }, arguments); },
         __wbg_new_361308b2356cecd0: function() {
             const ret = new Object();
             return addHeapObject(ret);
@@ -1477,14 +1522,6 @@ function getUint8ArrayMemory0() {
 }
 
 function getObject(idx) { return heap[idx]; }
-
-function handleError(f, args) {
-    try {
-        return f.apply(this, args);
-    } catch (e) {
-        wasm.__wbindgen_export4(addHeapObject(e));
-    }
-}
 
 let heap = new Array(128).fill(undefined);
 heap.push(undefined, null, true, false);

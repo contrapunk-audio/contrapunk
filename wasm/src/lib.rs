@@ -345,8 +345,17 @@ impl Engine {
     /// Process a MIDI Note-On event.
     /// Returns a JS array of MIDI note numbers to sound.
     pub fn note_on(&mut self, note: u8) -> Result<Vec<u8>, JsValue> {
+        self.process_note_on(note, note)
+    }
+
+    /// Channel-owned Note-On for Web MIDI/MPE input.
+    pub fn note_on_channel(&mut self, note: u8, channel: u8) -> Result<Vec<u8>, JsValue> {
+        self.process_note_on(note, channel.min(15))
+    }
+
+    fn process_note_on(&mut self, note: u8, source: u8) -> Result<Vec<u8>, JsValue> {
         let wmidi_note = wmidi::Note::from_u8_lossy(note);
-        let results = self.inner.harmonize_note_on(wmidi_note);
+        let results = self.inner.harmonize_note_on_owned(wmidi_note, source);
         let result_u8: Vec<u8> = results.iter().map(|n| u8::from(*n)).collect();
 
         // Track for note state reporting
@@ -375,8 +384,17 @@ impl Engine {
     /// Process a MIDI Note-Off event.
     /// Returns a JS array of MIDI note numbers to release.
     pub fn note_off(&mut self, note: u8) -> Result<Vec<u8>, JsValue> {
+        self.process_note_off(note, note)
+    }
+
+    /// Channel-owned Note-Off for Web MIDI/MPE input.
+    pub fn note_off_channel(&mut self, note: u8, channel: u8) -> Result<Vec<u8>, JsValue> {
+        self.process_note_off(note, channel.min(15))
+    }
+
+    fn process_note_off(&mut self, note: u8, source: u8) -> Result<Vec<u8>, JsValue> {
         let wmidi_note = wmidi::Note::from_u8_lossy(note);
-        let results = self.inner.harmonize_note_off(wmidi_note);
+        let results = self.inner.harmonize_note_off_owned(wmidi_note, source);
         let result_u8: Vec<u8> = results.iter().map(|n| u8::from(*n)).collect();
 
         // Remove from tracked state
@@ -800,6 +818,17 @@ mod tests {
         e.set_counterpoint_beat_phase(Some(2.5));
         e.set_counterpoint_beat_phase(None);
         // If the above didn't panic, the wiring is intact.
+    }
+
+    #[test]
+    fn web_midi_channels_keep_same_pitch_harmony_owners_separate() {
+        let mut engine = Engine::new();
+        engine.set_mode("ContraryMotion").unwrap();
+        let first = engine.note_on_channel(60, 0).unwrap();
+        let second = engine.note_on_channel(60, 1).unwrap();
+
+        assert_eq!(engine.note_off_channel(60, 1).unwrap(), second);
+        assert_eq!(engine.note_off_channel(60, 0).unwrap(), first);
     }
 
     #[test]

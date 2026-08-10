@@ -25,7 +25,7 @@ use contrapunk::slide::{
     MAX_SLIDE_VOICES,
 };
 use contrapunk::transport::Transport;
-use contrapunk_companion::{InputOrigin, LoopMidiEvent, OriginMidiEvent};
+use contrapunk_companion::{BeatTickScheduler, InputOrigin, LoopMidiEvent, OriginMidiEvent};
 
 use crate::guitar_bridge::GuitarBridge;
 use crate::state::{AppState, VoiceOutputRoutes, VoiceOutputTarget, VoiceRouteId};
@@ -197,18 +197,20 @@ impl MidiSlideRuntime {
 
     fn release_note(&mut self, note: u8, output: &mut OutputRouter) {
         let mut released = Vec::new();
-        let mut channels = HashSet::new();
+        let mut channels = Vec::new();
         self.voices.retain(|voice| {
             if voice.note != note {
                 return true;
             }
             released.push(voice.id);
-            channels.insert((voice.port, voice.channel));
+            channels.push((voice.port, voice.channel));
             false
         });
         for id in released {
             self.slide.note_off(id);
         }
+        channels.sort_unstable();
+        channels.dedup();
         for (port, channel) in channels {
             self.restore_channel(port, channel, output);
         }
@@ -280,12 +282,14 @@ impl MidiSlideRuntime {
 
     fn set_detune(&mut self, cents: i32, output: &mut OutputRouter) {
         self.detune_cents = cents;
-        let channels: Vec<_> = self
+        let mut channels: Vec<_> = self
             .last_bends
             .keys()
             .chain(self.configured_channels.iter())
             .copied()
             .collect();
+        channels.sort_unstable();
+        channels.dedup();
         for (port, channel) in channels {
             self.restore_channel(port, channel, output);
         }
@@ -317,12 +321,14 @@ impl MidiSlideRuntime {
     }
 
     fn clear(&mut self, output: &mut OutputRouter) {
-        let channels: HashSet<_> = self
+        let mut channels: Vec<_> = self
             .last_bends
             .keys()
             .chain(self.configured_channels.iter())
             .copied()
             .collect();
+        channels.sort_unstable();
+        channels.dedup();
         for (port, channel) in channels {
             self.send_bend(port, channel, 8_192, output);
             if self.configured_channels.contains(&(port, channel)) {
@@ -997,6 +1003,7 @@ fn run_tauri_router(
     let mut loop_source_frames: LoopSourceFrames = HashMap::new();
     let mut last_transport_revision = transport.discontinuity_revision();
     let mut transport_was_running = transport.is_running();
+    let mut companion_tick_scheduler = BeatTickScheduler::new(&transport);
 
     // Event emission timer (~30fps)
     let mut last_emit = Instant::now();
@@ -1182,15 +1189,23 @@ fn run_tauri_router(
             loop_companion.reset_runtime();
         }
 
-        // Drive pending loop-Companion emissions, then replay all source events
-        // due in the scheduler's absolute beat window.
-        {
-            let phase = transport_running.then(|| transport.beat_position());
+        // Run loop replay plus both Companion runtimes on one shared beat grid.
+        // Interleaving each slot keeps semantic dispatch order independent of
+        // audio block size or router polling batches.
+        let beats_per_bar = f64::from(transport.time_signature().0);
+        for slot in companion_tick_scheduler.due_slots(&transport) {
+            let beat = BeatTickScheduler::beat(slot);
+            let phase = transport_running.then(|| beat.rem_euclid(beats_per_bar));
+            engine
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .set_counterpoint_beat_phase(phase);
             loop_engine
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .set_counterpoint_beat_phase(phase);
-            let tagged = loop_companion.tick_tagged(&loop_engine);
+
+            let tagged = loop_companion.tick_tagged_at(beat, &loop_engine);
             dispatch_companion_ops(
                 &tagged,
                 output_router.connection_count(),
@@ -1208,18 +1223,23 @@ fn run_tauri_router(
             );
 
             let replay = if transport_running {
-                looper
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .tick(transport.total_beats())
+                looper.lock().unwrap_or_else(|e| e.into_inner()).tick(beat)
             } else {
                 Vec::new()
             };
             for replay_event in replay {
+                let event_beat = replay_event.scheduled_beat().unwrap_or(beat);
+                loop_engine
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .set_counterpoint_beat_phase(
+                        transport_running.then(|| event_beat.rem_euclid(beats_per_bar)),
+                    );
                 let bytes = loop_event_bytes(replay_event.event);
                 let mut suppress_default = false;
                 if let Some(input) = midi_bytes_to_input_event(&bytes) {
-                    let (tagged, suppress) = loop_companion.on_input_tagged(input, &loop_engine);
+                    let (tagged, suppress) =
+                        loop_companion.on_input_tagged_at(input, event_beat, &loop_engine);
                     dispatch_companion_ops(
                         &tagged,
                         output_router.connection_count(),
@@ -1265,27 +1285,14 @@ fn run_tauri_router(
                     _ => {}
                 }
             }
-        }
 
-        // #91 commit A: tick the Companion orchestrator. When
-        // `enabled = false` (the default), tick() short-circuits and
-        // returns an empty Vec — zero overhead per iteration. When
-        // Lanes are registered and the master switch is on, the
-        // returned ops are translated to dispatch_voice /
-        // broadcast_note_off via dispatch_companion_ops.
-        //
-        // Held briefly across only this loop iteration so Tauri
-        // command handlers (enable/disable, register Lane — future
-        // commits) can acquire the lock between ticks.
-        {
-            let num_ports = output_router.connection_count();
-            let tagged = {
-                let mut c = companion.lock().unwrap_or_else(|e| e.into_inner());
-                c.tick_tagged(&engine)
+            let live_tagged = {
+                let mut live = companion.lock().unwrap_or_else(|e| e.into_inner());
+                live.tick_tagged_at(beat, &engine)
             };
             dispatch_companion_ops(
-                &tagged,
-                num_ports,
+                &live_tagged,
+                output_router.connection_count(),
                 &synth_tx,
                 &mut output_router,
                 &mut midi_slides,
@@ -1299,6 +1306,13 @@ fn run_tauri_router(
                 &slide_config,
             );
         }
+
+        // Incoming live MIDI belongs to the physical transport observation,
+        // not the last quantized scheduler slot.
+        engine
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .set_counterpoint_beat_phase(transport_running.then(|| transport.beat_position()));
 
         // Beat-aligned chord retrigger. When pattern is enabled and the
         // transport is running, detect cell-boundary crossings and
@@ -1334,13 +1348,13 @@ fn run_tauri_router(
             // new parameters. Each replay populates `active_notes` and
             // updates `last_port_map` for the per-voice routing below.
             let mut new_harmonies: HashSet<u8> = HashSet::new();
-            let mut per_input: Vec<(Vec<(u8, f32)>, Vec<usize>)> = Vec::new();
+            let mut per_input: Vec<(u8, Vec<(u8, f32)>, Vec<usize>)> = Vec::new();
             {
                 let mut eng = engine.lock().unwrap_or_else(|e| e.into_inner());
-                let inputs = eng.take_reharm_inputs();
-                for midi in inputs {
+                let inputs = eng.take_owned_reharm_inputs();
+                for (source, midi) in inputs {
                     if let Ok(input_note) = Note::try_from(midi) {
-                        let result = eng.harmonize_note_on(input_note);
+                        let result = eng.harmonize_note_on_owned(input_note, source);
                         let port_map = eng.last_port_map().to_vec();
                         let tuning = eng.tune_harmony(&result).ok();
                         let voices: Vec<(u8, f32)> = result
@@ -1359,12 +1373,14 @@ fn run_tauri_router(
                         for &(midi, _) in voices.iter().skip(1) {
                             new_harmonies.insert(midi);
                         }
-                        per_input.push((voices, port_map));
+                        per_input.push((source, voices, port_map));
                     }
                 }
             }
 
-            let to_release: Vec<u8> = old_harmonies.difference(&new_harmonies).copied().collect();
+            let mut to_release: Vec<u8> =
+                old_harmonies.difference(&new_harmonies).copied().collect();
+            to_release.sort_unstable();
             let to_attack: HashSet<u8> =
                 new_harmonies.difference(&old_harmonies).copied().collect();
 
@@ -1391,13 +1407,11 @@ fn run_tauri_router(
             let slide_snapshot = *slide_config
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
-            for (voices, port_map) in &per_input {
+            for (channel, voices, port_map) in &per_input {
                 // Skip index 0 — that's the user's input note, already
-                // sounding from when they pressed the key. Channel 0
-                // and velocity 100 are reharm-path defaults (engine
-                // doesn't track per-input channel/velocity through
-                // take_reharm_inputs); same as the to_release loop
-                // above.
+                // sounding from when they pressed the key. Source channel
+                // ownership survives the configuration replay; velocity still
+                // uses the reharm-path default because it is not persisted.
                 for (i, &(n, frequency_hz)) in voices.iter().enumerate().skip(1) {
                     if !to_attack.contains(&n) {
                         continue; // already sounding from before
@@ -1408,12 +1422,12 @@ fn run_tauri_router(
                         InputOrigin::Live,
                         &mut companion_output_notes,
                         &mut loop_output_notes,
-                        routed_note_key(target, 0, n, MIX_HARMONY, slot as u8),
+                        routed_note_key(target, *channel, n, MIX_HARMONY, slot as u8),
                     ) {
                         dispatch_voice(
                             target,
                             MIX_HARMONY,
-                            0,
+                            *channel,
                             VoiceDispatch::NoteOn {
                                 note: n,
                                 frequency_hz,
@@ -2085,7 +2099,7 @@ fn handle_note_on(
     output_notes: &mut RoutedNoteCounts,
     loop_output_notes: &mut RoutedNoteCounts,
 ) {
-    let notes = engine.harmonize_note_on(note);
+    let notes = engine.harmonize_note_on_owned(note, channel.index());
     let tuning = engine.tune_harmony(&notes).ok();
     // Drain any harmonies the engine flagged for explicit release —
     // populated when an auto-key change wiped `active_notes` mid-flight.
@@ -2220,7 +2234,7 @@ fn handle_note_off(
     output_notes: &mut RoutedNoteCounts,
     loop_output_notes: &mut RoutedNoteCounts,
 ) {
-    let notes = engine.harmonize_note_off(note);
+    let notes = engine.harmonize_note_off_owned(note, channel.index());
     let num_outputs = output.connection_count();
 
     let voice_targets = voice_outputs
@@ -2434,7 +2448,9 @@ fn drain_routed_outputs(
     output: &mut OutputRouter,
     midi_slides: &mut MidiSlideRuntime,
 ) {
-    for ((target, channel, note, mix_group, voice_slot), _) in notes.drain() {
+    let mut drained: Vec<_> = notes.drain().collect();
+    drained.sort_unstable_by_key(|(key, _)| *key);
+    for ((target, channel, note, mix_group, voice_slot), _) in drained {
         let slide_role = match mix_group {
             MIX_CANON => SlideRole::Canon,
             MIX_COUNTERPOINT => SlideRole::Counterpoint,
@@ -2477,7 +2493,9 @@ fn cleanup_loop_outputs(
     output: &mut OutputRouter,
     midi_slides: &mut MidiSlideRuntime,
 ) {
-    for (key, loop_count) in loop_notes.drain() {
+    let mut drained: Vec<_> = loop_notes.drain().collect();
+    drained.sort_unstable_by_key(|(key, _)| *key);
+    for (key, loop_count) in drained {
         let Some(total_count) = all_notes.get(&key).copied() else {
             continue;
         };
@@ -2509,11 +2527,12 @@ fn cleanup_loop_outputs(
         );
     }
 
-    let loop_sustain: Vec<_> = sustain_owners
+    let mut loop_sustain: Vec<_> = sustain_owners
         .iter()
         .copied()
         .filter(|(origin, _, _)| *origin == InputOrigin::Loop)
         .collect();
+    loop_sustain.sort_unstable();
     for owner @ (_, target, channel) in loop_sustain {
         sustain_owners.remove(&owner);
         if !sustain_owners
@@ -2542,10 +2561,12 @@ fn clear_all_sustain(
     output: &mut OutputRouter,
     midi_slides: &mut MidiSlideRuntime,
 ) {
-    let destinations: HashSet<_> = owners
+    let mut destinations: Vec<_> = owners
         .iter()
         .map(|(_, target, channel)| (*target, *channel))
         .collect();
+    destinations.sort_unstable();
+    destinations.dedup();
     owners.clear();
     for (target, channel) in destinations {
         dispatch_sustain(
@@ -2714,7 +2735,11 @@ fn midi_bytes_to_loop_event(bytes: &[u8], origin: InputOrigin) -> Option<OriginM
         },
         _ => return None,
     };
-    Some(OriginMidiEvent { origin, event })
+    Some(OriginMidiEvent {
+        origin,
+        event,
+        scheduled_beat_us: None,
+    })
 }
 
 fn loop_event_bytes(event: LoopMidiEvent) -> [u8; 3] {
@@ -2926,7 +2951,7 @@ fn drain_all_tracked_notes(
     borrowed_notes: &Arc<Mutex<HashSet<u8>>>,
     canon_notes: &Arc<Mutex<NoteCounts>>,
     counterpoint_notes: &Arc<Mutex<NoteCounts>>,
-) -> HashSet<u8> {
+) -> Vec<u8> {
     let union: HashSet<u8> = {
         let in_n = input_notes.lock().unwrap_or_else(|e| e.into_inner());
         let harm = harmony_notes.lock().unwrap_or_else(|e| e.into_inner());
@@ -2963,6 +2988,8 @@ fn drain_all_tracked_notes(
         let mut s = counterpoint_notes.lock().unwrap_or_else(|e| e.into_inner());
         s.clear();
     }
+    let mut union: Vec<_> = union.into_iter().collect();
+    union.sort_unstable();
     union
 }
 
@@ -3232,8 +3259,7 @@ mod tests {
         let canon = Arc::new(Mutex::new([(72u8, 2)].into_iter().collect::<NoteCounts>()));
         let counterpoint = Arc::new(Mutex::new([(53u8, 1)].into_iter().collect::<NoteCounts>()));
         let drained = drain_all_tracked_notes(&input, &harmony, &borrowed, &canon, &counterpoint);
-        let expected: HashSet<u8> = [53, 60, 64, 67, 70, 71, 72].iter().copied().collect();
-        assert_eq!(drained, expected);
+        assert_eq!(drained, vec![53, 60, 64, 67, 70, 71, 72]);
         assert!(input.lock().unwrap().is_empty());
         assert!(harmony.lock().unwrap().is_empty());
         assert!(borrowed.lock().unwrap().is_empty());
@@ -3265,8 +3291,7 @@ mod tests {
         let canon = Arc::new(Mutex::new([(60u8, 2)].into_iter().collect::<NoteCounts>()));
         let counterpoint = Arc::new(Mutex::new(NoteCounts::new()));
         let drained = drain_all_tracked_notes(&input, &harmony, &borrowed, &canon, &counterpoint);
-        let expected: HashSet<u8> = [60, 64].iter().copied().collect();
-        assert_eq!(drained, expected);
+        assert_eq!(drained, vec![60, 64]);
     }
 
     /// Regression: `drain_all_tracked_notes` must recover from a
@@ -3306,9 +3331,9 @@ mod tests {
         // drain_all_tracked_notes must still see the wrapped data
         // (60, 64 from the harmony set) instead of panicking.
         let drained = drain_all_tracked_notes(&input, &harmony, &borrowed, &canon, &counterpoint);
-        let expected: HashSet<u8> = [60, 64].iter().copied().collect();
         assert_eq!(
-            drained, expected,
+            drained,
+            vec![60, 64],
             "drain must recover via .unwrap_or_else(|e| e.into_inner()) on poisoned mutex"
         );
     }

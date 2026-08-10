@@ -14,8 +14,8 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use contrapunk_harmony::HarmonyEngine;
 use contrapunk_transport::Transport;
@@ -31,7 +31,6 @@ pub struct HeldInput {
     pub note: u8,
     pub velocity: u8,
     pub channel: u8,
-    pub pressed_at: Instant,
 }
 
 /// One currently-sounding harmony voice. The router populates
@@ -92,10 +91,16 @@ pub struct DetectedChord {
 /// Phase 1 deliberately keeps `engine_snapshot` as `Arc<Mutex<…>>`
 /// rather than `ArcSwap`. Profiling will tell us when the read-mostly
 /// pattern justifies the swap.
+const NO_LOGICAL_BEAT_OVERRIDE: u64 = u64::MAX;
+
 pub struct WorldState {
     /// Sample-accurate musical time. The `Transport` uses lock-free
     /// atomics internally, so handing out the `Arc` directly is safe.
     pub transport: Arc<Transport>,
+
+    /// Deterministic scheduler time used while Companion catches up between
+    /// transport observations. Outside a tick this contains the sentinel above.
+    logical_beats: AtomicU64,
 
     /// Live `HarmonyEngine` — read by Sense lanes, written by Mutate
     /// lanes through the orchestrator. Same Arc as `AppState.engine`
@@ -137,6 +142,7 @@ impl WorldState {
     pub fn new(transport: Arc<Transport>, engine: Arc<Mutex<HarmonyEngine>>) -> Arc<Self> {
         Arc::new(Self {
             transport,
+            logical_beats: AtomicU64::new(NO_LOGICAL_BEAT_OVERRIDE),
             engine_snapshot: engine,
             held_inputs: Arc::new(Mutex::new(HashMap::new())),
             sounding_voices: Arc::new(Mutex::new(HashMap::new())),
@@ -146,8 +152,24 @@ impl WorldState {
         })
     }
 
+    pub(crate) fn set_logical_beats(&self, beats: Option<f64>) {
+        self.logical_beats.store(
+            beats.map_or(NO_LOGICAL_BEAT_OVERRIDE, f64::to_bits),
+            Ordering::Release,
+        );
+    }
+
+    pub fn total_beats(&self) -> f64 {
+        let bits = self.logical_beats.load(Ordering::Acquire);
+        if bits == NO_LOGICAL_BEAT_OVERRIDE {
+            self.transport.total_beats()
+        } else {
+            f64::from_bits(bits)
+        }
+    }
+
     pub fn observe_phrase_input(&self, event: crate::lane::InputEvent) {
-        let now = self.transport.total_beats();
+        let now = self.total_beats();
         self.phrase
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -155,7 +177,7 @@ impl WorldState {
     }
 
     pub fn advance_phrase(&self) {
-        let now = self.transport.total_beats();
+        let now = self.total_beats();
         self.phrase
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -221,7 +243,6 @@ mod tests {
             note: 60,
             velocity: 100,
             channel: 0,
-            pressed_at: Instant::now(),
         };
         w.held_inputs.lock().unwrap().insert(60, entry);
         assert_eq!(w.held_inputs.lock().unwrap().get(&60), Some(&entry));

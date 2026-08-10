@@ -28,7 +28,9 @@ declare module 'contrapunk-wasm' {
 		current_key(): string;
 		harmonize(note: number): Uint8Array;
 		note_on(note: number): Uint8Array;
+		note_on_channel(note: number, channel: number): Uint8Array;
 		note_off(note: number): Uint8Array;
+		note_off_channel(note: number, channel: number): Uint8Array;
 		get_state(): Record<string, unknown>;
 		get_note_state(): Record<string, unknown>;
 		list_presets(): Array<Record<string, unknown>>;

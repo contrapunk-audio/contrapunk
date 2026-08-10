@@ -40,14 +40,21 @@ const COUNTERPOINT_CHANNEL: u8 = 6;
 const TRACKED_OUTPUT_NOTES: usize = 16 * 128;
 const TRACKED_SYNTH_NOTES: usize = 4 * 128;
 const TONE_GATE_BIT: u32 = 1 << 16;
-type PortMapOwners = [VecDeque<Vec<usize>>; 128];
+type PortMapOwners = [VecDeque<Vec<usize>>; TRACKED_OUTPUT_NOTES];
 
-fn remember_port_map(owners: &mut PortMapOwners, note: u8, port_map: &[usize]) {
-    owners[note as usize].push_back(port_map.to_vec());
+fn remember_port_map(owners: &mut PortMapOwners, channel: u8, note: u8, port_map: &[usize]) {
+    owners[tracked_note_index(channel, note)].push_back(port_map.to_vec());
 }
 
-fn take_port_map(owners: &mut PortMapOwners, note: u8, fallback: Vec<usize>) -> Vec<usize> {
-    owners[note as usize].pop_front().unwrap_or(fallback)
+fn take_port_map(
+    owners: &mut PortMapOwners,
+    channel: u8,
+    note: u8,
+    fallback: Vec<usize>,
+) -> Vec<usize> {
+    owners[tracked_note_index(channel, note)]
+        .pop_front()
+        .unwrap_or(fallback)
 }
 
 pub(crate) fn pack_tone_source(note: u8, velocity: u8, gate: bool) -> u32 {
@@ -271,10 +278,12 @@ enum PluginMode {
     DiatonicThirds,
     #[name = "Diatonic 4ths"]
     DiatonicFourths,
-    #[name = "Random Below"]
-    RandomBelow,
-    #[name = "Random (No 2nds)"]
-    RandomBelowNoSeconds,
+    // Keep the old parameter slots so existing DAW automation does not shift.
+    // Both now resolve deterministically; the product UI does not expose them.
+    #[name = "Contrary Motion (Legacy)"]
+    LegacyContraryMotion,
+    #[name = "Counterpoint (Legacy)"]
+    LegacyStrictCounterpoint,
     #[name = "Contrary Motion"]
     ContraryMotion,
     #[name = "Counterpoint (Species 1)"]
@@ -288,13 +297,26 @@ enum PluginMode {
 }
 
 impl PluginMode {
+    fn canonical_name(self) -> &'static str {
+        match self {
+            Self::PassThrough => "PassThrough",
+            Self::DiatonicThirds => "DiatonicThirds",
+            Self::DiatonicFourths => "DiatonicFourths",
+            Self::LegacyContraryMotion | Self::ContraryMotion => "ContraryMotion",
+            Self::LegacyStrictCounterpoint | Self::StrictCounterpoint => "StrictCounterpoint",
+            Self::BarryHarris => "BarryHarris",
+            Self::FunctionalHarmony => "FunctionalHarmony",
+            Self::BachChorale => "BachChorale",
+        }
+    }
+
     fn to_contrapunk(self) -> HarmonyMode {
         match self {
             Self::PassThrough => HarmonyMode::PassThrough,
             Self::DiatonicThirds => HarmonyMode::DiatonicThirds,
             Self::DiatonicFourths => HarmonyMode::DiatonicFourths,
-            Self::RandomBelow => HarmonyMode::RandomBelow,
-            Self::RandomBelowNoSeconds => HarmonyMode::RandomBelowNoSeconds,
+            Self::LegacyContraryMotion => HarmonyMode::ContraryMotion,
+            Self::LegacyStrictCounterpoint => HarmonyMode::StrictCounterpoint,
             Self::ContraryMotion => HarmonyMode::ContraryMotion,
             Self::StrictCounterpoint => HarmonyMode::StrictCounterpoint,
             Self::BarryHarris => HarmonyMode::BarryHarris,
@@ -975,7 +997,7 @@ fn process_worker_note(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if note_on {
-            let notes = engine.harmonize_note_on(note);
+            let notes = engine.harmonize_note_on_owned(note, channel);
             let frequencies = engine.tune_harmony(&notes).ok().map(|frame| {
                 frame
                     .as_slice()
@@ -984,12 +1006,13 @@ fn process_worker_note(
                     .collect::<Vec<_>>()
             });
             let port_map = engine.last_port_map().to_vec();
-            remember_port_map(port_map_owners, u8::from(note), &port_map);
+            remember_port_map(port_map_owners, channel, u8::from(note), &port_map);
             (notes, frequencies, port_map)
         } else {
-            let notes = engine.harmonize_note_off(note);
+            let notes = engine.harmonize_note_off_owned(note, channel);
             let port_map = take_port_map(
                 port_map_owners,
+                channel,
                 u8::from(note),
                 engine.last_port_map().to_vec(),
             );
@@ -2590,10 +2613,12 @@ mod tests {
     #[test]
     fn harmony_note_off_reuses_non_identity_attack_port_map() {
         let mut owners: PortMapOwners = std::array::from_fn(|_| VecDeque::new());
-        remember_port_map(&mut owners, 60, &[0, 3, 1, 2]);
-        remember_port_map(&mut owners, 60, &[0, 2, 3, 1]);
-        assert_eq!(take_port_map(&mut owners, 60, vec![]), vec![0, 3, 1, 2]);
-        assert_eq!(take_port_map(&mut owners, 60, vec![]), vec![0, 2, 3, 1]);
+        remember_port_map(&mut owners, 2, 60, &[0, 3, 1, 2]);
+        remember_port_map(&mut owners, 2, 60, &[0, 2, 3, 1]);
+        remember_port_map(&mut owners, 3, 60, &[0, 1, 2, 3]);
+        assert_eq!(take_port_map(&mut owners, 3, 60, vec![]), vec![0, 1, 2, 3]);
+        assert_eq!(take_port_map(&mut owners, 2, 60, vec![]), vec![0, 3, 1, 2]);
+        assert_eq!(take_port_map(&mut owners, 2, 60, vec![]), vec![0, 2, 3, 1]);
     }
 
     #[test]
@@ -2616,6 +2641,27 @@ mod tests {
         assert!(!is_all_notes_off_cc(64));
         assert!(is_all_notes_off_cc(120));
         assert!(is_all_notes_off_cc(123));
+    }
+
+    #[test]
+    fn obsolete_random_parameter_slots_stay_stable_but_resolve_deterministically() {
+        assert_eq!(PluginMode::LegacyContraryMotion.to_index(), 3);
+        assert_eq!(PluginMode::LegacyStrictCounterpoint.to_index(), 4);
+        assert_eq!(
+            PluginMode::LegacyContraryMotion.to_contrapunk(),
+            HarmonyMode::ContraryMotion
+        );
+        assert_eq!(
+            PluginMode::LegacyContraryMotion.canonical_name(),
+            "ContraryMotion"
+        );
+        assert_eq!(
+            PluginMode::LegacyStrictCounterpoint.to_contrapunk(),
+            HarmonyMode::StrictCounterpoint
+        );
+        assert!(PluginMode::variants()
+            .iter()
+            .all(|name| !name.to_ascii_lowercase().contains("random")));
     }
 
     #[test]

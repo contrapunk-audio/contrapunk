@@ -241,7 +241,7 @@ STRATEGY:
 
 ## Harmony Modes
 
-### 8 Harmony Modes Overview
+### Deterministic Harmony Modes Overview
 
 ```
 ┌──────┬──────────────────────┬──────────────┬─────────┐
@@ -250,8 +250,6 @@ STRATEGY:
 │  1   │ PassThrough          │ No harmony   │   No    │
 │  2   │ DiatonicThirds       │ +2 degrees   │   No    │ Parallel Thirds
 │  3   │ DiatonicFourths      │ +3 degrees   │   No    │ Parallel Fourths
-│  4   │ RandomBelow          │ -1 to -6     │   No    │
-│  5   │ RandomBelowNoSeconds │ -2 to -6     │   No    │ Random Below (consonant)
 │  6   │ ContraryMotion       │ Opposite dir │  Yes    │
 │  7   │ StrictCounterpoint   │ Species 1    │  Yes    │ Counterpoint (basic)
 └──────┴──────────────────────┴──────────────┴─────────┘
@@ -282,27 +280,6 @@ harmonize_smart(note, 2, above=true)
 Return: vec![note, harmony] or vec![note]
 ```
 
-### Mode 4 & 5: Random Below Algorithm
-
-```
-┌─────────────────────────────────────────────┐
-│ Mode 4: Random Diatonic Below               │
-├─────────────────────────────────────────────┤
-│ Intervals: [-1, -2, -3, -4, -5, -6]        │
-│           [2nd, 3rd, 4th, 5th, 6th, 7th]   │
-│ Select randomly on each Note-On             │
-│ Track selection in engine for Note-Off      │
-└─────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────┐
-│ Mode 5: Random Below (No 2nds)              │
-├─────────────────────────────────────────────┤
-│ Intervals: [-2, -3, -4, -5, -6]            │
-│           [3rd, 4th, 5th, 6th, 7th]        │
-│ Excludes 2nds (dissonant)                   │
-└─────────────────────────────────────────────┘
-```
-
 ### Mode 8: Barry Harris Movement
 
 ```
@@ -316,29 +293,6 @@ Movement by +2 preserves parity:
   Passing tone (1) + 2 = Passing tone (3)
 
 This maintains harmonic clarity while moving smoothly.
-```
-
-### Random Mode Note Tracking
-
-```
-┌──────────────────────────────────────┐
-│ HarmonyEngine                        │
-├──────────────────────────────────────┤
-│ random_intervals: HashMap            │
-│   Key: MIDI note number              │
-│   Value: selected interval for this   │
-│           note (stored on Note-On)    │
-├──────────────────────────────────────┤
-│ harmonize_note_on(note):             │
-│   1. Select random interval           │
-│   2. Store: random_intervals[note]    │
-│   3. Return harmony using interval    │
-│                                      │
-│ harmonize_note_off(note):            │
-│   1. Retrieve: random_intervals[note]│
-│   2. Use same interval for release    │
-│   3. Remove from map                  │
-└──────────────────────────────────────┘
 ```
 
 ---
@@ -710,12 +664,10 @@ Process:
 │ PassThrough            (1) - No harmony             │
 │ DiatonicThirds         (2) - Parallel Thirds        │
 │ DiatonicFourths        (3) - Parallel Fourths       │
-│ RandomBelow            (4) - Random -1 to -6        │
-│ RandomBelowNoSeconds   (5) - Random (consonant)     │
 │ ContraryMotion         (6) - Opposite direction     │
 │ StrictCounterpoint     (7) - Counterpoint (Sp. 1)   │
 ├──────────────────────────────────────────────────────┤
-│ fn number() → u8 (returns 1-7)                      │
+│ fn number() → stable u8 identifier                  │
 │ fn all() → &[HarmonyMode]                           │
 │ fn description() → &str                             │
 │ fn tooltip() → &str                                 │

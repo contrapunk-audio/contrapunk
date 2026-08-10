@@ -1,5 +1,7 @@
 # Phase A: Remove BarryHarris + Honest Mode Labeling — Design Spec
 
+> Historical proposal, not current product behavior. Selectable random harmony modes were removed later; legacy values now migrate to Contrary Motion or Strict Counterpoint.
+
 ## What
 
 Two changes in one PR:

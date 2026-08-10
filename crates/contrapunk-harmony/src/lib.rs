@@ -9,7 +9,7 @@
 //! The harmony system consists of:
 //!
 //! - **[`Scale`]** - Defines a musical scale (tonic + mode) with diatonic operations
-//! - **[`HarmonyMode`]** - One of 8 algorithms for generating harmony notes
+//! - **[`HarmonyMode`]** - Deterministic algorithms for generating harmony notes
 //! - **[`HarmonyEngine`]** - Orchestrates note processing through the selected mode
 //! - **[`VoiceLeadingStyle`]** - Post-processing for smooth voice transitions
 //!
@@ -24,22 +24,20 @@
 //!
 //! # Harmony Modes
 //!
-//! The engine supports 8 harmony modes, each implementing a different algorithm:
+//! The engine exposes deterministic harmony modes, each implementing a different algorithm:
 //!
 //! | Mode | Name | Description |
 //! |------|------|-------------|
 //! | 1 | PassThrough | No harmony, notes pass through unchanged |
 //! | 2 | DiatonicThirds | Parallel thirds (+2 scale degrees per voice) |
 //! | 3 | DiatonicFourths | Parallel fourths (+3 scale degrees per voice) |
-//! | 4 | RandomBelow | Random diatonic interval below (2nd-7th) |
-//! | 5 | RandomBelowNoSeconds | Random below excluding dissonant 2nds |
 //! | 6 | ContraryMotion | Harmony moves opposite to melody direction |
 //! | 7 | StrictCounterpoint | Note-against-note voice leading with partial Species 1 rules |
 //!
 //! ## Stateless vs Stateful Modes
 //!
-//! - **Stateless (1-5):** Each note is processed independently
-//! - **Stateful (6-7):** Track previous notes to determine harmony direction
+//! - **Stateless:** Pass-through, thirds, fourths, Barry Harris, and explicit intervals
+//! - **Stateful:** Contrary motion, strict counterpoint, functional harmony, and Bach chorale
 //!
 //! # Scale Families
 //!

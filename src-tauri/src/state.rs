@@ -31,7 +31,7 @@ pub use contrapunk_companion::voice_output::VoiceOutputTarget;
 
 /// Stable identity of one routable musical part. Live input and loop replay
 /// share these identities so changing a destination affects both paths.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum VoiceRouteId {
     Input,
     Harmony { slot: u8 },
@@ -123,8 +123,14 @@ impl VoiceOutputRoutes {
         true
     }
 
-    pub fn assignments(&self) -> impl Iterator<Item = (VoiceRouteId, VoiceOutputTarget)> + '_ {
-        self.targets.iter().map(|(&route, &target)| (route, target))
+    pub fn assignments(&self) -> impl Iterator<Item = (VoiceRouteId, VoiceOutputTarget)> {
+        let mut assignments: Vec<_> = self
+            .targets
+            .iter()
+            .map(|(&route, &target)| (route, target))
+            .collect();
+        assignments.sort_unstable_by_key(|(route, _)| *route);
+        assignments.into_iter()
     }
 
     pub fn has_external_target(&self) -> bool {

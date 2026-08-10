@@ -789,9 +789,10 @@ impl std::fmt::Display for ScaleMode {
 
 /// Harmony modes (algorithms for generating harmony notes).
 ///
-/// Each mode implements a different algorithm for transforming input notes
-/// into harmonized output. Modes 1-5 and 8 are stateless (each note processed
-/// independently). Modes 6-7 are stateful (track previous notes).
+/// Each mode implements a deterministic algorithm for transforming input notes
+/// into harmonized output. Pass-through, thirds, fourths, Barry Harris, and
+/// explicit intervals process each note independently; the counterpoint modes
+/// retain bounded musical history.
 ///
 /// # Mode Overview
 ///
@@ -800,8 +801,6 @@ impl std::fmt::Display for ScaleMode {
 /// | 1 | PassThrough | No harmony, notes pass unchanged |
 /// | 2 | DiatonicThirds | Add third above (2 scale degrees) |
 /// | 3 | DiatonicFourths | Add fourth above (3 scale degrees) |
-/// | 4 | RandomBelow | Random interval below (2nd-7th) |
-/// | 5 | RandomBelowNoSeconds | Random below, excluding 2nds |
 /// | 6 | ContraryMotion | Harmony moves opposite to melody |
 /// | 7 | StrictCounterpoint | Note-against-note voice leading with partial Species 1 rules |
 ///
@@ -836,7 +835,7 @@ impl Default for ExplicitIntervalMap {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HarmonyMode {
     /// Mode 1: Pass-through (no harmony). Notes pass unchanged.
@@ -846,10 +845,6 @@ pub enum HarmonyMode {
     DiatonicThirds,
     /// Mode 3: Diatonic fourths above. Adds a fourth (3 scale degrees) above.
     DiatonicFourths,
-    /// Mode 4: Random diatonic interval below (2nd-7th).
-    RandomBelow,
-    /// Mode 5: Random below excluding 2nds (which can sound dissonant).
-    RandomBelowNoSeconds,
     /// Mode 6: Contrary motion. Harmony moves opposite to melody direction.
     /// Stateful: tracks previous melody and harmony notes.
     ContraryMotion,
@@ -858,7 +853,6 @@ pub enum HarmonyMode {
     /// contrary/stepwise motion.
     /// Stateful: uses sliding window history for interval variety and contour.
     StrictCounterpoint,
-    #[serde(alias = "barry_harris")]
     BarryHarris,
     /// Mode 9: Functional Harmony.
     FunctionalHarmony,
@@ -868,8 +862,46 @@ pub enum HarmonyMode {
     ExplicitIntervals,
 }
 
+impl<'de> Deserialize<'de> for HarmonyMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "pass_through" => Ok(Self::PassThrough),
+            "diatonic_thirds" => Ok(Self::DiatonicThirds),
+            "diatonic_fourths" => Ok(Self::DiatonicFourths),
+            // Legacy nondeterministic modes collapse to their closest
+            // deterministic musical behavior when old presets are loaded.
+            "random_below" => Ok(Self::ContraryMotion),
+            "random_below_no_seconds" => Ok(Self::StrictCounterpoint),
+            "contrary_motion" => Ok(Self::ContraryMotion),
+            "strict_counterpoint" => Ok(Self::StrictCounterpoint),
+            "barry_harris" => Ok(Self::BarryHarris),
+            "functional_harmony" => Ok(Self::FunctionalHarmony),
+            "bach_chorale" => Ok(Self::BachChorale),
+            "explicit_intervals" => Ok(Self::ExplicitIntervals),
+            _ => Err(serde::de::Error::unknown_variant(
+                &value,
+                &[
+                    "pass_through",
+                    "diatonic_thirds",
+                    "diatonic_fourths",
+                    "contrary_motion",
+                    "strict_counterpoint",
+                    "barry_harris",
+                    "functional_harmony",
+                    "bach_chorale",
+                    "explicit_intervals",
+                ],
+            )),
+        }
+    }
+}
+
 impl HarmonyMode {
-    /// Returns mode number (1-7) for display.
+    /// Returns the stable legacy mode identifier used by adapters and presets.
     ///
     /// # Example
     ///
@@ -884,8 +916,6 @@ impl HarmonyMode {
             HarmonyMode::PassThrough => 1,
             HarmonyMode::DiatonicThirds => 2,
             HarmonyMode::DiatonicFourths => 3,
-            HarmonyMode::RandomBelow => 4,
-            HarmonyMode::RandomBelowNoSeconds => 5,
             HarmonyMode::ContraryMotion => 6,
             HarmonyMode::StrictCounterpoint => 7,
             HarmonyMode::BarryHarris => 8,
@@ -901,8 +931,6 @@ impl HarmonyMode {
             HarmonyMode::PassThrough,
             HarmonyMode::DiatonicThirds,
             HarmonyMode::DiatonicFourths,
-            HarmonyMode::RandomBelow,
-            HarmonyMode::RandomBelowNoSeconds,
             HarmonyMode::ContraryMotion,
             HarmonyMode::StrictCounterpoint,
             HarmonyMode::BarryHarris,
@@ -918,8 +946,6 @@ impl HarmonyMode {
             HarmonyMode::PassThrough => "Pass-through (no harmony)",
             HarmonyMode::DiatonicThirds => "Parallel Thirds",
             HarmonyMode::DiatonicFourths => "Parallel Fourths",
-            HarmonyMode::RandomBelow => "Random diatonic below",
-            HarmonyMode::RandomBelowNoSeconds => "Random Below (consonant)",
             HarmonyMode::ContraryMotion => "Contrary motion",
             HarmonyMode::StrictCounterpoint => "Counterpoint (Species 1, basic)",
             HarmonyMode::BarryHarris => "Barry Harris (drop-2 voicings)",
@@ -938,10 +964,6 @@ impl HarmonyMode {
             }
             HarmonyMode::DiatonicFourths => {
                 "Adds +3 scale degrees per voice. Multiple voices stack into extended chords."
-            }
-            HarmonyMode::RandomBelow => "Random diatonic interval (2nd-7th) below the melody",
-            HarmonyMode::RandomBelowNoSeconds => {
-                "Random diatonic interval below, excluding dissonant 2nds"
             }
             HarmonyMode::ContraryMotion => {
                 "Harmony moves opposite to melody direction. Stateful \u{2014} tracks previous notes."

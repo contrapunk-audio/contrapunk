@@ -130,7 +130,7 @@ fn handle_note_on(
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
 ) -> Result<()> {
-    let notes = engine.harmonize_note_on(note);
+    let notes = engine.harmonize_note_on_owned(note, channel.index());
     let num_outputs = output.connection_count();
 
     let port_map = engine.last_port_map();
@@ -168,7 +168,7 @@ fn handle_note_off(
     engine: &mut HarmonyEngine,
     output: &mut OutputRouter,
 ) -> Result<()> {
-    let notes = engine.harmonize_note_off(note);
+    let notes = engine.harmonize_note_off_owned(note, channel.index());
     let num_outputs = output.connection_count();
 
     let port_map = engine.last_port_map();
