@@ -16,7 +16,7 @@ Listen at a fixed safe level. Each WAV is generated locally; no recording is red
 
 ## Cumulative ladder
 
-### Chapter 1 — cycles, harmonics, and additive tone
+### Chapter 1: cycles, harmonics, and additive tone
 
 Contributor follow-up: [issue #193](https://github.com/contrapunk-audio/contrapunk/issues/193).
 
@@ -29,7 +29,7 @@ Contributor follow-up: [issue #193](https://github.com/contrapunk-audio/contrapu
 
 `ch01_harmonics` uses the opening of the traditional French tune *Ah! vous dirai-je, maman*. The melody predates Mozart; his public-domain variations provide a historical score reference ([IMSLP K.265/300e](https://imslp.org/wiki/12_Variations_on_%27Ah%2C_vous_dirai-je_maman%27%2C_K.265%2F300e_(Mozart%2C_Wolfgang_Amadeus))). The binary contains a new monophonic synthesis, not a copied engraving, arrangement, or recording.
 
-### Chapter 2 — difference frequency and continuous gesture
+### Chapter 2: difference frequency and continuous gesture
 
 Contributor follow-up: [issue #194](https://github.com/contrapunk-audio/contrapunk/issues/194).
 
