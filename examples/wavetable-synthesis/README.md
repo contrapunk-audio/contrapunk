@@ -18,6 +18,8 @@ Listen at a fixed safe level. Each WAV is generated locally; no recording is red
 
 ### Chapter 1 — cycles, harmonics, and additive tone
 
+Contributor follow-up: [issue #193](https://github.com/contrapunk-audio/contrapunk/issues/193).
+
 1. Verify `period_seconds` and `harmonic_frequency` by hand and in the tests.
 2. Trace `SineOscillator::tick`: phase advances by $2\pi f/f_s$ per sample.
 3. Change the coefficient list passed to `additive_sample` and predict the spectrum first.
@@ -28,6 +30,8 @@ Listen at a fixed safe level. Each WAV is generated locally; no recording is red
 `ch01_harmonics` uses the opening of the traditional French tune *Ah! vous dirai-je, maman*. The melody predates Mozart; his public-domain variations provide a historical score reference ([IMSLP K.265/300e](https://imslp.org/wiki/12_Variations_on_%27Ah%2C_vous_dirai-je_maman%27%2C_K.265%2F300e_(Mozart%2C_Wolfgang_Amadeus))). The binary contains a new monophonic synthesis, not a copied engraving, arrangement, or recording.
 
 ### Chapter 2 — difference frequency and continuous gesture
+
+Contributor follow-up: [issue #194](https://github.com/contrapunk-audio/contrapunk/issues/194).
 
 1. Use `heterodyne_components` for 300.000 and 299.560 kHz.
 2. Compare linear addition with the audible scaled multiplication at the start of `ch02_gesture`.
