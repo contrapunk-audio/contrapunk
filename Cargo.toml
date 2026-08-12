@@ -18,7 +18,6 @@ members = [
     "crates/elixir-preset",
     "crates/golem-core",
     "apps/golem/src-tauri",
-    "examples/wavetable-synthesis",
 ]
 resolver = "2"
 
