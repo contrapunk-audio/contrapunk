@@ -1,4 +1,4 @@
-//! Small cumulative DSP helpers for Chapters 1–2 of the wavetable workbook.
+//! Small cumulative DSP helpers for Chapters 1–3 of the wavetable workbook.
 //!
 //! The examples favor visible mathematics over production abstractions. They
 //! write offline WAV files; they are not an audio-callback implementation.
@@ -202,6 +202,77 @@ pub fn render_phrase(notes: &[Note], amplitudes: &[f32], bpm: f32, style: Phrase
     output
 }
 
+/// Change playback rate with linear interpolation. Like tape speed, this
+/// couples pitch and duration; it is not independent time stretching.
+pub fn resample_linear(samples: &[f32], rate: f32) -> Option<Vec<f32>> {
+    if samples.is_empty() || !rate.is_finite() || rate <= 0.0 {
+        return None;
+    }
+    let length = ((samples.len() - 1) as f32 / rate).floor() as usize + 1;
+    Some(
+        (0..length)
+            .map(|index| {
+                let position = index as f32 * rate;
+                let left = position.floor() as usize;
+                let right = (left + 1).min(samples.len() - 1);
+                let fraction = position - left as f32;
+                samples[left] + fraction * (samples[right] - samples[left])
+            })
+            .collect(),
+    )
+}
+
+pub fn apply_envelope(samples: &mut [f32], attack_frames: usize, release_frames: usize) {
+    let length = samples.len();
+    for (index, sample) in samples.iter_mut().enumerate() {
+        let attack = if attack_frames == 0 {
+            1.0
+        } else {
+            index as f32 / attack_frames as f32
+        };
+        let release = if release_frames == 0 {
+            1.0
+        } else {
+            (length - 1 - index) as f32 / release_frames as f32
+        };
+        *sample *= attack.min(release).clamp(0.0, 1.0);
+    }
+}
+
+/// Join two clips with complementary linear gains across the overlap.
+pub fn splice_crossfade(left: &[f32], right: &[f32], overlap: usize) -> Vec<f32> {
+    let overlap = overlap.min(left.len()).min(right.len());
+    let mut output = left[..left.len() - overlap].to_vec();
+    for index in 0..overlap {
+        let right_gain = (index + 1) as f32 / (overlap + 1) as f32;
+        output.push(
+            left[left.len() - overlap + index] * (1.0 - right_gain) + right[index] * right_gain,
+        );
+    }
+    output.extend_from_slice(&right[overlap..]);
+    output
+}
+
+pub fn fir_filter(samples: &[f32], coefficients: &[f32]) -> Vec<f32> {
+    (0..samples.len())
+        .map(|index| {
+            coefficients
+                .iter()
+                .enumerate()
+                .take(index + 1)
+                .map(|(delay, coefficient)| coefficient * samples[index - delay])
+                .sum()
+        })
+        .collect()
+}
+
+pub fn ring_modulate(samples: &mut [f32], frequency_hz: f32) {
+    let mut oscillator = SineOscillator::new();
+    for sample in samples {
+        *sample *= oscillator.tick(frequency_hz, SAMPLE_RATE as f32);
+    }
+}
+
 pub fn append_silence(samples: &mut Vec<f32>, seconds: f32) {
     samples.resize(
         samples.len() + (seconds * SAMPLE_RATE as f32).round() as usize,
@@ -302,6 +373,56 @@ mod tests {
         );
         assert!((cents_ratio(1_200.0) - 2.0).abs() < 1.0e-6);
         assert!((log_frequency_lerp(220.0, 880.0, 0.5) - 440.0).abs() < 1.0e-3);
+    }
+
+    #[test]
+    fn chapter_three_tape_operations_are_deterministic() {
+        assert!(resample_linear(&[0.0, 1.0], 0.0).is_none());
+        assert_eq!(
+            resample_linear(&[0.0, 1.0, 0.0], 0.5).unwrap(),
+            vec![0.0, 0.5, 1.0, 0.5, 0.0]
+        );
+        assert_eq!(
+            resample_linear(&[0.0, 1.0, 0.0], 2.0).unwrap(),
+            vec![0.0, 0.0]
+        );
+
+        let mut shaped = vec![1.0; 5];
+        apply_envelope(&mut shaped, 2, 2);
+        assert_eq!(shaped, vec![0.0, 0.5, 1.0, 0.5, 0.0]);
+
+        let spliced = splice_crossfade(&[0.0, 1.0, 1.0], &[0.0, 0.0, 1.0], 2);
+        assert_eq!(spliced.len(), 4);
+        assert!(spliced.iter().all(|sample| sample.abs() <= 1.0));
+        assert_eq!(
+            fir_filter(&[1.0, 0.0, 0.0], &[0.5, 0.25]),
+            vec![0.5, 0.25, 0.0]
+        );
+    }
+
+    #[test]
+    fn ring_modulation_creates_sum_and_difference_components() {
+        let length = SAMPLE_RATE as usize;
+        let mut source: Vec<f32> = (0..length)
+            .map(|frame| (std::f32::consts::TAU * 440.0 * frame as f32 / SAMPLE_RATE as f32).sin())
+            .collect();
+        ring_modulate(&mut source, 110.0);
+        let correlate = |frequency_hz: f32| {
+            source
+                .iter()
+                .enumerate()
+                .map(|(frame, sample)| {
+                    sample
+                        * (std::f32::consts::TAU * frequency_hz * frame as f32 / SAMPLE_RATE as f32)
+                            .cos()
+                })
+                .sum::<f32>()
+                .abs()
+                / length as f32
+        };
+        assert!(correlate(330.0) > 0.2);
+        assert!(correlate(550.0) > 0.2);
+        assert!(correlate(440.0) < 1.0e-3);
     }
 
     #[test]

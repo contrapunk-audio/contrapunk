@@ -1,6 +1,6 @@
 # Wavetable-synthesis chapter exercises
 
-Runnable Rust companions for the first two chapters of the local wavetable-synthesis workbook and the research umbrella in [issue #188](https://github.com/contrapunk-audio/contrapunk/issues/188).
+Runnable Rust companions for the first three chapters of the local wavetable-synthesis workbook and the research umbrella in [issue #188](https://github.com/contrapunk-audio/contrapunk/issues/188).
 
 The crate is deliberately small: one phase accumulator, visible formulas, offline rendering, and the already-used `hound` WAV writer. It is a teaching model, not Elixir's production oscillator.
 
@@ -10,6 +10,7 @@ The crate is deliberately small: one phase accumulator, visible formulas, offlin
 cargo test -p wavetable-synthesis-exercises
 cargo run -p wavetable-synthesis-exercises --bin ch01_harmonics -- /tmp/ch01.wav
 cargo run -p wavetable-synthesis-exercises --bin ch02_gesture -- /tmp/ch02.wav
+cargo run -p wavetable-synthesis-exercises --bin ch03_studio -- /tmp/ch03.wav
 ```
 
 Listen at a fixed safe level. Each WAV is generated locally; no recording is redistributed.
@@ -37,6 +38,17 @@ Listen at a fixed safe level. Each WAV is generated locally; no recording is red
 6. Explain why `SineOscillator::tick(frequency_hz, ...)` integrates a trajectory correctly while `sin(2π f(t)t)` generally does not.
 
 `ch02_gesture` uses the public-domain NEW BRITAIN pitch incipit `5-1-3-1-3-2-1-6-5-5`, with simplified durations. The Library of Congress documents the tune's 1835 pairing with *Amazing Grace* ([timeline](https://www.loc.gov/collections/amazing-grace/articles-and-essays/timeline/)); [Hymnary tune record](https://hymnary.org/tune/new_britain)). No lyrics or modern arrangement are included.
+
+### Chapter 3: tape operations and stored control
+
+1. Verify that changing playback rate couples duration and pitch.
+2. Reverse and splice clips while predicting the exact frame count.
+3. Draw the attack and release envelope before applying it.
+4. Verify the tiny FIR from its impulse response.
+5. Multiply a 440 Hz source by 110 Hz and check the 330/550 Hz components.
+6. Read `data/ch03-paper-roll.csv`, then compare its integer event lanes with the rendered study.
+
+The paper-roll study is project-authored and deterministic. It is a teaching surrogate, not a recording of a historical studio or RCA machine.
 
 ## Boundaries
 

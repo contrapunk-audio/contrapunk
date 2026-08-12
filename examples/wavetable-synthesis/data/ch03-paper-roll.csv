@@ -1,0 +1,6 @@
+start_frames,duration_frames,frequency_hz,level,attack_frames,release_frames,filter,modulation_hz
+0,24000,220,0.70,480,1440,dark,0
+24000,12000,330,0.55,240,960,bright,0
+36000,24000,247,0.75,480,1440,dark,73
+60000,12000,440,0.50,240,960,bright,0
+72000,36000,294,0.72,480,1920,dark,91
