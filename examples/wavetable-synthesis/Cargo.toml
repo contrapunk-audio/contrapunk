@@ -1,0 +1,8 @@
+[package]
+name = "wavetable-synthesis-exercises"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+hound = "3.5"
