@@ -1,7 +1,8 @@
 use std::{error::Error, path::PathBuf};
 
 use wavetable_synthesis_exercises::{
-    midi_to_freq, write_wav, Adsr, OnePoleLowPass, SawOscillator, StepSequence, SAMPLE_RATE,
+    bounded_feedback, midi_to_freq, write_wav, Adsr, OnePoleLowPass, SawOscillator, StepSequence,
+    SAMPLE_RATE,
 };
 
 const MOTIF: [u8; 8] = [48, 55, 60, 63, 60, 55, 51, 55];
@@ -13,11 +14,12 @@ fn render() -> Vec<f32> {
     let mut oscillator = SawOscillator::new();
     let mut envelope = Adsr::new(sample_rate, 0.005, 0.06, 0.6, 0.04);
     let mut filter = OnePoleLowPass::new();
-    let mut output = Vec::with_capacity(step_frames * MOTIF.len() * 2);
+    let frame_count = step_frames * MOTIF.len() * 2;
+    let mut output = Vec::with_capacity(frame_count);
     let mut previous_gate = false;
     let mut previous_output = 0.0_f32;
 
-    for frame in 0..output.capacity() {
+    for frame in 0..frame_count {
         let step = sequence.at(frame);
         if step.gate != previous_gate {
             envelope.gate(step.gate);
@@ -26,7 +28,7 @@ fn render() -> Vec<f32> {
         let env = envelope.next_sample();
         let source = oscillator.tick(midi_to_freq(step.midi), sample_rate);
         let filtered = filter.process(source, 600.0 + 2_400.0 * env, sample_rate);
-        let input = filtered + 0.35 * previous_output.tanh();
+        let input = bounded_feedback(filtered, previous_output, 0.35);
         let sample = (0.35 * env * input).tanh();
         previous_output = sample;
         output.push(sample);
