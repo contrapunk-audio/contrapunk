@@ -1,6 +1,6 @@
 # Wavetable-synthesis chapter exercises
 
-Runnable Rust companions for the first three chapters of the local wavetable-synthesis workbook and the research umbrella in [issue #188](https://github.com/contrapunk-audio/contrapunk/issues/188).
+Runnable Rust companions for the first four chapters of the local wavetable-synthesis workbook and the research umbrella in [issue #188](https://github.com/contrapunk-audio/contrapunk/issues/188).
 
 The crate is deliberately small: one phase accumulator, visible formulas, offline rendering, and the already-used `hound` WAV writer. It is a teaching model, not Elixir's production oscillator.
 
@@ -11,6 +11,7 @@ cargo test -p wavetable-synthesis-exercises
 cargo run -p wavetable-synthesis-exercises --bin ch01_harmonics -- /tmp/ch01.wav
 cargo run -p wavetable-synthesis-exercises --bin ch02_gesture -- /tmp/ch02.wav
 cargo run -p wavetable-synthesis-exercises --bin ch03_studio -- /tmp/ch03.wav
+cargo run -p wavetable-synthesis-exercises --bin ch04_modular -- /tmp/ch04.wav
 ```
 
 Listen at a fixed safe level. Each WAV is generated locally; no recording is redistributed.
@@ -49,6 +50,17 @@ Listen at a fixed safe level. Each WAV is generated locally; no recording is red
 6. Read `data/ch03-paper-roll.csv`, then compare its integer event lanes with the rendered study.
 
 The paper-roll study is project-authored and deterministic. It is a teaching surrogate, not a recording of a historical studio or RCA machine.
+
+### Chapter 4: voltage control and a modular patch
+
+1. Verify that one octave of control doubles oscillator frequency.
+2. Follow the ADSR state changes, including retrigger and release from the current level.
+3. Compare the VCO before and after the one-pole teaching filter.
+4. Trace one sequence step across pitch, gate, envelope, VCF, and VCA.
+5. Find the explicit previous-sample variable that makes feedback causal and bounded.
+6. Render the 16-step study and verify its four-second length and safe peak.
+
+The Chapter 4 motif is project-authored and released with the workbook under CC0-1.0. The one-pole filter is an audible teaching VCF, not a Moog ladder emulation.
 
 ## Boundaries
 

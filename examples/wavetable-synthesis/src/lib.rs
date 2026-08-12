@@ -1,4 +1,4 @@
-//! Small cumulative DSP helpers for Chapters 1–3 of the wavetable workbook.
+//! Small cumulative DSP helpers for Chapters 1–4 of the wavetable workbook.
 //!
 //! The examples favor visible mathematics over production abstractions. They
 //! write offline WAV files; they are not an audio-callback implementation.
@@ -74,6 +74,165 @@ impl SineOscillator {
             .rem_euclid(std::f32::consts::TAU);
         sample
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SawOscillator {
+    phase: f32,
+}
+
+impl SawOscillator {
+    pub const fn new() -> Self {
+        Self { phase: 0.0 }
+    }
+
+    pub fn tick(&mut self, frequency_hz: f32, sample_rate: f32) -> f32 {
+        let sample = 2.0 * self.phase - 1.0;
+        self.phase = (self.phase + frequency_hz.clamp(0.0, sample_rate * 0.45) / sample_rate)
+            .rem_euclid(1.0);
+        sample
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdsrStage {
+    Idle,
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Adsr {
+    sample_rate: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+    stage: AdsrStage,
+    level: f32,
+    start: f32,
+    elapsed: usize,
+}
+
+impl Adsr {
+    pub fn new(sample_rate: f32, attack: f32, decay: f32, sustain: f32, release: f32) -> Self {
+        Self {
+            sample_rate,
+            attack: attack.max(0.0),
+            decay: decay.max(0.0),
+            sustain: sustain.clamp(0.0, 1.0),
+            release: release.max(0.0),
+            stage: AdsrStage::Idle,
+            level: 0.0,
+            start: 0.0,
+            elapsed: 0,
+        }
+    }
+
+    pub const fn stage(&self) -> AdsrStage {
+        self.stage
+    }
+
+    pub const fn level(&self) -> f32 {
+        self.level
+    }
+
+    pub fn gate(&mut self, on: bool) {
+        self.start = self.level;
+        self.elapsed = 0;
+        self.stage = if on {
+            AdsrStage::Attack
+        } else {
+            AdsrStage::Release
+        };
+    }
+
+    pub fn next_sample(&mut self) -> f32 {
+        loop {
+            let (target, seconds, next) = match self.stage {
+                AdsrStage::Idle => return 0.0,
+                AdsrStage::Attack => (1.0, self.attack, AdsrStage::Decay),
+                AdsrStage::Decay => (self.sustain, self.decay, AdsrStage::Sustain),
+                AdsrStage::Sustain => return self.sustain,
+                AdsrStage::Release => (0.0, self.release, AdsrStage::Idle),
+            };
+            let frames = (seconds * self.sample_rate).round() as usize;
+            if frames == 0 {
+                self.level = target;
+                self.start = target;
+                self.elapsed = 0;
+                self.stage = next;
+                continue;
+            }
+            self.elapsed += 1;
+            let t = (self.elapsed as f32 / frames as f32).clamp(0.0, 1.0);
+            self.level = self.start + (target - self.start) * t;
+            if self.elapsed >= frames {
+                self.start = target;
+                self.elapsed = 0;
+                self.stage = next;
+            }
+            return self.level;
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OnePoleLowPass {
+    z1: f32,
+}
+
+impl OnePoleLowPass {
+    pub const fn new() -> Self {
+        Self { z1: 0.0 }
+    }
+
+    pub fn process(&mut self, input: f32, cutoff_hz: f32, sample_rate: f32) -> f32 {
+        let cutoff = cutoff_hz.clamp(f32::EPSILON, sample_rate * 0.45);
+        let a = (-std::f32::consts::TAU * cutoff / sample_rate).exp();
+        self.z1 = (1.0 - a) * input + a * self.z1;
+        self.z1
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SequenceStep {
+    pub midi: u8,
+    pub gate: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct StepSequence<'a> {
+    notes: &'a [u8],
+    step_frames: usize,
+    gate_fraction: f32,
+}
+
+impl<'a> StepSequence<'a> {
+    pub fn new(notes: &'a [u8], step_frames: usize, gate_fraction: f32) -> Self {
+        assert!(!notes.is_empty());
+        assert!(step_frames > 0);
+        Self {
+            notes,
+            step_frames,
+            gate_fraction: gate_fraction.clamp(0.0, 1.0),
+        }
+    }
+
+    pub fn at(&self, frame: usize) -> SequenceStep {
+        let step = (frame / self.step_frames) % self.notes.len();
+        let within = frame % self.step_frames;
+        SequenceStep {
+            midi: self.notes[step],
+            gate: within < (self.step_frames as f32 * self.gate_fraction).round() as usize,
+        }
+    }
+}
+
+pub fn bounded_feedback(input: f32, previous_output: f32, gain: f32) -> f32 {
+    input + gain.clamp(-0.999, 0.999) * previous_output.tanh()
 }
 
 pub fn period_seconds(frequency_hz: f32) -> Option<f32> {
@@ -433,5 +592,101 @@ mod tests {
         assert_eq!(detached.len(), SAMPLE_RATE as usize);
         assert_eq!(detached.len(), legato.len());
         assert_ne!(detached, legato);
+    }
+
+    #[test]
+    fn octave_voltage_doubles_frequency() {
+        let f0 = 220.0;
+        assert_eq!(f0 * 2.0_f32.powf(1.0), 440.0);
+        assert!((f0 * 2.0_f32.powf(1.0 / 12.0) - midi_to_freq(58)).abs() < 1.0e-4);
+    }
+
+    #[test]
+    fn adsr_transitions_retrigger_and_release_from_current_level() {
+        let mut envelope = Adsr::new(10.0, 0.2, 0.2, 0.5, 0.2);
+        envelope.gate(true);
+        assert_eq!(envelope.next_sample(), 0.5);
+        assert_eq!(envelope.next_sample(), 1.0);
+        assert_eq!(envelope.stage(), AdsrStage::Decay);
+        assert_eq!(envelope.next_sample(), 0.75);
+        envelope.gate(true);
+        assert!((envelope.next_sample() - 0.875).abs() < 1.0e-6);
+        envelope.gate(false);
+        let release_start = envelope.level();
+        assert!((envelope.next_sample() - release_start * 0.5).abs() < 1.0e-6);
+        assert_eq!(envelope.next_sample(), 0.0);
+        assert_eq!(envelope.stage(), AdsrStage::Idle);
+    }
+
+    #[test]
+    fn zero_length_adsr_segments_jump_to_targets() {
+        let mut envelope = Adsr::new(48_000.0, 0.0, 0.0, 0.4, 0.0);
+        envelope.gate(true);
+        assert_eq!(envelope.next_sample(), 0.4);
+        assert_eq!(envelope.stage(), AdsrStage::Sustain);
+        envelope.gate(false);
+        assert_eq!(envelope.next_sample(), 0.0);
+        assert_eq!(envelope.stage(), AdsrStage::Idle);
+    }
+
+    #[test]
+    fn one_pole_filter_converges_and_stays_finite() {
+        let mut filter = OnePoleLowPass::new();
+        let mut sample = 0.0;
+        for _ in 0..SAMPLE_RATE {
+            sample = filter.process(1.0, 900.0, SAMPLE_RATE as f32);
+            assert!(sample.is_finite());
+        }
+        assert!((sample - 1.0).abs() < 1.0e-5);
+    }
+
+    #[test]
+    fn sequence_obeys_step_and_gate_boundaries() {
+        let sequence = StepSequence::new(&[48, 55], 100, 0.8);
+        assert_eq!(
+            sequence.at(0),
+            SequenceStep {
+                midi: 48,
+                gate: true
+            }
+        );
+        assert_eq!(
+            sequence.at(79),
+            SequenceStep {
+                midi: 48,
+                gate: true
+            }
+        );
+        assert_eq!(
+            sequence.at(80),
+            SequenceStep {
+                midi: 48,
+                gate: false
+            }
+        );
+        assert_eq!(
+            sequence.at(100),
+            SequenceStep {
+                midi: 55,
+                gate: true
+            }
+        );
+        assert_eq!(
+            sequence.at(200),
+            SequenceStep {
+                midi: 48,
+                gate: true
+            }
+        );
+    }
+
+    #[test]
+    fn delayed_feedback_is_bounded_for_bounded_input() {
+        let mut previous = 0.0;
+        for frame in 0..20_000 {
+            let input = if frame == 0 { 0.5 } else { 0.0 };
+            previous = bounded_feedback(input, previous, 0.95).tanh();
+            assert!(previous.is_finite() && previous.abs() <= 1.0);
+        }
     }
 }
