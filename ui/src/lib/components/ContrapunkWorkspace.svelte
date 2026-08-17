@@ -12,6 +12,7 @@
 		type ScaleModeName
 	} from '$lib/stores/engine.svelte';
 	import { midi } from '$lib/stores/midi.svelte';
+	import { arrangement } from '$lib/stores/arrangement.svelte';
 	import { phrase } from '$lib/stores/phrase.svelte';
 	import { synth } from '$lib/stores/synth.svelte';
 	import { slide } from '$lib/stores/slide.svelte';
@@ -19,6 +20,7 @@
 	import { transport } from '$lib/stores/transport.svelte';
 	import { PIANO_KEY_COUNTS, ui } from '$lib/stores/ui.svelte';
 	import { attachKeyboardInput } from '$lib/keyboard-input';
+	import ChainPanel from '$lib/components/ChainPanel.svelte';
 	import CompanionPanel from '$lib/components/CompanionPanel.svelte';
 	import ControlPanel from '$lib/components/ControlPanel.svelte';
 	import EnsemblePresetBar from '$lib/components/EnsemblePresetBar.svelte';
@@ -30,7 +32,6 @@
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
 	import ExplicitIntervalMapPanel from '$lib/components/ExplicitIntervalMapPanel.svelte';
-	import ArrangementMixer from '$lib/prototype/ArrangementMixer.svelte';
 	import ExpressionRoll from '$lib/prototype/ExpressionRoll.svelte';
 	import PatternLanePanel from '$lib/prototype/PatternLanePanel.svelte';
 	import PhraseControl from '$lib/components/PhraseControl.svelte';
@@ -214,35 +215,81 @@
 
 	{#if resetError}<div class="notice error" role="alert">{resetError}</div>{/if}
 	<div class="workspace-cockpit">
-		<aside class="workspace-sidebar sound-sidebar" aria-label="Sound sidebar"></aside>
+		<aside class="workspace-sidebar sound-sidebar" aria-label="Sound sidebar">
+			<header class="sidebar-header">
+				<div><span>SOUND</span><strong>Signal chain</strong></div>
+				<i class:live={outputLive} aria-label={outputLive ? 'Audio active' : 'Audio idle'}></i>
+			</header>
+			<section class="source-card" aria-label="Current input source">
+				<div><span>SOURCE</span><strong>{sourceName}</strong><small>{engine.isRunning ? 'Routing on' : 'Routing off'}</small></div>
+				<button type="button" onclick={() => openSetup('input', 'input-source')}>CHANGE</button>
+			</section>
+			<div class="sound-chain">
+				{#if initialized}<ChainPanel />{:else}<p class="sidebar-empty">Initializing sound chain…</p>{/if}
+			</div>
+			<footer class="sidebar-actions">
+				{#if adapter.capabilities.audioFx}<button type="button" onclick={() => (activeView = 'synth')}>OPEN SYNTH</button>{/if}
+				<button type="button" onclick={() => openSetup('output', 'output-routing')}>OUTPUT ROUTING</button>
+			</footer>
+		</aside>
+
 		{#if activeView === 'synth' && adapter.capabilities.audioFx}
 			<div class="synth-body"><ElixirWorkspace embedded /></div>
 		{:else}
-		<main class="performance-body">
-		{#if initError}
-			<div class="notice error" role="alert">{initError}</div>
-		{:else if !initialized}
-			<div class="notice">Initializing the real Contrapunk engine…</div>
-		{:else}
-			<section class="quick-controls" aria-label="Performance controls">
-				<label><span>KEY</span><select value={engine.key} onchange={(event) => engine.setKey(event.currentTarget.value as KeyName)}>{#each ALL_KEYS as key}<option value={key}>{KEY_DISPLAY[key]}</option>{/each}</select></label>
-				<label><span>SCALE</span><select value={engine.scaleMode} onchange={(event) => engine.setScaleMode(event.currentTarget.value as ScaleModeName)}>{#each scaleOptions as option}<option value={option.name}>{option.label}</option>{/each}</select></label>
-				<label><span>HARMONY</span><select value={engine.mode} onchange={(event) => engine.setMode(event.currentTarget.value as HarmonyModeName)}>{#each quickModes as mode}<option value={mode.name}>{mode.label}</option>{/each}</select></label>
-				<label><span>VOICES</span><select value={engine.voiceCount} onchange={(event) => engine.setVoiceCount(Number(event.currentTarget.value))}>{#each Array.from({ length: maxVoiceCount }, (_, index) => index + 1) as count}<option value={count}>{count}</option>{/each}</select></label>
-				<label><span>YOUR REGISTER</span><select value={engine.voicePosition} onchange={(event) => engine.setVoicePosition(Number(event.currentTarget.value))}>{#each registerOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
-				<div class="spread-control">
-					<Knob value={spread} min={0} max={1} step={0.01} defaultValue={0} size={44} label="Spread" help="Moves newly played harmony voices apart by whole octaves without changing their notes or key. Held notes stay unchanged." format={(value) => value <= 0.01 ? 'Off' : `${Math.round(value * 100)}%`} onchange={setSpread} />
-				</div>
-			</section>
+			<main class="performance-body">
+				{#if initError}
+					<div class="notice error" role="alert">{initError}</div>
+				{:else if !initialized}
+					<div class="notice">Initializing the real Contrapunk engine…</div>
+				{:else}
+					<div class="live-grid"><ExpressionRoll /></div>
+				{/if}
+			</main>
+		{/if}
 
-			<div class="live-grid">
-				<ExpressionRoll />
-			</div>
-			<ArrangementMixer {openSetup} openSynth={() => (activeView = 'synth')} />
-		{/if}
-		</main>
-		{/if}
-		<aside class="workspace-sidebar ensemble-sidebar" aria-label="Ensemble sidebar"></aside>
+		<aside class="workspace-sidebar ensemble-sidebar" aria-label="Ensemble sidebar">
+			<header class="sidebar-header">
+				<div><span>ENSEMBLE</span><strong>Generated parts</strong></div>
+				<i class:live={ensembleLive} aria-label={ensembleLive ? 'Ensemble active' : 'Ensemble idle'}></i>
+			</header>
+			{#if initialized}
+				<div class="sidebar-preset"><EnsemblePresetBar compact /></div>
+				<section class="ensemble-controls" aria-label="Harmony controls">
+					<label><span>KEY</span><select value={engine.key} onchange={(event) => engine.setKey(event.currentTarget.value as KeyName)}>{#each ALL_KEYS as key}<option value={key}>{KEY_DISPLAY[key]}</option>{/each}</select></label>
+					<label><span>SCALE</span><select value={engine.scaleMode} onchange={(event) => engine.setScaleMode(event.currentTarget.value as ScaleModeName)}>{#each scaleOptions as option}<option value={option.name}>{option.label}</option>{/each}</select></label>
+					<label class="wide"><span>HARMONY</span><select value={engine.mode} onchange={(event) => engine.setMode(event.currentTarget.value as HarmonyModeName)}>{#each quickModes as mode}<option value={mode.name}>{mode.label}</option>{/each}</select></label>
+					<label><span>VOICES</span><select value={engine.voiceCount} onchange={(event) => engine.setVoiceCount(Number(event.currentTarget.value))}>{#each Array.from({ length: maxVoiceCount }, (_, index) => index + 1) as count}<option value={count}>{count}</option>{/each}</select></label>
+					<label><span>YOUR REGISTER</span><select value={engine.voicePosition} onchange={(event) => engine.setVoicePosition(Number(event.currentTarget.value))}>{#each registerOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
+					<div class="spread-control wide"><Knob value={spread} min={0} max={1} step={0.01} defaultValue={0} size={44} label="Spread" help="Moves newly played harmony voices apart by whole octaves without changing their notes or key. Held notes stay unchanged." format={(value) => value <= 0.01 ? 'Off' : `${Math.round(value * 100)}%`} onchange={setSpread} /></div>
+				</section>
+
+				<section class="generated-parts" aria-labelledby="generated-parts-title">
+					<header><h2 id="generated-parts-title">PARTS</h2><button type="button" onclick={() => openSetup('harmony')}>EDIT ALL</button></header>
+					<div class="part-row" class:enabled={engine.mode !== 'PassThrough'} class:active={engine.harmonyNotes.length > 0}>
+						<button class="part-main" type="button" onclick={() => openSetup('harmony', 'harmony-controls')}><i></i><span><strong>Harmony</strong><small>{engine.mode === 'PassThrough' ? 'Off' : `${Math.max(0, engine.voiceCount - 1)} generated voices`}</small></span></button>
+						<button class="part-action" type="button" onclick={() => openSetup('harmony', 'harmony-controls')}>EDIT</button>
+					</div>
+					{#if adapter.capabilities.companionLanes}
+						<div class="part-row" class:enabled={engine.canonEnabled} class:active={engine.canonNotes.length > 0}>
+							<button class="part-main" type="button" onclick={() => openSetup('canon', 'canon-controls')}><i></i><span><strong>Canon</strong><small>{engine.canonEnabled ? `${engine.canonVoices.length} ${engine.imitativeForm === 'strict_canon' ? 'strict' : 'imitative'} voices` : 'Off'}</small></span></button>
+							<button class="part-action power" class:on={engine.canonEnabled} type="button" aria-pressed={engine.canonEnabled} onclick={() => void engine.setCanonEnabled(!engine.canonEnabled)}>{engine.canonEnabled ? 'ON' : 'OFF'}</button>
+						</div>
+						<div class="part-row" class:enabled={arrangement.counterpoint.enabled} class:active={engine.counterpointNotes.length > 0}>
+							<button class="part-main" type="button" onclick={() => openSetup('counterpoint', 'counterpoint-controls')}><i></i><span><strong>Counterpoint</strong><small>{arrangement.counterpoint.enabled ? (arrangement.counterpoint.phraseAware ? 'Suspension pair' : engine.counterpointSpecies.replace('Species', 'Species ')) : 'Off'}</small></span></button>
+							<button class="part-action power" class:on={arrangement.counterpoint.enabled} type="button" aria-pressed={arrangement.counterpoint.enabled} onclick={() => void arrangement.setCounterpoint({ enabled: !arrangement.counterpoint.enabled })}>{arrangement.counterpoint.enabled ? 'ON' : 'OFF'}</button>
+						</div>
+					{/if}
+					{#if adapter.capabilities.patternLanes}
+						<div class="part-row" class:enabled={arrangement.patterns.lowSupport.enabled || arrangement.patterns.counterline.enabled}>
+							<button class="part-main" type="button" onclick={() => openSetup('canon')}><i></i><span><strong>Patterns</strong><small>{Number(arrangement.patterns.lowSupport.enabled) + Number(arrangement.patterns.counterline.enabled)} of 2 active</small></span></button>
+							<button class="part-action" type="button" onclick={() => openSetup('canon')}>EDIT</button>
+						</div>
+					{/if}
+				</section>
+			{:else}
+				<p class="sidebar-empty">Initializing ensemble…</p>
+			{/if}
+		</aside>
 	</div>
 
 	<dialog class="setup-dialog" bind:this={setupDialog} aria-labelledby="setup-title" onclose={() => (setupOpen = false)}>
@@ -347,18 +394,60 @@
 	.tempo { display: flex; height: 30px; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid var(--proto-line); color: var(--proto-muted); font: 8px var(--font-code); }
 	.tempo input { width: 39px; border: 0; background: transparent; color: var(--proto-text); font: 10px var(--font-code); }
 	.workspace-cockpit { box-sizing: border-box; display: grid; height: calc(100vh - 52px); grid-template-columns: 300px minmax(0, 1fr) 300px; overflow: hidden; }
-	.workspace-sidebar { min-width: 0; min-height: 0; overflow-y: auto; background: var(--proto-panel); }
-	.sound-sidebar { border-right: 1px solid var(--proto-line-strong); }
-	.ensemble-sidebar { border-left: 1px solid var(--proto-line-strong); }
+	.workspace-sidebar { min-width: 0; min-height: 0; background: var(--proto-panel); }
+	.sound-sidebar { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; border-right: 1px solid var(--proto-line-strong); }
+	.ensemble-sidebar { overflow-y: auto; border-left: 1px solid var(--proto-line-strong); }
+	.sidebar-header { position: sticky; z-index: 2; top: 0; display: flex; min-height: 48px; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--proto-line-strong); background: #080808; }
+	.sidebar-header div { display: grid; gap: 2px; }
+	.sidebar-header span { color: var(--proto-muted); font: 700 8px var(--font-code); letter-spacing: .16em; }
+	.sidebar-header strong { font-size: 13px; font-weight: 650; }
+	.sidebar-header i { width: 7px; height: 7px; border: 1px solid var(--proto-line-strong); border-radius: 50%; }
+	.sidebar-header i.live { border-color: #4fe8c3; background: #4fe8c3; box-shadow: 0 0 7px #4fe8c3; }
+	.source-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--proto-line); }
+	.source-card div { display: grid; min-width: 0; gap: 2px; }
+	.source-card span, .source-card small { color: var(--proto-muted); font: 700 7px var(--font-code); letter-spacing: .1em; }
+	.source-card strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+	.source-card button, .sidebar-actions button, .generated-parts button { border: 1px solid var(--proto-line-strong); background: transparent; color: var(--proto-muted); font: 700 8px var(--font-code); }
+	.source-card button { min-height: 28px; padding: 0 8px; }
+	.source-card button:hover, .sidebar-actions button:hover, .generated-parts button:hover { border-color: var(--proto-text); color: var(--proto-text); }
+	.sound-chain { min-height: 0; overflow: hidden; }
+	.sound-chain > :global(.chain-wrap) { box-sizing: border-box; padding: 10px; }
+	.sound-chain :global(.flow) { align-items: stretch; flex-direction: column; }
+	.sound-chain :global(.flow-node) { box-sizing: border-box; width: 100%; }
+	.sound-chain :global(.flow-arrow) { align-self: center; transform: rotate(90deg); }
+	.sound-chain :global(.rack) { border-color: var(--proto-line); background: var(--proto-surface); box-shadow: none; }
+	.sidebar-actions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--proto-line-strong); }
+	.sidebar-actions button { min-height: 38px; border: 0; border-right: 1px solid var(--proto-line); }
+	.sidebar-actions button:last-child { border-right: 0; }
+	.sidebar-empty { margin: 0; padding: 16px 12px; color: var(--proto-muted); font: 9px/1.4 var(--font-code); }
+	.sidebar-preset { padding: 8px; border-bottom: 1px solid var(--proto-line); }
+	.sidebar-preset :global(.preset-bar.compact .toolbar) { grid-template-columns: minmax(0, 1fr) auto; }
+	.sidebar-preset :global(.preset-bar.compact .preset-label) { display: none; }
+	.ensemble-controls { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--proto-line-strong); }
+	.ensemble-controls label { display: grid; min-width: 0; gap: 4px; padding: 8px 10px; border-right: 1px solid var(--proto-line); border-bottom: 1px solid var(--proto-line); }
+	.ensemble-controls label:nth-child(2n), .ensemble-controls .wide { border-right: 0; }
+	.ensemble-controls .wide { grid-column: 1 / -1; }
+	.ensemble-controls span { color: var(--proto-muted); font: 700 7px var(--font-code); letter-spacing: .1em; }
+	.ensemble-controls select { width: 100%; min-width: 0; height: 28px; border: 1px solid var(--proto-line); background: var(--proto-surface); color: var(--proto-text); font: 600 10px var(--font-grotesk); }
+	.spread-control { display: flex; min-height: 56px; align-items: center; justify-content: center; padding: 4px 8px; border-bottom: 0; }
+	.generated-parts { padding: 10px; }
+	.generated-parts > header { display: flex; align-items: center; justify-content: space-between; padding: 0 0 8px; }
+	.generated-parts h2 { margin: 0; color: var(--proto-muted); font: 700 8px var(--font-code); letter-spacing: .14em; }
+	.generated-parts > header button { min-height: 24px; padding: 0 7px; }
+	.part-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px; min-height: 54px; margin-bottom: 6px; border: 1px solid var(--proto-line); background: var(--proto-surface); }
+	.part-row.enabled { border-color: var(--proto-line-strong); }
+	.part-main { display: grid; min-width: 0; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 7px; padding: 7px 9px; border: 0 !important; text-align: left; }
+	.part-main i { width: 6px; height: 6px; border: 1px solid var(--proto-muted); border-radius: 50%; }
+	.part-row.active .part-main i { border-color: #4fe8c3; background: #4fe8c3; box-shadow: 0 0 6px #4fe8c3; }
+	.part-main span { display: grid; min-width: 0; gap: 3px; }
+	.part-main strong, .part-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.part-main strong { color: var(--proto-text); font: 650 10px var(--font-grotesk); }
+	.part-main small { color: var(--proto-muted); font: 7px var(--font-code); }
+	.part-action { min-height: 100%; border-width: 0 0 0 1px !important; }
+	.part-action.on { background: var(--proto-text); color: var(--proto-bg); }
 	.synth-body { min-width: 0; height: 100%; overflow: hidden; }
 	.synth-body > :global(*) { height: 100%; }
-	.performance-body { box-sizing: border-box; display: grid; width: 100%; height: 100%; grid-template-rows: auto minmax(0, 1fr) 146px; margin: 0; gap: 8px; overflow: hidden; padding: 8px; }
-	.quick-controls { display: grid; grid-template-columns: .7fr 1.2fr 1.3fr .55fr .9fr .6fr; border: 1px solid var(--proto-line); background: var(--proto-panel); }
-	.quick-controls label { display: grid; min-width: 0; gap: 3px; padding: 6px 10px; border-right: 1px solid var(--proto-line); }
-	.quick-controls label:last-child { border-right: 0; }
-	.quick-controls span { color: var(--proto-muted); font: 700 8px var(--font-code); letter-spacing: .1em; }
-	.quick-controls select { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--proto-text); font: 600 11px var(--font-grotesk); }
-	.spread-control { display: flex; align-items: center; justify-content: center; padding: 3px 8px; }
+	.performance-body { box-sizing: border-box; display: grid; width: 100%; height: 100%; grid-template-rows: minmax(0, 1fr); margin: 0; overflow: hidden; padding: 8px; }
 	.live-grid { min-height: 0; }
 	.live-grid > :global(*) { height: 100%; }
 	.notice { padding: 18px; border: 1px solid var(--proto-line); background: var(--proto-panel); color: var(--proto-muted); font-size: 12px; }
@@ -399,20 +488,12 @@
 	@media (max-width: 920px) {
 		.app-header { grid-template-columns: auto 1fr; }
 		.signal-path { display: none; }
-		.quick-controls { grid-template-columns: repeat(3, 1fr); }
-		.quick-controls label:nth-child(3) { border-right: 0; }
-		.quick-controls label:nth-child(-n+3) { border-bottom: 1px solid var(--proto-line); }
 		.dialog-body { grid-template-columns: 140px 1fr; }
 		.preset-grid { grid-template-columns: 1fr; }
-	}
-	@media (max-width: 820px) {
-		.performance-body { grid-template-rows: auto minmax(0, 1fr) 230px; }
 	}
 	@media (max-width: 680px) {
 		.app-header { position: static; grid-template-columns: 1fr; padding: 8px; }
 		.header-actions { justify-content: flex-start; flex-wrap: wrap; }
-		.quick-controls { grid-template-columns: repeat(2, 1fr); }
-		.quick-controls label { border-bottom: 1px solid var(--proto-line); }
 		.dialog-body { grid-template-columns: 1fr; }
 		.dialog-body > nav { display: grid; grid-template-columns: repeat(3, 1fr); border-right: 0; border-bottom: 1px solid var(--proto-line); }
 	}
