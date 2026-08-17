@@ -213,10 +213,12 @@
 	</header>
 
 	{#if resetError}<div class="notice error" role="alert">{resetError}</div>{/if}
-	{#if activeView === 'synth' && adapter.capabilities.audioFx}
-		<div class="synth-body"><ElixirWorkspace embedded /></div>
-	{:else}
-	<main class="performance-body">
+	<div class="workspace-cockpit">
+		<aside class="workspace-sidebar sound-sidebar" aria-label="Sound sidebar"></aside>
+		{#if activeView === 'synth' && adapter.capabilities.audioFx}
+			<div class="synth-body"><ElixirWorkspace embedded /></div>
+		{:else}
+		<main class="performance-body">
 		{#if initError}
 			<div class="notice error" role="alert">{initError}</div>
 		{:else if !initialized}
@@ -238,8 +240,10 @@
 			</div>
 			<ArrangementMixer {openSetup} openSynth={() => (activeView = 'synth')} />
 		{/if}
-	</main>
-	{/if}
+		</main>
+		{/if}
+		<aside class="workspace-sidebar ensemble-sidebar" aria-label="Ensemble sidebar"></aside>
+	</div>
 
 	<dialog class="setup-dialog" bind:this={setupDialog} aria-labelledby="setup-title" onclose={() => (setupOpen = false)}>
 		<div class="dialog-frame">
@@ -342,9 +346,13 @@
 	.transport-button { width: 31px; padding: 0 !important; font-family: var(--font-code) !important; }
 	.tempo { display: flex; height: 30px; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid var(--proto-line); color: var(--proto-muted); font: 8px var(--font-code); }
 	.tempo input { width: 39px; border: 0; background: transparent; color: var(--proto-text); font: 10px var(--font-code); }
-	.synth-body { height: calc(100vh - 52px); overflow: hidden; }
+	.workspace-cockpit { box-sizing: border-box; display: grid; height: calc(100vh - 52px); grid-template-columns: 300px minmax(0, 1fr) 300px; overflow: hidden; }
+	.workspace-sidebar { min-width: 0; min-height: 0; overflow-y: auto; background: var(--proto-panel); }
+	.sound-sidebar { border-right: 1px solid var(--proto-line-strong); }
+	.ensemble-sidebar { border-left: 1px solid var(--proto-line-strong); }
+	.synth-body { min-width: 0; height: 100%; overflow: hidden; }
 	.synth-body > :global(*) { height: 100%; }
-	.performance-body { box-sizing: border-box; display: grid; width: min(1480px, calc(100% - 20px)); height: calc(100vh - 52px); grid-template-rows: auto minmax(0, 1fr) 146px; margin: 0 auto; gap: 8px; overflow: hidden; padding: 8px 0; }
+	.performance-body { box-sizing: border-box; display: grid; width: 100%; height: 100%; grid-template-rows: auto minmax(0, 1fr) 146px; margin: 0; gap: 8px; overflow: hidden; padding: 8px; }
 	.quick-controls { display: grid; grid-template-columns: .7fr 1.2fr 1.3fr .55fr .9fr .6fr; border: 1px solid var(--proto-line); background: var(--proto-panel); }
 	.quick-controls label { display: grid; min-width: 0; gap: 3px; padding: 6px 10px; border-right: 1px solid var(--proto-line); }
 	.quick-controls label:last-child { border-right: 0; }
