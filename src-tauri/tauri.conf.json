@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "Contrapunk",
-        "width": 1600,
+        "width": 1800,
         "height": 900,
-        "minWidth": 1360,
+        "minWidth": 1600,
         "minHeight": 760
       }
     ],

@@ -32,6 +32,7 @@
 	import PresetManager from '$lib/components/PresetManager.svelte';
 	import VoicesPanel from '$lib/components/VoicesPanel.svelte';
 	import ExplicitIntervalMapPanel from '$lib/components/ExplicitIntervalMapPanel.svelte';
+	import ArrangementMixer from '$lib/prototype/ArrangementMixer.svelte';
 	import ExpressionRoll from '$lib/prototype/ExpressionRoll.svelte';
 	import PatternLanePanel from '$lib/prototype/PatternLanePanel.svelte';
 	import PhraseControl from '$lib/components/PhraseControl.svelte';
@@ -243,6 +244,7 @@
 					<div class="notice">Initializing the real Contrapunk engine…</div>
 				{:else}
 					<div class="live-grid"><ExpressionRoll /></div>
+					<ArrangementMixer {openSetup} openSynth={() => (activeView = 'synth')} />
 				{/if}
 			</main>
 		{/if}
@@ -447,7 +449,7 @@
 	.part-action.on { background: var(--proto-text); color: var(--proto-bg); }
 	.synth-body { min-width: 0; height: 100%; overflow: hidden; }
 	.synth-body > :global(*) { height: 100%; }
-	.performance-body { box-sizing: border-box; display: grid; width: 100%; height: 100%; grid-template-rows: minmax(0, 1fr); margin: 0; overflow: hidden; padding: 8px; }
+	.performance-body { box-sizing: border-box; display: grid; width: 100%; height: 100%; grid-template-rows: minmax(0, 1fr) 146px; gap: 8px; margin: 0; overflow: hidden; padding: 8px; }
 	.live-grid { min-height: 0; }
 	.live-grid > :global(*) { height: 100%; }
 	.notice { padding: 18px; border: 1px solid var(--proto-line); background: var(--proto-panel); color: var(--proto-muted); font-size: 12px; }
