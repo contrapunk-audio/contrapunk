@@ -138,6 +138,7 @@ fn serve_embedded_asset(path: &str) -> (Cow<'static, [u8]>, &'static str) {
     }
 }
 
+#[cfg(feature = "embed-ui")]
 fn mime_for_path(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("") {
         "html" => "text/html",
