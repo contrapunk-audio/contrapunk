@@ -12,6 +12,11 @@ queue.removeFirst();
 assert.deepEqual(Array.from(queue.voiceId.slice(0, queue.length)), [1, 3]);
 queue.clear();
 assert.equal(queue.length, 0);
+assert.equal(queue.insert({ kind: 7, atFrame: 40, role: 2, anchor: 24, value: 18, seq: 5 }), true);
+assert.equal(queue.role[0], 2, 'role-scoped patch event keeps its role');
+assert.equal(queue.anchor[0], 24, 'patch event keeps its stable parameter index');
+assert.equal(queue.value[0], 18, 'patch event keeps its scalar value');
+queue.clear();
 
 const owners = new Map();
 addVoiceOwner(owners, 0, 60, 10);

@@ -214,6 +214,22 @@ class ElixirAudioProcessor extends AudioWorkletProcessor {
 			case 6:
 				this.engine.retune(this.events.voiceId[0], this.events.frequency[0]);
 				break;
+			case 7:
+				this.engine.set_role_parameter(
+					this.events.role[0],
+					this.events.anchor[0],
+					this.events.value[0]
+				);
+				break;
+			case 8:
+				this.engine.set_pitch_bend_cents(this.events.value[0]);
+				break;
+			case 9:
+				this.engine.set_expression(this.events.value[0]);
+				break;
+			case 10:
+				this.engine.set_mod_wheel(this.events.value[0]);
+				break;
 		}
 	}
 }

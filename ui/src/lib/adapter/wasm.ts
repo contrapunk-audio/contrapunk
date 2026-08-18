@@ -21,6 +21,7 @@ import type {
 	SlideConfig,
 	SlideRole,
 	SlideVoiceState,
+	SynthRolePatch,
 	TransportState,
 	TuningStyle,
 	VoiceOutputAssignment,
@@ -34,6 +35,7 @@ import {
 import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
 import * as embedAudio from '$lib/embed/audio';
+import { cloneRolePatch, defaultRolePatch } from '$lib/elixir/patch';
 import { defaultSlideConfig, resolveSlide } from '$lib/slide/config';
 import { mapPhraseState } from './phrase';
 
@@ -175,6 +177,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	private _synthEnabled = true;
 	private _synthMasterGain = 0.25;
 	private _synthMixGains = [1, 1, 1, 1];
+	private _synthRolePatches = Array.from({ length: 4 }, defaultRolePatch);
 	private _slideConfig = defaultSlideConfig();
 	/** Pitch bend range in semitones (standard MIDI default). */
 	private pitchBendRangeSemitones = 2;
@@ -981,8 +984,17 @@ export class WasmAdapter implements ContrapunkAdapter {
 							/* best-effort */
 						}
 					}
+					if (status === 0xb0 && note === 1) embedAudio.setModWheel(velocity / 127);
+					if (status === 0xb0 && note === 11) embedAudio.setExpression(velocity / 127);
 					if (status === 0xb0 && note === 64) embedAudio.setSustainPedal(velocity >= 64);
 					if (status === 0xb0 && (note === 120 || note === 123)) embedAudio.allNotesOff();
+					if (status === 0xd0) embedAudio.setExpression(note / 127);
+					if (status === 0xe0) {
+						const value = note | (velocity << 7);
+						embedAudio.setPitchBendCents(
+							((value - 8192) / 8192) * self.pitchBendRangeSemitones * 100
+						);
+					}
 					// Pass through other MIDI messages (CC, pitch bend, etc.)
 					for (const output of outs) {
 						output.send(Array.from(event.data));
@@ -1044,15 +1056,22 @@ export class WasmAdapter implements ContrapunkAdapter {
 				// follows that shipping channel rather than the detector's MPE channel.
 				onPitchBend(_channel, cents) {
 					const value = self.centsToPitchBend(cents);
+					embedAudio.setPitchBendCents(cents);
 					self.sendGuitarMidi([0xe0, value & 0x7f, (value >> 7) & 0x7f]);
 				},
 				onMidiPitchBend(_channel, value) {
+					embedAudio.setPitchBendCents(
+						((value - 8192) / 8192) * self.pitchBendRangeSemitones * 100
+					);
 					self.sendGuitarMidi([0xe0, value & 0x7f, (value >> 7) & 0x7f]);
 				},
 				onCC(_channel, controller, value) {
+					if (controller === 1) embedAudio.setModWheel(value / 127);
+					if (controller === 11) embedAudio.setExpression(value / 127);
 					self.sendGuitarMidi([0xb0, controller & 0x7f, value & 0x7f]);
 				},
 				onChannelPressure(_channel, pressure) {
+					embedAudio.setExpression(pressure / 127);
 					self.sendGuitarMidi([0xd0, pressure & 0x7f]);
 				},
 				onDetection(info) {
@@ -1489,6 +1508,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 	 */
 	setDetune(cents: number): void {
 		this._detuneCents = cents;
+		embedAudio.setPitchBendCents(cents);
 		if (this._isRunning) {
 			this.sendPitchBend();
 		}
@@ -1661,13 +1681,14 @@ export class WasmAdapter implements ContrapunkAdapter {
 		if (enabled) this.ensureAudioContext();
 	}
 
-	// -- Fixed Elixir sine synth --
+	// -- Elixir harmonic foundations synth --
 
 	async getSynthState() {
 		return {
 			enabled: this._synthEnabled,
 			masterGain: this._synthMasterGain,
-			mixGains: [...this._synthMixGains]
+			mixGains: [...this._synthMixGains],
+			rolePatches: this._synthRolePatches.map(cloneRolePatch)
 		};
 	}
 	async setSynthEnabled(enabled: boolean): Promise<void> {
@@ -1682,6 +1703,11 @@ export class WasmAdapter implements ContrapunkAdapter {
 		if (group < 0 || group >= this._synthMixGains.length) return;
 		this._synthMixGains[group] = Math.max(0, Math.min(1, value));
 		embedAudio.setRoleGain(group, this._synthMixGains[group]);
+	}
+	async setSynthRolePatch(group: number, patch: SynthRolePatch): Promise<void> {
+		if (group < 0 || group >= this._synthRolePatches.length) return;
+		this._synthRolePatches[group] = cloneRolePatch(patch);
+		embedAudio.setRolePatch(group, patch);
 	}
 
 	// Native-only FX remain in the shared adapter contract.

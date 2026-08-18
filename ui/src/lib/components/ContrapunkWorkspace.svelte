@@ -53,7 +53,11 @@
 	let setupSection = $state<SetupSection>('input');
 	let companionFocus = $state<'imitative' | 'species'>('imitative');
 	let companionFocusVersion = $state(0);
-	let activeView = $state<'harmony' | 'synth'>('harmony');
+	let activeView = $state<'harmony' | 'synth'>(
+		typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('elixir-example')
+			? 'synth'
+			: 'harmony'
+	);
 
 	let inputLive = $derived(engine.inputNotes.length > 0);
 	let ensembleLive = $derived(engine.harmonyNotes.length > 0 || engine.canonNotes.length > 0 || engine.counterpointNotes.length > 0);

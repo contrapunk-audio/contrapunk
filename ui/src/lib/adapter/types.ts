@@ -200,12 +200,42 @@ export interface Preset {
 	isBuiltin: boolean;
 }
 
+export type SynthCombineMode = 'primary_only' | 'add' | 'ring';
+
+export interface SynthRolePatch {
+	harmonics: {
+		amplitudes: number[];
+		phases: number[];
+	};
+	secondary: {
+		mode: SynthCombineMode;
+		semitones: number;
+		fineCents: number;
+		phase: number;
+		level: number;
+	};
+	envelope: {
+		attackSecs: number;
+		decaySecs: number;
+		sustainLevel: number;
+		releaseSecs: number;
+		velocitySensitivity: number;
+		expressionSensitivity: number;
+	};
+	vibrato: {
+		rateHz: number;
+		depthCents: number;
+		modWheelDepthCents: number;
+	};
+}
+
 /** Snapshot of built-in synth parameters. */
 export interface SynthState {
 	enabled: boolean;
 	masterGain: number;
 	/** Native performance-mixer base gains: input, harmony, canon, counterpoint. */
 	mixGains?: number[];
+	rolePatches?: SynthRolePatch[];
 }
 
 /** Snapshot of built-in reverb parameters. */
@@ -695,6 +725,7 @@ export interface ContrapunkAdapter {
 	setSynthEnabled(enabled: boolean): Promise<void>;
 	setSynthMasterGain(value: number): Promise<void>;
 	setSynthMixGain(group: number, value: number): Promise<void>;
+	setSynthRolePatch(group: number, patch: SynthRolePatch): Promise<void>;
 
 	// -- Built-in FX (reverb) --
 

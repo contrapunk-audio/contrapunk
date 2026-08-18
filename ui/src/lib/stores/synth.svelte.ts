@@ -1,13 +1,18 @@
-import { adapter } from '$lib/adapter';
+import { adapter, platformName, type SynthRolePatch } from '$lib/adapter';
+import { cloneRolePatch, defaultRolePatch } from '$lib/elixir/patch';
 import { appliedMixGain as computeAppliedMixGain } from './synth-mix.mjs';
 
 class SynthStore {
 	enabled = $state(true);
 	masterGain = $state(0.25);
 	mixGains = $state([1, 1, 1, 1]);
+	rolePatches = $state(Array.from({ length: 4 }, defaultRolePatch));
 	muted = $state([false, false, false, false]);
 	solo = $state<number | null>(null);
 	mixError = $state<string | null>(null);
+	patchError = $state<string | null>(null);
+	private patchQueues: Promise<void>[] = Array.from({ length: 4 }, () => Promise.resolve());
+	private restoredLocalPatches = false;
 
 	async syncFromBackend() {
 		try {
@@ -16,6 +21,23 @@ class SynthStore {
 			this.masterGain = state.masterGain;
 			if (state.mixGains?.length === 4 && this.solo === null && !this.muted.some(Boolean)) {
 				this.mixGains = state.mixGains.map(clamp01);
+			}
+			if (state.rolePatches?.length === 4) {
+				this.rolePatches = state.rolePatches.map(cloneRolePatch);
+			}
+			if (!this.restoredLocalPatches && platformName !== 'plugin' && typeof localStorage !== 'undefined') {
+				this.restoredLocalPatches = true;
+				try {
+					const saved = JSON.parse(localStorage.getItem('contrapunk.elixir.rolePatches.v1') ?? 'null');
+					if (Array.isArray(saved) && saved.length === 4 && saved.every(isRolePatch)) {
+						this.rolePatches = saved.map(cloneRolePatch);
+						for (let role = 0; role < 4; role++) {
+							await adapter.setSynthRolePatch(role, this.rolePatches[role]);
+						}
+					}
+				} catch {
+					localStorage.removeItem('contrapunk.elixir.rolePatches.v1');
+				}
 			}
 		} catch {
 			// Backend not ready yet.
@@ -57,6 +79,44 @@ class SynthStore {
 		}
 	}
 
+	async setRolePatch(role: number, patch: SynthRolePatch): Promise<boolean> {
+		if (role < 0 || role >= this.rolePatches.length) return false;
+		const next = cloneRolePatch(patch);
+		this.rolePatches = this.rolePatches.map((current, index) =>
+			index === role ? next : current
+		);
+		if (platformName !== 'plugin' && typeof localStorage !== 'undefined') {
+			localStorage.setItem('contrapunk.elixir.rolePatches.v1', JSON.stringify(this.rolePatches));
+		}
+		const request = this.patchQueues[role]
+			.then(() => adapter.setSynthRolePatch(role, next))
+			.then(() => { this.patchError = null; })
+			.catch(async (error) => {
+				this.patchError = `Could not change sound: ${errorMessage(error)}`;
+				await this.syncFromBackend();
+				throw error;
+			});
+		this.patchQueues[role] = request.catch(() => {});
+		try {
+			await request;
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	async updateRolePatch(role: number, update: (patch: SynthRolePatch) => void) {
+		const patch = cloneRolePatch(this.rolePatches[role] ?? defaultRolePatch());
+		update(patch);
+		return this.setRolePatch(role, patch);
+	}
+
+	async setAllRolePatches(patches: SynthRolePatch[]) {
+		for (let role = 0; role < Math.min(4, patches.length); role++) {
+			await this.setRolePatch(role, patches[role]);
+		}
+	}
+
 	async toggleMute(role: number) {
 		if (!adapter.capabilities.roleMix || role < 0 || role >= this.mixGains.length) return;
 		const previous = this.muted;
@@ -92,6 +152,18 @@ class SynthStore {
 	private async pushAllMixGains() {
 		for (let role = 0; role < this.mixGains.length; role++) await this.pushMixGain(role);
 	}
+}
+
+function isRolePatch(value: unknown): value is SynthRolePatch {
+	if (!value || typeof value !== 'object') return false;
+	const patch = value as Partial<SynthRolePatch>;
+	return Array.isArray(patch.harmonics?.amplitudes)
+		&& patch.harmonics.amplitudes.length === 6
+		&& Array.isArray(patch.harmonics?.phases)
+		&& patch.harmonics.phases.length === 6
+		&& typeof patch.secondary?.mode === 'string'
+		&& typeof patch.envelope?.sustainLevel === 'number'
+		&& typeof patch.vibrato?.rateHz === 'number';
 }
 
 function errorMessage(error: unknown): string {

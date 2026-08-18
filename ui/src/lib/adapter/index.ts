@@ -76,6 +76,7 @@ export type {
 	SlideTravel,
 	SlideTrigger,
 	SlideVoiceState,
+	SynthRolePatch,
 	SynthState,
 	TransportState,
 	TuningStyle,

@@ -1,4 +1,5 @@
-import type { SlideRole, SlideSettings, SlideVoiceState } from '$lib/adapter/types';
+import type { SlideRole, SlideSettings, SlideVoiceState, SynthRolePatch } from '$lib/adapter/types';
+import { cloneRolePatch, defaultRolePatch, rolePatchParameters } from '$lib/elixir/patch';
 import wasmPath from '$lib/wasm-pkg/contrapunk_wasm_bg.wasm?url';
 import workletUrl from './elixir-audio-processor.ts?worker&url';
 import { addVoiceOwner, takeVoiceOwner } from './elixir-ownership.js';
@@ -36,6 +37,7 @@ let enabled = true;
 let compareStandard = false;
 let masterGain = 0.25;
 const roleGains = [1, 1, 1, 1];
+const rolePatches = Array.from({ length: ROLE_COUNT }, defaultRolePatch);
 const queued: AudioEvent[] = [];
 const voices = new Map<string, number[]>();
 const voiceTargets = new Map<
@@ -108,6 +110,15 @@ function ensureAudio(): AudioContext | null {
 						atFrame: audio.currentTime * audio.sampleRate,
 						role,
 						value: roleGains[role]
+					});
+					rolePatchParameters(rolePatches[role]).forEach((value, parameter) => {
+						enqueue({
+							kind: 7,
+							atFrame: audio.currentTime * audio.sampleRate,
+							role,
+							anchor: parameter,
+							value
+						});
 					});
 				}
 			})
@@ -341,6 +352,41 @@ export function setRoleGain(role: number, gain: number) {
 			value: roleGains[role]
 		});
 	}
+}
+
+export function setRolePatch(role: number, patch: SynthRolePatch) {
+	if (!Number.isFinite(role)) return;
+	role = Math.max(0, Math.min(ROLE_COUNT - 1, Math.trunc(role)));
+	rolePatches[role] = cloneRolePatch(patch);
+	const audio = ensureAudio();
+	if (!audio) return;
+	rolePatchParameters(rolePatches[role]).forEach((value, parameter) => {
+		enqueue({
+			kind: 7,
+			atFrame: audio.currentTime * audio.sampleRate,
+			role,
+			anchor: parameter,
+			value
+		});
+	});
+}
+
+export function setPitchBendCents(cents: number) {
+	if (!Number.isFinite(cents)) return;
+	const audio = ensureAudio();
+	if (audio) enqueue({ kind: 8, atFrame: audio.currentTime * audio.sampleRate, value: cents });
+}
+
+export function setExpression(value: number) {
+	if (!Number.isFinite(value)) return;
+	const audio = ensureAudio();
+	if (audio) enqueue({ kind: 9, atFrame: audio.currentTime * audio.sampleRate, value });
+}
+
+export function setModWheel(value: number) {
+	if (!Number.isFinite(value)) return;
+	const audio = ensureAudio();
+	if (audio) enqueue({ kind: 10, atFrame: audio.currentTime * audio.sampleRate, value });
 }
 
 export function getAudioContext(): AudioContext | null {
