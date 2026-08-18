@@ -310,6 +310,33 @@ mod tests {
     }
 
     #[test]
+    fn scalar_patch_and_expression_bridge_matches_the_core_contract() {
+        let mut audio = ElixirAudio::new(48_000, 128);
+        audio.set_role_parameter(
+            1,
+            elixir_core::role_param::HARMONIC_AMPLITUDE_START + 1,
+            0.5,
+        );
+        audio.set_role_parameter(
+            1,
+            elixir_core::role_param::COMBINE_MODE,
+            elixir_core::CombineMode::Ring as u8 as f32,
+        );
+        audio.set_role_parameter(1, elixir_core::role_param::VIBRATO_DEPTH_CENTS, 18.0);
+        let patch = audio.engine.role_patch(VoiceRole::Harmony);
+        assert_eq!(patch.harmonics.amplitudes[1], 0.5);
+        assert_eq!(patch.secondary.mode, elixir_core::CombineMode::Ring);
+        assert_eq!(patch.vibrato.depth_cents, 18.0);
+
+        audio.set_pitch_bend_cents(50.0);
+        audio.set_expression(0.4);
+        audio.set_mod_wheel(0.75);
+        assert_eq!(audio.engine.pitch_bend_cents(), 50.0);
+        assert_eq!(audio.engine.expression(), 0.4);
+        assert_eq!(audio.engine.mod_wheel(), 0.75);
+    }
+
+    #[test]
     fn invalid_role_is_ignored() {
         let mut audio = ElixirAudio::new(48_000, 128);
         audio.note_on(1, 99, 69, 440.0, 127);
