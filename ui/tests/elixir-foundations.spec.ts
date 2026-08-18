@@ -21,12 +21,20 @@ test.describe('Elixir Chapter 1 and 2 foundations', () => {
 		await expect(page.getByText('Phase cancellation.')).toBeVisible();
 	});
 
-	test('opens a recording-ready state from a chapter deep link', async ({ page }) => {
+	test('opens a recording-ready deep link without replacing the saved sound', async ({ page }) => {
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Synth', exact: true }).click();
+		await page.getByLabel('Recipe').selectOption('dark');
+
 		await page.goto('/?elixir-example=ring-difference');
 		await expect(page.getByRole('heading', { name: 'Harmonic colour' })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Ring', exact: true })).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByText('Ring difference.')).toBeVisible();
 		await expect(page.getByText('B 110.0 Hz')).toBeVisible();
+
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Synth', exact: true }).click();
+		await expect(page.getByLabel('Recipe')).toHaveValue('dark');
 	});
 
 	test('keeps pitch and amplitude controls separate and named', async ({ page }) => {
@@ -37,6 +45,8 @@ test.describe('Elixir Chapter 1 and 2 foundations', () => {
 		await expect(page.getByRole('heading', { name: 'Continuous pitch' })).toBeVisible();
 		await expect(page.getByText('Sustain level', { exact: true })).toBeVisible();
 		await expect(page.getByText('Mod-wheel add', { exact: true })).toBeVisible();
+		await expect(page.getByRole('img', { name: 'Current attack, decay, sustain level, and release trajectory' })).toBeVisible();
+		await expect(page.getByRole('img', { name: 'Current one-second vibrato pitch trajectory' })).toBeVisible();
 		await expect(page.getByRole('heading', { name: 'Slide' })).toBeVisible();
 	});
 });

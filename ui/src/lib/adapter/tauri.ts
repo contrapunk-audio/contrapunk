@@ -9,6 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { guitar } from '$lib/stores/guitar.svelte';
 import { transport } from '$lib/stores/transport.svelte';
+import { rolePatchFromWire, rolePatchToWire } from '$lib/elixir/patch';
 import { mapPhraseState } from './phrase';
 import type {
 	AddedPlugin,
@@ -40,61 +41,6 @@ import type {
 	VoiceOutputTarget,
 	VoiceRouteId
 } from './types';
-
-function mapSynthRolePatch(raw: Record<string, any>): SynthRolePatch {
-	return {
-		harmonics: {
-			amplitudes: [...(raw.harmonics?.amplitudes ?? [1, 0, 0, 0, 0, 0])],
-			phases: [...(raw.harmonics?.phases ?? [0, 0, 0, 0, 0, 0])]
-		},
-		secondary: {
-			mode: raw.secondary?.mode ?? 'primary_only',
-			semitones: raw.secondary?.semitones ?? 0,
-			fineCents: raw.secondary?.fine_cents ?? 0,
-			phase: raw.secondary?.phase ?? 0,
-			level: raw.secondary?.level ?? 1
-		},
-		envelope: {
-			attackSecs: raw.envelope?.attack_secs ?? 0.005,
-			decaySecs: raw.envelope?.decay_secs ?? 0,
-			sustainLevel: raw.envelope?.sustain_level ?? 1,
-			releaseSecs: raw.envelope?.release_secs ?? 0.005,
-			velocitySensitivity: raw.envelope?.velocity_sensitivity ?? 1,
-			expressionSensitivity: raw.envelope?.expression_sensitivity ?? 1
-		},
-		vibrato: {
-			rateHz: raw.vibrato?.rate_hz ?? 5,
-			depthCents: raw.vibrato?.depth_cents ?? 0,
-			modWheelDepthCents: raw.vibrato?.mod_wheel_depth_cents ?? 0
-		}
-	};
-}
-
-function serializeSynthRolePatch(patch: SynthRolePatch) {
-	return {
-		harmonics: patch.harmonics,
-		secondary: {
-			mode: patch.secondary.mode,
-			semitones: patch.secondary.semitones,
-			fine_cents: patch.secondary.fineCents,
-			phase: patch.secondary.phase,
-			level: patch.secondary.level
-		},
-		envelope: {
-			attack_secs: patch.envelope.attackSecs,
-			decay_secs: patch.envelope.decaySecs,
-			sustain_level: patch.envelope.sustainLevel,
-			release_secs: patch.envelope.releaseSecs,
-			velocity_sensitivity: patch.envelope.velocitySensitivity,
-			expression_sensitivity: patch.envelope.expressionSensitivity
-		},
-		vibrato: {
-			rate_hz: patch.vibrato.rateHz,
-			depth_cents: patch.vibrato.depthCents,
-			mod_wheel_depth_cents: patch.vibrato.modWheelDepthCents
-		}
-	};
-}
 
 /** Map snake_case CalibrationStatus from the Tauri backend to camelCase. */
 function mapCalibrationStatus(raw: Record<string, unknown>): CalibrationStatus {
@@ -1000,7 +946,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 			masterGain: raw.master_gain as number,
 			mixGains: Array.isArray(raw.mix_gains) ? (raw.mix_gains as number[]) : undefined,
 			rolePatches: Array.isArray(raw.role_patches)
-				? raw.role_patches.map((patch) => mapSynthRolePatch(patch as Record<string, any>))
+				? raw.role_patches.map((patch) => rolePatchFromWire(patch as Record<string, any>))
 				: undefined
 		};
 	}
@@ -1015,7 +961,7 @@ export class TauriAdapter implements ContrapunkAdapter {
 		await invoke('set_synth_mix_gain', { group, value });
 	}
 	async setSynthRolePatch(group: number, patch: SynthRolePatch): Promise<void> {
-		await invoke('set_synth_role_patch', { group, patch: serializeSynthRolePatch(patch) });
+		await invoke('set_synth_role_patch', { group, patch: rolePatchToWire(patch) });
 	}
 
 	// -- Built-in FX (reverb) --

@@ -26,7 +26,7 @@
 				await synth.syncFromBackend();
 				const linkedExample = new URLSearchParams(window.location.search).get('elixir-example');
 				if (linkedExample && CHAPTER_EXAMPLES.some((example) => example.id === linkedExample)) {
-					await applyExample(linkedExample);
+					await applyExample(linkedExample, false);
 				}
 				if (!cancelled) ready = true;
 			} catch (cause) {
@@ -46,11 +46,11 @@
 		return gain <= 0.0001 ? '−∞ dB' : `${(20 * Math.log10(gain)).toFixed(1)} dB`;
 	}
 
-	async function applyExample(id: string) {
+	async function applyExample(id: string, persist = true) {
 		selectedExample = id;
 		const example = CHAPTER_EXAMPLES.find((candidate) => candidate.id === id);
 		if (!example) return;
-		await synth.setAllRolePatches(example.patches.map(cloneRolePatch));
+		await synth.setAllRolePatches(example.patches.map(cloneRolePatch), persist);
 	}
 </script>
 

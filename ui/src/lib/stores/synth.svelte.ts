@@ -79,13 +79,13 @@ class SynthStore {
 		}
 	}
 
-	async setRolePatch(role: number, patch: SynthRolePatch): Promise<boolean> {
+	async setRolePatch(role: number, patch: SynthRolePatch, persist = true): Promise<boolean> {
 		if (role < 0 || role >= this.rolePatches.length) return false;
 		const next = cloneRolePatch(patch);
 		this.rolePatches = this.rolePatches.map((current, index) =>
 			index === role ? next : current
 		);
-		if (platformName !== 'plugin' && typeof localStorage !== 'undefined') {
+		if (persist && platformName !== 'plugin' && typeof localStorage !== 'undefined') {
 			localStorage.setItem('contrapunk.elixir.rolePatches.v1', JSON.stringify(this.rolePatches));
 		}
 		const request = this.patchQueues[role]
@@ -111,9 +111,9 @@ class SynthStore {
 		return this.setRolePatch(role, patch);
 	}
 
-	async setAllRolePatches(patches: SynthRolePatch[]) {
+	async setAllRolePatches(patches: SynthRolePatch[], persist = true) {
 		for (let role = 0; role < Math.min(4, patches.length); role++) {
-			await this.setRolePatch(role, patches[role]);
+			await this.setRolePatch(role, patches[role], persist);
 		}
 	}
 
@@ -157,13 +157,27 @@ class SynthStore {
 function isRolePatch(value: unknown): value is SynthRolePatch {
 	if (!value || typeof value !== 'object') return false;
 	const patch = value as Partial<SynthRolePatch>;
-	return Array.isArray(patch.harmonics?.amplitudes)
-		&& patch.harmonics.amplitudes.length === 6
-		&& Array.isArray(patch.harmonics?.phases)
-		&& patch.harmonics.phases.length === 6
-		&& typeof patch.secondary?.mode === 'string'
-		&& typeof patch.envelope?.sustainLevel === 'number'
-		&& typeof patch.vibrato?.rateHz === 'number';
+	const amplitudes = patch.harmonics?.amplitudes;
+	const phases = patch.harmonics?.phases;
+	if (!Array.isArray(amplitudes) || amplitudes.length !== 6 || !amplitudes.every(Number.isFinite)) return false;
+	if (!Array.isArray(phases) || phases.length !== 6 || !phases.every(Number.isFinite)) return false;
+	if (!patch.secondary || !['primary_only', 'add', 'ring'].includes(patch.secondary.mode)) return false;
+	if (!patch.envelope || !patch.vibrato) return false;
+	return [
+		patch.secondary.semitones,
+		patch.secondary.fineCents,
+		patch.secondary.phase,
+		patch.secondary.level,
+		patch.envelope.attackSecs,
+		patch.envelope.decaySecs,
+		patch.envelope.sustainLevel,
+		patch.envelope.releaseSecs,
+		patch.envelope.velocitySensitivity,
+		patch.envelope.expressionSensitivity,
+		patch.vibrato.rateHz,
+		patch.vibrato.depthCents,
+		patch.vibrato.modWheelDepthCents
+	].every(Number.isFinite);
 }
 
 function errorMessage(error: unknown): string {

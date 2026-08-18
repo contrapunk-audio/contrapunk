@@ -316,6 +316,9 @@ impl Engine {
     /// Panic releases ownership immediately while preserving bounded audio tails.
     pub fn panic(&mut self) {
         self.all_notes_off();
+        self.pitch_bend_cents = 0.0;
+        self.expression = 1.0;
+        self.mod_wheel = 0.0;
     }
 
     /// Overwrite an interleaved output buffer without allocation or blocking.
@@ -517,9 +520,15 @@ mod tests {
         engine.set_sustain_pedal(true);
         engine.handle_voice_event(note_on(1, VoiceRole::Input, 69, 440.0));
         let _ = render(&mut engine, 256);
+        engine.handle_voice_event(VoiceEvent::PitchBend { cents: 75.0 });
+        engine.handle_voice_event(VoiceEvent::Expression { value: 0.2 });
+        engine.handle_voice_event(VoiceEvent::ModWheel { value: 0.8 });
         engine.handle_voice_event(VoiceEvent::Panic);
         assert_eq!(engine.live_voice_count(), 0);
         assert!(!engine.sustain_pedal());
+        assert_eq!(engine.pitch_bend_cents(), 0.0);
+        assert_eq!(engine.expression(), 1.0);
+        assert_eq!(engine.mod_wheel(), 0.0);
         let tail = render(&mut engine, 256);
         assert!(tail.iter().all(|sample| sample.is_finite()));
         assert_eq!(engine.active_voice_count(), 0);

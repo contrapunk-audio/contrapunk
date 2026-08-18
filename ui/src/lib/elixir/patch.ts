@@ -73,6 +73,61 @@ export function cloneRolePatch(patch: SynthRolePatch): SynthRolePatch {
 	};
 }
 
+export function rolePatchFromWire(raw: Record<string, any>): SynthRolePatch {
+	return {
+		harmonics: {
+			amplitudes: [...(raw.harmonics?.amplitudes ?? HARMONIC_RECIPES.sine)],
+			phases: [...(raw.harmonics?.phases ?? Array(PARTIAL_COUNT).fill(0))]
+		},
+		secondary: {
+			mode: raw.secondary?.mode ?? 'primary_only',
+			semitones: raw.secondary?.semitones ?? 0,
+			fineCents: raw.secondary?.fine_cents ?? 0,
+			phase: raw.secondary?.phase ?? 0,
+			level: raw.secondary?.level ?? 1
+		},
+		envelope: {
+			attackSecs: raw.envelope?.attack_secs ?? 0.005,
+			decaySecs: raw.envelope?.decay_secs ?? 0,
+			sustainLevel: raw.envelope?.sustain_level ?? 1,
+			releaseSecs: raw.envelope?.release_secs ?? 0.005,
+			velocitySensitivity: raw.envelope?.velocity_sensitivity ?? 1,
+			expressionSensitivity: raw.envelope?.expression_sensitivity ?? 1
+		},
+		vibrato: {
+			rateHz: raw.vibrato?.rate_hz ?? 5,
+			depthCents: raw.vibrato?.depth_cents ?? 0,
+			modWheelDepthCents: raw.vibrato?.mod_wheel_depth_cents ?? 0
+		}
+	};
+}
+
+export function rolePatchToWire(patch: SynthRolePatch) {
+	return {
+		harmonics: patch.harmonics,
+		secondary: {
+			mode: patch.secondary.mode,
+			semitones: patch.secondary.semitones,
+			fine_cents: patch.secondary.fineCents,
+			phase: patch.secondary.phase,
+			level: patch.secondary.level
+		},
+		envelope: {
+			attack_secs: patch.envelope.attackSecs,
+			decay_secs: patch.envelope.decaySecs,
+			sustain_level: patch.envelope.sustainLevel,
+			release_secs: patch.envelope.releaseSecs,
+			velocity_sensitivity: patch.envelope.velocitySensitivity,
+			expression_sensitivity: patch.envelope.expressionSensitivity
+		},
+		vibrato: {
+			rate_hz: patch.vibrato.rateHz,
+			depth_cents: patch.vibrato.depthCents,
+			mod_wheel_depth_cents: patch.vibrato.modWheelDepthCents
+		}
+	};
+}
+
 export function recipeName(amplitudes: number[]): HarmonicRecipeName {
 	for (const [name, recipe] of Object.entries(HARMONIC_RECIPES)) {
 		if (recipe.every((value, index) => Math.abs(value - (amplitudes[index] ?? 0)) < 0.0005)) {

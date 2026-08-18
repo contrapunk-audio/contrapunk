@@ -104,9 +104,16 @@
 	let spectrumFrequencyMaximum = $derived(Math.max(1500, ...spectrum.map((line) => line.frequency)));
 
 	let envelopePath = $derived.by(() => {
-		const sustainY = 238 - patch.envelope.sustainLevel * 72;
-		return `M18 238 L126 166 L234 ${sustainY.toFixed(2)} L558 ${sustainY.toFixed(2)} L702 238`;
+		const sustainY = 90 - patch.envelope.sustainLevel * 75;
+		return `M0 90 L80 10 L150 ${sustainY.toFixed(2)} L300 ${sustainY.toFixed(2)} L400 90`;
 	});
+	let vibratoPath = $derived.by(() => Array.from({ length: 121 }, (_, index) => {
+		const position = index / 120;
+		const depth = patch.vibrato.depthCents / 50;
+		const x = position * 400;
+		const y = 50 - Math.sin(2 * Math.PI * patch.vibrato.rateHz * position) * depth * 36;
+		return `${index ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`;
+	}).join(' '));
 </script>
 
 <section class="oscillator" aria-labelledby="oscillator-heading">
@@ -139,9 +146,8 @@
 				<line class="spectral-line" x1={x} y1="238" x2={x} y2={top} />
 				<text class="frequency" x={x} y={Math.max(170, top - 5)} text-anchor="middle">{Math.round(line.frequency)}</text>
 			{/each}
-			<path class="envelope" d={envelopePath} />
 		</svg>
-		<div class="scope-legend"><span>waveform</span><span>spectrum in Hz</span><span>ADSR trajectory</span></div>
+		<div class="scope-legend"><span>waveform</span><span>spectrum in Hz</span></div>
 	</div>
 
 	<fieldset class="harmonics" {disabled}>
@@ -183,6 +189,7 @@
 	<section class="trajectory-grid">
 		<div class="trajectory" aria-labelledby="amplitude-heading">
 			<header><span>AMPLITUDE TRAJECTORY</span><h3 id="amplitude-heading">Articulation</h3></header>
+			<svg class="trajectory-preview" viewBox="0 0 400 100" role="img" aria-label="Current attack, decay, sustain level, and release trajectory"><path class="trajectory-axis" d="M0 90 H400 M0 50 H400" /><path class="amplitude-trajectory" d={envelopePath} /></svg>
 			<div class="control-grid envelope-controls">
 				<label><span>Attack</span><input type="range" min="0" max="5" step="0.005" value={patch.envelope.attackSecs} {disabled} onchange={(event) => update((next) => { next.envelope.attackSecs = Number(event.currentTarget.value); })} /><output>{patch.envelope.attackSecs.toFixed(3)} s</output></label>
 				<label><span>Decay</span><input type="range" min="0" max="5" step="0.01" value={patch.envelope.decaySecs} {disabled} onchange={(event) => update((next) => { next.envelope.decaySecs = Number(event.currentTarget.value); })} /><output>{patch.envelope.decaySecs.toFixed(2)} s</output></label>
@@ -194,6 +201,7 @@
 		</div>
 		<div class="trajectory" aria-labelledby="pitch-heading">
 			<header><span>PITCH TRAJECTORY</span><h3 id="pitch-heading">Vibrato</h3></header>
+			<svg class="trajectory-preview" viewBox="0 0 400 100" role="img" aria-label="Current one-second vibrato pitch trajectory"><path class="trajectory-axis" d="M0 50 H400" /><path class="pitch-trajectory" d={vibratoPath} /></svg>
 			<div class="control-grid vibrato-controls">
 				<label><span>Rate</span><input type="range" min="1" max="8" step="0.1" value={patch.vibrato.rateHz} {disabled} onchange={(event) => update((next) => { next.vibrato.rateHz = Number(event.currentTarget.value); })} /><output>{patch.vibrato.rateHz.toFixed(1)} Hz</output></label>
 				<label><span>Depth</span><input type="range" min="0" max="50" step="1" value={patch.vibrato.depthCents} {disabled} onchange={(event) => update((next) => { next.vibrato.depthCents = Number(event.currentTarget.value); })} /><output>{patch.vibrato.depthCents.toFixed(0)} c</output></label>
@@ -224,11 +232,9 @@
 	.wave { fill: none; stroke: #8aaac0; stroke-width: 2; vector-effect: non-scaling-stroke; }
 	.spectral-line { stroke: #c49268; stroke-width: 3; vector-effect: non-scaling-stroke; }
 	.frequency { fill: #b79b82; font-size: 7px; }
-	.envelope { fill: none; stroke: #7ca27a; stroke-width: 1.5; stroke-dasharray: 4 3; }
 	.scope-legend { display: flex; gap: 15px; padding: 5px 9px 7px; border-top: 1px solid #292929; color: #777; font: 8px var(--font-code); text-transform: uppercase; }
 	.scope-legend span::before { content: ''; display: inline-block; width: 12px; height: 2px; margin: 0 5px 2px 0; background: #8aaac0; }
 	.scope-legend span:nth-child(2)::before { background: #c49268; }
-	.scope-legend span:nth-child(3)::before { background: #7ca27a; }
 	.harmonics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding: 10px; border: 1px solid #3b3b3b; background: #222; }
 	.harmonics legend { padding: 0 5px; }
 	.harmonics label, .phase-grid label, .control-grid label { display: grid; min-width: 0; grid-template-columns: minmax(74px, .8fr) minmax(70px, 1fr) 48px; align-items: center; gap: 6px; }
@@ -253,6 +259,11 @@
 	.trajectory-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 	.trajectory header { align-items: start; justify-content: start; margin-bottom: 9px; padding-bottom: 7px; border-bottom: 1px solid #333; }
 	.trajectory header span { display: block; }
+	.trajectory-preview { min-height: 76px; margin-bottom: 9px; border: 1px solid #303030; background: #171717; }
+	.trajectory-axis { fill: none; stroke: #292929; stroke-width: 1; }
+	.amplitude-trajectory, .pitch-trajectory { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+	.amplitude-trajectory { stroke: #7ca27a; }
+	.pitch-trajectory { stroke: #8aaac0; }
 	.envelope-controls, .vibrato-controls { grid-template-columns: 1fr; }
 	.vibrato-controls { margin-bottom: 10px; }
 	input:disabled, select:disabled, button:disabled { opacity: .4; }
