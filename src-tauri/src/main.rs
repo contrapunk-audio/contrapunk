@@ -180,6 +180,7 @@ fn main() {
             commands::synth::set_synth_enabled,
             commands::synth::set_synth_master_gain,
             commands::synth::set_synth_mix_gain,
+            commands::synth::set_synth_role_patch,
             // Built-in FX (reverb + delay)
             commands::fx::get_reverb_state,
             commands::fx::set_reverb_enabled,

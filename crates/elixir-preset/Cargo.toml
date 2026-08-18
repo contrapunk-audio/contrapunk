@@ -2,7 +2,7 @@
 name = "elixir-preset"
 version = "0.0.1"
 edition = "2021"
-description = "Minimal persisted state for the Elixir sine synthesizer"
+description = "Persisted state and chapter examples for the Elixir foundations synthesizer"
 authors = ["Contrapunk Team"]
 
 [dependencies]

@@ -17,8 +17,8 @@ pub mod util;
 mod voice;
 
 pub use patch::{
-    AmpEnvelope, CombineMode, HarmonicPreset, HarmonicRecipe, RolePatch, SecondaryOscillator,
-    Vibrato, PARTIAL_COUNT,
+    role_param, AmpEnvelope, CombineMode, HarmonicPreset, HarmonicRecipe, RolePatch,
+    SecondaryOscillator, Vibrato, PARTIAL_COUNT,
 };
 use voice::Voice;
 
@@ -522,6 +522,23 @@ mod tests {
         assert!(!engine.sustain_pedal());
         let tail = render(&mut engine, 256);
         assert!(tail.iter().all(|sample| sample.is_finite()));
+        assert_eq!(engine.active_voice_count(), 0);
+    }
+
+    #[test]
+    fn panic_bounds_even_a_long_user_release() {
+        let mut engine = Engine::new();
+        engine.prepare(48_000, 256);
+        let mut patch = RolePatch::sine();
+        patch.envelope.release_secs = 10.0;
+        engine.set_role_patch(VoiceRole::Input, patch);
+        engine.handle_voice_event(note_on(1, VoiceRole::Input, 69, 440.0));
+        let _ = render(&mut engine, 256);
+        engine.handle_voice_event(VoiceEvent::NoteOff {
+            voice_id: VoiceId::new(1),
+        });
+        engine.handle_voice_event(VoiceEvent::Panic);
+        let _ = render(&mut engine, 256);
         assert_eq!(engine.active_voice_count(), 0);
     }
 

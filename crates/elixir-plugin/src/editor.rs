@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use elixir_preset::RolePatchState;
 use nih_plug::prelude::ParamSetter;
 use nih_plug_webview::{
     Context, EditorHandler, WebViewConfig, WebViewEditor, WebViewSource, WebViewState,
@@ -22,10 +23,12 @@ struct ElixirEditorHandler {
 
 impl ElixirEditorHandler {
     fn params_json(&self) -> String {
+        let patch = RolePatchState::from(self.params.patch.load());
         serde_json::json!({
             "type": "paramsUpdate",
             "product": "elixir",
             "synthGain": self.params.gain.value(),
+            "rolePatches": [patch, RolePatchState::default(), RolePatchState::default(), RolePatchState::default()],
         })
         .to_string()
     }
@@ -51,6 +54,20 @@ impl EditorHandler for ElixirEditorHandler {
             Some("setSynthGain") => {
                 if let Some(gain) = message.get("value").and_then(|value| value.as_f64()) {
                     self.set_gain(cx.get_param_setter(), gain as f32);
+                }
+            }
+            Some("setSynthRolePatch") => {
+                let group = message
+                    .get("group")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(u64::MAX);
+                if group == 0 {
+                    if let Some(value) = message.get("patch") {
+                        if let Ok(patch) = serde_json::from_value::<RolePatchState>(value.clone()) {
+                            self.params.patch.store(patch.to_core());
+                            cx.send_message(self.params_json());
+                        }
+                    }
                 }
             }
             _ => {}

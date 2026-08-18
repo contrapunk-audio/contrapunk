@@ -1,4 +1,4 @@
-//! Audio-chain adapter for the fixed-sine Elixir engine.
+//! Audio-chain adapter for the Elixir harmonic foundations engine.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -178,6 +178,15 @@ impl ElixirSynthBlock {
                     });
                 }
                 SynthEvent::SustainPedal { on } => self.engine.set_sustain_pedal(on),
+                SynthEvent::PitchBend { cents } => self
+                    .engine
+                    .handle_voice_event(VoiceEvent::PitchBend { cents }),
+                SynthEvent::Expression { value } => self
+                    .engine
+                    .handle_voice_event(VoiceEvent::Expression { value }),
+                SynthEvent::ModWheel { value } => self
+                    .engine
+                    .handle_voice_event(VoiceEvent::ModWheel { value }),
                 SynthEvent::AllNotesOff => {
                     self.clear_ownership();
                     self.slide.clear();
@@ -337,17 +346,32 @@ impl ElixirSynthBlock {
         self.slide.clear();
     }
 
+    pub fn set_pitch_bend_cents(&mut self, cents: f32) {
+        self.engine.set_pitch_bend_cents(cents);
+    }
+
+    pub fn set_expression(&mut self, value: f32) {
+        self.engine.set_expression(value);
+    }
+
+    pub fn set_mod_wheel(&mut self, value: f32) {
+        self.engine.set_mod_wheel(value);
+    }
+
     fn apply_params(&mut self) {
         self.engine.set_master_gain(self.params.master_gain());
-        for (role, gain) in VoiceRole::ALL.into_iter().zip(self.params.mix_gains()) {
-            self.engine.set_role_gain(role, gain);
+        let gains = self.params.mix_gains();
+        let patches = self.params.role_patches();
+        for (index, role) in VoiceRole::ALL.into_iter().enumerate() {
+            self.engine.set_role_gain(role, gains[index]);
+            self.engine.set_role_patch(role, patches[index]);
         }
     }
 }
 
 impl AudioBlock for ElixirSynthBlock {
     fn name(&self) -> &str {
-        "Sine"
+        "Elixir"
     }
 
     fn type_id(&self) -> &str {
@@ -394,6 +418,9 @@ impl AudioBlock for ElixirSynthBlock {
                 self.engine.all_notes_off();
             }
             MidiBlockEvent::SustainPedal { on } => self.engine.set_sustain_pedal(on),
+            MidiBlockEvent::PitchBend { cents } => self.set_pitch_bend_cents(cents),
+            MidiBlockEvent::Expression { value } => self.set_expression(value),
+            MidiBlockEvent::ModWheel { value } => self.set_mod_wheel(value),
         }
     }
 
@@ -535,6 +562,29 @@ mod tests {
             .iter()
             .all(|sample| sample.abs() < 1.0e-6));
         assert_eq!(block.engine.live_voice_count(), 1);
+    }
+
+    #[test]
+    fn role_patch_and_expression_reach_the_audio_engine() {
+        let params = Arc::new(SynthParams::new());
+        let mut patch = crate::elixir::RolePatch::sine();
+        patch.harmonics.amplitudes = [1.0, 0.0, 0.45, 0.0, 0.25, 0.0];
+        params.set_role_patch(1, patch);
+        let mut block = ElixirSynthBlock::new_with_params(48_000, params);
+        block.note_on_for_role(69, 127, VoiceRole::Harmony);
+        let mut sounding = [0.0; 512];
+        block.process(&mut sounding, 1);
+        assert_eq!(block.engine.role_patch(VoiceRole::Harmony), patch);
+        assert!(sounding.iter().any(|sample| sample.abs() > 1.0e-6));
+
+        block.midi_event(MidiBlockEvent::Expression { value: 0.0 });
+        let mut silent = [1.0; 64];
+        block.process(&mut silent, 1);
+        assert!(silent.iter().all(|sample| sample.abs() < 1.0e-6));
+        block.midi_event(MidiBlockEvent::PitchBend { cents: 50.0 });
+        block.midi_event(MidiBlockEvent::ModWheel { value: 0.75 });
+        assert_eq!(block.engine.pitch_bend_cents(), 50.0);
+        assert_eq!(block.engine.mod_wheel(), 0.75);
     }
 
     #[test]

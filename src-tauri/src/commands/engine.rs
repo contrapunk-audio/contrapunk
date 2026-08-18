@@ -1743,6 +1743,16 @@ fn run_tauri_router(
                         // Performance view's CC mapping still sees it.
                     }
 
+                    match cc_number {
+                        1 => {
+                            let _ = synth_tx.mod_wheel(cc_value as f32 / 127.0);
+                        }
+                        11 => {
+                            let _ = synth_tx.expression(cc_value as f32 / 127.0);
+                        }
+                        _ => {}
+                    }
+
                     if cc_number == 64 {
                         set_sustain_ownership(
                             InputOrigin::Live,
@@ -2088,18 +2098,19 @@ fn process_midi_message(
             );
         }
         MidiMessage::PitchBendChange(channel, bend) => {
+            let bend_semitones = midi_input_bend_semitones(u16::from(bend));
+            let _ = synth_tx.pitch_bend(bend_semitones * 100.0);
             let target = voice_outputs
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
                 .get(VoiceRouteId::Input);
             if let VoiceOutputTarget::MidiPort { port } = target {
-                midi_slides.set_input_bend(
-                    port,
-                    channel.index(),
-                    midi_input_bend_semitones(u16::from(bend)),
-                    output,
-                );
+                midi_slides.set_input_bend(port, channel.index(), bend_semitones, output);
             }
+        }
+        MidiMessage::ChannelPressure(_, pressure) => {
+            let _ = synth_tx.expression(u8::from(pressure) as f32 / 127.0);
+            send_input_passthrough(bytes, voice_outputs, output);
         }
         _ => send_input_passthrough(bytes, voice_outputs, output),
     }

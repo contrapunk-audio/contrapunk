@@ -163,6 +163,28 @@ impl ElixirAudio {
         }
     }
 
+    pub fn set_role_parameter(&mut self, role: u8, parameter: u8, value: f32) {
+        let Some(role) = role_from_u8(role) else {
+            return;
+        };
+        let mut patch = self.engine.role_patch(role);
+        if patch.set_parameter(parameter, value) {
+            self.engine.set_role_patch(role, patch);
+        }
+    }
+
+    pub fn set_pitch_bend_cents(&mut self, cents: f32) {
+        self.engine.set_pitch_bend_cents(cents);
+    }
+
+    pub fn set_expression(&mut self, value: f32) {
+        self.engine.set_expression(value);
+    }
+
+    pub fn set_mod_wheel(&mut self, value: f32) {
+        self.engine.set_mod_wheel(value);
+    }
+
     /// Render at most the preallocated frame bound and return the frame count.
     pub fn process(&mut self, frames: usize, channels: usize) -> usize {
         const SLIDE_UPDATE_FRAMES: usize = 8;

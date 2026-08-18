@@ -5,7 +5,7 @@
 /// Broader than [`crate::elixir::SynthEvent`] because plugin-host blocks
 /// (CLAP, VST3) may need to forward CC / pitch bend / aftertouch too.
 /// FX blocks typically ignore everything (default impl is no-op).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MidiBlockEvent {
     NoteOn {
         note: u8,
@@ -20,7 +20,18 @@ pub enum MidiBlockEvent {
     SustainPedal {
         on: bool,
     },
-    // Future: CC { controller: u8, value: u8 }, PitchBend { value: i16 }, etc.
+    /// Global bend applied to every internally rendered role.
+    PitchBend {
+        cents: f32,
+    },
+    /// Global performer intensity from CC11 or channel pressure.
+    Expression {
+        value: f32,
+    },
+    /// Global mod-wheel position for the fixed vibrato route.
+    ModWheel {
+        value: f32,
+    },
 }
 
 /// An audio-processing node in the chain.
@@ -47,7 +58,7 @@ pub trait AudioBlock: Send {
     fn name(&self) -> &str;
 
     /// Stable type ID for rig persistence. Examples:
-    /// - `"builtin.synth"` for the built-in Elixir sine synth
+    /// - `"builtin.synth"` for the built-in Elixir synth
     /// - `"builtin.reverb"` for the built-in reverb
     /// - `"clap.com.u-he.Diva"` for a CLAP plugin
     fn type_id(&self) -> &str;

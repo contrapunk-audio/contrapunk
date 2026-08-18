@@ -14,6 +14,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use contrapunk::elixir::{RolePatch, RolePatchState, SynthParams};
 use contrapunk::slide::{SlideConfig, SlideTelemetry};
 use contrapunk_companion::Companion;
 
@@ -28,6 +29,7 @@ const EDITOR_HEIGHT: f64 = 800.0;
 /// Editor handler that bridges the Svelte UI to nih-plug parameters.
 pub struct ContrapunkEditorHandler {
     params: Arc<ContrapunkParams>,
+    synth_params: Arc<SynthParams>,
     /// Shared with the audio thread. Audio thread writes the active
     /// input/harmony note sets here; the frame loop snapshots and
     /// pushes a `noteUpdate` message so the Piano / Fretboard light
@@ -88,6 +90,7 @@ impl ContrapunkEditorHandler {
                 self.params.synth_canon_gain.value(),
                 self.params.synth_counterpoint_gain.value(),
             ],
+            "rolePatches": self.params.synth_role_patches.load(),
             "midiOutputMode": format!("{:?}", self.params.midi_output_mode.value()),
             "phrase": self
                 .companion
@@ -347,6 +350,19 @@ impl EditorHandler for ContrapunkEditorHandler {
                     setter.end_set_parameter(&self.params.synth_gain);
                 }
             }
+            "setSynthRolePatch" => {
+                let group = msg
+                    .get("group")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(u64::MAX) as usize;
+                if let Some(value) = msg.get("patch") {
+                    if let Ok(patch) = serde_json::from_value::<RolePatchState>(value.clone()) {
+                        let patch = RolePatch::from(patch);
+                        self.params.synth_role_patches.store_role(group, patch);
+                        self.synth_params.set_role_patch(group, patch);
+                    }
+                }
+            }
             "setSynthMixGain" => {
                 let group = msg
                     .get("group")
@@ -469,6 +485,7 @@ fn webview_workdir() -> PathBuf {
 /// Create the WebViewEditor for the plugin.
 pub fn create_editor(
     params: Arc<ContrapunkParams>,
+    synth_params: Arc<SynthParams>,
     note_state: Arc<Mutex<PluginNoteState>>,
     guitar_signal: Arc<Mutex<PluginGuitarSignal>>,
     companion: Arc<Mutex<Companion>>,
@@ -495,6 +512,7 @@ pub fn create_editor(
 
     let handler = ContrapunkEditorHandler {
         params,
+        synth_params,
         note_state,
         companion,
         last_note_json: String::new(),

@@ -1,14 +1,156 @@
-//! Native routing contract for the fixed-sine Elixir engine.
+//! Native routing contract for the role-aware Elixir foundations engine.
 //!
 //! Producers assign stable bounded voice identities before events enter the
-//! audio thread. Controls are limited to enable, master gain, and role gains.
+//! audio thread. Sound parameters use lock-free scalar snapshots.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
+
+use serde::{Deserialize, Serialize};
 
 use crate::slide::{SlideCurve, SlideRole, SlideSettings, SlideSlot, SlideTravel, SlideTrigger};
 
-pub use elixir_core::VoiceRole;
+pub use elixir_core::{
+    role_param, AmpEnvelope, CombineMode, HarmonicRecipe, RolePatch, SecondaryOscillator, Vibrato,
+    VoiceRole, PARTIAL_COUNT,
+};
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CombineModeState {
+    PrimaryOnly,
+    Add,
+    Ring,
+}
+
+impl From<CombineMode> for CombineModeState {
+    fn from(mode: CombineMode) -> Self {
+        match mode {
+            CombineMode::PrimaryOnly => Self::PrimaryOnly,
+            CombineMode::Add => Self::Add,
+            CombineMode::Ring => Self::Ring,
+        }
+    }
+}
+
+impl From<CombineModeState> for CombineMode {
+    fn from(mode: CombineModeState) -> Self {
+        match mode {
+            CombineModeState::PrimaryOnly => Self::PrimaryOnly,
+            CombineModeState::Add => Self::Add,
+            CombineModeState::Ring => Self::Ring,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct HarmonicRecipeState {
+    pub amplitudes: [f32; PARTIAL_COUNT],
+    pub phases: [f32; PARTIAL_COUNT],
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SecondaryOscillatorState {
+    pub mode: CombineModeState,
+    pub semitones: f32,
+    pub fine_cents: f32,
+    pub phase: f32,
+    pub level: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AmpEnvelopeState {
+    pub attack_secs: f32,
+    pub decay_secs: f32,
+    pub sustain_level: f32,
+    pub release_secs: f32,
+    pub velocity_sensitivity: f32,
+    pub expression_sensitivity: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct VibratoState {
+    pub rate_hz: f32,
+    pub depth_cents: f32,
+    pub mod_wheel_depth_cents: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RolePatchState {
+    pub harmonics: HarmonicRecipeState,
+    pub secondary: SecondaryOscillatorState,
+    pub envelope: AmpEnvelopeState,
+    pub vibrato: VibratoState,
+}
+
+impl From<RolePatch> for RolePatchState {
+    fn from(patch: RolePatch) -> Self {
+        Self {
+            harmonics: HarmonicRecipeState {
+                amplitudes: patch.harmonics.amplitudes,
+                phases: patch.harmonics.phases,
+            },
+            secondary: SecondaryOscillatorState {
+                mode: patch.secondary.mode.into(),
+                semitones: patch.secondary.semitones,
+                fine_cents: patch.secondary.fine_cents,
+                phase: patch.secondary.phase,
+                level: patch.secondary.level,
+            },
+            envelope: AmpEnvelopeState {
+                attack_secs: patch.envelope.attack_secs,
+                decay_secs: patch.envelope.decay_secs,
+                sustain_level: patch.envelope.sustain_level,
+                release_secs: patch.envelope.release_secs,
+                velocity_sensitivity: patch.envelope.velocity_sensitivity,
+                expression_sensitivity: patch.envelope.expression_sensitivity,
+            },
+            vibrato: VibratoState {
+                rate_hz: patch.vibrato.rate_hz,
+                depth_cents: patch.vibrato.depth_cents,
+                mod_wheel_depth_cents: patch.vibrato.mod_wheel_depth_cents,
+            },
+        }
+    }
+}
+
+impl From<RolePatchState> for RolePatch {
+    fn from(patch: RolePatchState) -> Self {
+        Self {
+            harmonics: HarmonicRecipe {
+                amplitudes: patch.harmonics.amplitudes,
+                phases: patch.harmonics.phases,
+            },
+            secondary: SecondaryOscillator {
+                mode: patch.secondary.mode.into(),
+                semitones: patch.secondary.semitones,
+                fine_cents: patch.secondary.fine_cents,
+                phase: patch.secondary.phase,
+                level: patch.secondary.level,
+            },
+            envelope: AmpEnvelope {
+                attack_secs: patch.envelope.attack_secs,
+                decay_secs: patch.envelope.decay_secs,
+                sustain_level: patch.envelope.sustain_level,
+                release_secs: patch.envelope.release_secs,
+                velocity_sensitivity: patch.envelope.velocity_sensitivity,
+                expression_sensitivity: patch.envelope.expression_sensitivity,
+            },
+            vibrato: Vibrato {
+                rate_hz: patch.vibrato.rate_hz,
+                depth_cents: patch.vibrato.depth_cents,
+                mod_wheel_depth_cents: patch.vibrato.mod_wheel_depth_cents,
+            },
+        }
+        .sanitized()
+    }
+}
+
+impl Default for RolePatchState {
+    fn default() -> Self {
+        RolePatch::sine().into()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SynthVoiceId(u64);
@@ -43,6 +185,15 @@ pub enum SynthEvent {
     },
     SustainPedal {
         on: bool,
+    },
+    PitchBend {
+        cents: f32,
+    },
+    Expression {
+        value: f32,
+    },
+    ModWheel {
+        value: f32,
     },
     AllNotesOff,
 }
@@ -104,6 +255,18 @@ impl SynthEvent {
 
     pub const fn sustain_pedal(on: bool) -> Self {
         Self::SustainPedal { on }
+    }
+
+    pub const fn pitch_bend(cents: f32) -> Self {
+        Self::PitchBend { cents }
+    }
+
+    pub const fn expression(value: f32) -> Self {
+        Self::Expression { value }
+    }
+
+    pub const fn mod_wheel(value: f32) -> Self {
+        Self::ModWheel { value }
     }
 }
 
@@ -351,6 +514,18 @@ impl SynthEventSender {
         Ok(())
     }
 
+    pub fn pitch_bend(&self, cents: f32) -> Result<(), mpsc::TrySendError<SynthEvent>> {
+        self.try_send(SynthEvent::pitch_bend(cents))
+    }
+
+    pub fn expression(&self, value: f32) -> Result<(), mpsc::TrySendError<SynthEvent>> {
+        self.try_send(SynthEvent::expression(value))
+    }
+
+    pub fn mod_wheel(&self, value: f32) -> Result<(), mpsc::TrySendError<SynthEvent>> {
+        self.try_send(SynthEvent::mod_wheel(value))
+    }
+
     fn try_send(&self, event: SynthEvent) -> Result<(), mpsc::TrySendError<SynthEvent>> {
         self.tx.try_send(event).inspect_err(|_| {
             self.fault.store(true, Ordering::Release);
@@ -372,10 +547,129 @@ impl SynthEventReceiver {
     }
 }
 
+struct AtomicFloat(AtomicU32);
+
+impl AtomicFloat {
+    fn new(value: f32) -> Self {
+        Self(AtomicU32::new(value.to_bits()))
+    }
+
+    fn load(&self) -> f32 {
+        f32::from_bits(self.0.load(Ordering::Relaxed))
+    }
+
+    fn store(&self, value: f32) {
+        self.0.store(value.to_bits(), Ordering::Relaxed);
+    }
+}
+
+struct RolePatchParams {
+    amplitudes: [AtomicFloat; PARTIAL_COUNT],
+    phases: [AtomicFloat; PARTIAL_COUNT],
+    combine_mode: AtomicU8,
+    secondary_semitones: AtomicFloat,
+    secondary_fine_cents: AtomicFloat,
+    secondary_phase: AtomicFloat,
+    secondary_level: AtomicFloat,
+    attack_secs: AtomicFloat,
+    decay_secs: AtomicFloat,
+    sustain_level: AtomicFloat,
+    release_secs: AtomicFloat,
+    velocity_sensitivity: AtomicFloat,
+    expression_sensitivity: AtomicFloat,
+    vibrato_rate_hz: AtomicFloat,
+    vibrato_depth_cents: AtomicFloat,
+    mod_wheel_depth_cents: AtomicFloat,
+}
+
+impl RolePatchParams {
+    fn new(patch: RolePatch) -> Self {
+        let patch = patch.sanitized();
+        Self {
+            amplitudes: std::array::from_fn(|index| {
+                AtomicFloat::new(patch.harmonics.amplitudes[index])
+            }),
+            phases: std::array::from_fn(|index| AtomicFloat::new(patch.harmonics.phases[index])),
+            combine_mode: AtomicU8::new(patch.secondary.mode as u8),
+            secondary_semitones: AtomicFloat::new(patch.secondary.semitones),
+            secondary_fine_cents: AtomicFloat::new(patch.secondary.fine_cents),
+            secondary_phase: AtomicFloat::new(patch.secondary.phase),
+            secondary_level: AtomicFloat::new(patch.secondary.level),
+            attack_secs: AtomicFloat::new(patch.envelope.attack_secs),
+            decay_secs: AtomicFloat::new(patch.envelope.decay_secs),
+            sustain_level: AtomicFloat::new(patch.envelope.sustain_level),
+            release_secs: AtomicFloat::new(patch.envelope.release_secs),
+            velocity_sensitivity: AtomicFloat::new(patch.envelope.velocity_sensitivity),
+            expression_sensitivity: AtomicFloat::new(patch.envelope.expression_sensitivity),
+            vibrato_rate_hz: AtomicFloat::new(patch.vibrato.rate_hz),
+            vibrato_depth_cents: AtomicFloat::new(patch.vibrato.depth_cents),
+            mod_wheel_depth_cents: AtomicFloat::new(patch.vibrato.mod_wheel_depth_cents),
+        }
+    }
+
+    fn load(&self) -> RolePatch {
+        RolePatch {
+            harmonics: HarmonicRecipe {
+                amplitudes: std::array::from_fn(|index| self.amplitudes[index].load()),
+                phases: std::array::from_fn(|index| self.phases[index].load()),
+            },
+            secondary: SecondaryOscillator {
+                mode: CombineMode::from_index(self.combine_mode.load(Ordering::Relaxed))
+                    .unwrap_or_default(),
+                semitones: self.secondary_semitones.load(),
+                fine_cents: self.secondary_fine_cents.load(),
+                phase: self.secondary_phase.load(),
+                level: self.secondary_level.load(),
+            },
+            envelope: AmpEnvelope {
+                attack_secs: self.attack_secs.load(),
+                decay_secs: self.decay_secs.load(),
+                sustain_level: self.sustain_level.load(),
+                release_secs: self.release_secs.load(),
+                velocity_sensitivity: self.velocity_sensitivity.load(),
+                expression_sensitivity: self.expression_sensitivity.load(),
+            },
+            vibrato: Vibrato {
+                rate_hz: self.vibrato_rate_hz.load(),
+                depth_cents: self.vibrato_depth_cents.load(),
+                mod_wheel_depth_cents: self.mod_wheel_depth_cents.load(),
+            },
+        }
+        .sanitized()
+    }
+
+    fn store(&self, patch: RolePatch) {
+        let patch = patch.sanitized();
+        for index in 0..PARTIAL_COUNT {
+            self.amplitudes[index].store(patch.harmonics.amplitudes[index]);
+            self.phases[index].store(patch.harmonics.phases[index]);
+        }
+        self.combine_mode
+            .store(patch.secondary.mode as u8, Ordering::Relaxed);
+        self.secondary_semitones.store(patch.secondary.semitones);
+        self.secondary_fine_cents.store(patch.secondary.fine_cents);
+        self.secondary_phase.store(patch.secondary.phase);
+        self.secondary_level.store(patch.secondary.level);
+        self.attack_secs.store(patch.envelope.attack_secs);
+        self.decay_secs.store(patch.envelope.decay_secs);
+        self.sustain_level.store(patch.envelope.sustain_level);
+        self.release_secs.store(patch.envelope.release_secs);
+        self.velocity_sensitivity
+            .store(patch.envelope.velocity_sensitivity);
+        self.expression_sensitivity
+            .store(patch.envelope.expression_sensitivity);
+        self.vibrato_rate_hz.store(patch.vibrato.rate_hz);
+        self.vibrato_depth_cents.store(patch.vibrato.depth_cents);
+        self.mod_wheel_depth_cents
+            .store(patch.vibrato.mod_wheel_depth_cents);
+    }
+}
+
 pub struct SynthParams {
     enabled: AtomicBool,
     master_gain_ppt: AtomicU32,
     mix_gain_ppt: [AtomicU32; MIX_GROUP_COUNT],
+    role_patches: [RolePatchParams; MIX_GROUP_COUNT],
 }
 
 impl Default for SynthParams {
@@ -384,6 +678,7 @@ impl Default for SynthParams {
             enabled: AtomicBool::new(true),
             master_gain_ppt: AtomicU32::new(250),
             mix_gain_ppt: std::array::from_fn(|_| AtomicU32::new(1000)),
+            role_patches: std::array::from_fn(|_| RolePatchParams::new(RolePatch::sine())),
         }
     }
 }
@@ -407,6 +702,14 @@ impl SynthParams {
         })
     }
 
+    pub fn role_patch(&self, group: usize) -> Option<RolePatch> {
+        self.role_patches.get(group).map(RolePatchParams::load)
+    }
+
+    pub fn role_patches(&self) -> [RolePatch; MIX_GROUP_COUNT] {
+        std::array::from_fn(|index| self.role_patches[index].load())
+    }
+
     pub fn set_enabled(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::Relaxed);
     }
@@ -425,6 +728,14 @@ impl SynthParams {
         if let Some(target) = self.mix_gain_ppt.get(group) {
             target.store((gain.clamp(0.0, 1.0) * 1000.0) as u32, Ordering::Relaxed);
         }
+    }
+
+    pub fn set_role_patch(&self, group: usize, patch: RolePatch) -> bool {
+        let Some(target) = self.role_patches.get(group) else {
+            return false;
+        };
+        target.store(patch);
+        true
     }
 }
 
@@ -560,6 +871,46 @@ mod tests {
             Err(mpsc::TrySendError::Full(_))
         ));
         assert!(rx.fault_flag().load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn performance_controls_keep_order_and_values() {
+        let (tx, rx) = synth_event_channel();
+        tx.pitch_bend(37.5).unwrap();
+        tx.expression(0.4).unwrap();
+        tx.mod_wheel(0.75).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::PitchBend { cents: 37.5 }
+        ));
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::Expression { value: 0.4 }
+        ));
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            SynthEvent::ModWheel { value: 0.75 }
+        ));
+    }
+
+    #[test]
+    fn role_patch_atomics_and_wire_state_round_trip_safely() {
+        let params = SynthParams::new();
+        let mut patch = RolePatch::sine();
+        patch.harmonics.amplitudes = [1.0, 0.5, 0.25, 0.0, 0.0, 0.0];
+        patch.secondary.mode = CombineMode::Ring;
+        patch.secondary.semitones = -12.0;
+        patch.envelope = AmpEnvelope::ring_down();
+        assert!(params.set_role_patch(2, patch));
+        assert_eq!(params.role_patch(2), Some(patch));
+        assert!(!params.set_role_patch(4, patch));
+
+        let state = RolePatchState::from(patch);
+        let json = serde_json::to_string(&state).unwrap();
+        assert_eq!(
+            RolePatch::from(serde_json::from_str::<RolePatchState>(&json).unwrap()),
+            patch
+        );
     }
 
     #[test]

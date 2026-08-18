@@ -95,8 +95,12 @@ export class ElixirAudio {
      */
     process(frames: number, channels: number): number;
     retune(voice_id: number, frequency_hz: number): void;
+    set_expression(value: number): void;
     set_master_gain(gain: number): void;
+    set_mod_wheel(value: number): void;
+    set_pitch_bend_cents(cents: number): void;
     set_role_gain(role: number, gain: number): void;
+    set_role_parameter(role: number, parameter: number, value: number): void;
     set_sustain(enabled: boolean): void;
     slide_curves_ptr(): number;
     slide_durations_ptr(): number;
@@ -416,8 +420,12 @@ export interface InitOutput {
     readonly elixiraudio_panic: (a: number) => void;
     readonly elixiraudio_process: (a: number, b: number, c: number) => number;
     readonly elixiraudio_retune: (a: number, b: number, c: number) => void;
+    readonly elixiraudio_set_expression: (a: number, b: number) => void;
     readonly elixiraudio_set_master_gain: (a: number, b: number) => void;
+    readonly elixiraudio_set_mod_wheel: (a: number, b: number) => void;
+    readonly elixiraudio_set_pitch_bend_cents: (a: number, b: number) => void;
     readonly elixiraudio_set_role_gain: (a: number, b: number, c: number) => void;
+    readonly elixiraudio_set_role_parameter: (a: number, b: number, c: number, d: number) => void;
     readonly elixiraudio_set_sustain: (a: number, b: number) => void;
     readonly elixiraudio_slide_curves_ptr: (a: number) => number;
     readonly elixiraudio_slide_durations_ptr: (a: number) => number;

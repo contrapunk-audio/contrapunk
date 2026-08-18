@@ -109,14 +109,14 @@ Note: `graphify update .` attempted during this recon but crashed with `expected
 
 ### Elixir features committed locally
 
-- `elixir-core` voice engine with 16-voice polyphony, sustain, voice stealing.
-- Oscillator controls: spectral morphs, phase distortion, unison styles.
-- Filters: Digital SVF, Diode, Dirty, Formant, Phaser.
-- FX chain: Drive, Delay, Reverb, FDN Reverb, Chorus, Flanger, Phaser, Compressor.
-- Feature-gated Tauri synth replacement: `--features elixir-synth`.
-- `elixir-plugin` with CLAP/VST3 skeleton and DAW automation surface.
-- `elixir-preset` schema + `.vital` / `.vitalbank` import subset.
-- `elixir-standalone` UI with A6 controls and Vital import.
+- `elixir-core` voice engine with 16-voice polyphony, sustain, voice stealing, exact tuning, and phase-continuous retuning.
+- Six phase-aware harmonic partials per Contrapunk role with Sine, Three, Odd, Saw-like, Dark, and Custom recipes.
+- A constrained second sine operator with Primary, Add, and Ring interaction modes.
+- Per-role ADSR, velocity and expression response, fixed vibrato, and shared Slide pitch trajectories.
+- Lock-free pitch bend, mod wheel, pressure, and CC11 performance controls.
+- Tauri, WASM AudioWorklet, Contrapunk plugin, and independent Elixir plugin surfaces.
+- `elixir-preset` schema v4 with safe v1-v3 migration and deterministic Chapter 1/2 demonstration states.
+- No filters, spectral morphs, general modulation matrix, or internal Elixir FX until their textbook concepts are introduced and approved.
 
 ### Golem features committed locally
 

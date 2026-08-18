@@ -7,6 +7,7 @@
 //! All harmony parameters (key, mode, scale, voices, etc.) are exposed as
 //! DAW-automatable plugin parameters.
 
+use nih_plug::params::persist::PersistentField;
 use nih_plug::prelude::*;
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
@@ -24,7 +25,7 @@ mod logic_midi;
 
 use contrapunk::audio::guitar_input::{GuitarInput, GuitarInputConfig, MidiEvent as CpMidiEvent};
 use contrapunk::chain::{AudioBlock, ElixirSynthBlock, MidiBlockEvent};
-use contrapunk::elixir::{SynthParams, VoiceRole};
+use contrapunk::elixir::{role_param, RolePatch, RolePatchState, SynthParams, VoiceRole};
 use contrapunk::harmony::{
     HarmonicLimit, HarmonyEngine, HarmonyMode, Key, OctaveMode, TuningConfig, TuningStyle,
     VoiceLeadingStyle,
@@ -428,6 +429,74 @@ enum PluginMidiOutputMode {
 
 // ── Parameters ───────────────────────────────────────────────────────
 
+pub(crate) struct AtomicPatchBank {
+    parameters: [[AtomicU32; role_param::COUNT as usize]; 4],
+}
+
+impl AtomicPatchBank {
+    fn new() -> Self {
+        Self {
+            parameters: std::array::from_fn(|_| {
+                std::array::from_fn(|parameter| {
+                    AtomicU32::new(
+                        RolePatch::sine()
+                            .parameter(parameter as u8)
+                            .unwrap_or(0.0)
+                            .to_bits(),
+                    )
+                })
+            }),
+        }
+    }
+
+    pub(crate) fn load(&self) -> [RolePatchState; 4] {
+        std::array::from_fn(|role| {
+            let mut patch = RolePatch::sine();
+            for (parameter, value) in self.parameters[role].iter().enumerate() {
+                patch.set_parameter(
+                    parameter as u8,
+                    f32::from_bits(value.load(Ordering::Relaxed)),
+                );
+            }
+            patch.into()
+        })
+    }
+
+    pub(crate) fn store_role(&self, role: usize, patch: RolePatch) -> bool {
+        let Some(parameters) = self.parameters.get(role) else {
+            return false;
+        };
+        let patch = patch.sanitized();
+        for (parameter, value) in parameters.iter().enumerate() {
+            value.store(
+                patch.parameter(parameter as u8).unwrap_or(0.0).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+        true
+    }
+
+    fn store(&self, patches: [RolePatchState; 4]) {
+        for (role, patch) in patches.into_iter().enumerate() {
+            self.store_role(role, RolePatch::from(patch));
+        }
+    }
+}
+
+impl<'a> PersistentField<'a, [RolePatchState; 4]> for AtomicPatchBank {
+    fn set(&self, patches: [RolePatchState; 4]) {
+        self.store(patches);
+    }
+
+    fn map<F, R>(&self, map: F) -> R
+    where
+        F: Fn(&[RolePatchState; 4]) -> R,
+    {
+        let snapshot = self.load();
+        map(&snapshot)
+    }
+}
+
 #[derive(Params)]
 struct ContrapunkParams {
     #[id = "input_mode"]
@@ -490,6 +559,9 @@ struct ContrapunkParams {
     #[id = "midi_output"]
     pub midi_output_mode: EnumParam<PluginMidiOutputMode>,
 
+    #[persist = "synth_role_patches_v1"]
+    pub(crate) synth_role_patches: AtomicPatchBank,
+
     // v2 drops the legacy 900×700 editor state now that the production
     // workspace requires 1200×800.
     #[persist = "webview_state_v2"]
@@ -527,19 +599,20 @@ impl Default for ContrapunkParams {
             .with_unit(" %")
             .with_value_to_string(formatters::v2s_f32_percentage(0)),
             harmonic_limit: EnumParam::new("Harmonic Character", PluginHarmonicLimit::Five),
-            synth_enabled: BoolParam::new("Built-in Sine", true),
+            synth_enabled: BoolParam::new("Built-in Elixir", true),
             synth_gain: FloatParam::new(
-                "Sine Gain",
+                "Elixir Gain",
                 0.25,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )
             .with_unit(" %")
             .with_value_to_string(formatters::v2s_f32_percentage(0)),
-            synth_input_gain: role_gain_param("Sine Input Gain"),
-            synth_harmony_gain: role_gain_param("Sine Harmony Gain"),
-            synth_canon_gain: role_gain_param("Sine Canon Gain"),
-            synth_counterpoint_gain: role_gain_param("Sine Counterpoint Gain"),
+            synth_input_gain: role_gain_param("Elixir Input Gain"),
+            synth_harmony_gain: role_gain_param("Elixir Harmony Gain"),
+            synth_canon_gain: role_gain_param("Elixir Canon Gain"),
+            synth_counterpoint_gain: role_gain_param("Elixir Counterpoint Gain"),
             midi_output_mode: EnumParam::new("MIDI Output", PluginMidiOutputMode::Full),
+            synth_role_patches: AtomicPatchBank::new(),
             webview_state: editor::default_webview_state(),
         }
     }
@@ -1619,6 +1692,16 @@ impl ContrapunkPlugin {
         {
             self.synth_params.set_mix_gain(group, gain);
         }
+        for (role, patch) in self
+            .params
+            .synth_role_patches
+            .load()
+            .into_iter()
+            .enumerate()
+        {
+            self.synth_params
+                .set_role_patch(role, RolePatch::from(patch));
+        }
 
         let params = WorkerParams {
             key: self.params.key.value(),
@@ -1731,6 +1814,20 @@ impl ContrapunkPlugin {
 
     fn synth_sustain(&mut self, on: bool) {
         self.synth.midi_event(MidiBlockEvent::SustainPedal { on });
+    }
+
+    fn synth_pitch_bend(&mut self, value: f32) {
+        self.synth.midi_event(MidiBlockEvent::PitchBend {
+            cents: (value.clamp(0.0, 1.0) - 0.5) * 400.0,
+        });
+    }
+
+    fn synth_expression(&mut self, value: f32) {
+        self.synth.midi_event(MidiBlockEvent::Expression { value });
+    }
+
+    fn synth_mod_wheel(&mut self, value: f32) {
+        self.synth.midi_event(MidiBlockEvent::ModWheel { value });
     }
 
     fn emit_note_on(
@@ -2295,6 +2392,22 @@ impl ContrapunkPlugin {
                     context.send_event(other);
                     queue_ok = false;
                 }
+                other @ NoteEvent::MidiCC { cc: 1, value, .. } => {
+                    self.synth_mod_wheel(value);
+                    context.send_event(other);
+                }
+                other @ NoteEvent::MidiCC { cc: 11, value, .. } => {
+                    self.synth_expression(value);
+                    context.send_event(other);
+                }
+                other @ NoteEvent::MidiPitchBend { value, .. } => {
+                    self.synth_pitch_bend(value);
+                    context.send_event(other);
+                }
+                other @ NoteEvent::MidiChannelPressure { pressure, .. } => {
+                    self.synth_expression(pressure);
+                    context.send_event(other);
+                }
                 other => context.send_event(other),
             }
         }
@@ -2372,6 +2485,7 @@ impl Plugin for ContrapunkPlugin {
         {
             Some(Box::new(editor::create_editor(
                 self.params.clone(),
+                Arc::clone(&self.synth_params),
                 Arc::clone(&self.note_state),
                 Arc::clone(&self.guitar_signal),
                 Arc::clone(&self.companion),
@@ -2518,6 +2632,22 @@ impl Plugin for ContrapunkPlugin {
                             self.hard_all_notes_off(timing, context);
                             context.send_event(other);
                             queue_ok = false;
+                        }
+                        other @ NoteEvent::MidiCC { cc: 1, value, .. } => {
+                            self.synth_mod_wheel(value);
+                            context.send_event(other);
+                        }
+                        other @ NoteEvent::MidiCC { cc: 11, value, .. } => {
+                            self.synth_expression(value);
+                            context.send_event(other);
+                        }
+                        other @ NoteEvent::MidiPitchBend { value, .. } => {
+                            self.synth_pitch_bend(value);
+                            context.send_event(other);
+                        }
+                        other @ NoteEvent::MidiChannelPressure { pressure, .. } => {
+                            self.synth_expression(pressure);
+                            context.send_event(other);
                         }
                         NoteEvent::NoteOn { .. }
                         | NoteEvent::NoteOff { .. }
@@ -2687,7 +2817,21 @@ mod tests {
     }
 
     #[test]
-    fn internal_sine_monitor_preserves_repeat_and_sustain_ownership() {
+    fn role_patch_bank_round_trips_without_audio_thread_locks() {
+        let params = ContrapunkParams::default();
+        let mut patch = RolePatch::sine();
+        patch.harmonics.amplitudes = [1.0, 0.0, 0.45, 0.0, 0.25, 0.0];
+        patch.secondary.mode = contrapunk::elixir::CombineMode::Ring;
+        assert!(params.synth_role_patches.store_role(2, patch));
+        assert_eq!(RolePatch::from(params.synth_role_patches.load()[2]), patch);
+
+        let persisted = params.synth_role_patches.load();
+        PersistentField::set(&params.synth_role_patches, persisted);
+        assert_eq!(params.synth_role_patches.load(), persisted);
+    }
+
+    #[test]
+    fn internal_elixir_monitor_preserves_repeat_and_sustain_ownership() {
         let mut plugin = ContrapunkPlugin::default();
         let mut audio = [0.0; 1024];
         plugin.synth_note_on_frequency(69, 440.0, 1.0, VoiceRole::Input);

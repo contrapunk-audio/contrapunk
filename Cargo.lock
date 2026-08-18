@@ -1285,6 +1285,7 @@ version = "0.0.1"
 dependencies = [
  "assert_no_alloc",
  "elixir-core",
+ "elixir-preset",
  "nih_plug",
  "nih_plug_webview",
  "serde_json",

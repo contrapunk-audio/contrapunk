@@ -1,20 +1,75 @@
 //! Independently buildable Elixir VST3/CLAP instrument.
 //!
-//! The sound path is intentionally fixed: 16 polyphonic sine voices, velocity,
-//! a 5 ms de-click ramp, and one master gain parameter.
+//! The sound path shares Elixir's Chapter 1 harmonic colour and Chapter 2
+//! interaction, articulation, and expression model.
 
 use std::num::NonZeroU32;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use elixir_core::{Engine, VoiceEvent, VoiceId, VoiceRole, MAX_POLYPHONY};
+use elixir_core::{role_param, Engine, RolePatch, VoiceEvent, VoiceId, VoiceRole, MAX_POLYPHONY};
+use elixir_preset::RolePatchState;
+use nih_plug::params::persist::PersistentField;
 use nih_plug::prelude::*;
 
 mod editor;
+
+struct AtomicRolePatch {
+    parameters: [AtomicU32; role_param::COUNT as usize],
+}
+
+impl AtomicRolePatch {
+    fn new(patch: RolePatch) -> Self {
+        Self {
+            parameters: std::array::from_fn(|index| {
+                AtomicU32::new(patch.parameter(index as u8).unwrap_or(0.0).to_bits())
+            }),
+        }
+    }
+
+    fn load(&self) -> RolePatch {
+        let mut patch = RolePatch::sine();
+        for (index, parameter) in self.parameters.iter().enumerate() {
+            patch.set_parameter(
+                index as u8,
+                f32::from_bits(parameter.load(Ordering::Relaxed)),
+            );
+        }
+        patch
+    }
+
+    fn store(&self, patch: RolePatch) {
+        let patch = patch.sanitized();
+        for (index, parameter) in self.parameters.iter().enumerate() {
+            parameter.store(
+                patch.parameter(index as u8).unwrap_or(0.0).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+    }
+}
+
+impl<'a> PersistentField<'a, RolePatchState> for AtomicRolePatch {
+    fn set(&self, value: RolePatchState) {
+        self.store(value.to_core());
+    }
+
+    fn map<F, R>(&self, map: F) -> R
+    where
+        F: Fn(&RolePatchState) -> R,
+    {
+        let snapshot = RolePatchState::from(self.load());
+        map(&snapshot)
+    }
+}
 
 #[derive(Params)]
 struct ElixirParams {
     #[id = "gain"]
     gain: FloatParam,
+
+    #[persist = "role_patch_v1"]
+    patch: AtomicRolePatch,
 
     #[persist = "webview_state"]
     webview_state: Arc<nih_plug_webview::WebViewState>,
@@ -35,6 +90,7 @@ impl Default for ElixirParams {
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            patch: AtomicRolePatch::new(RolePatch::sine()),
             webview_state: editor::default_webview_state(),
         }
     }
@@ -179,8 +235,14 @@ impl ElixirPlugin {
                 note,
                 ..
             } => self.note_off(voice_id, channel, note, true),
+            NoteEvent::MidiCC { cc: 1, value, .. } => self.engine.set_mod_wheel(value),
+            NoteEvent::MidiCC { cc: 11, value, .. } => self.engine.set_expression(value),
             NoteEvent::MidiCC { cc: 64, value, .. } => self.engine.set_sustain_pedal(value >= 0.5),
             NoteEvent::MidiCC { cc: 120 | 123, .. } => self.panic(),
+            NoteEvent::MidiPitchBend { value, .. } => self
+                .engine
+                .set_pitch_bend_cents((value.clamp(0.0, 1.0) - 0.5) * 400.0),
+            NoteEvent::MidiChannelPressure { pressure, .. } => self.engine.set_expression(pressure),
             _ => {}
         }
     }
@@ -316,6 +378,8 @@ impl Plugin for ElixirPlugin {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         self.engine.set_master_gain(self.params.gain.value());
+        self.engine
+            .set_role_patch(VoiceRole::Input, self.params.patch.load());
         let frames = buffer.samples();
         let first_event = context.next_event();
         self.process_buffer_with_events(buffer.as_slice(), frames, first_event, || {
@@ -327,7 +391,8 @@ impl Plugin for ElixirPlugin {
 
 impl ClapPlugin for ElixirPlugin {
     const CLAP_ID: &'static str = "com.contrapunk.elixir.plugin";
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("16-voice sine synthesizer");
+    const CLAP_DESCRIPTION: Option<&'static str> =
+        Some("16-voice harmonic foundations synthesizer");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
@@ -418,6 +483,34 @@ mod tests {
         Plugin::reset(&mut plugin);
         assert_eq!(plugin.engine.live_voice_count(), 0);
         assert!(plugin.owners.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn persisted_patch_and_expression_reach_the_engine() {
+        let params = ElixirParams::default();
+        let mut patch = RolePatch::sine();
+        patch.harmonics.amplitudes = [1.0, 0.5, 0.25, 0.0, 0.0, 0.0];
+        patch.secondary.mode = elixir_core::CombineMode::Add;
+        let state = RolePatchState::from(patch);
+        PersistentField::set(&params.patch, state);
+        assert_eq!(params.patch.load(), patch);
+
+        let mut plugin = ElixirPlugin::default();
+        plugin.handle_note_event(note_on(0, Some(1)));
+        plugin.handle_note_event(NoteEvent::MidiChannelPressure {
+            timing: 0,
+            channel: 0,
+            pressure: 0.0,
+        });
+        let mut output = [1.0; 64];
+        plugin.engine.process(&mut output, 1);
+        assert!(output.iter().all(|sample| sample.abs() < 1.0e-6));
+        plugin.handle_note_event(NoteEvent::MidiPitchBend {
+            timing: 0,
+            channel: 0,
+            value: 0.75,
+        });
+        assert_eq!(plugin.engine.pitch_bend_cents(), 100.0);
     }
 
     #[test]

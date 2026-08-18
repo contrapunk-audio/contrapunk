@@ -505,10 +505,28 @@ export class ElixirAudio {
         wasm.elixiraudio_retune(this.__wbg_ptr, voice_id, frequency_hz);
     }
     /**
+     * @param {number} value
+     */
+    set_expression(value) {
+        wasm.elixiraudio_set_expression(this.__wbg_ptr, value);
+    }
+    /**
      * @param {number} gain
      */
     set_master_gain(gain) {
         wasm.elixiraudio_set_master_gain(this.__wbg_ptr, gain);
+    }
+    /**
+     * @param {number} value
+     */
+    set_mod_wheel(value) {
+        wasm.elixiraudio_set_mod_wheel(this.__wbg_ptr, value);
+    }
+    /**
+     * @param {number} cents
+     */
+    set_pitch_bend_cents(cents) {
+        wasm.elixiraudio_set_pitch_bend_cents(this.__wbg_ptr, cents);
     }
     /**
      * @param {number} role
@@ -516,6 +534,14 @@ export class ElixirAudio {
      */
     set_role_gain(role, gain) {
         wasm.elixiraudio_set_role_gain(this.__wbg_ptr, role, gain);
+    }
+    /**
+     * @param {number} role
+     * @param {number} parameter
+     * @param {number} value
+     */
+    set_role_parameter(role, parameter, value) {
+        wasm.elixiraudio_set_role_parameter(this.__wbg_ptr, role, parameter, value);
     }
     /**
      * @param {boolean} enabled

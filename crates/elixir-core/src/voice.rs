@@ -2,7 +2,7 @@
 
 use crate::env::Envelope;
 use crate::osc::Oscillator;
-use crate::{RolePatch, VoiceId, VoiceRole};
+use crate::{RolePatch, VoiceId, VoiceRole, DECLICK_SECS};
 
 pub(crate) struct Voice {
     oscillator: Oscillator,
@@ -92,10 +92,10 @@ impl Voice {
     }
 
     pub fn release(&mut self) {
-        if self.active && (!self.released || self.sustained) {
+        if self.active {
             self.released = true;
             self.sustained = false;
-            self.begin_release();
+            self.envelope.force_release(DECLICK_SECS);
         }
     }
 

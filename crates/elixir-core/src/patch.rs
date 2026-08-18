@@ -2,6 +2,27 @@
 
 pub const PARTIAL_COUNT: usize = 6;
 
+/// Stable scalar parameter indices used by realtime host bridges.
+pub mod role_param {
+    pub const HARMONIC_AMPLITUDE_START: u8 = 0;
+    pub const HARMONIC_PHASE_START: u8 = 6;
+    pub const COMBINE_MODE: u8 = 12;
+    pub const SECONDARY_SEMITONES: u8 = 13;
+    pub const SECONDARY_FINE_CENTS: u8 = 14;
+    pub const SECONDARY_PHASE: u8 = 15;
+    pub const SECONDARY_LEVEL: u8 = 16;
+    pub const ATTACK_SECS: u8 = 17;
+    pub const DECAY_SECS: u8 = 18;
+    pub const SUSTAIN_LEVEL: u8 = 19;
+    pub const RELEASE_SECS: u8 = 20;
+    pub const VELOCITY_SENSITIVITY: u8 = 21;
+    pub const EXPRESSION_SENSITIVITY: u8 = 22;
+    pub const VIBRATO_RATE_HZ: u8 = 23;
+    pub const VIBRATO_DEPTH_CENTS: u8 = 24;
+    pub const MOD_WHEEL_DEPTH_CENTS: u8 = 25;
+    pub const COUNT: u8 = 26;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum HarmonicPreset {
@@ -275,6 +296,67 @@ impl RolePatch {
         }
     }
 
+    pub fn set_parameter(&mut self, parameter: u8, value: f32) -> bool {
+        match parameter {
+            role_param::HARMONIC_AMPLITUDE_START..=5 => {
+                self.harmonics.amplitudes[parameter as usize] = value;
+            }
+            role_param::HARMONIC_PHASE_START..=11 => {
+                self.harmonics.phases[(parameter - role_param::HARMONIC_PHASE_START) as usize] =
+                    value;
+            }
+            role_param::COMBINE_MODE => {
+                let Some(mode) = CombineMode::from_index(libm::roundf(value).clamp(0.0, 2.0) as u8)
+                else {
+                    return false;
+                };
+                self.secondary.mode = mode;
+            }
+            role_param::SECONDARY_SEMITONES => self.secondary.semitones = value,
+            role_param::SECONDARY_FINE_CENTS => self.secondary.fine_cents = value,
+            role_param::SECONDARY_PHASE => self.secondary.phase = value,
+            role_param::SECONDARY_LEVEL => self.secondary.level = value,
+            role_param::ATTACK_SECS => self.envelope.attack_secs = value,
+            role_param::DECAY_SECS => self.envelope.decay_secs = value,
+            role_param::SUSTAIN_LEVEL => self.envelope.sustain_level = value,
+            role_param::RELEASE_SECS => self.envelope.release_secs = value,
+            role_param::VELOCITY_SENSITIVITY => self.envelope.velocity_sensitivity = value,
+            role_param::EXPRESSION_SENSITIVITY => self.envelope.expression_sensitivity = value,
+            role_param::VIBRATO_RATE_HZ => self.vibrato.rate_hz = value,
+            role_param::VIBRATO_DEPTH_CENTS => self.vibrato.depth_cents = value,
+            role_param::MOD_WHEEL_DEPTH_CENTS => self.vibrato.mod_wheel_depth_cents = value,
+            _ => return false,
+        }
+        *self = self.sanitized();
+        true
+    }
+
+    pub fn parameter(self, parameter: u8) -> Option<f32> {
+        match parameter {
+            role_param::HARMONIC_AMPLITUDE_START..=5 => {
+                Some(self.harmonics.amplitudes[parameter as usize])
+            }
+            role_param::HARMONIC_PHASE_START..=11 => {
+                Some(self.harmonics.phases[(parameter - role_param::HARMONIC_PHASE_START) as usize])
+            }
+            role_param::COMBINE_MODE => Some(self.secondary.mode as u8 as f32),
+            role_param::SECONDARY_SEMITONES => Some(self.secondary.semitones),
+            role_param::SECONDARY_FINE_CENTS => Some(self.secondary.fine_cents),
+            role_param::SECONDARY_PHASE => Some(self.secondary.phase),
+            role_param::SECONDARY_LEVEL => Some(self.secondary.level),
+            role_param::ATTACK_SECS => Some(self.envelope.attack_secs),
+            role_param::DECAY_SECS => Some(self.envelope.decay_secs),
+            role_param::SUSTAIN_LEVEL => Some(self.envelope.sustain_level),
+            role_param::RELEASE_SECS => Some(self.envelope.release_secs),
+            role_param::VELOCITY_SENSITIVITY => Some(self.envelope.velocity_sensitivity),
+            role_param::EXPRESSION_SENSITIVITY => Some(self.envelope.expression_sensitivity),
+            role_param::VIBRATO_RATE_HZ => Some(self.vibrato.rate_hz),
+            role_param::VIBRATO_DEPTH_CENTS => Some(self.vibrato.depth_cents),
+            role_param::MOD_WHEEL_DEPTH_CENTS => Some(self.vibrato.mod_wheel_depth_cents),
+            _ => None,
+        }
+    }
+
     pub fn sanitized(self) -> Self {
         Self {
             harmonics: self.harmonics.sanitized(),
@@ -339,6 +421,21 @@ mod tests {
             HarmonicRecipe::preset(HarmonicPreset::Dark).amplitudes,
             [1.0, 0.25, 0.111, 0.063, 0.04, 0.028]
         );
+    }
+
+    #[test]
+    fn stable_parameter_indices_round_trip_host_updates() {
+        let mut patch = RolePatch::sine();
+        assert!(patch.set_parameter(role_param::HARMONIC_AMPLITUDE_START + 2, 0.45));
+        assert!(patch.set_parameter(role_param::HARMONIC_PHASE_START + 2, 0.25));
+        assert!(patch.set_parameter(role_param::COMBINE_MODE, CombineMode::Ring as u8 as f32));
+        assert!(patch.set_parameter(role_param::VIBRATO_DEPTH_CENTS, 18.0));
+        assert_eq!(patch.parameter(2), Some(0.45));
+        assert_eq!(patch.parameter(8), Some(0.25));
+        assert_eq!(patch.secondary.mode, CombineMode::Ring);
+        assert_eq!(patch.parameter(role_param::VIBRATO_DEPTH_CENTS), Some(18.0));
+        assert!(!patch.set_parameter(role_param::COUNT, 1.0));
+        assert_eq!(patch.parameter(role_param::COUNT), None);
     }
 
     #[test]

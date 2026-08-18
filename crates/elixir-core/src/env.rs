@@ -16,6 +16,7 @@ pub(crate) struct Envelope {
     value: f32,
     stage_elapsed: f32,
     release_start: f32,
+    forced_release_secs: f32,
 }
 
 impl Envelope {
@@ -25,6 +26,7 @@ impl Envelope {
             value: 0.0,
             stage_elapsed: 0.0,
             release_start: 0.0,
+            forced_release_secs: -1.0,
         }
     }
 
@@ -33,6 +35,7 @@ impl Envelope {
         self.value = 0.0;
         self.stage_elapsed = 0.0;
         self.release_start = 0.0;
+        self.forced_release_secs = -1.0;
     }
 
     pub fn note_off(&mut self) {
@@ -40,6 +43,16 @@ impl Envelope {
             self.stage = Stage::Release;
             self.stage_elapsed = 0.0;
             self.release_start = self.value;
+            self.forced_release_secs = -1.0;
+        }
+    }
+
+    pub fn force_release(&mut self, seconds: f32) {
+        if self.stage != Stage::Idle {
+            self.stage = Stage::Release;
+            self.stage_elapsed = 0.0;
+            self.release_start = self.value;
+            self.forced_release_secs = seconds.max(0.0);
         }
     }
 
@@ -77,12 +90,17 @@ impl Envelope {
             }
             Stage::Sustain => self.value = parameters.sustain_level,
             Stage::Release => {
-                if parameters.release_secs <= 0.0 {
+                let release_secs = if self.forced_release_secs >= 0.0 {
+                    self.forced_release_secs
+                } else {
+                    parameters.release_secs
+                };
+                if release_secs <= 0.0 {
                     self.value = 0.0;
                     self.stage = Stage::Idle;
                 } else {
                     self.stage_elapsed += dt;
-                    let progress = (self.stage_elapsed / parameters.release_secs).min(1.0);
+                    let progress = (self.stage_elapsed / release_secs).min(1.0);
                     self.value = self.release_start * (1.0 - progress);
                     if progress >= 1.0 {
                         self.value = 0.0;

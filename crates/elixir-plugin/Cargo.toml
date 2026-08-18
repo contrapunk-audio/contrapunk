@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 elixir-core = { path = "../elixir-core", features = ["std"] }
+elixir-preset = { path = "../elixir-preset" }
 nih_plug = { git = "https://github.com/contrapunk-audio/nih-plug.git", features = ["assert_process_allocs"] }
 nih_plug_webview = { git = "https://github.com/contrapunk-audio/nih-plug-webview.git" }
 serde_json = "1.0"

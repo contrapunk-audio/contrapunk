@@ -2,7 +2,7 @@
 name = "elixir-core"
 version = "0.0.1"
 edition = "2021"
-description = "Elixir DSP engine — core (no host code). See ELIXIR-DESIGN.md."
+description = "Elixir harmonic foundations DSP engine (no host code)"
 authors = ["Contrapunk Team"]
 license = "MIT OR Apache-2.0"
 
