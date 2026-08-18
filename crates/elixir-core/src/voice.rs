@@ -1,10 +1,14 @@
-//! One fixed-sine Elixir voice with a non-user-facing de-click ramp.
+//! One role-aware Elixir voice with harmonic colour and independent articulation.
 
+use crate::env::Envelope;
 use crate::osc::Oscillator;
-use crate::{VoiceId, VoiceRole, DECLICK_SECS};
+use crate::{RolePatch, VoiceId, VoiceRole};
 
 pub(crate) struct Voice {
     oscillator: Oscillator,
+    envelope: Envelope,
+    patch: RolePatch,
+    patch_smoothing: f32,
     active: bool,
     released: bool,
     sustained: bool,
@@ -13,9 +17,6 @@ pub(crate) struct Voice {
     midi_anchor: u8,
     frequency_hz: f32,
     velocity: f32,
-    gain: f32,
-    ramp_step: f32,
-    ramp_frames: f32,
     age: u64,
 }
 
@@ -23,6 +24,9 @@ impl Voice {
     pub const fn new() -> Self {
         Self {
             oscillator: Oscillator::new(),
+            envelope: Envelope::new(),
+            patch: RolePatch::sine(),
+            patch_smoothing: 1.0,
             active: false,
             released: false,
             sustained: false,
@@ -31,9 +35,6 @@ impl Voice {
             midi_anchor: 0,
             frequency_hz: 0.0,
             velocity: 0.0,
-            gain: 0.0,
-            ramp_step: 0.0,
-            ramp_frames: 1.0,
             age: 0,
         }
     }
@@ -48,8 +49,12 @@ impl Voice {
         velocity: u8,
         sample_rate: f32,
         age: u64,
+        patch: RolePatch,
     ) {
-        self.oscillator.start(frequency_hz, sample_rate);
+        self.patch = patch;
+        self.patch_smoothing = 1.0 - libm::expf(-1.0 / (0.01 * sample_rate.max(1.0)));
+        self.oscillator.start(patch);
+        self.envelope.note_on();
         self.active = true;
         self.released = false;
         self.sustained = false;
@@ -58,15 +63,11 @@ impl Voice {
         self.midi_anchor = midi_anchor;
         self.frequency_hz = frequency_hz;
         self.velocity = velocity as f32 / 127.0;
-        self.gain = 0.0;
-        self.ramp_frames = (DECLICK_SECS * sample_rate).max(1.0);
-        self.ramp_step = 1.0 / self.ramp_frames;
         self.age = age;
     }
 
-    pub fn retune(&mut self, voice_id: VoiceId, frequency_hz: f32, sample_rate: f32) {
+    pub fn retune(&mut self, voice_id: VoiceId, frequency_hz: f32) {
         if self.has_voice_id(voice_id) && frequency_hz.is_finite() && frequency_hz > 0.0 {
-            self.oscillator.retune(frequency_hz, sample_rate);
             self.frequency_hz = frequency_hz;
         }
     }
@@ -99,26 +100,41 @@ impl Voice {
     }
 
     fn begin_release(&mut self) {
-        self.ramp_step = -(self.gain / self.ramp_frames).max(f32::EPSILON);
+        self.envelope.note_off();
     }
 
     #[inline]
-    pub fn tick(&mut self) -> f32 {
+    pub fn tick(
+        &mut self,
+        target_patch: RolePatch,
+        pitch_bend_cents: f32,
+        expression: f32,
+        mod_wheel: f32,
+        sample_rate: f32,
+    ) -> f32 {
         if !self.active {
             return 0.0;
         }
 
-        if self.ramp_step > 0.0 && self.gain < 1.0 {
-            self.gain = (self.gain + self.ramp_step).min(1.0);
-        } else if self.ramp_step < 0.0 {
-            self.gain += self.ramp_step;
-            if self.gain <= 0.0 {
-                self.deactivate();
-                return 0.0;
-            }
+        self.patch.smooth_toward(target_patch, self.patch_smoothing);
+        let envelope = self.envelope.tick(self.patch.envelope, sample_rate);
+        if self.released && self.envelope.is_idle() {
+            self.deactivate();
+            return 0.0;
         }
 
-        self.oscillator.tick() * self.velocity * self.gain
+        let velocity_gain = 1.0 + (self.velocity - 1.0) * self.patch.envelope.velocity_sensitivity;
+        let expression_gain = 1.0 + (expression - 1.0) * self.patch.envelope.expression_sensitivity;
+        self.oscillator.tick(
+            self.frequency_hz,
+            self.patch,
+            pitch_bend_cents,
+            mod_wheel,
+            sample_rate,
+            self.patch_smoothing,
+        ) * envelope
+            * velocity_gain
+            * expression_gain
     }
 
     fn deactivate(&mut self) {
@@ -126,8 +142,6 @@ impl Voice {
         self.released = false;
         self.sustained = false;
         self.voice_id = VoiceId::INVALID;
-        self.gain = 0.0;
-        self.ramp_step = 0.0;
     }
 
     pub fn is_active(&self) -> bool {
@@ -158,5 +172,10 @@ impl Voice {
             self.midi_anchor,
             self.frequency_hz,
         )
+    }
+
+    #[cfg(test)]
+    pub fn oscillator_phase(&self) -> f32 {
+        self.oscillator.primary_phase()
     }
 }
