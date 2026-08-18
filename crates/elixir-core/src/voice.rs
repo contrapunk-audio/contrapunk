@@ -173,9 +173,4 @@ impl Voice {
             self.frequency_hz,
         )
     }
-
-    #[cfg(test)]
-    pub fn oscillator_phase(&self) -> f32 {
-        self.oscillator.primary_phase()
-    }
 }

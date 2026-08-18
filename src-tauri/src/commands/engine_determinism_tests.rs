@@ -45,6 +45,9 @@ enum ObservedEvent {
         voice_id: u64,
     },
     Sustain(bool),
+    PitchBend(u32),
+    Expression(u32),
+    ModWheel(u32),
     AllNotesOff,
 }
 
@@ -490,6 +493,9 @@ impl PerformanceHarness {
                     }
                 }
                 SynthEvent::SustainPedal { on } => ObservedEvent::Sustain(on),
+                SynthEvent::PitchBend { cents } => ObservedEvent::PitchBend(cents.to_bits()),
+                SynthEvent::Expression { value } => ObservedEvent::Expression(value.to_bits()),
+                SynthEvent::ModWheel { value } => ObservedEvent::ModWheel(value.to_bits()),
                 SynthEvent::AllNotesOff => {
                     self.active_synth_owners.clear();
                     ObservedEvent::AllNotesOff

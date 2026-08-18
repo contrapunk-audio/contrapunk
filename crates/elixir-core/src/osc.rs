@@ -104,11 +104,6 @@ impl Oscillator {
         self.vibrato_phase = advance(self.vibrato_phase, patch.vibrato.rate_hz / sample_rate);
         sample
     }
-
-    #[cfg(test)]
-    pub fn primary_phase(&self) -> f32 {
-        self.primary_phase
-    }
 }
 
 const fn mode_weights(mode: CombineMode) -> [f32; 3] {
