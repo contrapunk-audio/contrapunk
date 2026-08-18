@@ -1,6 +1,6 @@
 import type { SlideRole, SlideSettings, SlideVoiceState, SynthRolePatch } from '$lib/adapter/types';
-import { cloneRolePatch, defaultRolePatch, rolePatchParameters } from '$lib/elixir/patch';
-import wasmPath from '$lib/wasm-pkg/contrapunk_wasm_bg.wasm?url';
+import { cloneRolePatch, defaultRolePatch, rolePatchParameters } from '../elixir/patch';
+import wasmPath from '../wasm-pkg/contrapunk_wasm_bg.wasm?url';
 import workletUrl from './elixir-audio-processor.ts?worker&url';
 import { addVoiceOwner, takeVoiceOwner } from './elixir-ownership.js';
 
