@@ -2,7 +2,7 @@
 name = "elixir-preset"
 version = "0.0.1"
 edition = "2021"
-description = "Persisted state and chapter examples for the Elixir foundations synthesizer"
+description = "Persisted state and factory patches for the Elixir synthesizer"
 authors = ["Contrapunk Team"]
 
 [dependencies]

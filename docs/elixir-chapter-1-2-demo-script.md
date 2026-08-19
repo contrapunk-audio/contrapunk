@@ -27,7 +27,7 @@ Website placement: beside “Build a tone by adding sine waves.”
 
 ### Clip 2: Timbre organizes the ensemble
 
-1. Load **Chapter 1 · Ensemble colours**.
+1. Load **Ensemble colours** from Factory patch.
 2. Play one project-authored phrase with Input, Harmony, Canon, and Counterpoint entering in that order.
 3. Solo each role once, then restore the ensemble.
 4. Keep notes and rhythm fixed while the role recipes provide the identity.
@@ -56,9 +56,9 @@ Website placement: beside “Heterodyning: make a small difference audible.”
 
 ### Clip 5: Ring-down versus maintained oscillation
 
-1. Load **Chapter 2 · Passive ring-down** and excite one note.
+1. Load **Passive ring-down** from Factory patch and excite one note.
 2. Let it reach silence.
-3. Load **Chapter 2 · Maintained vibrato** and hold the same note.
+3. Load **Maintained vibrato** and hold the same note.
 4. Release it cleanly after the sustained comparison.
 
 Website placement: beside “Sustained LC oscillation.” State clearly that the envelope is the digital product analogue, not an LC simulation.
@@ -75,8 +75,8 @@ Website placement: beside “Amplitude as a trajectory” and “Pitch as a traj
 
 ## Publication Checklist
 
-- Use the matching `CHAPTER_EXAMPLES` identifier in production notes and website deep links.
-- Verify the recorded patch against `elixir-preset::chapter_foundation_presets()`.
+- Use the matching `FACTORY_PATCHES` identifier in production notes and website deep links.
+- Verify the recorded patch against `elixir-preset::factory_presets()`.
 - Include captions, alt text, and a long description.
 - State exact note frequencies, harmonic coefficients, phase, interval, envelope, and vibrato values.
 - Credit audio and video as project-authored.

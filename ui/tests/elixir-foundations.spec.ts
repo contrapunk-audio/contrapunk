@@ -1,40 +1,65 @@
 import { expect, test } from '@playwright/test';
 
-test.describe('Elixir Chapter 1 and 2 foundations', () => {
-	test('edits role colour and applies deterministic chapter examples', async ({ page }) => {
+test.describe('Elixir synthesizer', () => {
+	test('uses instrument language and edits each role sound', async ({ page }) => {
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Synth', exact: true }).click();
-		await expect(page.getByRole('heading', { name: 'Harmonic colour' })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Input oscillator' })).toBeVisible();
 		await expect(page.getByText('6 HARMONICS × 16 VOICES')).toBeVisible();
-		await expect(page.getByRole('link', { name: 'CHAPTER 1 ↗' })).toHaveAttribute('href', 'https://contrapunk.com/learn/wavetable-synthesis/chapter-1/');
-		await expect(page.getByRole('link', { name: 'CHAPTER 2 ↗' })).toHaveAttribute('href', 'https://contrapunk.com/learn/wavetable-synthesis/chapter-2/');
+		await expect(page.locator('.synth-panel')).not.toContainText(/CHAPTER\s+[12]/i);
+		await expect(page.getByLabel('Factory patch')).toBeVisible();
 
 		await page.getByRole('tab', { name: 'Harmony' }).click();
-		await page.getByLabel('Recipe').selectOption('odd');
+		await expect(page.getByRole('heading', { name: 'Harmony oscillator' })).toBeVisible();
+		await page.getByLabel('Wave recipe').selectOption('odd');
 		await expect(page.getByLabel('Harmonic 2 amplitude')).toHaveValue('0');
 		await expect(page.getByLabel('Harmonic 3 amplitude')).toHaveValue('0.45');
-		await expect(page.getByLabel('Current waveform and one-sided spectrum preview')).toBeVisible();
+		await expect(page.getByRole('img', { name: 'Oscillator input waveforms' })).toBeVisible();
+		await expect(page.getByRole('img', { name: 'Final oscillator output waveform' })).toBeVisible();
 
-		await page.getByLabel('Chapter example').selectOption('phase-cancellation');
+		await page.getByLabel('Factory patch').selectOption('phase-cancellation');
 		await expect(page.getByRole('button', { name: 'Add', exact: true })).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByText('Difference 0.0 Hz')).toBeVisible();
 		await expect(page.getByText('Phase cancellation.')).toBeVisible();
 	});
 
-	test('opens a recording-ready deep link without replacing the saved sound', async ({ page }) => {
+	test('shows the exact settled result and reacts during a drag', async ({ page }) => {
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Synth', exact: true }).click();
-		await page.getByLabel('Recipe').selectOption('dark');
+		await page.getByRole('button', { name: 'Add', exact: true }).click();
+
+		const inputPath = page.locator('.source-a');
+		const outputPath = page.locator('.final-output');
+		const outputScope = page.getByRole('img', { name: 'Final oscillator output waveform' });
+		const sourcePeakBefore = await inputPath.getAttribute('data-peak');
+		const outputBefore = await outputPath.getAttribute('d');
+		await expect(outputScope).toHaveAttribute('data-formula', 'A + B');
+		await expect(outputScope).toHaveAttribute('data-peak', '2.000');
+
+		await page.getByLabel('Operator B phase').evaluate((node: HTMLInputElement) => {
+			node.value = '0.5';
+			node.dispatchEvent(new Event('input', { bubbles: true }));
+		});
+
+		await expect(outputScope).toHaveAttribute('data-peak', '0.000');
+		await expect.poll(() => outputPath.getAttribute('d')).not.toBe(outputBefore);
+		expect(await inputPath.getAttribute('data-peak')).toBe(sourcePeakBefore);
+	});
+
+	test('opens a factory-patch deep link without replacing the saved sound', async ({ page }) => {
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Synth', exact: true }).click();
+		await page.getByLabel('Wave recipe').selectOption('dark');
 
 		await page.goto('/?elixir-example=ring-difference');
-		await expect(page.getByRole('heading', { name: 'Harmonic colour' })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Input oscillator' })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Ring', exact: true })).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByText('Ring difference.')).toBeVisible();
 		await expect(page.getByText('B 110.0 Hz')).toBeVisible();
 
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Synth', exact: true }).click();
-		await expect(page.getByLabel('Recipe')).toHaveValue('dark');
+		await expect(page.getByLabel('Wave recipe')).toHaveValue('dark');
 	});
 
 	test('keeps pitch and amplitude controls separate and named', async ({ page }) => {

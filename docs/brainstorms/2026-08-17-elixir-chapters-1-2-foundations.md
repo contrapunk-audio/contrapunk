@@ -30,7 +30,7 @@ note + exact tuning
 - Six harmonic amplitudes and six phase offsets per role.
 - Sine, Three harmonics, Odd only, Saw-like, Dark, and Custom recipes using the exact published coefficients.
 - Harmonic components at `k * f0`; components at or above Nyquist do not render.
-- A computed two-cycle waveform and one-sided spectrum beside the controls.
+- A centered dual scope showing oscillator inputs and the settled final oscillator output on one shared amplitude scale, plus a one-sided spectrum.
 - Independent patches for Input, Harmony, Canon, and Counterpoint so timbre can organize an arrangement.
 
 ## Chapter 2 Surface
@@ -60,6 +60,8 @@ These examples will be deterministic and named so they can later drive website v
 
 ## Key Decisions
 
+- Textbook provenance stays in documentation. The product surface uses synthesizer language, factory-patch names, and no chapter badges.
+- Range controls update while dragged, and the central 48 kHz reference scope displays source A, source B, and their settled output on a shared scale.
 - Role-scoped patches, not one global patch: Contrapunk is an ensemble and Chapter 1 explicitly uses timbre as musical identity.
 - Six partials, not an arbitrary large additive bank: six matches the published chapter and is sufficient for the foundation.
 - No LC component knobs: ring-down and maintained oscillation map to articulation presets, while the physical circuit remains a teaching model.

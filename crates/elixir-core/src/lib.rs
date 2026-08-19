@@ -1,8 +1,8 @@
-//! Host-neutral, allocation-free Elixir foundations synthesizer.
+//! Host-neutral, allocation-free Elixir synthesizer.
 //!
-//! Six phase-aware harmonics provide Chapter 1 colour. A constrained second
-//! oscillator, ADSR, expression, and hard-wired vibrato provide Chapter 2
-//! interaction and performability without introducing later-chapter systems.
+//! Six phase-aware harmonics provide role-specific colour. A constrained second
+//! oscillator, ADSR, expression, and hard-wired vibrato provide interaction and
+//! performability without compromising the realtime path.
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 

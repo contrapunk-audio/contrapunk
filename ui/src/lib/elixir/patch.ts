@@ -165,17 +165,15 @@ function patchWith(update: (patch: SynthRolePatch) => void): SynthRolePatch {
 	return patch;
 }
 
-export const CHAPTER_EXAMPLES: Array<{
+export const FACTORY_PATCHES: Array<{
 	id: string;
 	name: string;
-	chapter: 1 | 2;
 	description: string;
 	patches: SynthRolePatch[];
 }> = [
 	{
 		id: 'harmonic-family',
 		name: 'Harmonic family',
-		chapter: 1,
 		description: 'The published three-harmonic tone: 1, 0.5, and 0.25.',
 		patches: Array.from({ length: 4 }, () => patchWith((patch) => {
 			patch.harmonics.amplitudes = [...HARMONIC_RECIPES.three];
@@ -184,7 +182,6 @@ export const CHAPTER_EXAMPLES: Array<{
 	{
 		id: 'ensemble-colours',
 		name: 'Ensemble colours',
-		chapter: 1,
 		description: 'Input, Harmony, Canon, and Counterpoint use different harmonic identities.',
 		patches: ['sine', 'dark', 'odd', 'three'].map((name) => patchWith((patch) => {
 			patch.harmonics.amplitudes = [...HARMONIC_RECIPES[name as keyof typeof HARMONIC_RECIPES]];
@@ -193,7 +190,6 @@ export const CHAPTER_EXAMPLES: Array<{
 	{
 		id: 'phase-reinforcement',
 		name: 'Phase reinforcement',
-		chapter: 2,
 		description: 'Two matched sine waves add at zero degrees.',
 		patches: Array.from({ length: 4 }, () => patchWith((patch) => {
 			patch.secondary.mode = 'add';
@@ -202,7 +198,6 @@ export const CHAPTER_EXAMPLES: Array<{
 	{
 		id: 'phase-cancellation',
 		name: 'Phase cancellation',
-		chapter: 2,
 		description: 'Two matched sine waves cancel at 180 degrees.',
 		patches: Array.from({ length: 4 }, () => patchWith((patch) => {
 			patch.secondary.mode = 'add';
@@ -212,7 +207,6 @@ export const CHAPTER_EXAMPLES: Array<{
 	{
 		id: 'ring-difference',
 		name: 'Ring difference',
-		chapter: 2,
 		description: 'A second sine one octave down creates sum and difference components.',
 		patches: Array.from({ length: 4 }, () => patchWith((patch) => {
 			patch.secondary.mode = 'ring';
@@ -222,7 +216,6 @@ export const CHAPTER_EXAMPLES: Array<{
 	{
 		id: 'passive-ring-down',
 		name: 'Passive ring-down',
-		chapter: 2,
 		description: 'Fast excitation, 1.2-second decay, and zero sustain.',
 		patches: Array.from({ length: 4 }, () => patchWith((patch) => {
 			patch.envelope = { ...patch.envelope, decaySecs: 1.2, sustainLevel: 0, releaseSecs: 0.012 };
@@ -231,7 +224,6 @@ export const CHAPTER_EXAMPLES: Array<{
 	{
 		id: 'maintained-vibrato',
 		name: 'Maintained vibrato',
-		chapter: 2,
 		description: 'An 80-millisecond startup settles into 18-cent vibrato at 5 Hz.',
 		patches: Array.from({ length: 4 }, () => patchWith((patch) => {
 			patch.envelope = { ...patch.envelope, attackSecs: 0.08, releaseSecs: 0.12 };

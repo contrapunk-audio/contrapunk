@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { adapter } from '$lib/adapter';
 	import { synth } from '$lib/stores/synth.svelte';
-	import { CHAPTER_EXAMPLES, cloneRolePatch } from '$lib/elixir/patch';
+	import { FACTORY_PATCHES, cloneRolePatch } from '$lib/elixir/patch';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import OscillatorPanel from './OscillatorPanel.svelte';
 
@@ -25,7 +25,7 @@
 				await adapter.init();
 				await synth.syncFromBackend();
 				const linkedExample = new URLSearchParams(window.location.search).get('elixir-example');
-				if (linkedExample && CHAPTER_EXAMPLES.some((example) => example.id === linkedExample)) {
+				if (linkedExample && FACTORY_PATCHES.some((patch) => patch.id === linkedExample)) {
 					await applyExample(linkedExample, false);
 				}
 				if (!cancelled) ready = true;
@@ -48,9 +48,9 @@
 
 	async function applyExample(id: string, persist = true) {
 		selectedExample = id;
-		const example = CHAPTER_EXAMPLES.find((candidate) => candidate.id === id);
-		if (!example) return;
-		await synth.setAllRolePatches(example.patches.map(cloneRolePatch), persist);
+		const factoryPatch = FACTORY_PATCHES.find((candidate) => candidate.id === id);
+		if (!factoryPatch) return;
+		await synth.setAllRolePatches(factoryPatch.patches.map(cloneRolePatch), persist);
 	}
 </script>
 
@@ -89,11 +89,11 @@
 						{/each}
 					</div>
 				{/if}
-				<label class="example-picker"><span>Chapter example</span><select value={selectedExample} onchange={(event) => void applyExample(event.currentTarget.value)}><option value="">Choose a recording-ready state</option>{#each CHAPTER_EXAMPLES as example}<option value={example.id}>Ch {example.chapter} · {example.name}</option>{/each}</select></label>
+				<label class="example-picker"><span>Factory patch</span><select value={selectedExample} onchange={(event) => void applyExample(event.currentTarget.value)}><option value="">Choose a factory sound</option>{#each FACTORY_PATCHES as factoryPatch}<option value={factoryPatch.id}>{factoryPatch.name}</option>{/each}</select></label>
 			</div>
 			{#if selectedExample}
-				{@const example = CHAPTER_EXAMPLES.find((candidate) => candidate.id === selectedExample)}
-				{#if example}<p class="example-description"><strong>{example.name}.</strong> {example.description}</p>{/if}
+				{@const factoryPatch = FACTORY_PATCHES.find((candidate) => candidate.id === selectedExample)}
+				{#if factoryPatch}<p class="example-description"><strong>{factoryPatch.name}.</strong> {factoryPatch.description}</p>{/if}
 			{/if}
 			<div class="main-grid">
 				<OscillatorPanel role={masterOnly ? 0 : selectedRole} disabled={!ready || (!masterOnly && !synth.enabled)} />
@@ -144,7 +144,7 @@
 			</div>
 			{#if !masterOnly}
 				<section class="slide-instrument" aria-label="Continuous pitch controls">
-					<header><span>CHAPTER 2</span><div><h2>Continuous pitch</h2><p>Slide moves pitch after harmony and tuning. It remains shared with Arrangement so internal audio and routed MIDI follow one path.</p></div></header>
+					<header><span>PITCH CONTROL</span><div><h2>Continuous pitch</h2><p>Slide moves pitch after harmony and tuning so internal audio and routed MIDI follow one path.</p></div></header>
 					<SlidePanel />
 				</section>
 			{/if}
@@ -165,7 +165,7 @@
 	}
 	.workspace.embedded { padding: 14px; }
 	.synth-panel {
-		width: min(1040px, 100%);
+		width: min(1280px, 100%);
 		min-height: 560px;
 		margin: 0 auto;
 		border: 1px solid #3a3a3a;
@@ -214,7 +214,7 @@
 	.example-description strong { color: #d5e0e5; }
 	.main-grid {
 		display: grid;
-		grid-template-columns: minmax(0, 1.65fr) minmax(260px, .75fr);
+		grid-template-columns: minmax(0, 1fr) minmax(240px, 260px);
 		gap: 10px;
 		padding: 10px;
 		flex: 1;

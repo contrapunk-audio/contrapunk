@@ -1,4 +1,4 @@
-//! Phase-continuous harmonic oscillator and constrained Chapter 2 interaction.
+//! Phase-continuous harmonic oscillator and constrained two-source interaction.
 
 use crate::{CombineMode, RolePatch, PARTIAL_COUNT};
 

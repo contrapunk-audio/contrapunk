@@ -115,7 +115,7 @@ Note: `graphify update .` attempted during this recon but crashed with `expected
 - Per-role ADSR, velocity and expression response, fixed vibrato, and shared Slide pitch trajectories.
 - Lock-free pitch bend, mod wheel, pressure, and CC11 performance controls.
 - Tauri, WASM AudioWorklet, Contrapunk plugin, and independent Elixir plugin surfaces.
-- `elixir-preset` schema v4 with safe v1-v3 migration and deterministic Chapter 1/2 demonstration states.
+- `elixir-preset` schema v4 with safe v1-v3 migration and deterministic factory patches.
 - No filters, spectral morphs, general modulation matrix, or internal Elixir FX until their textbook concepts are introduced and approved.
 
 ### Golem features committed locally

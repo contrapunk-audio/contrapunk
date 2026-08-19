@@ -1,4 +1,4 @@
-//! Small linear ADSR used as Elixir's Chapter 2 amplitude trajectory.
+//! Small linear ADSR used as Elixir's amplitude trajectory.
 
 use crate::AmpEnvelope;
 

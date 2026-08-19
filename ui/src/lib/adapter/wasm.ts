@@ -1681,7 +1681,7 @@ export class WasmAdapter implements ContrapunkAdapter {
 		if (enabled) this.ensureAudioContext();
 	}
 
-	// -- Elixir harmonic foundations synth --
+	// -- Elixir harmonic synthesizer --
 
 	async getSynthState() {
 		return {

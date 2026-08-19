@@ -1,4 +1,4 @@
-//! Persisted Elixir foundations state and deterministic Chapter 1/2 examples.
+//! Persisted Elixir synthesizer state and deterministic factory patches.
 
 use std::fmt;
 
@@ -420,8 +420,8 @@ pub fn contrapunk_default_preset() -> ElixirPreset {
     }
 }
 
-/// Stable factory states used for chapter walkthroughs and later video capture.
-pub fn chapter_foundation_presets() -> [ElixirPreset; 7] {
+/// Stable factory states used for auditions, tests, and video capture.
+pub fn factory_presets() -> [ElixirPreset; 7] {
     let preset = |name: &str, patch: RolePatch| ElixirPreset {
         name: name.into(),
         author: Some("Contrapunk Audio".into()),
@@ -450,20 +450,20 @@ pub fn chapter_foundation_presets() -> [ElixirPreset; 7] {
 
     [
         preset(
-            "Chapter 1 - Harmonic family",
+            "Harmonic family",
             RolePatch {
                 harmonics: HarmonicRecipe::preset(HarmonicPreset::Three),
                 ..RolePatch::sine()
             },
         ),
         ElixirPreset {
-            name: "Chapter 1 - Ensemble colours".into(),
+            name: "Ensemble colours".into(),
             author: Some("Contrapunk Audio".into()),
             state: colour_roles,
             ..ElixirPreset::default()
         },
         preset(
-            "Chapter 2 - Phase reinforcement",
+            "Phase reinforcement",
             RolePatch {
                 secondary: SecondaryOscillator {
                     mode: CombineMode::Add,
@@ -474,7 +474,7 @@ pub fn chapter_foundation_presets() -> [ElixirPreset; 7] {
             },
         ),
         preset(
-            "Chapter 2 - Phase cancellation",
+            "Phase cancellation",
             RolePatch {
                 secondary: SecondaryOscillator {
                     mode: CombineMode::Add,
@@ -485,7 +485,7 @@ pub fn chapter_foundation_presets() -> [ElixirPreset; 7] {
             },
         ),
         preset(
-            "Chapter 2 - Ring difference",
+            "Ring difference",
             RolePatch {
                 secondary: SecondaryOscillator {
                     mode: CombineMode::Ring,
@@ -496,14 +496,14 @@ pub fn chapter_foundation_presets() -> [ElixirPreset; 7] {
             },
         ),
         preset(
-            "Chapter 2 - Passive ring-down",
+            "Passive ring-down",
             RolePatch {
                 envelope: AmpEnvelope::ring_down(),
                 ..RolePatch::sine()
             },
         ),
         preset(
-            "Chapter 2 - Maintained vibrato",
+            "Maintained vibrato",
             RolePatch {
                 envelope: AmpEnvelope::maintained(),
                 vibrato: Vibrato {
@@ -555,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_three_collapses_to_exact_foundation_defaults() {
+    fn schema_three_collapses_to_exact_legacy_defaults() {
         let old = r#"{
             "schema_version": 3,
             "name": "Fixed sine",
@@ -598,13 +598,13 @@ mod tests {
     }
 
     #[test]
-    fn chapter_presets_are_named_valid_and_deterministic() {
-        let first = chapter_foundation_presets();
-        let second = chapter_foundation_presets();
+    fn factory_presets_are_named_valid_and_deterministic() {
+        let first = factory_presets();
+        let second = factory_presets();
         assert_eq!(first, second);
         assert_eq!(first.len(), 7);
         for preset in first {
-            assert!(preset.name.starts_with("Chapter "));
+            assert!(!preset.name.contains("Chapter"));
             preset.validate().unwrap();
         }
     }

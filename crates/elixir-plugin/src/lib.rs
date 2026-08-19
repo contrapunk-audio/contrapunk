@@ -1,7 +1,7 @@
 //! Independently buildable Elixir VST3/CLAP instrument.
 //!
-//! The sound path shares Elixir's Chapter 1 harmonic colour and Chapter 2
-//! interaction, articulation, and expression model.
+//! The sound path shares Elixir's harmonic colour, oscillator interaction,
+//! articulation, and expression model.
 
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -391,8 +391,7 @@ impl Plugin for ElixirPlugin {
 
 impl ClapPlugin for ElixirPlugin {
     const CLAP_ID: &'static str = "com.contrapunk.elixir.plugin";
-    const CLAP_DESCRIPTION: Option<&'static str> =
-        Some("16-voice harmonic foundations synthesizer");
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("16-voice harmonic synthesizer");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[

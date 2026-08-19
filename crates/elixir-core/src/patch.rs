@@ -1,4 +1,4 @@
-//! Chapter 1 and 2 sound controls shared by every Elixir surface.
+//! Sound controls shared by every Elixir synthesizer surface.
 
 pub const PARTIAL_COUNT: usize = 6;
 
